@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. ENTIDADES BASE (Multi-Comercializadora y Multi-Marca)
+// ==========================================
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String   // ej. "AED Energía S.L."
+  cif       String   @unique
+  brands    Brand[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Brand {
+  id              String   @id @default(cuid())
+  name            String   // Nombre visible en la app (ej. "AED Energía")
+  slug            String   @unique
+  
+  // ── Identidad Visual (4 colores configurables) ──────
+  logoUrl         String?  // URL del logotipo
+  faviconUrl      String?  // Favicon personalizado
+  
+  // 1. Color Acento: botones primarios, badges, highlights (default: Lima SP Energía)
+  accentColor     String   @default("#DEFF9A")
+  // 2. Color Fondo Principal: toda la app (default: Deep Navy)
+  bgColor         String   @default("#0B0F19")
+  // 3. Color Superficie: tarjetas y sidebar (default: Dark Gray)
+  surfaceColor    String   @default("#111827")
+  // 4. Color de Borde: líneas y separadores (default: Navy border)
+  borderColor     String   @default("#1E2A3A")
+  // ── Los textos y demás se derivan automáticamente ───
+  
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  users           User[]
+  clients         Client[]
+  products        Product[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+enum Role {
+  SUPERADMIN 
+  COMPANYADMIN 
+  BACKOFFICE 
+  CANAL      
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(CANAL)
+  phone     String?
+  
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+  
+  leads     Lead[]
+  contracts Contract[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==========================================
+// 2. CRM (Ventas y Clientes)
+// ==========================================
+
+model Client {
+  id               String   @id @default(cuid())
+  businessName     String   // Nombre o Razón Social (Titular)
+  firstName        String?  // Primer apellido / Nombre
+  lastName         String?  // Segundo apellido
+  vatNumber        String   @unique // DNI/CIF Titular
+  
+  contactName      String?  // Nombre Contacto
+  contactLastName  String?  // Apellidos Contacto
+  contactEmail     String?
+  contactPhone     String?
+  contactPhone2    String?
+  contactPhone3    String?
+  
+  cnae             String?  // CNAE SIPS
+  clientType       String?  // Tipo de persona (Física, Jurídica)
+  
+  // Datos bancarios
+  iban             String?
+  swift            String?
+  paymentMethod    String?  // Forma de pago
+  mandateSigned    Boolean  @default(false) // Mandato Doble / Certificado IBAN
+  
+  // Facturación
+  paperInvoice     Boolean  @default(false)
+  invoiceEmail     String?
+  billingAddress   String?  // DOMICILIO SOC / CONT
+  billingPostalCode String?
+  billingCity      String?
+  billingProvince  String?
+  
+  brandId          String
+  brand            Brand    @relation(fields: [brandId], references: [id])
+  
+  supplyPoints     SupplyPoint[]
+  contracts        Contract[]
+  invoices         Invoice[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Representa a los "Leads" y "Oportunidades" antes de firmarse
+model Lead {
+  id               String   @id @default(cuid())
+  businessName     String
+  firstName        String?
+  lastName         String?
+  vatNumber        String?
+  email            String?
+  phone            String?
+  
+  status           String   @default("NUEVO") // NUEVO, BORRADOR, ENVIADO, FIRMADO, PERDIDO
+  source           String?  // Canal de captación
+  
+  // Datos Técnicos estimados (Si aún no hay SupplyPoint real)
+  cups             String?  
+  estimatedMWh     Float?   // Gasto mensual o consumo anual KWH
+  tariff           String?
+  
+  // Precios personalizados para la oferta (Fee, PExc)
+  customFee        Float?
+  customPExc       Float?
+  
+  // Enlaces y Firmas
+  draftUrl         String?  // PDF Borrador
+  signedUrl        String?  // PDF Contrato firmado
+  signatureType    String?  // Tipo de firma (DocuSign, manuscrita)
+  
+  userId           String   // Canal/Comercial asignado
+  user             User     @relation(fields: [userId], references: [id])
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ==========================================
+// 3. OPERACIONES (Suministros ATR)
+// ==========================================
+
+model SupplyPoint {
+  id               String   @id @default(cuid())
+  cups             String   @unique
+  cups2            String?  // Gas u otro
+  
+  address          String   // Dirección Instalación
+  city             String
+  postalCode       String
+  province         String
+  country          String   @default("España")
+  
+  tariff           String   // ej. 2.0TD, 3.0TD, 6.1TD
+  distributor      String?  // Código REE Distribuidora / Nombre Distribuidora
+  
+  // Consumos (P1C - P6C)
+  annualConsumption Float?  // Consumo anual total KWh
+  p1c              Float?
+  p2c              Float?
+  p3c              Float?
+  p4c              Float?
+  p5c              Float?
+  p6c              Float?
+  
+  // Potencias contratadas (P1P - P6P)
+  p1p              Float?
+  p2p              Float?
+  p3p              Float?
+  p4p              Float?
+  p5p              Float?
+  p6p              Float?
+  
+  // Autoconsumo
+  hasSelfConsumption Boolean @default(false)
+  selfConsumptionType String? // Tipo Autoconsumo
+  cie              String?  // Nº CIE Consumo
+  cieSelfConsumption String? // CIE Autoconsumo
+  
+  clientId         String
+  client           Client   @relation(fields: [clientId], references: [id])
+  
+  contracts        Contract[]
+}
+
+// ==========================================
+// 4. CATÁLOGO DE PRODUCTOS (Tarifas y Precios)
+// ==========================================
+
+model Product {
+  id               String   @id @default(cuid())
+  name             String   // ej. "AED Solar Indexado", "Fijo 24h"
+  type             String   // FIX, INDEXED, PASS_THROUGH
+  
+  brandId          String
+  brand            Brand    @relation(fields: [brandId], references: [id])
+  
+  // Parámetros económicos del producto
+  fee              Float?   // Fee Index
+  pexc             Float?   // Precio Excedentes
+  feeExcedentes    Float?
+  cgBolsilloSolar  Float?   // CG Bolsillo Solar
+  
+  // Precios Energía Fijos (P1E - P6E)
+  p1e              Float?
+  p2e              Float?
+  p3e              Float?
+  p4e              Float?
+  p5e              Float?
+  p6e              Float?
+  
+  permanenceMonths Int?     // Meses de permanencia
+  
+  contracts        Contract[]
+}
+
+// ==========================================
+// 5. CONTRATOS Y COMISIONES
+// ==========================================
+
+model Contract {
+  id               String   @id @default(cuid())
+  status           String   // TRAMITANDO, M1 ENVIADO, ACTIVO, BAJA, RECHAZADO
+  
+  // Fechas Clave del Contrato
+  signatureDate    DateTime? // Fecha firma contrato
+  requestDate      DateTime? // Fecha Solicitud ATR
+  activationDate   DateTime? // Fecha Activación (Alta Comercializadora)
+  expectedEndDate  DateTime? // Fecha Renovación/Vencimiento Calculada
+  terminationDate  DateTime? // Fecha Baja Comercializadora
+  
+  // Económico y Comisiones
+  commissionBase   Float?    // COMISION ESTIMADA
+  commissionFinal  Float?    // COMISION FINAL
+  commissionVariable Float?
+  penalization     Float?    // PENALIZACION
+  
+  // Gestión de Bajas e Incidencias
+  distributorMsg   String?   // Mensaje Distribuidora (Rechazos M1, etc)
+  internalComments String?   // Comentario interno
+  
+  // Relaciones
+  clientId         String
+  client           Client   @relation(fields: [clientId], references: [id])
+  
+  supplyPointId    String
+  supplyPoint      SupplyPoint @relation(fields: [supplyPointId], references: [id])
+  
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  
+  userId           String   // Comercial/Canal
+  user             User     @relation(fields: [userId], references: [id])
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ==========================================
+// 6. FACTURACIÓN Y ANÁLISIS ECONÓMICO
+// ==========================================
+
+model Invoice {
+  id               String   @id @default(cuid())
+  invoiceNumber    String   @unique
+  invoiceType      String?  // Tipo Factura
+  
+  clientId         String
+  client           Client   @relation(fields: [clientId], references: [id])
+  
+  issueDate        DateTime
+  
+  // Desglose económico
+  subtotal1        Float?   // Subtotal Energía
+  taxPercentage    Float?   // Impuesto (%)
+  taxAmount        Float?   // Importe Impuesto (IE)
+  totalAmount      Float    // Facturación € (Base Imponible + Impuestos)
+  totalMWh         Float    // Energía Total Consumida (Cantidad Energía Total Consumida)
+  
+  margin           Float?   // MARGEN FACTURA DASHBOARD
+  
+  pdfUrl           String?  // PATH o Enlace
+  
+  createdAt        DateTime @default(now())
+}
