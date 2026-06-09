@@ -362,7 +362,7 @@ async function run() {
       const p5c = parsePower(f['P5C SIPS'] || f['P5C'] || f['P5']);
       const p6c = parsePower(f['P6C SIPS'] || f['P6C'] || f['P6']);
 
-      let supplyPoint = await prisma.supplyPoint.findUnique({ where: { cups } });
+      let supplyPoint = await prisma.supplyPoint.findFirst({ where: { cups } });
       if (!supplyPoint) {
         if (cups) {
           const distName = Array.isArray(f['DISTRIBUIDORA']) ? f['DISTRIBUIDORA'][0] : (Array.isArray(f['Nombre Distribuidora']) ? f['Nombre Distribuidora'][0] : f['Nombre Distribuidora']);
@@ -510,7 +510,7 @@ async function run() {
         const invFields = inv.fields;
         const invoiceNumber = invFields['Numero Factura'] || invFields['N Factura'] || `INV_MOCK_${inv.id}`;
         
-        let existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber } });
+        let existingInvoice = await prisma.invoice.findFirst({ where: { invoiceNumber } });
         if (!existingInvoice) {
           const issueDate = invFields['Fecha Factura'] ? new Date(invFields['Fecha Factura']) : new Date();
           const totalAmount = parseFloat(invFields['Total']) || 0;
