@@ -1,7 +1,9 @@
-import { auth } from '@/auth';
+import NextAuth from 'next-auth';
+import { authConfig } from './auth.config';
 import { NextResponse } from 'next/server';
 
-// Rutas públicas que no requieren autenticación
+const { auth } = NextAuth(authConfig);
+
 const PUBLIC_ROUTES = ['/login'];
 
 export default auth((req) => {
@@ -22,6 +24,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  // Aplica el middleware a todas las rutas excepto _next, assets y favicon
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png$).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)'],
 };

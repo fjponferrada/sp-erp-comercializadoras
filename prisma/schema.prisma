@@ -4,299 +4,1299 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
-// ==========================================
-// 1. ENTIDADES BASE (Multi-Comercializadora y Multi-Marca)
-// ==========================================
-
 model Company {
-  id        String   @id @default(cuid())
-  name      String   // ej. "AED Energía S.L."
-  cif       String   @unique
-  brands    Brand[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                     String    @id @default(cuid())
+  name                   String
+  cif                    String    @unique
+  codigo                 String?   @unique
+  address                String?
+  email                  String?
+  contactPerson          String?
+  phone                  String?
+  codigoRee              String?
+  codigoAcer             String?
+  unidadOfertaOmie       String?
+  remit                  String?
+  codigoSujetoMercado    String?
+  ordenCnmc              String?
+  fechaActivacionCnmc    DateTime?
+  fechaBajaCnmc          DateTime?
+  representadoPor        String?
+  fechaActivacionIsm     DateTime?
+  fechaBajaIsm           DateTime?
+  residenciaCanarias     Boolean   @default(false)
+  exportableOdoo         Boolean   @default(false)
+  empresaVisible         Boolean   @default(true)
+  emisionFacturasCliente Boolean   @default(true)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  brands                 Brand[]
+  users                  User[]    @relation("UserCompanies")
 }
 
 model Brand {
-  id              String   @id @default(cuid())
-  name            String   // Nombre visible en la app (ej. "AED Energía")
-  slug            String   @unique
-  
-  // ── Identidad Visual (4 colores configurables) ──────
-  logoUrl         String?  // URL del logotipo
-  faviconUrl      String?  // Favicon personalizado
-  
-  // 1. Color Acento: botones primarios, badges, highlights (default: Lima SP Energía)
-  accentColor     String   @default("#DEFF9A")
-  // 2. Color Fondo Principal: toda la app (default: Deep Navy)
-  bgColor         String   @default("#0B0F19")
-  // 3. Color Superficie: tarjetas y sidebar (default: Dark Gray)
-  surfaceColor    String   @default("#111827")
-  // 4. Color de Borde: líneas y separadores (default: Navy border)
-  borderColor     String   @default("#1E2A3A")
-  // ── Los textos y demás se derivan automáticamente ───
-  
-  companyId       String
-  company         Company  @relation(fields: [companyId], references: [id])
-  users           User[]
-  clients         Client[]
-  products        Product[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-enum Role {
-  SUPERADMIN 
-  COMPANYADMIN 
-  BACKOFFICE 
-  CANAL      
+  id                    String    @id @default(cuid())
+  name                  String
+  slug                  String    @unique
+  codigoMarca           String?   @unique
+  address               String?
+  email                 String?
+  contactPerson         String?
+  phone                 String?
+  clave                 String?
+  enviosPorHora         Int?
+  facturaElectrica      String?
+  mensaje               String?
+  textoPromocional      String?
+  manual                String?
+  penalizacion          Float?
+  marcaVisible          Boolean   @default(true)
+  gestionTickets        Boolean   @default(true)
+  envioPromocion        Boolean   @default(false)
+  envioCliente          Boolean   @default(false)
+  envioCorreo           Boolean   @default(false)
+  logoUrl               String?
+  faviconUrl            String?
+  accentColor           String    @default("#DEFF9A")
+  bgColor               String    @default("#0B0F19")
+  surfaceColor          String    @default("#111827")
+  borderColor           String    @default("#1E2A3A")
+  bankName1             String?
+  bankIban1             String?
+  bankName2             String?
+  bankIban2             String?
+  bankName3             String?
+  bankIban3             String?
+  companyId             String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  company               Company   @relation(fields: [companyId], references: [id])
+  clients               Client[]
+  products              Product[]
+  tickets               Ticket[]
+  users                 User[]
+  User_BackofficeBrands User[]    @relation("BackofficeBrands")
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(CANAL)
-  phone     String?
-  
-  brandId   String
-  brand     Brand    @relation(fields: [brandId], references: [id])
-  
-  leads     Lead[]
-  contracts Contract[]
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String     @id @default(cuid())
+  name                String
+  email               String     @unique
+  password            String
+  role                Role       @default(CANAL)
+  phone               String?
+  codigo              String?
+  isChannelSupervisor Boolean    @default(false)
+  defaultSource       String?    @default("Directo")
+  allowedAutoTariffs  String[]   @default(["2.0TD"])
+  brandId             String
+  channelId           String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  contracts           Contract[]
+  leads               Lead[]
+  tickets             Ticket[]
+  brand               Brand      @relation(fields: [brandId], references: [id])
+  channel             Channel?   @relation(fields: [channelId], references: [id])
+  assignedBrands      Brand[]    @relation("BackofficeBrands")
+  companies           Company[]  @relation("UserCompanies")
 }
-
-// ==========================================
-// 2. CRM (Ventas y Clientes)
-// ==========================================
 
 model Client {
-  id               String   @id @default(cuid())
-  businessName     String   // Nombre o Razón Social (Titular)
-  firstName        String?  // Primer apellido / Nombre
-  lastName         String?  // Segundo apellido
-  vatNumber        String   @unique // DNI/CIF Titular
-  
-  contactName      String?  // Nombre Contacto
-  contactLastName  String?  // Apellidos Contacto
-  contactEmail     String?
-  contactPhone     String?
-  contactPhone2    String?
-  contactPhone3    String?
-  
-  cnae             String?  // CNAE SIPS
-  clientType       String?  // Tipo de persona (Física, Jurídica)
-  
-  // Datos bancarios
-  iban             String?
-  swift            String?
-  paymentMethod    String?  // Forma de pago
-  mandateSigned    Boolean  @default(false) // Mandato Doble / Certificado IBAN
-  
-  // Facturación
-  paperInvoice     Boolean  @default(false)
-  invoiceEmail     String?
-  billingAddress   String?  // DOMICILIO SOC / CONT
-  billingPostalCode String?
-  billingCity      String?
-  billingProvince  String?
-  
-  brandId          String
-  brand            Brand    @relation(fields: [brandId], references: [id])
-  
-  supplyPoints     SupplyPoint[]
-  contracts        Contract[]
-  invoices         Invoice[]
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                        String        @id @default(cuid())
+  businessName              String
+  firstName                 String?
+  lastName                  String?
+  vatNumber                 String        @unique
+  contactName               String?
+  contactLastName           String?
+  contactEmail              String?
+  contactEmail2             String?
+  contactEmail3             String?
+  contactPhone              String?
+  contactPhone2             String?
+  contactPhone3             String?
+  representativeName        String?
+  representativeVat         String?
+  representativePhone       String?
+  representativeEmail       String?
+  representativeAddress     String?
+  isMultipoint              Boolean       @default(false)
+  cnae                      String?
+  clientType                String?
+  iban                      String?
+  swift                     String?
+  paymentMethod             String?
+  mandateSigned             Boolean       @default(false)
+  paperInvoice              Boolean       @default(false)
+  invoiceEmail              String?
+  billingAddress            String?
+  billingPostalCode         String?
+  billingCity               String?
+  billingProvince           String?
+  brandId                   String
+  airtableId                String?       @unique
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+  contactVat                String?
+  contactRole               String?
+  billingStreetType         String?
+  billingStreet             String?
+  billingNumber             String?
+  billingFloor              String?
+  billingDoor               String?
+  billingAddressAddition    String?
+  billingCountry            String?
+  paymentTermsDays          Int?
+  clientLifeDays            Int?
+  visibilityCommercialEmail String?
+  visibilitySupervisorEmail String?
+  fileIbanCertificate       String?
+  fileRepresentativeId      String?
+  brand                     Brand         @relation(fields: [brandId], references: [id])
+  contracts                 Contract[]
+  documents                 Document[]
+  invoices                  Invoice[]
+  solarQuotes               SolarQuote[]
+  supplyPoints              SupplyPoint[]
+  tickets                   Ticket[]
+  airtableData Json?
 }
 
-// Representa a los "Leads" y "Oportunidades" antes de firmarse
 model Lead {
-  id               String   @id @default(cuid())
-  businessName     String
-  firstName        String?
-  lastName         String?
-  vatNumber        String?
-  email            String?
-  phone            String?
-  
-  status           String   @default("NUEVO") // NUEVO, BORRADOR, ENVIADO, FIRMADO, PERDIDO
-  source           String?  // Canal de captación
-  
-  // Datos Técnicos estimados (Si aún no hay SupplyPoint real)
-  cups             String?  
-  estimatedMWh     Float?   // Gasto mensual o consumo anual KWH
-  tariff           String?
-  
-  // Precios personalizados para la oferta (Fee, PExc)
-  customFee        Float?
-  customPExc       Float?
-  
-  // Enlaces y Firmas
-  draftUrl         String?  // PDF Borrador
-  signedUrl        String?  // PDF Contrato firmado
-  signatureType    String?  // Tipo de firma (DocuSign, manuscrita)
-  
-  userId           String   // Canal/Comercial asignado
-  user             User     @relation(fields: [userId], references: [id])
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                               String     @id @default(cuid())
+  businessName                     String
+  firstName                        String?
+  lastName                         String?
+  vatNumber                        String?
+  email                            String?
+  phone                            String?
+  status                           String     @default("NUEVO")
+  source                           String?
+  type                             String     @default("LUZ")
+  solarData                        Json?
+  contractData                     Json?
+  isMultipoint                     Boolean    @default(false)
+  contactEmail2                    String?
+  contactEmail3                    String?
+  cups                             String?
+  estimatedMWh                     Float?
+  tariff                           String?    @default("2.0TD")
+  productType                      String?
+  product                          String?
+  additionalServices               String?
+  wantsComparison                  Boolean    @default(false)
+  sipsOk                           Boolean    @default(false)
+  sipsMessages                     String?
+  fee                              Float?
+  pexc                             Float?
+  signatureType                    String?
+  docusignEnvelopeId               String?    @unique
+  contractId                       String?    @unique
+  userId                           String
+  airtableId                       String?    @unique
+  createdAt                        DateTime   @default(now())
+  updatedAt                        DateTime   @updatedAt
+  isB2B                            Boolean?
+  contactVat                       String?
+  hasPanels                        Boolean?
+  comments                         String?
+  generateOffer                    Boolean?
+  offerDate                        DateTime?
+  monthlyExpense                   String?
+  ipP1                             Float?
+  ipP2                             Float?
+  ipP3                             Float?
+  ipP4                             Float?
+  ipP5                             Float?
+  ipP6                             Float?
+  p1c                              Float?
+  p2c                              Float?
+  p3c                              Float?
+  p4c                              Float?
+  p5c                              Float?
+  p6c                              Float?
+  p1pDaily                         Float?
+  p2pDaily                         Float?
+  p3pDaily                         Float?
+  p4pDaily                         Float?
+  p5pDaily                         Float?
+  p6pDaily                         Float?
+  p1eActual                        Float?
+  p2eActual                        Float?
+  p3eActual                        Float?
+  p4eActual                        Float?
+  p5eActual                        Float?
+  p6eActual                        Float?
+  priceService                     Float?
+  priceServiceActual               Float?
+  comparative                      String?
+  savings                          Float?
+  cups2                            String?
+  sipsCnae                         String?
+  sipsPostalCode                   String?
+  sipsTariff                       String?
+  sipsLastModDate                  DateTime?
+  sipsUpdateOwnScript              Boolean?
+  sipsUpdateIngebauScript          Boolean?
+  sipsUpdateIngebau                Boolean?
+  errorTariff                      String?
+  errorProductTariff               String?
+  errorVat                         String?
+  errorSelfConsumption             String?
+  errorCnae                        String?
+  errorCp                          String?
+  errorPostal                      String?
+  lastInvoiceUrl                   String?
+  generateDraft                    Boolean?
+  verificationReq                  Boolean?
+  remakeDraft                      Boolean?
+  triggerDuplicate                 Boolean?
+  wpName                           String?
+  sipsSelfConsCode                 String?
+  contactName                      String?
+  contactLastName                  String?
+  contactRole                      String?
+  iban                             String?
+  paymentMethod                    String?
+  paperInvoice                     Boolean?
+  invoiceDelivery                  String?
+  tramitationType                  String?
+  mandateDouble                    Boolean?
+  documents                        Document[]
+  contract                         Contract?  @relation(fields: [contractId], references: [id])
+  user                             User       @relation(fields: [userId], references: [id])
+  airtableData Json?
 }
-
-// ==========================================
-// 3. OPERACIONES (Suministros ATR)
-// ==========================================
 
 model SupplyPoint {
-  id               String   @id @default(cuid())
-  cups             String   @unique
-  cups2            String?  // Gas u otro
-  
-  address          String   // Dirección Instalación
-  city             String
-  postalCode       String
-  province         String
-  country          String   @default("España")
-  
-  tariff           String   // ej. 2.0TD, 3.0TD, 6.1TD
-  distributor      String?  // Código REE Distribuidora / Nombre Distribuidora
-  
-  // Consumos (P1C - P6C)
-  annualConsumption Float?  // Consumo anual total KWh
-  p1c              Float?
-  p2c              Float?
-  p3c              Float?
-  p4c              Float?
-  p5c              Float?
-  p6c              Float?
-  
-  // Potencias contratadas (P1P - P6P)
-  p1p              Float?
-  p2p              Float?
-  p3p              Float?
-  p4p              Float?
-  p5p              Float?
-  p6p              Float?
-  
-  // Autoconsumo
-  hasSelfConsumption Boolean @default(false)
-  selfConsumptionType String? // Tipo Autoconsumo
-  cie              String?  // Nº CIE Consumo
-  cieSelfConsumption String? // CIE Autoconsumo
-  
-  clientId         String
-  client           Client   @relation(fields: [clientId], references: [id])
-  
-  contracts        Contract[]
+  id                     String       @id @default(cuid())
+  cups                   String       @unique
+  cups2                  String?
+  address                String
+  city                   String
+  postalCode             String
+  province               String
+  country                String       @default("España")
+  tariff                 String
+  distributor            String?
+  annualConsumption      Float?
+  p1c                    Float?
+  p2c                    Float?
+  p3c                    Float?
+  p4c                    Float?
+  p5c                    Float?
+  p6c                    Float?
+  cnae                   String?
+  p1p                    Float?
+  p2p                    Float?
+  p3p                    Float?
+  p4p                    Float?
+  p5p                    Float?
+  p6p                    Float?
+  hasSelfConsumption     Boolean      @default(false)
+  selfConsumptionType    String?
+  cie                    String?
+  cieSelfConsumption     String?
+  cadastralReference     String?
+  cadastreProvince       String?
+  cadastreCity           String?
+  cadastreStreetType     String?
+  cadastreAddress        String?
+  cadastreNumber         String?
+  cadastreBlock          String?
+  cadastreFloor          String?
+  cadastreDoor           String?
+  cau                    String?
+  cauType                String?
+  cauSubtype             String?
+  cauCollective          String?
+  cil                    String?
+  generatorTechnology    String?
+  installedPowerGen      Float?
+  installationType       String?
+  meteringScheme         String?
+  distributorReeCode     String?
+  distributorName        String?
+  clientId               String
+  airtableId             String?      @unique
+  streetType             String?
+  street                 String?
+  streetNumber           String?
+  floor                  String?
+  door                   String?
+  addressAddition        String?
+  meteringEquipment      String?
+  boePower               Float?
+  fileCie                String?
+  fileCieSelfConsump     String?
+  sipsCnae               String?
+  sipsPostalCode         String?
+  sipsTariff             String?
+  sipsP1c                Float?
+  sipsP2c                Float?
+  sipsP3c                Float?
+  sipsP4c                Float?
+  sipsP5c                Float?
+  sipsP6c                Float?
+  pcSum                  Float?
+  sipsPcSum              Float?
+  varPc                  Float?
+  demandaManualEne       Float?
+  demandaManualFeb       Float?
+  demandaManualMar       Float?
+  demandaManualAbr       Float?
+  demandaManualMay       Float?
+  demandaManualJun       Float?
+  demandaManualJul       Float?
+  demandaManualAgo       Float?
+  demandaManualSep       Float?
+  demandaManualOct       Float?
+  demandaManualNov       Float?
+  demandaManualDic       Float?
+  excedentesManualEne    Float?
+  excedentesManualFeb    Float?
+  excedentesManualMar    Float?
+  excedentesManualAbr    Float?
+  excedentesManualMay    Float?
+  excedentesManualJun    Float?
+  excedentesManualJul    Float?
+  excedentesManualAgo    Float?
+  excedentesManualSep    Float?
+  excedentesManualOct    Float?
+  excedentesManualNov    Float?
+  excedentesManualDic    Float?
+  contracts              Contract[]
+  documents              Document[]
+  invoices               Invoice[]
+  solarQuotes            SolarQuote[]
+  client                 Client       @relation(fields: [clientId], references: [id])
+  tickets                Ticket[]
+  airtableData Json?
 }
-
-// ==========================================
-// 4. CATÁLOGO DE PRODUCTOS (Tarifas y Precios)
-// ==========================================
 
 model Product {
-  id               String   @id @default(cuid())
-  name             String   // ej. "AED Solar Indexado", "Fijo 24h"
-  type             String   // FIX, INDEXED, PASS_THROUGH
-  
-  brandId          String
-  brand            Brand    @relation(fields: [brandId], references: [id])
-  
-  // Parámetros económicos del producto
-  fee              Float?   // Fee Index
-  pexc             Float?   // Precio Excedentes
-  feeExcedentes    Float?
-  cgBolsilloSolar  Float?   // CG Bolsillo Solar
-  
-  // Precios Energía Fijos (P1E - P6E)
-  p1e              Float?
-  p2e              Float?
-  p3e              Float?
-  p4e              Float?
-  p5e              Float?
-  p6e              Float?
-  
-  permanenceMonths Int?     // Meses de permanencia
-  
-  contracts        Contract[]
+  id                   String     @id @default(cuid())
+  name                 String
+  type                 String
+  brandId              String
+  tariff               String?
+  hasSelfConsumption   Boolean    @default(false)
+  selfConsumptionType  String?
+  fee                  Float?
+  pexc                 Float?
+  feeExcedentes        Float?
+  cgBolsilloSolar      Float?
+  deviationCost        Float?
+  p1e                  Float?
+  p2e                  Float?
+  p3e                  Float?
+  p4e                  Float?
+  p5e                  Float?
+  p6e                  Float?
+  p1p                  Float?
+  p2p                  Float?
+  p3p                  Float?
+  p4p                  Float?
+  p5p                  Float?
+  p6p                  Float?
+  isAvailableCrm       Boolean    @default(true)
+  commissionType       String     @default("MARGIN_PERCENTAGE")
+  powerTiersCommission Json?
+  permanenceMonths     Int?
+  airtableData         Json?
+  contracts            Contract[]
+  channels             Channel[]
+  brand                Brand      @relation(fields: [brandId], references: [id])
 }
-
-// ==========================================
-// 5. CONTRATOS Y COMISIONES
-// ==========================================
 
 model Contract {
-  id               String   @id @default(cuid())
-  status           String   // TRAMITANDO, M1 ENVIADO, ACTIVO, BAJA, RECHAZADO
-  
-  // Fechas Clave del Contrato
-  signatureDate    DateTime? // Fecha firma contrato
-  requestDate      DateTime? // Fecha Solicitud ATR
-  activationDate   DateTime? // Fecha Activación (Alta Comercializadora)
-  expectedEndDate  DateTime? // Fecha Renovación/Vencimiento Calculada
-  terminationDate  DateTime? // Fecha Baja Comercializadora
-  
-  // Económico y Comisiones
-  commissionBase   Float?    // COMISION ESTIMADA
-  commissionFinal  Float?    // COMISION FINAL
-  commissionVariable Float?
-  penalization     Float?    // PENALIZACION
-  
-  // Gestión de Bajas e Incidencias
-  distributorMsg   String?   // Mensaje Distribuidora (Rechazos M1, etc)
-  internalComments String?   // Comentario interno
-  
-  // Relaciones
-  clientId         String
-  client           Client   @relation(fields: [clientId], references: [id])
-  
-  supplyPointId    String
-  supplyPoint      SupplyPoint @relation(fields: [supplyPointId], references: [id])
-  
-  productId        String
-  product          Product  @relation(fields: [productId], references: [id])
-  
-  userId           String   // Comercial/Canal
-  user             User     @relation(fields: [userId], references: [id])
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                               String                 @id @default(cuid())
+  status                           String
+  contractCode                     String?                @unique
+  tramitationType                  String?
+  duration                         Int?
+  signatureDate                    DateTime?
+  requestDate                      DateTime?
+  activationDate                   DateTime?
+  permanenceStartDate              DateTime?
+  expectedEndDate                  DateTime?
+  terminationDate                  DateTime?
+  docusignEnvelopeId               String?                @unique
+  commissionBase                   Float?
+  commissionFinal                  Float?
+  commissionVariable               Float?
+  penalization                     Float?
+  svaConcept                       String?
+  svaPrice                         Float?
+  svaDuration                      Int?
+  svaStartDate                     DateTime?
+  fee                              Float?
+  pexc                             Float?
+  cgBolsilloSolar                  Float?
+  deviationCost                    Float?
+  p1e                              Float?
+  p2e                              Float?
+  p3e                              Float?
+  p4e                              Float?
+  p5e                              Float?
+  p6e                              Float?
+  p1p                              Float?
+  p2p                              Float?
+  p3p                              Float?
+  p4p                              Float?
+  p5p                              Float?
+  p6p                              Float?
+  discountStartDate                DateTime?
+  discountEndDate                  DateTime?
+  discountPrice                    Float?
+  distributorMsg                   String?
+  internalComments                 String?
+  previousContractId               String?                @unique
+  clientId                         String
+  supplyPointId                    String
+  productId                        String
+  userId                           String
+  airtableId                       String?                @unique
+  createdAt                        DateTime               @default(now())
+  updatedAt                        DateTime               @updatedAt
+  isB2B                            Boolean?
+  tipo                             String?
+  tipoC2                           String?
+  peticionClienteC2                String?
+  tipoEntrada                      String?
+  fechaPrevista                    DateTime?
+  captacionCliente                 String?
+  autoconsumo                      Boolean?
+  autoconsumoFijoIndex             String?
+  atrComer                         String?
+  unPrecio                         Boolean?
+  suspendido                       Boolean?
+  cierre                           String?
+  feeP                             Float?
+  descuentoCie                     Float?
+  inicioProceso                    DateTime?
+  gasIncluido                      Boolean?
+  bolsilloSolar                    Boolean?
+  modalidadContrato                String?
+  nSolicitud                       String?
+  fechaProceso                     DateTime?
+  fechaAceptacion                  DateTime?
+  fechaPrevistaActivacion          DateTime?
+  fechaIncidencia                  DateTime?
+  sinComision                      Boolean?
+  m1Activado                       Boolean?
+  m1Rechazado                      Boolean?
+  decomision                       Float?
+  decomision50                     Float?
+  comision50                       Float?
+  renovacion                       Boolean?
+  bajaPorM1RE1                     Boolean?
+  bimensual                        Boolean?
+  sinPenalizacion                  Boolean?
+  sinDecomision                    Boolean?
+  svaAnadidoTera                   Boolean?
+  penalizacionFacturada            Boolean?
+  numFacturaPenalizacion           String?
+  facturarPen                      Boolean?
+  biPen                            Float?
+  ivaPen                           Float?
+  penalizacionEstimada             Float?
+  abonar                           Float?
+  fechaFacturaPenalizacion         DateTime?
+  ajustePen                        Float?
+  productoRenovacion               String?
+  renovacionSolicitada             Boolean?
+  servicioRenovacion               String?
+  renovacionTramitada              Boolean?
+  derechosExtension                Float?
+  telegestion                      Boolean?
+  estadoCompilacion                String?
+  calculoCodDistri                 String?
+  nombreComercial                  String?
+  ip                               Float?
+  fc                               Float?
+  porcComisionFijo                 Float?
+  porcComisionVariable             Float?
+  ajusteConsumoComision            Float?
+  comisionAjustada                 Float?
+  ajusteComisionDuracionPotencia   Float?
+  decomisionSobreAjuste            Float?
+  genContratoAuto                  Boolean?
+  m1sSolicitado                    Boolean?
+  m1nSolicitado                    Boolean?
+  tipoPm                           String?
+  calculoMesAlta                   String?
+  calculoMesBaja                   String?
+  mesAlta                          String?
+  mesBaja                          String?
+  ultimoDiaFacturado               DateTime?
+  ultDiaAFacturar                  DateTime?
+  retraso                          Int?
+  inicioMes0                       DateTime?
+  inicioMesMinus1                  DateTime?
+  finMesMinus1                     DateTime?
+  energiaPteMesMinus1              Float?
+  inicioMesMinus2                  DateTime?
+  finMesMinus2                     DateTime?
+  energiaPteMesMinus2              Float?
+  energiaPteMes0HastaHoy           Float?
+  finMes0                          DateTime?
+  ultDiaFact                       DateTime?
+  energiaPteMes0HastaFinMes        Float?
+  transferencia                    Boolean?
+  firmaManRenov                    Boolean?
+  consumoRealEstimado              String?
+  pen20TdResid                     Float?
+  penNoResid                       Float?
+  pen20TdResidHoy                  Float?
+  horasUsoDiarios                  Float?
+  tipoEnvioFacturaRenov            String?
+  diasContrato                     Int?
+  diasRenovMax                     Int?
+  filePdfDraft                     String?
+  filePdfSigned                    String?
+  isMultipoint                     Boolean?
+  estadoPrevio                     String?
+  fechaVencimientoCalculada        DateTime?
+  Commission                       Commission?
+  client                           Client                 @relation(fields: [clientId], references: [id])
+  contract                         Contract?              @relation("ContractToContract", fields: [previousContractId], references: [id])
+  other_Contract                   Contract?              @relation("ContractToContract")
+  product                          Product                @relation(fields: [productId], references: [id])
+  supplyPoint                      SupplyPoint            @relation(fields: [supplyPointId], references: [id])
+  user                             User                   @relation(fields: [userId], references: [id])
+  ContractModification             ContractModification[]
+  documents                        Document[]
+  invoices                         Invoice[]
+  Lead                             Lead?
+  AdditionalService                AdditionalService[]
+  airtableData Json?
 }
 
-// ==========================================
-// 6. FACTURACIÓN Y ANÁLISIS ECONÓMICO
-// ==========================================
-
 model Invoice {
+  id                                     String       @id @default(cuid())
+  invoiceNumber                          String       @unique
+  invoiceType                            String?
+  clientId                               String
+  rectifiedInvoiceId                     String?
+  contractId                             String?
+  supplyPointId                          String?
+  issueDate                              DateTime
+  paymentDate                            DateTime?
+  subtotal1                              Float?
+  taxPercentage                          Float?
+  taxAmount                              Float?
+  totalAmount                            Float
+  totalMWh                               Float
+  margin                                 Float?
+  billingStart                           DateTime?
+  billingEnd                             DateTime?
+  origin                                 String?
+  pdfUrl                                 String?
+  communicatedAt                         DateTime?
+  invoiceData                            Json?
+  createdAt                              DateTime     @default(now())
+  path                                   String?
+  minimoImporteIESuperado                String?
+  claseFactura                           String?
+  codigoFiscal                           String?
+  cupsCode                               String?
+  duracion                               Int?
+  fijoIndex                              String?
+  p1c                                    Float?
+  p2c                                    Float?
+  p3c                                    Float?
+  p4c                                    Float?
+  p5c                                    Float?
+  p6c                                    Float?
+  p1PotenciaContratada                   Float?
+  p2PotenciaContratada                   Float?
+  p3PotenciaContratada                   Float?
+  p4PotenciaContratada                   Float?
+  p5PotenciaContratada                   Float?
+  p6PotenciaContratada                   Float?
+  p1PotenciaMaxDemanda                   Float?
+  p2PotenciaMaxDemanda                   Float?
+  p3PotenciaMaxDemanda                   Float?
+  p4PotenciaMaxDemanda                   Float?
+  p5PotenciaMaxDemanda                   Float?
+  p6PotenciaMaxDemanda                   Float?
+  p1EnergiaActivaConsumida               Float?
+  p2EnergiaActivaConsumida               Float?
+  p3EnergiaActivaConsumida               Float?
+  p4EnergiaActivaConsumida               Float?
+  p5EnergiaActivaConsumida               Float?
+  p6EnergiaActivaConsumida               Float?
+  energiaReactivaTotalConsumida          Float?
+  p1EnergiaReactivaConsumida             Float?
+  p2EnergiaReactivaConsumida             Float?
+  p3EnergiaReactivaConsumida             Float?
+  p4EnergiaReactivaConsumida             Float?
+  p5EnergiaReactivaConsumida             Float?
+  p6EnergiaReactivaConsumida             Float?
+  p1PrecioEnergiaReactiva                Float?
+  p2PrecioEnergiaReactiva                Float?
+  p3PrecioEnergiaReactiva                Float?
+  p4PrecioEnergiaReactiva                Float?
+  p5PrecioEnergiaReactiva                Float?
+  p6PrecioEnergiaReactiva                Float?
+  penalizacionNoIcp                      Float?
+  porcentajePerdidas                     Float?
+  potenciaAFacturarP1                    Float?
+  potenciaAFacturarP2                    Float?
+  potenciaAFacturarP3                    Float?
+  potenciaAFacturarP4                    Float?
+  potenciaAFacturarP5                    Float?
+  potenciaAFacturarP6                    Float?
+  excedentesP1Autoconsumo                Float?
+  excedentesP2Autoconsumo                Float?
+  excedentesP3Autoconsumo                Float?
+  excedentesP4Autoconsumo                Float?
+  excedentesP5Autoconsumo                Float?
+  excedentesP6Autoconsumo                Float?
+  excedentesAutoconsumoAFacturar         Float?
+  importeAeP1                            Float?
+  importeAeP2                            Float?
+  importeAeP3                            Float?
+  importeAeP4                            Float?
+  importeAeP5                            Float?
+  importeAeP6                            Float?
+  importeTotalAeAtr                      Float?
+  importePmP1                            Float?
+  importePmP2                            Float?
+  importePmP3                            Float?
+  importePmP4                            Float?
+  importePmP5                            Float?
+  importePmP6                            Float?
+  importeTotalPmAtr                      Float?
+  importeExcesoPmP1                      Float?
+  importeExcesoPmP2                      Float?
+  importeExcesoPmP3                      Float?
+  importeExcesoPmP4                      Float?
+  importeExcesoPmP5                      Float?
+  importeExcesoPmP6                      Float?
+  importeTotalExcesosAtr                 Float?
+  importeR1P1                            Float?
+  importeR1P2                            Float?
+  importeR1P3                            Float?
+  importeR1P4                            Float?
+  importeR1P5                            Float?
+  importeR1P6                            Float?
+  importeTotalRAtr                       Float?
+  importeExcedentesAutoconsumo           Float?
+  suplementoTerritorial                  Float?
+  subtotal2                              Float?
+  conceptoRepercutible                   Float?
+  subtotalOtrosConcepto                  Float?
+  baseImponibleIva                       Float?
+  iva                                    Float?
+  importeIva                             Float?
+  total                                  Float?
+  disponibilidadLectura                  Float?
+  precioDiaAlquiler1                     Float?
+  numeroDiasAlquiler1                    Int?
+  precioDiaAlquiler2                     Float?
+  numeroDiasAlquiler2                    Int?
+  precioDiaAlquiler3                     Float?
+  numeroDiasAlquiler3                    Int?
+  precioDiaAlquiler4                     Float?
+  numeroDiasAlquiler4                    Int?
+  importeIndemnizacion                   Float?
+  alquilerEquipoDeMedida                 Float?
+  ieOdoo                                 Float?
+  mostrarWeb                             Boolean?
+  conceptoRepercutible1                  String?
+  udsConceptoRepercutible1               Float?
+  precioConceptoRepercutible1            Float?
+  importeConceptoRepercutible1           Float?
+  conceptoRepercutible2                  String?
+  udsConceptoRepercutible2               Float?
+  precioConceptoRepercutible2            Float?
+  importeConceptoRepercutible2           Float?
+  conceptoRepercutible3                  String?
+  udsConceptoRepercutible3               Float?
+  precioConceptoRepercutible3            Float?
+  importeConceptoRepercutible3           Float?
+  conceptoSva                            String?
+  costesDeGestion                        Float?
+  importeCargoPotenciaTotal              Float?
+  importeCargoEnergiaTotal               Float?
+  totalImporteCargos                     Float?
+  totalImportePeajes                     Float?
+  baseImponibleF1                        Float?
+  baseImponible0                         Float?
+  baseImponible10                        Float?
+  importeIva10                           Float?
+  baseImponible21                        Float?
+  importeIva21                           Float?
+  importeTotalExcesosAtrF1               Float?
+  fee                                    Float?
+  dsv                                    Float?
+  p1pm                                   Float?
+  p2pm                                   Float?
+  p3pm                                   Float?
+  p4pm                                   Float?
+  p5pm                                   Float?
+  p6pm                                   Float?
+  importePeajesAe                        Float?
+  importePeajesPm                        Float?
+  base560                                Float?
+  importeBonoSocial                      Float?
+  importePotenciaFactura                 Float?
+  importePotenciaAtr                     Float?
+  margenPotencia                         Float?
+  margenExcesos                          Float?
+  importeEnergiaFactura                  Float?
+  importeEnergiaSinMargen                Float?
+  margenEnergia                          Float?
+  margenFactura                          Float?
+  comisionPotenciaCanal                  Float?
+  comisionPrecioEnergia                  Float?
+  comisionVolumenEnergia                 Float?
+  facturado                              Boolean?
+  importeAjusteGas                       Float?
+  baseImponible5                         Float?
+  importeIva5                            Float?
+  gasIncluido                            Boolean?
+  precioPonderados                       Json?
+  importePonderados                      Json?
+  importeEnergiaAtr                      Float?
+  importeAplicableCompensacionExcedentes Float?
+  importeExcedentesAutoconsumoAplicado   Float?
+  bolsilloSolar                          Boolean?
+  inicioBolsilloSolar                    DateTime?
+  cargaBolsilloSolar                     Float?
+  costesDeGestionBolsilloSolar           Float?
+  descuentoBolsilloSolar                 Float?
+  importeAlmacenadoBolsilloSolar         Float?
+  comisionCostesDeGestion                Float?
+  comisionGapAutoconsumo                 Float?
+  sistemaElectrico                       Float?
+  propiedadExcedentes                    Float?
+  comisionImporteExcedentario            Float?
+  numeroFacturaPdf                       String?
+  comunicar                              Boolean?
+  nombreCompleto                         String?
+  emailEnvioFactura                      String?
+  formaEnvioFactura                      String?
+  numeroFacturaRectificadaRef            String?
+  fechaFacturaRectificadaRef             DateTime?
+  importeFacturaRectificadaRef           Float?
+  precioUnitarioSva                      Float?
+  diasSva                                Int?
+  totalSva                               Float?
+  importeDevolucion                      Float?
+  cg                                     Float?
+  p1em                                   Float?
+  p2em                                   Float?
+  p3em                                   Float?
+  p4em                                   Float?
+  p5em                                   Float?
+  p6em                                   Float?
+  codigoFacturaRectificadaAnulada        String?
+  importeAhorroCargos                    Float?
+  porcentajeReduccionCargos              Float?
+  mailEnviado                            Boolean?
+  numeroFacturaXml                       String?
+  comisionSemiindexadoAnual              Float?
+  comisionPrecioFijoEnergia              Float?
+  correoPostalEnviado                    Boolean?
+  recargoInfAnio                         Float?
+  tipoAutoconsumoDistribuidora           String?
+  gapAutoconsumo                         Float?
+  derechosGarantia                       Float?
+  dsvm                                   Float?
+  feem                                   Float?
+  cgm                                    Float?
+  unidadesMix                            Float?
+  precioMix                              Float?
+  pExcedentes                            Float?
+  importePenalizaciones                  Float?
+  omiePromedioMah                        Float?
+  baseImponibleAyuntamiento              Float?
+  tasaMunicipalForm                      Float?
+  totalSinDescuento                      Float?
+  codigoRee                              String?
+  importeTotalCoberturas                 Float?
+  comisionTotal                          Float?
+  estadoContrato                         String?
+  domicilioTitular                       String?
+  recordatorioVtoFtra                    Boolean?
+  nombreCompletoTitular                  String?
+  baseImponibleTasaMunicipal             Float?
+  tasaMunicipal                          Float?
+  avisoTransfPagoFtra                    Boolean?
+  telefonoContacto                       String?
+  diasCorr                               Int?
+  totalCorr                              Float?
+  totalSoftr                             Float?
+  excTotal                               Float?
+  mesAno                                 String?
+  calculoMesAno                          String?
+  baseImponibleIvaCorr                   Float?
+  facturaRectificada                     Boolean?
+  margenFtraRectificada                  Float?
+  margenEstimado                         Float?
+  importeImpuestoCorr                    Float?
+  baseImponibleF1Corr                    Float?
+  margenRelIngebau                       Float?
+  margenFacturaDashboard                 Float?
+  margenFacturaCorr                      Float?
+  importeBonoSocialCorr                  Float?
+  subidaFace                             Boolean?
+  importeBonoSocialCORR                  Float?
+  importeIVA                             Float?
+  importeIVA10                           Float?
+  importeIVA21                           Float?
+  importeIVA5                            Float?
+  importePotenciaATR                     Float?
+  importeEnergiaATR                      Float?
+  baseImponibleIVA                       String?
+  baseImponibleIVACORR                   String?
+  bISubtotal1CORR                        Float?
+  fechaCobro                             String?
+  fechaFtraNumFtra                       String?
+  codigoContrato                         String?
+  contrato                               String?
+  contrato2                              String?
+  importeAEP1                            Float?
+  importeAEP2                            Float?
+  importeExcesoPMP1                      Float?
+  importeExcesoPMP2                      Float?
+  importePMP1                            Float?
+  importePMP2                            Float?
+  importePonderadoATREnergiaP1           Float?
+  importePonderadoATREnergiaP2           Float?
+  importePonderadoATRPotenciaP1          Float?
+  importePonderadoATRPotenciaP2          Float?
+  importePonderadoCargosEnergiaP1        Float?
+  importePonderadoCargosEnergiaP2        Float?
+  importePonderadoCargosPotenciaP1       Float?
+  importePonderadoCargosPotenciaP2       Float?
+  importePonderadoPeajesEnergiaP1        Float?
+  importePonderadoPeajesEnergiaP2        Float?
+  importePonderadoPeajesPotenciaP1       Float?
+  importePonderadoPeajesPotenciaP2       Float?
+  lecturaDesdeAEP1                       String?
+  lecturaDesdeAEP2                       String?
+  lecturaDesdeR1P1                       String?
+  lecturaDesdeR1P2                       String?
+  lecturaHastaAEP1                       String?
+  lecturaHastaAEP2                       String?
+  lecturaHastaR1P1                       String?
+  lecturaHastaR1P2                       String?
+  p1EM                                   String?
+  p1PM                                   String?
+  p2EM                                   String?
+  p2P                                    String?
+  p2PM                                   String?
+  precioPonderadoATREnergiaP1            Float?
+  precioPonderadoATREnergiaP2            Float?
+  precioPonderadoATRPotenciaP1           Float?
+  precioPonderadoATRPotenciaP2           Float?
+  precioPonderadoCargosEnergiaP1         Float?
+  precioPonderadoCargosEnergiaP2         Float?
+  precioPonderadoCargosPotenciaP1        Float?
+  precioPonderadoCargosPotenciaP2        Float?
+  precioPonderadoPeajesEnergiaP1         Float?
+  precioPonderadoPeajesEnergiaP2         Float?
+  precioPonderadoPeajesPotenciaP1        Float?
+  precioPonderadoPeajesPotenciaP2        Float?
+  dias                                   String?
+  diasCORR                               String?
+  dOMICILIOPSCOMPLETO                    String?
+  emailAtCliente                         String?
+  emailContacto2                         String?
+  emailContacto3                         String?
+  emailEmisora                           String?
+  dOMICILIOPS                            String?
+  dOMICILIOSOC                           String?
+  eMailEnvODeLaFactura                   String?
+  emailContacto                          String?
+  reactivaTotalConsumida                 Float?
+  fechaFacturaRectificada                String?
+  fechaFinContrato                       String?
+  hastaEA                                String?
+  hasta                                  String?
+  desdeEA                                String?
+  desde                                  String?
+  baseImponibleF1CORR                    Float?
+  totalCORR                              Float?
+  p1C                                    Float?
+  p2C                                    Float?
+  p3C                                    Float?
+  p4C                                    Float?
+  p5C                                    Float?
+  p6C                                    Float?
+  cantidadEnergATotalConsumidaCORR       Float?
+  nOMBRECOMPLETO                         String?
+  dISTRIBUIDORA                          String?
+  nOMBRERAZONSOCIAL                      String?
+  iBAN                                   String?
+  pDF                                    String?
+  importeTotalExcesosATR                 Float?
+  bOLSILLOSOLAR                          String?
+  bUSCADOR                               String?
+  cALCULOMESAO                           String?
+  cANAL                                  String?
+  cG                                     String?
+  cGM                                    String?
+  cIF                                    String?
+  cIFEmisora                             String?
+  ciudad                                 String?
+  cNAE                                   String?
+  codigoREE                              String?
+  comercializadora                       String?
+  conceptoRepercutible1Numero            String?
+  conceptoRepercutible2Numero            String?
+  conceptoRepercutible3Numero            String?
+  conceptoSVA                            String?
+  costesDeGestiN                         String?
+  cPEmisora                              String?
+  cPPS                                   String?
+  cPSOC                                  String?
+  cuotaImporteImpuestoCORR               Float?
+  derechosGarantA                        String?
+  desdeER                                String?
+  desdeP                                 String?
+  dIASPAGO                               String?
+  dAsSVA                                 String?
+  direccionEmisora                       String?
+  dSV                                    String?
+  dSVM                                   String?
+  empresaEmisora                         String?
+  estadoCONTRATO                         String?
+  fACTURARECTIFICADA                     String?
+  fEE                                    Float?
+  fEEM                                   Float?
+  fIJOINDEX                              String?
+  fromFieldFACTURARECTIFICADA            String?
+  gAPAUTOCONSUMO                         String?
+  gASINCLUIDO                            String?
+  hastaER                                String?
+  hastaP                                 String?
+  iDGoogleDrivePDF                       String?
+  iDGoogleDriveXML                       String?
+  iEOdoo                                 String?
+  importeAEP3                            Float?
+  importeAEP4                            Float?
+  importeAEP5                            Float?
+  importeAEP6                            Float?
+  importeDevoluciN                       Float?
+  importeExcesoPMP3                      Float?
+  importeExcesoPMP4                      Float?
+  importeExcesoPMP5                      Float?
+  importeExcesoPMP6                      Float?
+  importeFacturaRectificada              Float?
+  importeImpuesto                        Float?
+  importeImpuestoCORR                    Float?
+  importeIndemnizaciN                    Float?
+  importePeajesAE                        Float?
+  importePeajesPM                        Float?
+  importePMP3                            Float?
+  importePMP4                            Float?
+  importePMP5                            Float?
+  importePMP6                            Float?
+  importePonderadoATREnergiaP3           Float?
+  importePonderadoATREnergiaP4           Float?
+  importePonderadoATREnergiaP5           Float?
+  importePonderadoATREnergiaP6           Float?
+  importePonderadoATRPotenciaP3          Float?
+  importePonderadoATRPotenciaP4          Float?
+  importePonderadoATRPotenciaP5          Float?
+  importePonderadoATRPotenciaP6          Float?
+  importePonderadoCargosEnergia          Float?
+  importePonderadoCargosEnergiaP3        Float?
+  importePonderadoCargosEnergiaP4        Float?
+  importePonderadoCargosEnergiaP5        Float?
+  importePonderadoCargosEnergiaP6        Float?
+  importePonderadoCargosPotencia         Float?
+  importePonderadoCargosPotenciaP3       Float?
+  importePonderadoCargosPotenciaP4       Float?
+  importePonderadoCargosPotenciaP5       Float?
+  importePonderadoCargosPotenciaP6       Float?
+  importePonderadoPeajesEnergia          Float?
+  importePonderadoPeajesEnergiaP3        Float?
+  importePonderadoPeajesEnergiaP4        Float?
+  importePonderadoPeajesEnergiaP5        Float?
+  importePonderadoPeajesEnergiaP6        Float?
+  importePonderadoPeajesPotencia         Float?
+  importePonderadoPeajesPotenciaP3       Float?
+  importePonderadoPeajesPotenciaP4       Float?
+  importePonderadoPeajesPotenciaP5       Float?
+  importePonderadoPeajesPotenciaP6       Float?
+  importeTotalAEATR                      Float?
+  importeTotalExcesosATRF1               Float?
+  importeTotalPMATR                      Float?
+  importeTotalRATR                       Float?
+  impuesto                               String?
+  iNSTALACIONES                          String?
+  lecturaDesdeAEP3                       String?
+  lecturaDesdeAEP4                       String?
+  lecturaDesdeAEP5                       String?
+  lecturaDesdeAEP6                       String?
+  lecturaDesdeR1P3                       String?
+  lecturaDesdeR1P4                       String?
+  lecturaDesdeR1P5                       String?
+  lecturaDesdeR1P6                       String?
+  lecturaHastaAEP3                       String?
+  lecturaHastaAEP4                       String?
+  lecturaHastaAEP5                       String?
+  lecturaHastaAEP6                       String?
+  lecturaHastaR1P3                       String?
+  lecturaHastaR1P4                       String?
+  lecturaHastaR1P5                       String?
+  lecturaHastaR1P6                       String?
+  mARCA                                  String?
+  mARGENFACTURACORR                      Float?
+  mARGENFACTURADASHBOARD                 Float?
+  mARGENFTRARECTIFICADA                  Float?
+  mESAO                                  String?
+  modoControlPotencia                    Float?
+  motivoFactura                          String?
+  numeroFacturaRectificada               String?
+  numeroSerie                            String?
+  oMIEPromedioMAH                        String?
+  outputPdf                              String?
+  p3EM                                   String?
+  p3P                                    String?
+  p3PM                                   String?
+  p4EM                                   String?
+  p4P                                    String?
+  p4PM                                   String?
+  p5EM                                   String?
+  p5P                                    String?
+  p5PM                                   String?
+  p6EM                                   String?
+  p6P                                    String?
+  p6PM                                   String?
+  pATH                                   String?
+  pdfCoOutput                            String?
+  penalizacionNoICP                      String?
+  pEX                                    String?
+  pOBLACIONPS                            String?
+  pOBLACIONSOC                           String?
+  porcetajeReduccionCargos               String?
+  pOTENCIABOE                            Float?
+  pOTENCIASDISTRI                        Float?
+  precioPonderadoATREnergiaP3            Float?
+  precioPonderadoATREnergiaP4            Float?
+  precioPonderadoATREnergiaP5            Float?
+  precioPonderadoATREnergiaP6            Float?
+  precioPonderadoATRPotenciaP3           Float?
+  precioPonderadoATRPotenciaP4           Float?
+  precioPonderadoATRPotenciaP5           Float?
+  precioPonderadoATRPotenciaP6           Float?
+  precioPonderadoCargosEnergiaP3         Float?
+  precioPonderadoCargosEnergiaP4         Float?
+  precioPonderadoCargosEnergiaP5         Float?
+  precioPonderadoCargosEnergiaP6         Float?
+  precioPonderadoCargosPotenciaP3        Float?
+  precioPonderadoCargosPotenciaP4        Float?
+  precioPonderadoCargosPotenciaP5        Float?
+  precioPonderadoCargosPotenciaP6        Float?
+  precioPonderadoPeajesEnergiaP3         Float?
+  precioPonderadoPeajesEnergiaP4         Float?
+  precioPonderadoPeajesEnergiaP5         Float?
+  precioPonderadoPeajesEnergiaP6         Float?
+  precioPonderadoPeajesPotenciaP3        Float?
+  precioPonderadoPeajesPotenciaP4        Float?
+  precioPonderadoPeajesPotenciaP5        Float?
+  precioPonderadoPeajesPotenciaP6        Float?
+  precioUnitarioSVA                      Float?
+  provincia                              String?
+  pROVINCIAPS                            String?
+  pROVINCIASOC                           String?
+  sISTEMAELECTRICO                       String?
+  sUBIDAFACE                             String?
+  tarifaATR                              String?
+  telefono                               String?
+  telefonoEmisora                        String?
+  tipoAparato                            String?
+  tipoAutoconsumo                        String?
+  tipoDeCliente                          String?
+  tipoDHEdM                              String?
+  tipoProducto                           String?
+  totalSVA                               Float?
+  udsConceptRepercutible1                String?
+  udsConceptRepercutible2                String?
+  udsConceptRepercutible3                String?
+  uNPRECIO                               Float?
+  p1P                                    String?
+  p1E                                    String?
+  p2E                                    String?
+  p3E                                    String?
+  p4E                                    String?
+  p5E                                    String?
+  p6E                                    String?
+  primerApellido                         String?
+  procedenciaHasta                       String?
+  procedenciaDesde                       String?
+  segundoApellido                        String?
+  tipoFactura                            String?
+  iVA                                    String?
+  xML                                    String?
+  client                                 Client       @relation(fields: [clientId], references: [id])
+  contract                               Contract?    @relation(fields: [contractId], references: [id])
+  invoice                                Invoice?     @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
+  otherInvoices                          Invoice[]    @relation("InvoiceToInvoice")
+  supplyPoint                            SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+  airtableData Json?
+}
+
+model AdditionalService {
+  id        String     @id
+  name      String
+  price     Float
+  isActive  Boolean    @default(true)
+  contracts Contract[]
+}
+
+model Channel {
+  id                    String       @id @default(cuid())
+  name                  String
+  code                  String       @unique
+  fixedCommissionPct    Float        @default(0)
+  variableCommissionPct Float        @default(0)
+  supervisorEmail       String?
+  adminEmail            String?
+  managerEmail          String?
+  supportEmail          String?
+  autoGenerateContract  Boolean      @default(false)
+  maxRenewalDays        Int          @default(45)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  commissions           Commission[]
+  users                 User[]
+  products              Product[]
+}
+
+model Commission {
+  id               String    @id @default(cuid())
+  contractId       String    @unique
+  channelId        String
+  consumptionBasis Float     @default(0)
+  amount           Float     @default(0)
+  relativeAmount   Float     @default(0)
+  signatureDate    DateTime?
+  activationDate   DateTime?
+  status           String    @default("PENDIENTE")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  channel          Channel   @relation(fields: [channelId], references: [id])
+  contract         Contract  @relation(fields: [contractId], references: [id])
+}
+
+model ContractModification {
   id               String   @id @default(cuid())
-  invoiceNumber    String   @unique
-  invoiceType      String?  // Tipo Factura
-  
-  clientId         String
-  client           Client   @relation(fields: [clientId], references: [id])
-  
-  issueDate        DateTime
-  
-  // Desglose económico
-  subtotal1        Float?   // Subtotal Energía
-  taxPercentage    Float?   // Impuesto (%)
-  taxAmount        Float?   // Importe Impuesto (IE)
-  totalAmount      Float    // Facturación € (Base Imponible + Impuestos)
-  totalMWh         Float    // Energía Total Consumida (Cantidad Energía Total Consumida)
-  
-  margin           Float?   // MARGEN FACTURA DASHBOARD
-  
-  pdfUrl           String?  // PATH o Enlace
-  
+  type             String
+  status           String   @default("PENDIENTE")
+  requestedChanges Json?
+  contractId       String
   createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  contract         Contract @relation(fields: [contractId], references: [id])
+}
+
+model Document {
+  id            String       @id @default(cuid())
+  name          String
+  type          String
+  url           String
+  sizeBytes     Int          @default(0)
+  hash          String?
+  clientId      String?
+  supplyPointId String?
+  contractId    String?
+  leadId        String?
+  ticketId      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  client        Client?      @relation(fields: [clientId], references: [id])
+  contract      Contract?    @relation(fields: [contractId], references: [id])
+  lead          Lead?        @relation(fields: [leadId], references: [id])
+  supplyPoint   SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+  ticket        Ticket?      @relation(fields: [ticketId], references: [id])
+}
+
+model SolarQuote {
+  id                  String       @id @default(cuid())
+  quoteNumber         String       @unique
+  status              String       @default("VIABILIDAD")
+  clientName          String
+  clientLastName      String?
+  clientEmail         String?
+  clientPhone         String?
+  address             String?
+  city                String?
+  province            String?
+  postalCode          String?
+  cups                String?
+  panelsCount         Int          @default(0)
+  panelPowerWp        Int          @default(0)
+  peakPowerKwp        Float        @default(0)
+  inverter            String?
+  inverterPower       Float?
+  monthlyConsumptions Json?
+  totalBudget         Float        @default(0)
+  maintenanceCost     Float        @default(0)
+  subsidy             Float        @default(0)
+  annualSavings       Float        @default(0)
+  monthlySavings      Float        @default(0)
+  paybackYears        Float        @default(0)
+  installmentsCount   Int          @default(0)
+  installmentAmount   Float        @default(0)
+  installer           String?
+  observations        String?
+  comments            String?
+  clientId            String?
+  supplyPointId       String?
+  cieFileUrl          String?
+  grantFileUrl        String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  client              Client?      @relation(fields: [clientId], references: [id])
+  supplyPoint         SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+}
+
+model Ticket {
+  id             String       @id @default(cuid())
+  motivo         String
+  consulta       String
+  estado         TicketStatus @default(NUEVA)
+  nivel          String       @default("Nivel 1 - Comercializadora")
+  canal          String       @default("Plataforma")
+  numRespuestas  Int          @default(0)
+  brandId        String
+  clientId       String?
+  supplyPointId  String?
+  openedById     String
+  lastActivityAt DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  documents      Document[]
+  brand          Brand        @relation(fields: [brandId], references: [id])
+  client         Client?      @relation(fields: [clientId], references: [id])
+  user           User         @relation(fields: [openedById], references: [id])
+  supplyPoint    SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+}
+
+enum Role {
+  SUPERADMIN
+  COMPANYADMIN
+  BACKOFFICE
+  CANAL
+  COMERCIAL
+  CLIENT
+}
+
+enum TicketStatus {
+  NUEVA
+  EN_PROCESO
+  PENDIENTE_RESOLUCION
+  RESUELTA
+  CERRADA
 }

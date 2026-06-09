@@ -1,14 +1,16 @@
 'use client';
 
 import { Bell, Search, Plus } from 'lucide-react';
+import BrandSelector from './BrandSelector';
 
 interface TopbarProps {
   title: string;
   subtitle?: string;
   action?: { label: string; onClick: () => void };
+  customActions?: React.ReactNode;
 }
 
-export default function Topbar({ title, subtitle, action }: TopbarProps) {
+export default function Topbar({ title, subtitle, action, customActions }: TopbarProps) {
   return (
     <header className="topbar">
       <div style={{ flex: 1 }}>
@@ -46,13 +48,17 @@ export default function Topbar({ title, subtitle, action }: TopbarProps) {
         }}>3</span>
       </button>
 
-      {/* CTA Action */}
-      {action && (
-        <button className="btn-primary" onClick={action.onClick}>
-          <Plus size={14} strokeWidth={2.5} />
-          {action.label}
-        </button>
-      )}
+      {/* Actions */}
+      <div className="flex gap-3 items-center">
+        <BrandSelector />
+        {customActions}
+        {action && (
+          <button className="btn-primary" onClick={action.onClick}>
+            <Plus size={14} strokeWidth={2.5} />
+            {action.label}
+          </button>
+        )}
+      </div>
     </header>
   );
 }

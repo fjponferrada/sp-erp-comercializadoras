@@ -1,0 +1,104 @@
+import React from 'react';
+import { prisma } from '@/lib/prisma';
+import { notFound } from 'next/navigation';
+import { Building2, User, Mail, Phone, MapPin } from 'lucide-react';
+import ClientTabs from '@/components/clientes/ClientTabs';
+import ClientHeaderActions from '@/components/clientes/ClientHeaderActions';
+
+import Topbar from '@/components/Topbar';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
+
+export default async function ClientPage({ params }: { params: { id: string } }) {
+  // Await params carefully because of Next.js versions
+  const resolvedParams = await Promise.resolve(params);
+  
+  const client = await prisma.client.findUnique({
+    where: { id: resolvedParams.id },
+    include: {
+      supplyPoints: true,
+      contracts: {
+        orderBy: { createdAt: 'desc' }
+      },
+      invoices: {
+        include: { supplyPoint: true },
+        orderBy: { issueDate: 'desc' }
+      }
+    }
+  });
+
+  if (!client) {
+    notFound();
+  }
+
+  const isCompany = client.clientType === 'Jurídica' || client.businessName.toLowerCase().includes('s.l') || client.businessName.toLowerCase().includes('s.a');
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', paddingBottom: '100px' }}>
+      <Topbar
+        title="Ficha de Cliente"
+        subtitle={client.businessName || `${client.firstName} ${client.lastName}`}
+        customActions={
+          <Link href="/clientes" className="btn-ghost flex items-center gap-2">
+            <ChevronLeft size={16} /> Volver a Clientes
+          </Link>
+        }
+      />
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      {/* HEADER CLIENTE */}
+      <div className="bg-slate-800/30 border border-slate-700 p-8 rounded-3xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          {isCompany ? <Building2 className="w-48 h-48" /> : <User className="w-48 h-48" />}
+        </div>
+        
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+              {isCompany ? <Building2 className="w-10 h-10 text-indigo-400" /> : <User className="w-10 h-10 text-indigo-400" />}
+            </div>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-3xl font-bold text-white">{client.businessName || `${client.firstName} ${client.lastName}`}</h1>
+                {client.isMultipoint && (
+                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold px-2 py-0.5 rounded-full">
+                    MULTIPUNTO
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-400 flex items-center gap-2">
+                CIF: <span className="text-slate-200 font-mono">{client.vatNumber}</span>
+              </p>
+            </div>
+          </div>
+          
+          <ClientHeaderActions client={client} />
+        </div>
+
+        {/* INFO RÁPIDA DE CONTACTO */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 pt-6 border-t border-slate-700/50 relative z-10">
+          <div className="flex items-center gap-3 text-slate-300">
+            <Mail className="w-5 h-5 text-slate-500" />
+            <span>{client.contactEmail || 'Sin email'}</span>
+          </div>
+          <div className="flex items-center gap-3 text-slate-300">
+            <Phone className="w-5 h-5 text-slate-500" />
+            <span>{client.contactPhone || 'Sin teléfono'}</span>
+          </div>
+          <div className="flex items-center gap-3 text-slate-300">
+            <MapPin className="w-5 h-5 text-slate-500" />
+            <span className="truncate">{client.billingAddress || 'Dirección no especificada'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* PESTAÑAS Y CONTENIDO (Componente Cliente) */}
+      <ClientTabs 
+        client={client} 
+        supplyPoints={client.supplyPoints} 
+        contracts={client.contracts} 
+        invoices={client.invoices} 
+      />
+      </div>
+    </div>
+  );
+}

@@ -1,18 +1,15 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@auth/prisma-adapter';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import fs from 'fs';
+import { authConfig } from './auth.config';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
-  pages: {
-    signIn: '/login',
-    error:  '/login',
-  },
   providers: [
     Credentials({
       name: 'Credenciales',
@@ -21,20 +18,75 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: 'Contraseña', type: 'password' },
       },
       async authorize(credentials) {
+        fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Login attempt for: ${credentials?.email}\n`);
         if (!credentials?.email || !credentials?.password) return null;
+        
+        const cleanEmail = (credentials.email as string).trim();
+        const cleanPassword = (credentials.password as string).trim();
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-          include: { brand: { include: { company: true } } },
+          where: { email: cleanEmail },
+          include: { 
+            brand: { include: { company: true } },
+            assignedBrands: { include: { company: true } },
+            companies: true
+          },
+        }).catch(err => {
+          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Prisma error: ${err.message}\n`);
+          throw err;
         });
 
-        if (!user) return null;
+        if (!user) {
+          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] User not found: ${cleanEmail}\n`);
+          return null;
+        }
 
         const passwordOk = await bcrypt.compare(
-          credentials.password as string,
+          cleanPassword,
           user.password,
         );
-        if (!passwordOk) return null;
+        if (!passwordOk) {
+          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Password mismatch\n`);
+          return null;
+        }
+
+        let allBrands = [];
+        
+        if (user.role === 'SUPERADMIN') {
+          // El superadmin tiene acceso a todas las marcas del sistema
+          allBrands = await prisma.brand.findMany({
+            include: { company: true }
+          });
+        } else if (user.role === 'COMPANYADMIN') {
+          // El administrador de empresa tiene acceso a todas las marcas de sus empresas asignadas
+          const companyIds = user.companies?.map(c => c.id) || [];
+          const companyBrands = await prisma.brand.findMany({
+            where: { companyId: { in: companyIds } },
+            include: { company: true }
+          });
+          allBrands = [...((user as any).assignedBrands || []), ...companyBrands];
+        } else {
+          // El resto de roles solo a sus marcas asignadas explícitamente
+          allBrands = [...((user as any).assignedBrands || [])];
+        }
+
+        // Deduplicate
+        const uniqueBrandsMap = new Map();
+        allBrands.forEach(b => {
+          uniqueBrandsMap.set(b.id, {
+            id: b.id,
+            name: b.name,
+            companyName: b.company?.name || 'Empresa'
+          });
+        });
+        const allowedBrands = Array.from(uniqueBrandsMap.values());
+
+        if (allowedBrands.length === 0) {
+          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] User has no allowed brands: ${cleanEmail}\n`);
+          throw new Error("Acceso denegado: No tienes ninguna comercializadora asignada.");
+        }
+
+        fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Returning user object for: ${user.email} (Role: ${user.role}, Brands: ${allowedBrands.length})\n`);
 
         return {
           id:        user.id,
@@ -42,9 +94,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name:      user.name,
           role:      user.role,
           brandId:   user.brandId,
+          channelId: user.channelId,
+          allowedBrands: allowedBrands,
           brandName: user.brand.name,
           companyId: user.brand.companyId,
-          // Colores de la marca para inyectar el tema
           accentColor:  user.brand.accentColor,
           bgColor:      user.brand.bgColor,
           surfaceColor: user.brand.surfaceColor,
@@ -54,36 +107,4 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    // Persiste datos extra en el JWT
-    async jwt({ token, user }) {
-      if (user) {
-        token.role        = (user as any).role;
-        token.brandId     = (user as any).brandId;
-        token.brandName   = (user as any).brandName;
-        token.companyId   = (user as any).companyId;
-        token.accentColor = (user as any).accentColor;
-        token.bgColor     = (user as any).bgColor;
-        token.surfaceColor= (user as any).surfaceColor;
-        token.borderColor = (user as any).borderColor;
-        token.logoUrl     = (user as any).logoUrl;
-      }
-      return token;
-    },
-    // Expone los datos del JWT en la sesión del cliente
-    async session({ session, token }) {
-      if (token) {
-        session.user.role        = token.role        as string;
-        session.user.brandId     = token.brandId     as string;
-        session.user.brandName   = token.brandName   as string;
-        session.user.companyId   = token.companyId   as string;
-        session.user.accentColor = token.accentColor as string;
-        session.user.bgColor     = token.bgColor     as string;
-        session.user.surfaceColor= token.surfaceColor as string;
-        session.user.borderColor = token.borderColor as string;
-        session.user.logoUrl     = token.logoUrl     as string | null;
-      }
-      return session;
-    },
-  },
 });

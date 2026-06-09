@@ -1,0 +1,65 @@
+import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
+import { notFound } from 'next/navigation';
+import ContractDetailClient from './ContractDetailClient';
+
+export const dynamic = 'force-dynamic';
+
+export default async function ContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  
+  const session = await auth();
+  const sessionUser = session?.user;
+  
+  let maxRenewalDays = 45; // Default
+  if (sessionUser?.email) {
+    const dbUser = await prisma.user.findUnique({
+      where: { email: sessionUser.email },
+      include: { channel: true }
+    });
+    if (dbUser?.channel?.maxRenewalDays) {
+      maxRenewalDays = dbUser.channel.maxRenewalDays;
+    }
+  }
+
+  const contract = await prisma.contract.findUnique({
+    where: { id: resolvedParams.id },
+    include: {
+      Lead: {
+        include: {
+          documents: true
+        }
+      },
+      client: true,
+      supplyPoint: true,
+      user: true,
+      product: true,
+      invoices: {
+        orderBy: { issueDate: 'desc' }
+      }
+    }
+  });
+
+  if (!contract) {
+    notFound();
+  }
+  
+  // Remap uppercase relations to lowercase for the UI component
+  const uiContract = {
+    ...contract,
+    lead: contract.Lead ? { ...contract.Lead, documents: contract.Lead.documents } : null,
+    client: contract.client,
+    supplyPoint: contract.supplyPoint,
+    user: contract.user,
+    product: contract.product,
+    invoices: contract.invoices
+  };
+
+  return (
+    <ContractDetailClient 
+      initialContract={uiContract} 
+      userRole={sessionUser?.role || 'CANAL'} 
+      maxRenewalDays={maxRenewalDays} 
+    />
+  );
+}

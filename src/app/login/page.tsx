@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { signIn } from 'next-auth/react';
 import { Zap, Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
@@ -14,10 +15,19 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    // NextAuth signIn se conectará aquí en la siguiente fase
-    await new Promise(r => setTimeout(r, 1200)); // Simulación
-    setError('Credenciales incorrectas. Inténtalo de nuevo.');
-    setLoading(false);
+    
+    const res = await signIn('credentials', {
+      email,
+      password,
+      redirect: false,
+    });
+    
+    if (res?.error) {
+      setError('Credenciales incorrectas. Inténtalo de nuevo.');
+      setLoading(false);
+    } else {
+      window.location.href = '/';
+    }
   };
 
   return (

@@ -1,0 +1,422 @@
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import Airtable from 'airtable';
+import * as dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
+
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+
+if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+  console.error("Faltan credenciales de Airtable en .env");
+  process.exit(1);
+}
+
+const base = new Airtable({ apiKey: AIRTABLE_API_KEY }).base(AIRTABLE_BASE_ID);
+
+function normalizeKey(k: string) {
+  return k.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function autoMapFields(airtableFields: any, prismaModelKeys: {name: string, type: string}[]) {
+  const result: any = {};
+  const keyMap = new Map<string, string>();
+  for (const k of Object.keys(airtableFields)) {
+    keyMap.set(normalizeKey(k), k);
+  }
+
+  for (const {name, type} of prismaModelKeys) {
+    const n = normalizeKey(name);
+    let matchedAtKey = keyMap.get(n);
+    if (!matchedAtKey && name === 'iva') matchedAtKey = keyMap.get('iva');
+    if (!matchedAtKey && n.endsWith('corr')) matchedAtKey = keyMap.get(n.replace('corr', ''));
+
+    if (matchedAtKey) {
+      let val = airtableFields[matchedAtKey];
+      if (Array.isArray(val) && val.length > 0 && typeof val[0] !== 'object') {
+        val = val[0];
+      }
+
+      if (val !== undefined && val !== null) {
+        if (type === 'Float' || type === 'Int') {
+          const num = parseFloat(val.toString());
+          if (!isNaN(num)) result[name] = num;
+        } else if (type === 'Boolean') {
+          if (typeof val === 'boolean') result[name] = val;
+          else if (typeof val === 'string') result[name] = val.toUpperCase() === 'SI' || val.toUpperCase() === 'TRUE';
+        } else if (type === 'DateTime') {
+          const d = new Date(val);
+          if (!isNaN(d.getTime())) result[name] = d;
+        } else if (type === 'String') {
+          result[name] = val.toString();
+        }
+      }
+    }
+  }
+  return result;
+}
+
+function parseDateSafe(val: any) {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const clientNewFields = [{name: 'contactVat', type: 'String'}, {name: 'contactRole', type: 'String'}, {name: 'billingStreetType', type: 'String'}, {name: 'billingStreet', type: 'String'}, {name: 'billingNumber', type: 'String'}, {name: 'billingFloor', type: 'String'}, {name: 'billingDoor', type: 'String'}, {name: 'billingCountry', type: 'String'}, {name: 'paymentTermsDays', type: 'Int'}, {name: 'clientLifeDays', type: 'Int'}];
+const supplyNewFields = [{name: 'streetType', type: 'String'}, {name: 'street', type: 'String'}, {name: 'streetNumber', type: 'String'}, {name: 'floor', type: 'String'}, {name: 'door', type: 'String'}, {name: 'meteringEquipment', type: 'String'}, {name: 'boePower', type: 'Float'}, {name: 'sipsP1c', type: 'Float'}, {name: 'sipsP2c', type: 'Float'}, {name: 'sipsP3c', type: 'Float'}, {name: 'sipsP4c', type: 'Float'}, {name: 'sipsP5c', type: 'Float'}, {name: 'sipsP6c', type: 'Float'}, {name: 'pcSum', type: 'Float'}, {name: 'sipsPcSum', type: 'Float'}, {name: 'varPc', type: 'Float'},{name: 'demandaManualEne', type: 'Float'}, {name: 'demandaManualFeb', type: 'Float'}, {name: 'demandaManualMar', type: 'Float'}, {name: 'demandaManualAbr', type: 'Float'}, {name: 'demandaManualMay', type: 'Float'}, {name: 'demandaManualJun', type: 'Float'}, {name: 'demandaManualJul', type: 'Float'}, {name: 'demandaManualAgo', type: 'Float'}, {name: 'demandaManualSep', type: 'Float'}, {name: 'demandaManualOct', type: 'Float'}, {name: 'demandaManualNov', type: 'Float'}, {name: 'demandaManualDic', type: 'Float'},{name: 'excedentesManualEne', type: 'Float'}, {name: 'excedentesManualFeb', type: 'Float'}, {name: 'excedentesManualMar', type: 'Float'}, {name: 'excedentesManualAbr', type: 'Float'}, {name: 'excedentesManualMay', type: 'Float'}, {name: 'excedentesManualJun', type: 'Float'}, {name: 'excedentesManualJul', type: 'Float'}, {name: 'excedentesManualAgo', type: 'Float'}, {name: 'excedentesManualSep', type: 'Float'}, {name: 'excedentesManualOct', type: 'Float'}, {name: 'excedentesManualNov', type: 'Float'}, {name: 'excedentesManualDic', type: 'Float'}];
+const contractNewFields = [{name: 'tipo', type: 'String'}, {name: 'tipoC2', type: 'String'}, {name: 'peticionClienteC2', type: 'String'}, {name: 'tipoEntrada', type: 'String'}, {name: 'fechaPrevista', type: 'DateTime'}, {name: 'captacionCliente', type: 'String'}, {name: 'autoconsumo', type: 'Boolean'}, {name: 'autoconsumoFijoIndex', type: 'String'}, {name: 'atrComer', type: 'String'}, {name: 'unPrecio', type: 'Boolean'}, {name: 'suspendido', type: 'Boolean'}, {name: 'cierre', type: 'String'}, {name: 'feeP', type: 'Float'}, {name: 'descuentoCie', type: 'Float'}, {name: 'inicioProceso', type: 'DateTime'}, {name: 'gasIncluido', type: 'Boolean'}, {name: 'bolsilloSolar', type: 'Boolean'}, {name: 'modalidadContrato', type: 'String'}, {name: 'nSolicitud', type: 'String'}, {name: 'fechaProceso', type: 'DateTime'}, {name: 'fechaAceptacion', type: 'DateTime'}, {name: 'fechaPrevistaActivacion', type: 'DateTime'}, {name: 'fechaIncidencia', type: 'DateTime'}, {name: 'sinComision', type: 'Boolean'}, {name: 'm1Activado', type: 'Boolean'}, {name: 'm1Rechazado', type: 'Boolean'}, {name: 'decomision', type: 'Float'}, {name: 'decomision50', type: 'Float'}, {name: 'comision50', type: 'Float'}, {name: 'renovacion', type: 'Boolean'}, {name: 'bajaPorM1RE1', type: 'Boolean'}, {name: 'bimensual', type: 'Boolean'}, {name: 'sinPenalizacion', type: 'Boolean'}, {name: 'sinDecomision', type: 'Boolean'}, {name: 'svaAnadidoTera', type: 'Boolean'}, {name: 'penalizacionFacturada', type: 'Boolean'}, {name: 'numFacturaPenalizacion', type: 'String'}, {name: 'facturarPen', type: 'Boolean'}, {name: 'biPen', type: 'Float'}, {name: 'ivaPen', type: 'Float'}, {name: 'penalizacionEstimada', type: 'Float'}, {name: 'abonar', type: 'Float'}, {name: 'fechaFacturaPenalizacion', type: 'DateTime'}, {name: 'ajustePen', type: 'Float'}, {name: 'productoRenovacion', type: 'String'}, {name: 'renovacionSolicitada', type: 'Boolean'}, {name: 'servicioRenovacion', type: 'String'}, {name: 'renovacionTramitada', type: 'Boolean'}, {name: 'derechosExtension', type: 'Float'}, {name: 'telegestion', type: 'Boolean'}, {name: 'estadoCompilacion', type: 'String'}, {name: 'calculoCodDistri', type: 'String'}, {name: 'nombreComercial', type: 'String'}, {name: 'ip', type: 'Float'}, {name: 'fc', type: 'Float'}, {name: 'porcComisionFijo', type: 'Float'}, {name: 'porcComisionVariable', type: 'Float'}, {name: 'ajusteConsumoComision', type: 'Float'}, {name: 'comisionAjustada', type: 'Float'}, {name: 'ajusteComisionDuracionPotencia', type: 'Float'}, {name: 'decomisionSobreAjuste', type: 'Float'}, {name: 'genContratoAuto', type: 'Boolean'}, {name: 'm1sSolicitado', type: 'Boolean'}, {name: 'm1nSolicitado', type: 'Boolean'}, {name: 'tipoPm', type: 'String'}, {name: 'calculoMesAlta', type: 'String'}, {name: 'calculoMesBaja', type: 'String'}, {name: 'mesAlta', type: 'String'}, {name: 'mesBaja', type: 'String'}, {name: 'ultimoDiaFacturado', type: 'DateTime'}, {name: 'ultDiaAFacturar', type: 'DateTime'}, {name: 'retraso', type: 'Int'}, {name: 'inicioMes0', type: 'DateTime'}, {name: 'inicioMesMinus1', type: 'DateTime'}, {name: 'finMesMinus1', type: 'DateTime'}, {name: 'energiaPteMesMinus1', type: 'Float'}, {name: 'inicioMesMinus2', type: 'DateTime'}, {name: 'finMesMinus2', type: 'DateTime'}, {name: 'energiaPteMesMinus2', type: 'Float'}, {name: 'energiaPteMes0HastaHoy', type: 'Float'}, {name: 'finMes0', type: 'DateTime'}, {name: 'ultDiaFact', type: 'DateTime'}, {name: 'energiaPteMes0HastaFinMes', type: 'Float'}, {name: 'transferencia', type: 'Boolean'}, {name: 'firmaManRenov', type: 'Boolean'}, {name: 'consumoRealEstimado', type: 'String'}, {name: 'pen20TdResid', type: 'Float'}, {name: 'penNoResid', type: 'Float'}, {name: 'pen20TdResidHoy', type: 'Float'}, {name: 'horasUsoDiarios', type: 'Float'}, {name: 'tipoEnvioFacturaRenov', type: 'String'}, {name: 'diasContrato', type: 'Int'}, {name: 'diasRenovMax', type: 'Int'}, {name: 'estadoPrevio', type: 'String'}, {name: 'fechaVencimientoCalculada', type: 'DateTime'}];
+const invoiceNewFieldsStr = `path String, minimoImporteIESuperado String, claseFactura String, codigoFiscal String, cupsCode String, duracion Int, fijoIndex String, p1c Float, p2c Float, p3c Float, p4c Float, p5c Float, p6c Float, p1PotenciaContratada Float, p2PotenciaContratada Float, p3PotenciaContratada Float, p4PotenciaContratada Float, p5PotenciaContratada Float, p6PotenciaContratada Float, p1PotenciaMaxDemanda Float, p2PotenciaMaxDemanda Float, p3PotenciaMaxDemanda Float, p4PotenciaMaxDemanda Float, p5PotenciaMaxDemanda Float, p6PotenciaMaxDemanda Float, p1EnergiaActivaConsumida Float, p2EnergiaActivaConsumida Float, p3EnergiaActivaConsumida Float, p4EnergiaActivaConsumida Float, p5EnergiaActivaConsumida Float, p6EnergiaActivaConsumida Float, energiaReactivaTotalConsumida Float, p1EnergiaReactivaConsumida Float, p2EnergiaReactivaConsumida Float, p3EnergiaReactivaConsumida Float, p4EnergiaReactivaConsumida Float, p5EnergiaReactivaConsumida Float, p6EnergiaReactivaConsumida Float, p1PrecioEnergiaReactiva Float, p2PrecioEnergiaReactiva Float, p3PrecioEnergiaReactiva Float, p4PrecioEnergiaReactiva Float, p5PrecioEnergiaReactiva Float, p6PrecioEnergiaReactiva Float, penalizacionNoIcp Float, porcentajePerdidas Float, potenciaAFacturarP1 Float, potenciaAFacturarP2 Float, potenciaAFacturarP3 Float, potenciaAFacturarP4 Float, potenciaAFacturarP5 Float, potenciaAFacturarP6 Float, excedentesP1Autoconsumo Float, excedentesP2Autoconsumo Float, excedentesP3Autoconsumo Float, excedentesP4Autoconsumo Float, excedentesP5Autoconsumo Float, excedentesP6Autoconsumo Float, excedentesAutoconsumoAFacturar Float, importeAeP1 Float, importeAeP2 Float, importeAeP3 Float, importeAeP4 Float, importeAeP5 Float, importeAeP6 Float, importeTotalAeAtr Float, importePmP1 Float, importePmP2 Float, importePmP3 Float, importePmP4 Float, importePmP5 Float, importePmP6 Float, importeTotalPmAtr Float, importeExcesoPmP1 Float, importeExcesoPmP2 Float, importeExcesoPmP3 Float, importeExcesoPmP4 Float, importeExcesoPmP5 Float, importeExcesoPmP6 Float, importeTotalExcesosAtr Float, importeR1P1 Float, importeR1P2 Float, importeR1P3 Float, importeR1P4 Float, importeR1P5 Float, importeR1P6 Float, importeTotalRAtr Float, importeExcedentesAutoconsumo Float, suplementoTerritorial Float, subtotal2 Float, conceptoRepercutible Float, subtotalOtrosConcepto Float, baseImponibleIva Float, iva Float, importeIva Float, total Float, disponibilidadLectura Float, precioDiaAlquiler1 Float, numeroDiasAlquiler1 Int, precioDiaAlquiler2 Float, numeroDiasAlquiler2 Int, precioDiaAlquiler3 Float, numeroDiasAlquiler3 Int, precioDiaAlquiler4 Float, numeroDiasAlquiler4 Int, importeIndemnizacion Float, alquilerEquipoDeMedida Float, ieOdoo Float, mostrarWeb Boolean, conceptoRepercutible1 String, udsConceptoRepercutible1 Float, precioConceptoRepercutible1 Float, importeConceptoRepercutible1 Float, conceptoRepercutible2 String, udsConceptoRepercutible2 Float, precioConceptoRepercutible2 Float, importeConceptoRepercutible2 Float, conceptoRepercutible3 String, udsConceptoRepercutible3 Float, precioConceptoRepercutible3 Float, importeConceptoRepercutible3 Float, conceptoSva String, costesDeGestion Float, importeCargoPotenciaTotal Float, importeCargoEnergiaTotal Float, totalImporteCargos Float, totalImportePeajes Float, baseImponibleF1 Float, baseImponible0 Float, baseImponible10 Float, importeIva10 Float, baseImponible21 Float, importeIva21 Float, importeTotalExcesosAtrF1 Float, fee Float, dsv Float, p1pm Float, p2pm Float, p3pm Float, p4pm Float, p5pm Float, p6pm Float, importePeajesAe Float, importePeajesPm Float, base560 Float, importeBonoSocial Float, importePotenciaFactura Float, importePotenciaAtr Float, margenPotencia Float, margenExcesos Float, importeEnergiaFactura Float, importeEnergiaSinMargen Float, margenEnergia Float, margenFactura Float, comisionPotenciaCanal Float, comisionPrecioEnergia Float, comisionVolumenEnergia Float, facturado Boolean, importeAjusteGas Float, baseImponible5 Float, importeIva5 Float, gasIncluido Boolean, importeEnergiaAtr Float, importeAplicableCompensacionExcedentes Float, importeExcedentesAutoconsumoAplicado Float, bolsilloSolar Boolean, inicioBolsilloSolar DateTime, cargaBolsilloSolar Float, costesDeGestionBolsilloSolar Float, descuentoBolsilloSolar Float, importeAlmacenadoBolsilloSolar Float, comisionCostesDeGestion Float, comisionGapAutoconsumo Float, sistemaElectrico Float, propiedadExcedentes Float, comisionImporteExcedentario Float, numeroFacturaPdf String, comunicar Boolean, nombreCompleto String, emailEnvioFactura String, formaEnvioFactura String, numeroFacturaRectificadaRef String, fechaFacturaRectificadaRef DateTime, importeFacturaRectificadaRef Float, precioUnitarioSva Float, diasSva Int, totalSva Float, importeDevolucion Float, cg Float, p1em Float, p2em Float, p3em Float, p4em Float, p5em Float, p6em Float, codigoFacturaRectificadaAnulada String, importeAhorroCargos Float, porcentajeReduccionCargos Float, mailEnviado Boolean, numeroFacturaXml String, comisionSemiindexadoAnual Float, comisionPrecioFijoEnergia Float, correoPostalEnviado Boolean, recargoInfAnio Float, tipoAutoconsumoDistribuidora String, gapAutoconsumo Float, derechosGarantia Float, dsvm Float, feem Float, cgm Float, unidadesMix Float, precioMix Float, pExcedentes Float, importePenalizaciones Float, omiePromedioMah Float, baseImponibleAyuntamiento Float, tasaMunicipalForm Float, totalSinDescuento Float, codigoRee String, importeTotalCoberturas Float, comisionTotal Float, estadoContrato String, domicilioTitular String, recordatorioVtoFtra Boolean, nombreCompletoTitular String, baseImponibleTasaMunicipal Float, tasaMunicipal Float, avisoTransfPagoFtra Boolean, telefonoContacto String, diasCorr Int, totalCorr Float, totalSoftr Float, excTotal Float, mesAno String, calculoMesAno String, baseImponibleIvaCorr Float, facturaRectificada Boolean, margenFtraRectificada Float, margenEstimado Float, importeImpuestoCorr Float, baseImponibleF1Corr Float, margenRelIngebau Float, margenFacturaDashboard Float, margenFacturaCorr Float, importeBonoSocialCorr Float, subidaFace Boolean`;
+const invoiceNewFields = invoiceNewFieldsStr.split(', ').map(s => { const [name, type] = s.split(' '); return {name, type}; });
+
+async function run() {
+  console.log("Iniciando WIPE y migración masiva de 100 contratos de Airtable con mapeos corregidos...");
+
+  await prisma.invoice.deleteMany();
+  await prisma.commission.deleteMany();
+  await prisma.contractModification.deleteMany();
+  await prisma.lead.deleteMany();
+  await prisma.contract.deleteMany();
+  await prisma.supplyPoint.deleteMany();
+  await prisma.client.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.channel.deleteMany();
+  await prisma.user.deleteMany({ where: { email: { not: 'admin@aedenergia.es' } } });
+  console.log("Tablas limpiadas.");
+
+  let company = await prisma.company.findFirst();
+  if (!company) company = await prisma.company.create({ data: { name: 'AED Energía', cif: 'B12345678' } });
+
+  let brand = await prisma.brand.findFirst({ where: { name: 'AED Energía' } });
+  if (!brand) brand = await prisma.brand.create({ data: { name: 'AED Energía', slug: 'aed-energia', companyId: company.id } });
+
+  let superAdmin = await prisma.user.findFirst({ where: { role: 'SUPERADMIN' }});
+  if (!superAdmin) superAdmin = await prisma.user.create({ data: { name: 'Admin', email: 'admin@aedenergia.es', password: 'pwd', role: 'SUPERADMIN', brandId: brand.id } });
+
+  const contractsRecord = await base('CONTRATOS').select({ maxRecords: 100 }).firstPage();
+  const contracts = contractsRecord.map(r => ({ id: r.id, fields: r.fields as any }));
+  console.log(`Obtenidos ${contracts.length} contratos.`);
+
+  const clientIds = new Set<string>();
+  const supplyIds = new Set<string>();
+  const invoiceIds = new Set<string>();
+  const userIds = new Set<string>();
+  const contractCodes: string[] = [];
+
+  for (const c of contracts) {
+    const f = c.fields;
+    if (f['CIF link']) clientIds.add(f['CIF link'][0]);
+    if (f['INSTALACIONES_LINK']) supplyIds.add(f['INSTALACIONES_LINK'][0]);
+    if (f['FACTURAS']) f['FACTURAS'].forEach((id: string) => invoiceIds.add(id));
+    if (f['CONTRATO']) contractCodes.push(f['CONTRATO']);
+    if (f['Comercial']) f['Comercial'].forEach((id: string) => userIds.add(id));
+  }
+
+  const airtableClients = await fetchChunks('CLIENTES', Array.from(clientIds));
+  const airtableSupplies = await fetchChunks('INSTALACIONES', Array.from(supplyIds));
+  const airtableInvoices = await fetchChunks('FACTURAS', Array.from(invoiceIds));
+  const airtableUsuarios = await fetchChunks('USUARIOS', Array.from(userIds));
+
+  const clientsMap = new Map(airtableClients.map(c => [c.id, c.fields]));
+  const suppliesMap = new Map(airtableSupplies.map(s => [s.id, s.fields]));
+  const invoicesMap = new Map(airtableInvoices.map(i => [i.id, i.fields]));
+  const usuariosMap = new Map(airtableUsuarios.map(u => [u.id, u.fields]));
+  
+  const leadsByContract = new Map<string, any>();
+  const airtableLeads = await fetchLeadsByContracts(contractCodes);
+  for (const l of airtableLeads) {
+     if (l.fields['CONTRATO']) {
+         leadsByContract.set(l.fields['CONTRATO'], { id: l.id, fields: l.fields });
+     }
+  }
+
+  for (const record of contracts) {
+    const f = record.fields;
+    const contractCode = f['CONTRATO'] || `CC_${record.id}`;
+    const createdAtStr = f['Fecha Registro'] || f['Fecha Solicitud'] || new Date().toISOString();
+    const createdAt = parseDateSafe(createdAtStr) || new Date();
+
+    // Process Commercial (User) and Channel
+    let emailsToTry = [f['Email Comercial'], f['Email Gerente'], f['Email Sup Canal'], f['Email Admin Canal'], f['Email AtCliente']].flat().filter(Boolean);
+    let comercialEmailStr = emailsToTry.length > 0 ? emailsToTry[0] : null;
+    let comercialEmail = comercialEmailStr || superAdmin.email;
+    let fallbackName = comercialEmail.split('@')[0];
+    
+    let comercialName = fallbackName;
+    let comercialCodigo = null;
+    let comercialPhone = null;
+    let isSupervisor = false;
+
+    const comercialRecordId = (f['Comercial'] && Array.isArray(f['Comercial'])) ? f['Comercial'][0] : null;
+    if (comercialRecordId) {
+        const uFields = usuariosMap.get(comercialRecordId);
+        if (uFields) {
+            if (uFields['Nombre2']) comercialName = uFields['Nombre2'].toString();
+            if (uFields['Código']) comercialCodigo = uFields['Código'].toString();
+            if (uFields['Teléfono']) comercialPhone = uFields['Teléfono'].toString();
+            if (uFields['Supervisor canal'] === true || uFields['Supervisor canal'] === 'true') isSupervisor = true;
+        }
+    }
+    
+    let user = await prisma.user.findFirst({ where: { email: comercialEmail } });
+    if (!user) {
+        user = await prisma.user.create({ data: { 
+            name: comercialName, 
+            email: comercialEmail, 
+            password: 'pwd', 
+            brandId: brand.id,
+            codigo: comercialCodigo,
+            phone: comercialPhone,
+            isChannelSupervisor: isSupervisor
+        } });
+    } else {
+        // Update user if new data is found and current is empty
+        const updateData: any = {};
+        if (comercialCodigo && !user.codigo) updateData.codigo = comercialCodigo;
+        if (comercialPhone && !user.phone) updateData.phone = comercialPhone;
+        if (isSupervisor && !user.isChannelSupervisor) updateData.isChannelSupervisor = true;
+        if (Object.keys(updateData).length > 0) {
+            user = await prisma.user.update({ where: { id: user.id }, data: updateData });
+        }
+    }
+
+    let canalName = (f['CANAL'] && Array.isArray(f['CANAL'])) ? f['CANAL'][0] : (f['CANAL'] || 'Directo').toString();
+    let channel = await prisma.channel.findFirst({ where: { name: canalName } });
+    if (!channel) {
+        channel = await prisma.channel.create({ data: { name: canalName, code: canalName.replace(/[^A-Z0-9]/ig, '').toUpperCase().substring(0, 10) } });
+    }
+    
+    // Update user channel just in case
+    if (!user.channelId) {
+        await prisma.user.update({ where: { id: user.id }, data: { channelId: channel.id } });
+    }
+
+    // Process Client
+    let clientRecordId = f['CIF link'] ? f['CIF link'][0] : null;
+    let cf: any = clientRecordId ? clientsMap.get(clientRecordId) : null;
+    if (!cf) cf = f;
+
+    const businessName = (cf['Nombre completo Titular'] || f['Nombre completo Titular'] || cf['NOMBRERAZON SOCIAL'] || cf['Nombre completo'] || cf['Nombre / Razón social Titular'] || cf['Nombre/Razón Social'] || cf['NOMBRE Y APELLIDOS'] || 'Desconocido').toString().trim();
+    
+    const clientTypeStr = (cf['Tipo de persona'] && Array.isArray(cf['Tipo de persona'])) ? cf['Tipo de persona'][0] : (cf['Tipo de persona'] || '');
+    function getFirst(val: any) {
+      if (Array.isArray(val)) return val[0];
+      return val;
+    }
+    const rawCif = getFirst(cf['CIF']) || getFirst(f['CIF']) || getFirst(cf['Copia de CIF link']) || getFirst(f['Copia de CIF link']);
+    const rawNif = getFirst(cf['NIF Titular']) || getFirst(cf['DNI/NIF Titular']) || getFirst(cf['NIF']) || getFirst(cf['NIF Contacto']);
+    
+    let clientType = 'Física';
+    const bLower = businessName.toLowerCase();
+    if (
+      clientTypeStr.toLowerCase().includes('jur') || 
+      clientTypeStr.toLowerCase().includes('empresa') || 
+      bLower.includes(' s.l') || bLower.includes(' s.a') || bLower.includes(' slu') || 
+      bLower.includes(' coop') || bLower.includes('reciclaje') || bLower.includes('ayuntamiento') || 
+      bLower.includes('arquitecto') || bLower.includes('comunidad de') || bLower.includes('c.b') || 
+      bLower.includes('s.c')
+    ) {
+      clientType = 'Jurídica';
+    } else {
+      const nifStr = (rawNif || rawCif || '').toString().trim();
+      const firstChar = nifStr.charAt(0).toUpperCase();
+      if (firstChar >= 'A' && firstChar <= 'W' && firstChar !== 'X' && firstChar !== 'Y') {
+        clientType = 'Jurídica';
+      }
+    }
+
+    let vatNumber = '';
+    if (clientType === 'Jurídica') {
+        if (rawCif) {
+            vatNumber = rawCif;
+        } else if (rawNif && rawNif.toString().match(/^[A-W]/i)) {
+            vatNumber = rawNif;
+        } else {
+            vatNumber = `UNKNOWN_CIF_${record.id}`;
+        }
+    } else {
+        vatNumber = (rawNif || rawCif || `UNKNOWN_${record.id}`);
+    }
+    vatNumber = vatNumber.toString().trim();
+
+    let client = null;
+    if (clientRecordId) {
+        client = await prisma.client.findUnique({ where: { airtableId: clientRecordId } });
+    }
+    if (!client) {
+        client = await prisma.client.findFirst({ where: { vatNumber } });
+    }
+
+    if (!client) {
+      const extraFields = autoMapFields(cf, clientNewFields);
+      client = await prisma.client.create({
+        data: {
+          vatNumber,
+          businessName,
+          firstName: (cf['Primer apellido Titular'] || cf['Primer Apellido'] || null)?.toString(),
+          lastName: (cf['Segundo apellido Titular'] || cf['Segundo Apellido'] || null)?.toString(),
+          clientType,
+          contactEmail: cf['Email'] || f['EMAIL'] || 'test@test.com',
+          contactPhone: cf['Teléfono'] || f['TLF'] || '000000000',
+          brandId: brand.id,
+          airtableId: clientRecordId,
+          createdAt,
+          ...extraFields
+        }
+      });
+    }
+
+    // Process Supply Point
+    let supplyRecordId = f['INSTALACIONES_LINK'] ? f['INSTALACIONES_LINK'][0] : null;
+    let sf: any = supplyRecordId ? suppliesMap.get(supplyRecordId) : null;
+    if (!sf) sf = f;
+
+    const cups = (sf['CUPS'] || f['CUPS'] || `CUPS_${record.id}`).toString().trim();
+    let supply = null;
+    if (supplyRecordId) {
+        supply = await prisma.supplyPoint.findUnique({ where: { airtableId: supplyRecordId } });
+    }
+    if (!supply) {
+        supply = await prisma.supplyPoint.findUnique({ where: { cups } });
+    }
+
+    if (!supply) {
+      const extraFields = autoMapFields(sf, supplyNewFields);
+      supply = await prisma.supplyPoint.create({
+        data: {
+          cups,
+          address: (sf['DOMICILIO PS COMPLETO'] || f['DOMICILIO PS COMPLETO'] || 'Desconocida').toString(),
+          city: (sf['Población Instalación'] || f['Población Instalación'] || 'Desconocida').toString(),
+          postalCode: (sf['Código Postal Instalación'] || f['Código Postal Instalación'] || '00000').toString(),
+          province: (sf['Provincia Instalación'] || f['Provincia Instalación'] || 'Desconocida').toString(),
+          tariff: (sf['Tarifa'] || f['Tarifa'] || '2.0TD').toString(),
+          annualConsumption: (parseFloat(sf['CONSUMO ANUAL KWH']) || parseFloat(f['CONSUMO ANUAL KWH']) || 0) / 1000,
+          clientId: client.id,
+          airtableId: supplyRecordId,
+          ...extraFields
+        }
+      });
+    }
+
+    const productName = (f['Producto y Servicio'] && Array.isArray(f['Producto y Servicio'])) ? f['Producto y Servicio'][0] : (f['Producto y Servicio'] || 'Prod');
+    let product = await prisma.product.findFirst({ where: { name: productName } });
+    if (!product) product = await prisma.product.create({ data: { name: productName, type: 'FIX', brandId: brand.id } });
+
+    // Process Contract
+    const extraContractFields = autoMapFields(f, contractNewFields);
+    let contract = await prisma.contract.findUnique({ where: { airtableId: record.id } });
+    if (!contract) {
+      contract = await prisma.contract.create({
+        data: {
+          airtableId: record.id,
+          contractCode,
+          status: (f['Estado'] || f['Estado CONTRATO'] || 'ACTIVO').toString().toUpperCase(),
+          clientId: client.id,
+          supplyPointId: supply.id,
+          productId: product.id,
+          userId: user.id,
+          activationDate: parseDateSafe(f['ALTA COMERCIALIZADORA'] || f['FECHA INICIO SVA'] || f['Inicio Mes 0']),
+          permanenceStartDate: parseDateSafe(f['INICIO_PERMANENCIA']),
+          expectedEndDate: parseDateSafe(f['Fecha Vencimiento Calculada']),
+          terminationDate: parseDateSafe(f['BAJA COMERCIALIZADORA']),
+          signatureDate: parseDateSafe(f['Fecha firma contrato'] || f['Fecha firma']),
+          internalComments: f['Observaciones'] ? String(f['Observaciones']) : null,
+          createdAt,
+          ...extraContractFields
+        }
+      });
+    }
+
+    // Process Lead
+    const leadData = leadsByContract.get(contractCode);
+    if (leadData) {
+        let lead = await prisma.lead.findUnique({ where: { airtableId: leadData.id } });
+        if (!lead) {
+            await prisma.lead.create({
+                data: {
+                    airtableId: leadData.id,
+                    businessName: client.businessName,
+                    vatNumber: client.vatNumber,
+                    email: client.contactEmail,
+                    phone: client.contactPhone,
+                    status: 'FIRMADO',
+                    type: 'LUZ',
+                    source: canalName,
+                    cups: supply.cups,
+                    contractId: contract.id,
+                    userId: user.id,
+                    createdAt: parseDateSafe(leadData.fields['Fecha Registro']) || createdAt
+                }
+            });
+        }
+    }
+
+    // Process Invoices
+    const invIds = f['FACTURAS'] || [];
+    for (const invId of invIds) {
+      const invf = invoicesMap.get(invId) as any;
+      if (!invf) continue;
+
+      const invoiceNumber = (invf['Numero Factura'] || invf['N Factura'] || invf['Número Factura'] || `INV_${invId}`).toString();
+      let inv = await prisma.invoice.findUnique({ where: { invoiceNumber } });
+      if (!inv) {
+        const extraInvFields = autoMapFields(invf, invoiceNewFields);
+        await prisma.invoice.create({
+          data: {
+            invoiceNumber,
+            clientId: client.id,
+            supplyPointId: supply.id,
+            contractId: contract.id,
+            issueDate: parseDateSafe(invf['Fecha Factura'] || invf['Fecha']) || new Date(),
+            billingStart: parseDateSafe(invf['Desde'] || invf['Desde(P)']),
+            billingEnd: parseDateSafe(invf['Hasta'] || invf['Hasta(P)']),
+            origin: (invf['Procedencia'] || invf['Procedencia Desde'] || invf['Origen'] || '').toString(),
+            totalAmount: parseFloat(invf['Total']) || parseFloat(invf['TOTAL']) || 0,
+            totalMWh: parseFloat(invf['Cantidad Energía Total Consumida']) || parseFloat(invf['Energía Total Consumida']) || parseFloat(invf['Consumo']) || 0,
+            createdAt: parseDateSafe(invf['Fecha Registro']) || new Date(),
+            ...extraInvFields
+          }
+        });
+      }
+    }
+  }
+
+  console.log("¡Importación de 100 contratos COMPLETAMENTE PARCHEADA finalizada con éxito!");
+}
+
+async function fetchChunks(table: string, ids: string[]): Promise<any[]> {
+    if (ids.length === 0) return [];
+    let allRecords: any[] = [];
+    for (let i = 0; i < ids.length; i += 10) {
+      const chunk = ids.slice(i, i + 10);
+      const filter = `OR(${chunk.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+      const records = await base(table).select({ filterByFormula: filter }).all();
+      allRecords = allRecords.concat(records.map(r => ({ id: r.id, fields: r.fields })));
+    }
+    return allRecords;
+}
+
+async function fetchLeadsByContracts(codes: string[]): Promise<any[]> {
+    if (codes.length === 0) return [];
+    let allRecords: any[] = [];
+    for (let i = 0; i < codes.length; i += 10) {
+      const chunk = codes.slice(i, i + 10);
+      const filter = `OR(${chunk.map(c => `CONTRATO="${c}"`).join(',')})`;
+      const records = await base('LEADS').select({ filterByFormula: filter }).all();
+      allRecords = allRecords.concat(records.map(r => ({ id: r.id, fields: r.fields })));
+    }
+    return allRecords;
+}
+
+run().catch(e => {
+  console.error("Fatal Error:", e);
+  process.exit(1);
+}).finally(async () => {
+  await prisma.$disconnect();
+});

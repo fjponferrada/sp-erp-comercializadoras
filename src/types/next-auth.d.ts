@@ -8,6 +8,8 @@ declare module 'next-auth' {
       email:        string;
       role:         string;         // SUPERADMIN | COMPANYADMIN | BACKOFFICE | CANAL
       brandId:      string;
+      channelId:    string | null;
+      allowedBrands: any[];
       brandName:    string;
       companyId:    string;
       // Colores de la marca (para el BrandThemeProvider)

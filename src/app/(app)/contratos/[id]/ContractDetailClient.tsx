@@ -1,0 +1,487 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import Topbar from '@/components/Topbar';
+import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery } from 'lucide-react';
+import { useState } from 'react';
+import { updateContractDatesAction, sendContractToDocuSignAction, createContractModificationAction } from '@/app/actions/contractActions';
+
+export default function ContractDetailClient({ 
+  initialContract, 
+  userRole, 
+  maxRenewalDays 
+}: { 
+  initialContract: any, 
+  userRole: string, 
+  maxRenewalDays: number 
+}) {
+  const router = useRouter();
+  
+  // Tabs State
+  const [activeTab, setActiveTab] = useState('Datos');
+  const [activeSubTab, setActiveSubTab] = useState('Datos Administrativos');
+
+  // Modal states
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showDatesModal, setShowDatesModal] = useState(false);
+  const [showModModal, setShowModModal] = useState(false);
+  const [isSendingSignature, setIsSendingSignature] = useState(false);
+  const [isRequestingMod, setIsRequestingMod] = useState(false);
+  const [isActivating, setIsActivating] = useState(false);
+
+  // Forms state
+  const formatDateForInput = (isoDate: Date | string | null | undefined) => {
+    if (!isoDate) return '';
+    return new Date(isoDate).toISOString().split('T')[0];
+  };
+
+  const [signatureDate, setSignatureDate] = useState(formatDateForInput(initialContract.signatureDate));
+  const [requestDate, setRequestDate] = useState(formatDateForInput(initialContract.requestDate));
+  const [activationDate, setActivationDate] = useState(formatDateForInput(initialContract.activationDate));
+  const [terminationDate, setTerminationDate] = useState(formatDateForInput(initialContract.terminationDate));
+  const [requestType, setRequestType] = useState(initialContract.requestType || 'M1S');
+  const [version, setVersion] = useState(initialContract.version || '');
+  const [modType, setModType] = useState('M1N');
+
+  const isAdmin = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const isWithinRenewalPeriod = () => {
+    if (!initialContract.expectedEndDate) return false;
+    const end = new Date(initialContract.expectedEndDate).getTime();
+    const now = new Date().getTime();
+    const diffDays = (end - now) / (1000 * 3600 * 24);
+    return diffDays >= 0 && diffDays <= maxRenewalDays;
+  };
+  const canRequestMod = isAdmin || (userRole === 'CANAL' && isWithinRenewalPeriod());
+
+  const cData = initialContract.contractData || {};
+  const leadData = initialContract.lead?.contractData || {};
+  const lead = initialContract.lead || {};
+  const client = initialContract.client || {};
+  const supplyPoint = initialContract.supplyPoint || {};
+
+  const getPricesFromLead = (ld: any) => {
+    return {
+      p1E: initialContract.p1e || '0.000',
+      p2E: initialContract.p2e || '0.000',
+      p3E: initialContract.p3e || '0.000',
+      p4E: initialContract.p4e || '0.000',
+      p5E: initialContract.p5e || '0.000',
+      p6E: initialContract.p6e || '0.000',
+      p1P: initialContract.p1p || '-',
+      p2P: initialContract.p2p || '-',
+      p3P: initialContract.p3p || '-',
+      p4P: initialContract.p4p || '-',
+      p5P: initialContract.p5p || '-',
+      p6P: initialContract.p6p || '-',
+      fee: initialContract.fee || initialContract.commissionBase || '0.00'
+    };
+  };
+
+  const getSvaName = () => {
+    let svaName = initialContract.svaConcept || initialContract.servicio || '-';
+    if (svaName !== '-' && svaName.startsWith('rec')) {
+        const serviciosMap: Record<string, string> = {
+          "rec3giNSPTAHYZ6Ca": "Batería Virtual (5,99 €/mes)",
+          "rec4ALZMphWAuIb40": "Gestión energía a precio de coste (3,90 €/mes)",
+          "rec4m16hzWuPSCFC7": "Asesoramiento energético + Factura en papel (9,49 €/mes)",
+          "recDNE5NjUQdbAOK5": "Asesoramiento energético (5,99 €/mes)",
+          "recH9hgmpZsGugcdJ": "Asociar a Bolsillo solar (3,50 €/mes)",
+          "recNbIOQwp6G0nheT": "Asesoramiento energético (4,99 €/factura)",
+          "recQ2kTt4tTJLimlb": "Factura en papel (3,50 €/mes)",
+          "recyJxb4cSWoRsM8b": "Alta Nueva (25 €/alta)"
+        };
+        if (serviciosMap[svaName]) {
+            svaName = serviciosMap[svaName];
+        } else {
+            const prodYServ = initialContract.airtableData?.['Producto y Servicio'];
+            if (prodYServ && typeof prodYServ === 'string') {
+                const match = prodYServ.match(/"([^"]+)"/);
+                if (match) svaName = match[1];
+            }
+        }
+    }
+    return svaName === '-' ? 'Sin SVA' : svaName;
+  };
+
+  const handleSendToSignature = async () => { /* ... */ };
+  const downloadContract = async () => { /* ... */ };
+  const handleSaveDates = async () => { /* ... */ };
+  const handleRequestMod = async () => { /* ... */ };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'ACTIVO': return <span className="badge badge-active flex items-center gap-1 max-w-max"><CheckCircle size={12}/> Activo</span>;
+      case 'ACEPTADO': return <span className="px-2 py-1 rounded text-xs font-bold bg-[rgba(59,130,246,0.15)] text-blue-400 border border-[rgba(59,130,246,0.3)] flex items-center gap-1 max-w-max"><FileCheck size={12}/> Aceptado</span>;
+      case 'TRAMITANDO': return <span className="badge badge-process flex items-center gap-1 max-w-max"><Clock size={12}/> Tramitando</span>;
+      case 'BAJA': return <span className="badge badge-danger flex items-center gap-1 max-w-max"><Ban size={12}/> Baja</span>;
+      case 'RENOVACION': return <span className="badge badge-warning flex items-center gap-1 max-w-max"><CalendarDays size={12}/> Renovación</span>;
+      default: return <span className="badge badge-draft">{status}</span>;
+    }
+  };
+
+  const DataItem = ({ label, value, icon: Icon, highlight, colSpan }: { label: string, value: React.ReactNode, icon?: any, highlight?: boolean, colSpan?: number }) => (
+    <div className={`p-4 rounded-xl border transition-all ${highlight ? 'bg-[rgba(222,255,154,0.03)] border-[var(--lime)] border-opacity-30' : 'bg-[var(--bg-elevated)] border-[var(--border)]'} ${colSpan ? `col-span-${colSpan}` : ''}`}>
+      <div className="flex items-center gap-2 mb-2">
+        {Icon && <Icon size={14} className={highlight ? 'text-[var(--lime)]' : 'text-gray-400'} />}
+        <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider">{label}</span>
+      </div>
+      <div className={`text-[0.95rem] font-medium break-words ${highlight ? 'text-[var(--lime)]' : 'text-gray-200'}`}>
+        {value || '-'}
+      </div>
+    </div>
+  );
+
+  const SectionCard = ({ title, icon: Icon, children, delay }: { title: string, icon: any, children: React.ReactNode, delay: number }) => (
+    <div className={`card animate-fade-in-up delay-${delay}`} style={{ padding: '24px' }}>
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border)]">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[var(--bg-base)] border border-[var(--border-strong)]">
+          <Icon size={18} className="text-[var(--text-primary)]" />
+        </div>
+        <h2 className="text-lg font-bold text-[var(--text-primary)]">{title}</h2>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {children}
+      </div>
+    </div>
+  );
+
+  const tabs = [
+    { id: 'Datos', icon: FileText },
+    { id: 'Sips', icon: Search },
+    { id: 'Switching', icon: RefreshCw },
+    { id: 'Reclamaciones', icon: AlertTriangle },
+    { id: 'Facturación', icon: Banknote },
+    { id: 'Consumos', icon: Zap },
+    { id: 'F1s', icon: FileSpreadsheet },
+  ];
+
+  const subTabs = [
+    { id: 'Datos Administrativos', icon: User },
+    { id: 'Datos Contrato', icon: FileText },
+    { id: 'Datos Técnicos CUPS', icon: Zap },
+    { id: 'Datos Económicos Contrato', icon: Wallet },
+    { id: 'Catastro', icon: MapPin },
+    { id: 'Datos CAU', icon: Battery },
+  ];
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', paddingBottom: '100px' }}>
+      <Topbar
+        title={`Contrato: ${client.businessName || lead.businessName || 'Sin Cliente'}`}
+        subtitle={`CUPS: ${supplyPoint.cups || lead.cups || 'Sin CUPS'}`}
+        customActions={
+          <div className="flex gap-3 items-center">
+            <button onClick={() => router.push('/contratos')} className="btn-ghost">
+              <ChevronLeft size={16} /> Volver
+            </button>
+            <div className="h-8 border-l border-[var(--border)] mx-2"></div>
+            <div>{getStatusBadge(initialContract.status)}</div>
+          </div>
+        }
+      />
+
+      <div className="max-w-[1400px] mx-auto px-6 py-8 flex flex-col gap-6">
+
+        {/* HORIZONTAL TABS */}
+        <div className="flex border-b border-[var(--border)] overflow-x-auto no-scrollbar gap-2 pb-[-1px]">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm transition-all whitespace-nowrap ${
+                activeTab === tab.id 
+                  ? 'border-[var(--lime)] text-[var(--lime)] bg-[rgba(222,255,154,0.05)]' 
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-[var(--bg-elevated)]'
+              }`}
+            >
+              <tab.icon size={16} /> {tab.id}
+            </button>
+          ))}
+        </div>
+
+        {/* TAB CONTENT */}
+        {activeTab === 'Datos' && (
+          <div className="flex flex-col md:flex-row gap-6 items-start">
+            
+            {/* VERTICAL TABS */}
+            <div className="w-full md:w-64 shrink-0 flex flex-col gap-1 sticky top-6">
+              {subTabs.map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubTab(sub.id)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-left ${
+                    activeSubTab === sub.id 
+                      ? 'bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--lime)] shadow-sm' 
+                      : 'border border-transparent text-gray-400 hover:text-gray-200 hover:bg-[var(--bg-elevated)] hover:border-[var(--border)]'
+                  }`}
+                >
+                  <sub.icon size={16} /> {sub.id}
+                </button>
+              ))}
+            </div>
+
+            {/* VERTICAL TAB CONTENT */}
+            <div className="flex-1 w-full flex flex-col gap-6">
+              
+              {activeSubTab === 'Datos Administrativos' && (
+                <SectionCard title="Datos Administrativos" icon={User} delay={0}>
+                  <DataItem label="Tipo de Cliente" value={client.clientType || lead.clientType || 'Empresa'} />
+                  <DataItem label="Razón Social / Nombre" value={client.businessName || lead.businessName} />
+                  <DataItem label="NIF / CIF" value={client.vatNumber || lead.vatNumber} />
+                  <DataItem label="CNAE" value={supplyPoint?.cnae || '-'} />
+                  
+                  <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Contacto Principal</h3></div>
+                  <DataItem label="Nombre Contacto" value={client.contactName || lead.contactName} />
+                  <DataItem label="Apellidos Contacto" value={client.contactLastName || lead.contactLastName} />
+                  <DataItem label="Teléfono" value={client.contactPhone || lead.phone} />
+                  <DataItem label="Email" value={client.contactEmail || lead.email} />
+                  
+                  <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Representante Legal</h3></div>
+                  <DataItem label="Nombre Representante" value={client.representativeName || lead.representativeName || lead.contactRole} />
+                  <DataItem label="NIF Representante" value={client.representativeVat || lead.representativeVat} />
+                  <DataItem label="Email Representante" value={client.representativeEmail || lead.representativeEmail} />
+                  <DataItem label="Teléfono Representante" value={client.representativePhone || lead.representativePhone} />
+                  
+                  <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Datos de Facturación</h3></div>
+                  <DataItem label="Domicilio Facturación" value={client.billingAddress || lead.titularStreet} />
+                  <DataItem label="Código Postal" value={client.billingPostalCode || lead.titularPostalCode} />
+                  <DataItem label="Población" value={client.billingCity || lead.titularCity} />
+                  <DataItem label="Provincia" value={client.billingProvince || lead.titularProvince} />
+                  <DataItem label="IBAN" value={client.iban || lead.iban} />
+                  <DataItem label="SWIFT" value={client.swift} />
+                  <DataItem label="¿Factura Papel?" value={(client.paperInvoice || lead.paperInvoice) ? 'Sí' : 'No'} />
+                  <DataItem label="Email Factura" value={client.invoiceEmail || lead.invoiceEmail || client.contactEmail || lead.email} />
+                </SectionCard>
+              )}
+
+              {activeSubTab === 'Datos Contrato' && (
+                <>
+                  <SectionCard title="Datos del Contrato" icon={FileText} delay={0}>
+                    <DataItem label="ID Contrato" value={<span className="font-mono text-gray-300 tracking-wider">{initialContract.contractCode || initialContract.id}</span>} />
+                    <DataItem label="Producto" value={initialContract.product?.name || lead.product} />
+                    <DataItem label="Tipo Tramitación" value={initialContract.tramitationType || 'Alta'} />
+                    <DataItem label="Duración (Meses)" value={initialContract.duration || initialContract.product?.permanenceMonths || '12'} />
+                    
+                    <DataItem label="Fecha Firma" value={initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato ? new Date(initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Activación" value={initialContract.activationDate ? new Date(initialContract.activationDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Inicio Permanencia" value={initialContract.permanenceStartDate ? new Date(initialContract.permanenceStartDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Baja Estimada" value={initialContract.expectedEndDate ? new Date(initialContract.expectedEndDate).toLocaleDateString('es-ES') : '-'} />
+                  </SectionCard>
+
+                  <SectionCard title="Servicios de Valor Añadido (SVA)" icon={Settings} delay={100}>
+                    <DataItem label="Concepto SVA" value={getSvaName()} />
+                    <DataItem label="Precio SVA" value={initialContract.svaPrice || initialContract.preciofromSERVICIOS ? `€ ${initialContract.svaPrice || initialContract.preciofromSERVICIOS}` : '-'} />
+                    <DataItem label="Duración SVA (Meses)" value={initialContract.svaDuration || '-'} />
+                    <DataItem label="Inicio SVA" value={initialContract.svaStartDate ? new Date(initialContract.svaStartDate).toLocaleDateString('es-ES') : '-'} />
+                  </SectionCard>
+                </>
+              )}
+
+              {activeSubTab === 'Datos Técnicos CUPS' && (
+                <SectionCard title="Datos Técnicos del Punto de Suministro" icon={Zap} delay={0}>
+                  <DataItem highlight label="CUPS" value={<span className="font-mono tracking-widest">{supplyPoint.cups || lead.cups}</span>} />
+                  <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">{supplyPoint.tariff || lead.tariff}</span>} />
+                  <DataItem label="Consumo Anual (MWh)" value={supplyPoint.annualConsumption || lead.estimatedMWh} />
+                  <DataItem label="Distribuidora" value={supplyPoint.distributorName ? supplyPoint.distributorName.replace(/^\[.*?\]\s*/, '') : (supplyPoint.distributor ? supplyPoint.distributor.replace(/^\[.*?\]\s*/, '') : 'EDISTRIBUCION')} />
+                  <DataItem label="Cód. REE Distri." value={supplyPoint.distributorReeCode || '0031'} />
+                  
+                  <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Dirección de Suministro</h3></div>
+                  <DataItem label="Dirección" value={supplyPoint.address || lead.address} />
+                  <DataItem label="Código Postal" value={supplyPoint.postalCode} />
+                  <DataItem label="Población" value={supplyPoint.city} />
+                  <DataItem label="Provincia" value={supplyPoint.province} />
+
+                  <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Potencias Contratadas (kW)</h3></div>
+                  <DataItem label="P1P" value={supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
+                  <DataItem label="P2P" value={supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
+                  <DataItem label="P3P" value={supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
+                  <DataItem label="P4P" value={supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
+                  <DataItem label="P5P" value={supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
+                  <DataItem label="P6P" value={supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
+                </SectionCard>
+              )}
+
+              {activeSubTab === 'Datos Económicos Contrato' && (
+                <>
+                  <SectionCard title="Información Comercial del Contrato" icon={FileText} delay={0}>
+                    <DataItem highlight label="Producto Contratado" value={initialContract.product?.name || lead.product} />
+                    <DataItem label="Tipo de Producto" value={initialContract.product?.type || '-'} />
+                    <DataItem highlight label="Servicio de Valor Añadido (SVA)" value={getSvaName()} />
+                  </SectionCard>
+
+                  <SectionCard title="Precios de Energía Activa (€/kWh)" icon={Wallet} delay={50}>
+                    <DataItem label="P1E" value={getPricesFromLead(lead).p1E} />
+                    <DataItem label="P2E" value={getPricesFromLead(lead).p2E} />
+                    <DataItem label="P3E" value={getPricesFromLead(lead).p3E} />
+                    {(initialContract.product?.tariff !== '2.0TD' && supplyPoint?.tariff !== '2.0TD') && (
+                      <>
+                        <DataItem label="P4E" value={getPricesFromLead(lead).p4E} />
+                        <DataItem label="P5E" value={getPricesFromLead(lead).p5E} />
+                        <DataItem label="P6E" value={getPricesFromLead(lead).p6E} />
+                      </>
+                    )}
+                  </SectionCard>
+
+                  <SectionCard title="Precios de Potencia (€/kW/año)" icon={Zap} delay={50}>
+                    <DataItem label="P1P" value={getPricesFromLead(lead).p1P} />
+                    <DataItem label="P2P" value={getPricesFromLead(lead).p2P} />
+                    {(initialContract.product?.tariff !== '2.0TD' && supplyPoint?.tariff !== '2.0TD') && (
+                      <>
+                        <DataItem label="P3P" value={getPricesFromLead(lead).p3P} />
+                        <DataItem label="P4P" value={getPricesFromLead(lead).p4P} />
+                        <DataItem label="P5P" value={getPricesFromLead(lead).p5P} />
+                        <DataItem label="P6P" value={getPricesFromLead(lead).p6P} />
+                      </>
+                    )}
+                  </SectionCard>
+
+                  <SectionCard title="Costes de Gestión y Comisiones" icon={Banknote} delay={150}>
+                    <DataItem highlight label="Fee / Margen Comercial" value={`€ ${getPricesFromLead(lead).fee}`} />
+                    <DataItem label="CG Bolsillo Solar" value={initialContract.cgBolsilloSolar || '-'} />
+                    <DataItem label="Coste Desvíos" value={initialContract.deviationCost || '-'} />
+                    <DataItem label="Precio Excedentes" value={initialContract.pexc || '-'} />
+                    <DataItem label="Comisión Estimada" value={`€ ${initialContract.commissionBase || '0.00'}`} />
+                    <DataItem highlight label="Comisión Final" value={`€ ${initialContract.commissionFinal || '0.00'}`} />
+                  </SectionCard>
+
+                  <SectionCard title="Descuentos Aplicados" icon={CheckCircle} delay={200}>
+                    <DataItem label="Descuento (€)" value={initialContract.discountPrice || '-'} />
+                    <DataItem label="Fecha Inicio Descuento" value={initialContract.discountStartDate ? new Date(initialContract.discountStartDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Fin Descuento" value={initialContract.discountEndDate ? new Date(initialContract.discountEndDate).toLocaleDateString('es-ES') : '-'} />
+                  </SectionCard>
+                </>
+              )}
+
+              {activeSubTab === 'Catastro' && (
+                <SectionCard title="Información Catastral" icon={MapPin} delay={0}>
+                  <DataItem highlight label="Referencia Catastral" value={supplyPoint.cadastralReference || '-'} />
+                  <DataItem label="Provincia Catastro" value={supplyPoint.cadastreProvince || '-'} />
+                  <DataItem label="Municipio Catastro" value={supplyPoint.cadastreCity || '-'} />
+                  <DataItem label="Tipo Vía" value={supplyPoint.cadastreStreetType || '-'} />
+                  <DataItem label="Nombre Vía" value={supplyPoint.cadastreAddress || '-'} />
+                  <DataItem label="Número" value={supplyPoint.cadastreNumber || '-'} />
+                  <DataItem label="Bloque" value={supplyPoint.cadastreBlock || '-'} />
+                  <DataItem label="Planta" value={supplyPoint.cadastreFloor || '-'} />
+                  <DataItem label="Puerta" value={supplyPoint.cadastreDoor || '-'} />
+                </SectionCard>
+              )}
+
+              {activeSubTab === 'Datos CAU' && (
+                <SectionCard title="Código de Autoconsumo (CAU)" icon={Battery} delay={0}>
+                  <DataItem highlight label="CAU" value={supplyPoint.cau || '-'} />
+                  <DataItem label="Tipo Autoconsumo" value={supplyPoint.cauType || supplyPoint.selfConsumptionType || '-'} />
+                  <DataItem label="Subtipo" value={supplyPoint.cauSubtype || '-'} />
+                  <DataItem label="Colectivo" value={supplyPoint.cauCollective || '-'} />
+                  <DataItem label="CIL" value={supplyPoint.cil || '-'} />
+                  <DataItem label="CIE Autoconsumo" value={supplyPoint.cieSelfConsumption || '-'} />
+                  <DataItem label="CIE Consumo" value={supplyPoint.cie || '-'} />
+                  <DataItem label="Tecnología Generador" value={supplyPoint.generatorTechnology || '-'} />
+                  <DataItem label="Potencia Instalada Generación (kW)" value={supplyPoint.installedPowerGen || '-'} />
+                  <DataItem label="Tipo de Instalación" value={supplyPoint.installationType || '-'} />
+                  <DataItem label="Esquema de Medida" value={supplyPoint.meteringScheme || '-'} />
+                </SectionCard>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'Facturación' && (
+          <div className="card p-6 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Banknote className="text-gray-400" /> Facturas del Contrato
+              </h2>
+            </div>
+            
+            {!initialContract.invoices || initialContract.invoices.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 border border-dashed border-[var(--border-strong)] rounded-lg">
+                No hay facturas emitidas para este contrato.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-left">
+                      <th className="py-3 px-4 font-semibold text-gray-400">NÚMERO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">FECHA EMISIÓN</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PERIODO (DISTRIBUIDORA)</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PERIODO (ENERGÍA)</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">TOTAL</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">ESTADO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">ACCIONES</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {initialContract.invoices.map((inv: any) => (
+                      <tr key={inv.id} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                        <td className="py-3 px-4 font-mono text-sm text-gray-300">{inv.invoiceNumber}</td>
+                        <td className="py-3 px-4 text-sm text-gray-300">{new Date(inv.issueDate).toLocaleDateString('es-ES')}</td>
+                        <td className="py-3 px-4 text-sm text-gray-400">
+                          {inv.desde ? new Date(inv.desde).toLocaleDateString('es-ES') : '-'} al {inv.hasta ? new Date(inv.hasta).toLocaleDateString('es-ES') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-500">
+                          {inv.desdeEA ? new Date(inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.hastaEA ? new Date(inv.hastaEA).toLocaleDateString('es-ES') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-bold text-[var(--lime)]">€ {inv.totalAmount.toFixed(2)}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs font-bold max-w-max ${
+                            inv.status === 'PAGADA' ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border border-[rgba(34,197,94,0.3)]' :
+                            inv.status === 'PENDIENTE' ? 'bg-[rgba(234,179,8,0.15)] text-yellow-400 border border-[rgba(234,179,8,0.3)]' :
+                            'bg-[var(--bg-elevated)] border-[var(--border)] text-gray-400'
+                          }`}>
+                            {inv.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <a href={`/facturas/${inv.id}`} className="text-indigo-400 hover:text-indigo-300 text-sm font-medium">Ver Detalles</a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'Sips' && (
+          <div className="card p-6 animate-fade-in-up max-w-3xl">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Search className="text-gray-400" /> SIPS
+              </h2>
+            </div>
+            
+            <p className="text-gray-400 mb-6">
+              Actualiza los datos SIPS (Sistema de Información de Puntos de Suministro) directamente para este contrato. El CUPS asociado es <span className="font-mono text-gray-200">{supplyPoint.cups}</span>.
+            </p>
+            
+            <div className="bg-[var(--bg-elevated)] p-5 border border-[var(--border)] rounded-xl flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-gray-200">Consultar / Actualizar SIPS</h4>
+                <p className="text-xs text-gray-400 mt-1">Se realizará una petición al endpoint de SIPS para refrescar consumos y potencias.</p>
+              </div>
+              <button className="btn-primary flex items-center gap-2">
+                <RefreshCw size={16} /> Actualizar Datos SIPS
+              </button>
+            </div>
+          </div>
+        )}
+
+        {['Switching', 'Reclamaciones', 'Consumos', 'F1s'].includes(activeTab) && (
+          <div className="flex flex-col items-center justify-center py-20 px-4 border border-dashed border-[var(--border-strong)] rounded-2xl bg-[var(--bg-elevated)] animate-fade-in-up">
+            <div className="w-16 h-16 bg-[var(--bg-base)] rounded-full flex items-center justify-center mb-4">
+              <RefreshCw size={24} className="text-gray-500 animate-spin-slow" />
+            </div>
+            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">Módulo Próximamente</h2>
+            <p className="text-gray-400 text-center max-w-md">
+              El módulo de <strong>{activeTab}</strong> se implementará próximamente en el ERP.
+            </p>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
