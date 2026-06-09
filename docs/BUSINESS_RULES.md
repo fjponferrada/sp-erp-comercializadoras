@@ -11,6 +11,10 @@
   - EL CRM YA TIENE DESARROLLADAS LAS SIGUIENTES PANTALLAS: `Mis Comercializadoras`, `Mis Marcas`, `Incidencias`, `Dashboard`, `Análisis Económico`, `Leads`, `Contratos`, `Clientes`, `Facturas`, `Renovaciones`, `Bajas`, `Autoconsumo`, `Usuarios`, `Productos`, `Canales` y `Ajustes`.
   - También existen ya las fichas específicas de detalle para cada registro contenido dentro de esas áreas.
   - **REGLA DE ORO**: En adelante, se trata de **mejorar** las secciones anteriores e ir ampliando funcionalidades, pero **NO TENEMOS QUE HACER PÁGINAS QUE YA EXISTEN** desde cero.
+- **Infraestructura y Hosting**:
+  - Código fuente: **GitHub**
+  - Despliegue Frontend/Backend: **Vercel**
+  - Base de Datos Relacional: **Vercel Postgres** (No usar Prisma Postgres ni Neon externo directamente, usar siempre la instancia de Vercel Postgres vinculada al proyecto en Vercel).
 
 ## 2. Control de Accesos y Roles de Usuario
 - **Superadmin Supremo**: El usuario `fjponferrada@sp-energia.com` es el Superadmin y tiene acceso total, absoluto e irrestricto a todas las áreas del software siempre. Es el único que puede ver el menú de "Usuarios", dar de alta nuevos usuarios y asignarles roles, marcas y/o comercializadoras.
