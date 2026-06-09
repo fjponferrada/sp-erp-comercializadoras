@@ -22,7 +22,7 @@ if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
 }
 
 async function run() {
-  console.log("Iniciando migración de Airtable (10 registros + Facturas)...");
+  console.log("Iniciando migración MASIVA de Airtable (100% de los registros)...");
 
   console.log("Limpiando base de datos primero...");
   await prisma.document.deleteMany({});
@@ -50,17 +50,10 @@ async function run() {
     return allRecords;
   }
 
-  // Fetch 10 random contracts instead of the specific 5
-  // Note: we fetch 100 and then pick 10 random to simulate "random" from Airtable
-  const url = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?maxRecords=100&filterByFormula=" + encodeURIComponent('NOT({CUPS}="")');
-  const response = await fetch(url, { headers: { Authorization: "Bearer " + AIRTABLE_API_KEY } });
-  if (!response.ok) throw new Error("Error fetching Airtable: " + await response.text());
-
-  const data = await response.json();
-  // Shuffle and pick 10
-  const shuffled = data.records.sort(() => 0.5 - Math.random());
-  const records = shuffled.slice(0, 10);
-  console.log("Obtenidos " + records.length + " contratos con facturas de Airtable.");
+  // Fetch ALL contracts
+  const contratosUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?filterByFormula=" + encodeURIComponent('NOT({CUPS}="")');
+  const records = await fetchAllAirtableRecords(contratosUrl);
+  console.log("Obtenidos " + records.length + " contratos de Airtable.");
 
   let company = await prisma.company.findFirst();
   if (!company) {
