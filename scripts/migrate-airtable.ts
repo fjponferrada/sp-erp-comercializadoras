@@ -65,12 +65,12 @@ async function run() {
 
   let company = await prisma.company.findFirst();
   if (!company) {
-    company = await prisma.company.create({ data: { name: 'AED Energía (Migrada)', cif: 'B00000000' } });
+    company = await prisma.company.create({ data: { name: 'AED Energía', cif: 'B00000000', codigo: 'AED' } });
   }
 
   let brand = await prisma.brand.findFirst();
   if (!brand) {
-    brand = await prisma.brand.create({ data: { name: 'AED Energía', slug: 'aed-energia', companyId: company.id } });
+    brand = await prisma.brand.create({ data: { name: 'AED Energía', slug: 'aed-energia', companyId: company.id, codigoMarca: 'AED' } });
   }
 
   let admin = await prisma.user.findUnique({ where: { email: 'fjponferrada@sp-energia.com' } });
