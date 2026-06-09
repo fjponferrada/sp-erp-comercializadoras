@@ -39,9 +39,9 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
 
-    if (invoice.pdfUrl) {
+    if (invoice.pdfUrl && !invoice.pdfUrl.includes('airtable')) {
       return NextResponse.json({
-        error: `La factura ${invoiceNumber} ya tiene un documento adjunto. No se ha sobreescrito para evitar duplicados.`
+        error: `La factura ${invoiceNumber} ya tiene un documento adjunto definitivo. No se ha sobreescrito para evitar duplicados.`
       }, { status: 400 });
     }
 
