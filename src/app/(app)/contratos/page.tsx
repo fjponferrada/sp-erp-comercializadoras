@@ -40,6 +40,11 @@ export default async function ContratosPage() {
       draftUrl = airtableData['Borrador contrato'][0].url;
     }
 
+    let annexUrl = null;
+    if (airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
+      annexUrl = airtableData['PDF Anexo firmado'][0].url;
+    }
+
     return {
       ...c,
       lead: c.Lead,
@@ -48,7 +53,8 @@ export default async function ContratosPage() {
       user: c.user,
       product: c.product,
       signedUrl,
-      draftUrl
+      draftUrl,
+      annexUrl
     };
   });
 
