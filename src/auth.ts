@@ -3,7 +3,6 @@ import Credentials from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import fs from 'fs';
 import { authConfig } from './auth.config';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -18,7 +17,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: 'Contraseña', type: 'password' },
       },
       async authorize(credentials) {
-        fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Login attempt for: ${credentials?.email}\n`);
+        console.log(`[${new Date().toISOString()}] Login attempt for: ${credentials?.email}`);
         if (!credentials?.email || !credentials?.password) return null;
         
         const cleanEmail = (credentials.email as string).trim();
@@ -32,12 +31,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             companies: true
           },
         }).catch(err => {
-          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Prisma error: ${err.message}\n`);
+          console.error(`[${new Date().toISOString()}] Prisma error: ${err.message}`);
           throw err;
         });
 
         if (!user) {
-          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] User not found: ${cleanEmail}\n`);
+          console.log(`[${new Date().toISOString()}] User not found: ${cleanEmail}`);
           return null;
         }
 
@@ -46,7 +45,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           user.password,
         );
         if (!passwordOk) {
-          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Password mismatch\n`);
+          console.log(`[${new Date().toISOString()}] Password mismatch`);
           return null;
         }
 
@@ -82,11 +81,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const allowedBrands = Array.from(uniqueBrandsMap.values());
 
         if (allowedBrands.length === 0) {
-          fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] User has no allowed brands: ${cleanEmail}\n`);
+          console.log(`[${new Date().toISOString()}] User has no allowed brands: ${cleanEmail}`);
           throw new Error("Acceso denegado: No tienes ninguna comercializadora asignada.");
         }
 
-        fs.appendFileSync('auth-debug.log', `[${new Date().toISOString()}] Returning user object for: ${user.email} (Role: ${user.role}, Brands: ${allowedBrands.length})\n`);
+        console.log(`[${new Date().toISOString()}] Returning user object for: ${user.email} (Role: ${user.role}, Brands: ${allowedBrands.length})`);
 
         return {
           id:        user.id,
