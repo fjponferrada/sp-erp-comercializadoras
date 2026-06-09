@@ -5,7 +5,6 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import fetch from 'node-fetch';
 import * as dotenv from 'dotenv';
 import path from 'path';
-import { put } from '@vercel/blob';
 
 // Load .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -20,26 +19,6 @@ const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
   console.error("Faltan credenciales de Airtable en .env");
   process.exit(1);
-}
-
-async function uploadAirtablePdfToBlob(airtableUrl: string, filename: string): Promise<string | null> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return null;
-  try {
-    const res = await fetch(airtableUrl);
-    if (!res.ok) {
-      console.warn(`    [WARN] Error descargando PDF de Airtable para ${filename}: ${res.statusText}`);
-      return null;
-    }
-    const buffer = await res.buffer();
-    const blob = await put(`contratos_migracion/${filename}`, buffer, {
-      access: 'public',
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
-    return blob.url;
-  } catch (err: any) {
-    console.error(`    [ERROR] Fallo subiendo a Blob ${filename}:`, err.message);
-    return null;
-  }
 }
 
 async function run() {
@@ -457,32 +436,6 @@ async function run() {
           } else {
               console.log(`  [WARN] Comercial no encontrado: ${emailComercial}`);
           }
-      }
-
-      // -- VERCEL BLOB UPLOAD FOR PDFs --
-      const sanitizeName = (str: string) => str.replace(/[^a-zA-Z0-9]/g, '_');
-      const baseFilename = `${sanitizeName(cups)}_${record.id}`;
-
-      if (f['PDF Contrato firmado'] && Array.isArray(f['PDF Contrato firmado']) && f['PDF Contrato firmado'].length > 0) {
-        console.log(`    Subiendo Contrato Firmado a Vercel Blob...`);
-        const newUrl = await uploadAirtablePdfToBlob(f['PDF Contrato firmado'][0].url, `${baseFilename}_firmado.pdf`);
-        if (newUrl) f['PDF Contrato firmado'][0].url = newUrl;
-      } else if (f['Contrato .PDF'] && Array.isArray(f['Contrato .PDF']) && f['Contrato .PDF'].length > 0) {
-        console.log(`    Subiendo Contrato .PDF a Vercel Blob...`);
-        const newUrl = await uploadAirtablePdfToBlob(f['Contrato .PDF'][0].url, `${baseFilename}_firmado.pdf`);
-        if (newUrl) f['Contrato .PDF'][0].url = newUrl;
-      }
-
-      if (f['Borrador contrato'] && Array.isArray(f['Borrador contrato']) && f['Borrador contrato'].length > 0) {
-        console.log(`    Subiendo Borrador a Vercel Blob...`);
-        const newUrl = await uploadAirtablePdfToBlob(f['Borrador contrato'][0].url, `${baseFilename}_borrador.pdf`);
-        if (newUrl) f['Borrador contrato'][0].url = newUrl;
-      }
-
-      if (f['PDF Anexo firmado'] && Array.isArray(f['PDF Anexo firmado']) && f['PDF Anexo firmado'].length > 0) {
-        console.log(`    Subiendo Anexo Firmado a Vercel Blob...`);
-        const newUrl = await uploadAirtablePdfToBlob(f['PDF Anexo firmado'][0].url, `${baseFilename}_anexo.pdf`);
-        if (newUrl) f['PDF Anexo firmado'][0].url = newUrl;
       }
 
       if (!existingContract) {
