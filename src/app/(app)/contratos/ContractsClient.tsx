@@ -271,7 +271,8 @@ export default function ContractsClient({ contracts, userRole = 'CANAL' }: { con
                   </tr>
                 ) : paginated.map((c) => {
                   const est = ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
-                  const hasSignedDoc = !!c.signedUrl || c.estado === 'FIRMADO' || c.estado === 'ACEPTADO';
+                  const estUpper = String(c.estado).toUpperCase();
+                  const hasSignedDoc = !!c.signedUrl || ['FIRMADO', 'ACEPTADO', 'ACTIVO', 'FINALIZADO', 'TRAMITANDO'].includes(estUpper);
 
                   return (
                     <tr key={c.id} style={{ transition: 'background 0.15s ease' }} className="hover:bg-white/[0.02]">
