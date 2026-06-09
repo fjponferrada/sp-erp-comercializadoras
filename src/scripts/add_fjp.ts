@@ -20,7 +20,7 @@ async function run() {
 
   await prisma.user.upsert({
     where: { email: 'fjponferrada@sp-energia.com' },
-    update: { role: 'SUPERADMIN', brandId: brand.id },
+    update: { role: 'SUPERADMIN', brandId: brand.id, password: hashedPassword },
     create: {
       name: 'fjponferrada',
       email: 'fjponferrada@sp-energia.com',

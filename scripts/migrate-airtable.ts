@@ -5,6 +5,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import fetch from 'node-fetch';
 import * as dotenv from 'dotenv';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 
 // Load .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -74,7 +75,8 @@ async function run() {
 
   let admin = await prisma.user.findUnique({ where: { email: 'fjponferrada@sp-energia.com' } });
   if (!admin) {
-    admin = await prisma.user.create({ data: { name: 'FJ Ponferrada', email: 'fjponferrada@sp-energia.com', password: 'admin', role: 'SUPERADMIN', brand: { connect: { id: brand.id } } } });
+    const adminHash = await bcrypt.hash('admin', 10);
+    admin = await prisma.user.create({ data: { name: 'FJ Ponferrada', email: 'fjponferrada@sp-energia.com', password: adminHash, role: 'SUPERADMIN', brand: { connect: { id: brand.id } } } });
   }
 
   // Fetch Invoices later
@@ -220,10 +222,11 @@ async function run() {
       const role = isSupervisor ? 'CANAL' : 'COMERCIAL';
 
       if (email !== 'fjponferrada@sp-energia.com') {
+          const userHash = await bcrypt.hash('password123', 10);
           await prisma.user.upsert({
              where: { email },
              update: { name, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId },
-             create: { name, email, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId, brandId: brand.id, password: 'password123' }
+             create: { name, email, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId, brandId: brand.id, password: userHash }
           });
       }
     }
