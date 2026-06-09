@@ -75,7 +75,7 @@ async function run() {
 
   let admin = await prisma.user.findUnique({ where: { email: 'fjponferrada@sp-energia.com' } });
   if (!admin) {
-    const adminHash = await bcrypt.hash('admin', 10);
+    const adminHash = await bcrypt.hash('123456', 10);
     admin = await prisma.user.create({ data: { name: 'FJ Ponferrada', email: 'fjponferrada@sp-energia.com', password: adminHash, role: 'SUPERADMIN', brand: { connect: { id: brand.id } } } });
   }
 
