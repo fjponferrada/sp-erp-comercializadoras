@@ -68,6 +68,7 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
               <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4">Nombre Empresa</th>
+                  <th className="px-6 py-4">Código CRM</th>
                   <th className="px-6 py-4">Dirección</th>
                   <th className="px-6 py-4">Email</th>
                   <th className="px-6 py-4">Contacto</th>
@@ -88,6 +89,7 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
                   <React.Fragment key={c.id}>
                     <tr className="hover:bg-slate-700/30 transition-colors" style={{ background: editingId === c.id ? 'rgba(51, 65, 85, 0.5)' : 'transparent' }}>
                       <td className="px-6 py-4 font-medium text-white">{c.name}</td>
+                      <td className="px-6 py-4 font-mono text-amber-400 font-medium">{c.codigo || '-'}</td>
                       <td className="px-6 py-4 text-xs text-slate-400 max-w-[200px] truncate" title={c.address || ''}>{c.address || '-'}</td>
                       <td className="px-6 py-4 text-slate-300">{c.email || '-'}</td>
                       <td className="px-6 py-4 text-slate-300">{c.contactPerson || '-'}</td>
@@ -131,7 +133,7 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
                     {/* Editor en línea expandido */}
                     {editingId === c.id && (
                       <tr>
-                        <td colSpan={14} style={{ padding: 0 }}>
+                        <td colSpan={15} style={{ padding: 0 }}>
                           <div style={{ padding: '24px', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                               
@@ -148,6 +150,10 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
                                   <div>
                                     <label className="text-xs text-slate-400 mb-1 block">CIF</label>
                                     <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.cif || ''} onChange={e => handleChange('cif', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Código Interno CRM</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.codigo || ''} onChange={e => handleChange('codigo', e.target.value)} />
                                   </div>
                                   <div style={{ gridColumn: 'span 2' }}>
                                     <label className="text-xs text-slate-400 mb-1 block">Dirección</label>
@@ -247,7 +253,7 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
                 ))}
                 {companies.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="text-center py-8 text-slate-400">
+                    <td colSpan={15} className="text-center py-8 text-slate-400">
                       No se encontraron comercializadoras.
                     </td>
                   </tr>
