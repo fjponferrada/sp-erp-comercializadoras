@@ -39,10 +39,20 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
 
-    if (invoice.pdfUrl && !invoice.pdfUrl.includes('airtable')) {
-      return NextResponse.json({
-        error: `La factura ${invoiceNumber} ya tiene un documento adjunto definitivo. No se ha sobreescrito para evitar duplicados.`
-      }, { status: 400 });
+    const isXml = extension.toLowerCase() === '.xml';
+
+    if (isXml) {
+      if (invoice.xML && !invoice.xML.includes('airtable')) {
+        return NextResponse.json({
+          error: `La factura ${invoiceNumber} ya tiene un documento XML adjunto definitivo. No se ha sobreescrito para evitar duplicados.`
+        }, { status: 400 });
+      }
+    } else {
+      if (invoice.pdfUrl && !invoice.pdfUrl.includes('airtable')) {
+        return NextResponse.json({
+          error: `La factura ${invoiceNumber} ya tiene un documento adjunto definitivo. No se ha sobreescrito para evitar duplicados.`
+        }, { status: 400 });
+      }
     }
 
     // Almacenamiento en la Nube con Vercel Blob
@@ -55,7 +65,7 @@ export async function POST(req: NextRequest) {
     // Actualizar BD con la URL pública devuelta por Vercel Blob
     await prisma.invoice.update({
       where: { id: invoice.id },
-      data: { pdfUrl: blob.url }
+      data: isXml ? { xML: blob.url } : { pdfUrl: blob.url }
     });
 
     return NextResponse.json({ 
