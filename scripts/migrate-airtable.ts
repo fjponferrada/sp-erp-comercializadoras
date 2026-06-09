@@ -51,17 +51,10 @@ async function run() {
     return allRecords;
   }
 
-  // Fetch 10 random contracts instead of the specific 5
-  // Note: we fetch 100 and then pick 10 random to simulate "random" from Airtable
-  const url = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?maxRecords=100&filterByFormula=" + encodeURIComponent('NOT({CUPS}="")');
-  const response = await fetch(url, { headers: { Authorization: "Bearer " + AIRTABLE_API_KEY } });
-  if (!response.ok) throw new Error("Error fetching Airtable: " + await response.text());
-
-  const data = await response.json();
-  // Shuffle and pick 10
-  const shuffled = data.records.sort(() => 0.5 - Math.random());
-  const records = shuffled.slice(0, 10);
-  console.log("Obtenidos " + records.length + " contratos con facturas de Airtable.");
+  console.log("Descargando TODOS LOS CONTRATOS de Airtable...");
+  const contratosUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?filterByFormula=" + encodeURIComponent('NOT({CUPS}="")');
+  const records = await fetchAllAirtableRecords(contratosUrl);
+  console.log("Obtenidos " + records.length + " contratos de Airtable.");
 
   let company = await prisma.company.findFirst();
   if (!company) {
@@ -232,30 +225,22 @@ async function run() {
     }
   }
 
-  // Recolectar IDs de facturas para los 10 contratos seleccionados
-  const invoiceIdsToFetch = new Set<string>();
-  for (const record of records) {
-    const invIds = record.fields['FACTURAS'];
-    if (Array.isArray(invIds)) {
-      invIds.forEach((id: string) => invoiceIdsToFetch.add(id));
-    }
-  }
+  console.log("Descargando TODAS LAS FACTURAS de Airtable...");
+  const facturasUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/FACTURAS";
+  allInvoices = await fetchAllAirtableRecords(facturasUrl);
+  console.log(`Descargadas ${allInvoices.length} facturas correctamente.`);
 
-  // Descargar facturas asociadas en lotes (Airtable max URL length restriction)
-  if (invoiceIdsToFetch.size > 0) {
-    const idsArray = Array.from(invoiceIdsToFetch);
-    console.log(`Descargando ${idsArray.length} facturas vinculadas a los contratos...`);
-    for (let i = 0; i < idsArray.length; i += 50) {
-      const batch = idsArray.slice(i, i + 50);
-      const formula = "OR(" + batch.map(id => `RECORD_ID()='${id}'`).join(",") + ")";
-      const invUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/FACTURAS?filterByFormula=" + encodeURIComponent(formula);
-      const res = await fetch(invUrl, { headers: { Authorization: "Bearer " + AIRTABLE_API_KEY } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.records) allInvoices.push(...data.records);
+  const invoicesByContract = new Map<string, any[]>();
+  for (const inv of allInvoices) {
+    const c2 = inv.fields['Contrato2'];
+    if (Array.isArray(c2)) {
+      for (const cId of c2) {
+        if (!invoicesByContract.has(cId)) {
+          invoicesByContract.set(cId, []);
+        }
+        invoicesByContract.get(cId)!.push(inv);
       }
     }
-    console.log(`Descargadas ${allInvoices.length} facturas correctamente.`);
   }
 
   for (const record of records) {
@@ -500,10 +485,7 @@ async function run() {
       }
 
       // -- IMPORTAR FACTURAS (filtrando del global) --
-      const invoices = allInvoices.filter(inv => {
-        const c2 = inv.fields['Contrato2'];
-        return Array.isArray(c2) && c2.includes(airtableId);
-      });
+      const invoices = invoicesByContract.get(airtableId) || [];
       console.log(`  + Encontradas ${invoices.length} facturas asociadas localmente.`);
       
       for (const inv of invoices) {
