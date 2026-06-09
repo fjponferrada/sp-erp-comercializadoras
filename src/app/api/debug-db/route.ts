@@ -13,7 +13,7 @@ export async function GET() {
 
     const visibilityFilter = await getUserVisibilityFilter();
 
-    await prisma.lead.findMany({
+    const leadsDB = await prisma.lead.findMany({
       where: visibilityFilter,
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -24,8 +24,16 @@ export async function GET() {
       }
     });
 
+    const cupsList = leadsDB.map(l => l.cups).filter(Boolean) as string[];
+    const supplyPoints = await prisma.supplyPoint.findMany({
+      where: { cups: { in: cupsList } },
+      select: { cups: true, address: true }
+    });
+
     return NextResponse.json({ 
       status: "success", 
+      leadsCount: leadsDB.length,
+      supplyPointsCount: supplyPoints.length,
       DATABASE_URL_length: process.env.DATABASE_URL?.length,
       PRISMA_DATABASE_URL_length: process.env.PRISMA_DATABASE_URL?.length,
       POSTGRES_URL_length: process.env.POSTGRES_URL?.length,

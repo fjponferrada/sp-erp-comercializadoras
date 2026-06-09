@@ -1,14 +1,9 @@
 'use server';
 
-import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { auth } from '@/auth'; // Asumimos que Auth.js está exportando esto
+import { revalidatePath } from 'next/cache';
+import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
 import { getSipsData } from '@/lib/sips';
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
 
 export async function createLeadAction(formData: FormData) {
   // 1. Identificar al usuario logueado

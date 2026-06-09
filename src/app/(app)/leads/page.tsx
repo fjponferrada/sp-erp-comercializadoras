@@ -1,12 +1,6 @@
-import { PrismaClient } from '@prisma/client'
-import { Pool } from 'pg'
-import { PrismaPg } from '@prisma/adapter-pg'
 import { getUserVisibilityFilter } from '@/lib/permissions'
 import LeadsClient, { LeadData } from './LeadsClient'
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-const adapter = new PrismaPg(pool)
-const prisma = new PrismaClient({ adapter })
+import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
