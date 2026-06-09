@@ -1,6 +1,6 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
-import UsuariosClient, { UserData } from './UsuariosClient'
+import UsersClient from './UsersClient'
 import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'

@@ -85,8 +85,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
             <span>{client.contactPhone || 'Sin teléfono'}</span>
           </div>
           <div className="flex items-center gap-3 text-slate-300">
-            <MapPin className="w-5 h-5 text-slate-500" />
-            <span className="truncate">{client.billingAddress || 'Dirección no especificada'}</span>
+            <MapPin className="w-5 h-5 text-slate-500 min-w-5" />
+            <span className="truncate" title={[client.billingAddress, client.billingPostalCode, client.billingCity, client.billingProvince].filter(Boolean).join(', ')}>
+              {[client.billingAddress, client.billingPostalCode, client.billingCity, client.billingProvince].filter(Boolean).join(', ') || 'Dirección no especificada'}
+            </span>
           </div>
         </div>
       </div>

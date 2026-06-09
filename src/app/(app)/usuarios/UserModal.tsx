@@ -26,6 +26,12 @@ export default function UserModal({ user, brands, companies, channels, onClose, 
   const handleSave = async () => {
     setLoading(true);
     setError('');
+
+    if (formData.role === 'CANAL' && !formData.channelId) {
+      setError('El rol Jefe de Canal requiere obligatoriamente seleccionar un Canal de Ventas.');
+      setLoading(false);
+      return;
+    }
     
     try {
       const res = await fetch(user ? `/api/users/${user.id}` : '/api/users', {
@@ -116,11 +122,33 @@ export default function UserModal({ user, brands, companies, channels, onClose, 
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          {(formData.role === 'CANAL' || formData.role === 'COMERCIAL') && (
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Comercializadoras Autorizadas</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto', background: 'var(--bg-elevated)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                {companies.map((c: any) => (
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Canal de Ventas {formData.role === 'CANAL' ? '(Obligatorio)' : '(Opcional)'}</label>
+              <select name="channelId" value={formData.channelId} onChange={handleChange} className="form-input" style={{ width: '100%' }}>
+                <option value="">Sin canal específico</option>
+                {channels.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {formData.channelId && formData.channelId !== '' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    name="isChannelSupervisor"
+                    checked={formData.isChannelSupervisor}
+                    onChange={(e) => setFormData({ ...formData, isChannelSupervisor: e.target.checked })}
+                  />
+                  Este usuario es el Supervisor del Canal
+                </label>
+              )}
+            </div>
+          )}
+
+          {((formData.role !== 'CANAL' && formData.role !== 'COMERCIAL') || !formData.channelId) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Comercializadoras Autorizadas</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto', background: 'var(--bg-elevated)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  {companies.map((c: any) => (
                   <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -172,25 +200,7 @@ export default function UserModal({ user, brands, companies, channels, onClose, 
               </div>
             </div>
           </div>
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Canal de Ventas (Opcional)</label>
-            <select name="channelId" value={formData.channelId} onChange={handleChange} className="form-input" style={{ width: '100%' }}>
-              <option value="">Sin canal específico</option>
-              {channels.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            {formData.channelId && formData.channelId !== '' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  name="isChannelSupervisor"
-                  checked={formData.isChannelSupervisor}
-                  onChange={(e) => setFormData({ ...formData, isChannelSupervisor: e.target.checked })}
-                />
-                Este usuario es el Supervisor del Canal
-              </label>
-            )}
-          </div>
+          )}
 
         </div>
 

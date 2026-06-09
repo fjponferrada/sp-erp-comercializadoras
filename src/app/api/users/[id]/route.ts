@@ -13,7 +13,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   try {
     const data = await req.json();
-    const primaryBrandId = data.brandId || (data.assignedBrandIds && data.assignedBrandIds.length > 0 ? data.assignedBrandIds[0] : null);
+    let primaryBrandId = data.brandId || (data.assignedBrandIds && data.assignedBrandIds.length > 0 ? data.assignedBrandIds[0] : null);
+    let assignedBrandIds = data.assignedBrandIds || [];
+    let assignedCompanyIds = data.assignedCompanyIds || [];
+
+    if (data.channelId && (data.role === 'CANAL' || data.role === 'COMERCIAL')) {
+      const channel = await prisma.channel.findUnique({ where: { id: data.channelId }, include: { brand: true } });
+      if (channel && channel.brandId) {
+        primaryBrandId = channel.brandId;
+        assignedBrandIds = [channel.brandId];
+        if (channel.brand?.companyId) {
+          assignedCompanyIds = [channel.brand.companyId];
+        }
+      }
+    }
 
     const updateData: any = {
       name: data.name,
@@ -22,12 +35,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       phone: data.phone || null,
       codigo: data.codigo || null,
       isChannelSupervisor: Boolean(data.isChannelSupervisor),
-      assignedBrands: data.assignedBrandIds ? {
-        set: data.assignedBrandIds.map((id: string) => ({ id }))
-      } : undefined,
-      companies: data.assignedCompanyIds ? {
-        set: data.assignedCompanyIds.map((id: string) => ({ id }))
-      } : undefined
+      assignedBrands: assignedBrandIds.length > 0 ? {
+        set: assignedBrandIds.map((id: string) => ({ id }))
+      } : { set: [] },
+      companies: assignedCompanyIds.length > 0 ? {
+        set: assignedCompanyIds.map((id: string) => ({ id }))
+      } : { set: [] }
     };
 
     if (primaryBrandId) {

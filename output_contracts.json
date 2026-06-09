@@ -1336,7 +1336,7 @@
   ],
   [
     "P1C",
-    "Consumo anual estimado P1",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P1",
     "supplyPoint.p1c"
   ],
   [
@@ -1351,12 +1351,12 @@
   ],
   [
     "P1P",
-    "Potencia contratada P1",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P1",
     "supplyPoint.p1p / contract.customP1P"
   ],
   [
     "P1P (from PRODUCTOS)",
-    "precio de potencia en período p1",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P1",
     "contract.airtableData (JSON)"
   ],
   [
@@ -1446,7 +1446,7 @@
   ],
   [
     "P2C",
-    "idem que p1 pero para este período",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P2",
     "supplyPoint.p2c"
   ],
   [
@@ -1461,17 +1461,17 @@
   ],
   [
     "P2P",
-    "Potencia contratada (kW) P2 - Inyectado en plantilla PDF",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P2",
     "contract.airtableData (JSON)"
   ],
   [
     "P2P (from PRODUCTOS)",
-    "idem que p1 pero para este período",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P2",
     "contract.airtableData (JSON)"
   ],
   [
     "P3C",
-    "idem que p1 pero para este período",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P3",
     "supplyPoint.p3c"
   ],
   [
@@ -1486,17 +1486,17 @@
   ],
   [
     "P3P",
-    "Potencia contratada (kW) P3 - Inyectado en plantilla PDF",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P3",
     "contract.airtableData (JSON)"
   ],
   [
     "P3P (from PRODUCTOS)",
-    "idem que p1 pero para este período",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P3",
     "contract.airtableData (JSON)"
   ],
   [
     "P4C",
-    "idem que p1 pero para este período",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P4",
     "supplyPoint.p4c"
   ],
   [
@@ -1511,17 +1511,17 @@
   ],
   [
     "P4P",
-    "Potencia contratada (kW) P4 - Inyectado en plantilla PDF",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P4",
     "contract.airtableData (JSON)"
   ],
   [
     "P4P (from PRODUCTOS)",
-    "idem que p1 pero para este período",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P4",
     "contract.airtableData (JSON)"
   ],
   [
     "P5C",
-    "idem que p1 pero para este período",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P5",
     "supplyPoint.p5c"
   ],
   [
@@ -1536,17 +1536,17 @@
   ],
   [
     "P5P",
-    "Potencia contratada (kW) P5 - Inyectado en plantilla PDF",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P5",
     "contract.airtableData (JSON)"
   ],
   [
     "P5P (from PRODUCTOS)",
-    "idem que p1 pero para este período",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P5",
     "contract.airtableData (JSON)"
   ],
   [
     "P6C",
-    "idem que p1 pero para este período",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P6",
     "supplyPoint.p6c"
   ],
   [
@@ -1561,12 +1561,12 @@
   ],
   [
     "P6P",
-    "Potencia contratada (kW) P6 - Inyectado en plantilla PDF",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P6",
     "contract.airtableData (JSON)"
   ],
   [
     "P6P (from PRODUCTOS)",
-    "idem que p1 pero para este período",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P6",
     "contract.airtableData (JSON)"
   ],
   [
@@ -1576,7 +1576,7 @@
   ],
   [
     "PDF Anexo firmado",
-    "Pendiente de definir por el usuario",
+    "FICHERO PDF DEL ANEXO FIRMADO POR EL CLIENTE",
     "contract.airtableData (JSON)"
   ],
   [
@@ -1586,7 +1586,7 @@
   ],
   [
     "PDF Contrato firmado",
-    "Pendiente de definir por el usuario",
+    "FICHERO PDF DEL CONTRATO FIRMADO POR EL CLIENTE",
     "contract.airtableData (JSON)"
   ],
   [

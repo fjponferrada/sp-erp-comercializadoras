@@ -11,6 +11,14 @@ export async function POST(req: Request) {
 
     const data = await req.json();
 
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email as string }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     const newChannel = await prisma.channel.create({
       data: {
         name: data.nombre,
@@ -22,7 +30,8 @@ export async function POST(req: Request) {
         managerEmail: data.managerEmail,
         supportEmail: data.supportEmail,
         autoGenerateContract: data.autoGenerateContract,
-        maxRenewalDays: data.maxRenewalDays
+        maxRenewalDays: data.maxRenewalDays,
+        brandId: user.brandId
       }
     });
 

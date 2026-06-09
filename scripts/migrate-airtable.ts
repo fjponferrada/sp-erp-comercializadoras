@@ -52,7 +52,7 @@ async function run() {
   }
 
   console.log("Descargando TODOS LOS CONTRATOS de Airtable...");
-  const contratosUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?filterByFormula=" + encodeURIComponent('NOT({CUPS}="")');
+  const contratosUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?filterByFormula=" + encodeURIComponent('NOT({CUPS}="")') + "&maxRecords=50";
   const records = await fetchAllAirtableRecords(contratosUrl);
   console.log("Obtenidos " + records.length + " contratos de Airtable.");
 
@@ -215,33 +215,25 @@ async function run() {
       const role = isSupervisor ? 'CANAL' : 'COMERCIAL';
 
       if (email !== 'fjponferrada@sp-energia.com') {
-          const userHash = await bcrypt.hash('password123', 10);
+          const userHash = await bcrypt.hash('123456', 10);
           await prisma.user.upsert({
              where: { email },
-             update: { name, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId },
-             create: { name, email, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId, brandId: brand.id, password: userHash }
+             update: { 
+                 name, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId,
+                 assignedBrands: { connect: [{ id: brand.id }] },
+                 companies: { connect: [{ id: company.id }] }
+             },
+             create: { 
+                 name, email, codigo, phone, role, isChannelSupervisor: isSupervisor, channelId, brandId: brand.id, password: userHash,
+                 assignedBrands: { connect: [{ id: brand.id }] },
+                 companies: { connect: [{ id: company.id }] }
+             }
           });
       }
     }
   }
 
-  console.log("Descargando TODAS LAS FACTURAS de Airtable...");
-  const facturasUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/FACTURAS";
-  allInvoices = await fetchAllAirtableRecords(facturasUrl);
-  console.log(`Descargadas ${allInvoices.length} facturas correctamente.`);
-
-  const invoicesByContract = new Map<string, any[]>();
-  for (const inv of allInvoices) {
-    const c2 = inv.fields['Contrato2'];
-    if (Array.isArray(c2)) {
-      for (const cId of c2) {
-        if (!invoicesByContract.has(cId)) {
-          invoicesByContract.set(cId, []);
-        }
-        invoicesByContract.get(cId)!.push(inv);
-      }
-    }
-  }
+  // We will fetch invoices individually per contract based on Rule 14.
 
   for (const record of records) {
     const f = record.fields;
@@ -484,9 +476,28 @@ async function run() {
         console.log(`  -> Contrato ${airtableId} ya existía.`);
       }
 
-      // -- IMPORTAR FACTURAS (filtrando del global) --
-      const invoices = invoicesByContract.get(airtableId) || [];
-      console.log(`  + Encontradas ${invoices.length} facturas asociadas localmente.`);
+      // -- IMPORTAR FACTURAS (Fetch individual por ID - Regla 14) --
+      const invoiceIds = f['FACTURASfldaa54Nua6LxjjX7'] || f['FACTURAS'] || [];
+      const invoices = [];
+      if (Array.isArray(invoiceIds) && invoiceIds.length > 0) {
+        console.log(`  + Encontradas ${invoiceIds.length} facturas asociadas. Descargando individualmente...`);
+        for (const invId of invoiceIds) {
+          try {
+            const invUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/FACTURAS/${invId}`;
+            const invRes = await fetch(invUrl, { headers: { Authorization: "Bearer " + AIRTABLE_API_KEY } });
+            if (invRes.ok) {
+              const invData = await invRes.json();
+              invoices.push(invData);
+            } else {
+              console.log(`    [WARN] No se pudo obtener la factura ${invId}`);
+            }
+          } catch (err) {
+            console.log(`    [ERROR] Fallo en la petición de factura ${invId}`);
+          }
+        }
+      } else {
+        console.log(`  + Encontradas 0 facturas asociadas.`);
+      }
       
       for (const inv of invoices) {
         const invFields = inv.fields;

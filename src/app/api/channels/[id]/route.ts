@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { getChannelVisibilityFilter } from '@/lib/permissions';
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,9 +13,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const data = await req.json();
 
-    const existingChannel = await prisma.channel.findUnique({
-      where: { id },
+    const visibilityFilter = await getChannelVisibilityFilter();
+
+    const existingChannel = await prisma.channel.findFirst({
+      where: { 
+        id,
+        ...visibilityFilter
+      },
     });
+
+    if (!existingChannel) {
+      return NextResponse.json({ error: 'Channel not found or access denied' }, { status: 404 });
+    }
 
     const updated = await prisma.channel.update({
       where: { id },

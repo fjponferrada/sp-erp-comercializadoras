@@ -170,3 +170,32 @@ export async function getInvoiceVisibilityFilter() {
     contract: { userId: safeUserId }
   };
 }
+
+export async function getChannelVisibilityFilter() {
+  const session = await auth();
+  if (!session?.user) return { id: 'not_logged_in' };
+
+  const { id: userId, role } = session.user as any;
+  const activeBrandId = await getActiveBrand(session.user);
+  const safeUserId = userId || 'missing_user_id';
+
+  if (role === 'SUPERADMIN') {
+    return {}; // No filter, full visibility
+  }
+
+  if (role === 'COMPANYADMIN') {
+    const prismaUser = await import('@/lib/prisma').then(m => m.prisma.user.findUnique({
+      where: { id: safeUserId },
+      include: { companies: true }
+    }));
+    const companyIds = prismaUser?.companies.map(c => c.id) || [];
+    return {
+      brand: { companyId: { in: companyIds } }
+    };
+  }
+
+  // BACKOFFICE, CANAL, COMERCIAL
+  return {
+    brandId: activeBrandId
+  };
+}

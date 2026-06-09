@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { redirect } from 'next/navigation'
-import LeadDetailsClient from './LeadDetailsClient'
+import LeadDetailClient from './LeadDetailClient'
 import { prisma } from '@/lib/prisma'
+import { auth } from '@/auth'
 
 export const dynamic = 'force-dynamic'
 

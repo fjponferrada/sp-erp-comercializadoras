@@ -1,9 +1,13 @@
 import React from 'react';
 import { prisma } from '@/lib/prisma';
 import CanalesClient, { CanalData } from './CanalesClient';
+import { getChannelVisibilityFilter } from '@/lib/permissions';
 
 export default async function CanalesPage() {
+  const visibilityFilter = await getChannelVisibilityFilter();
+
   const dbChannels = await prisma.channel.findMany({
+    where: visibilityFilter,
     include: {
       users: {
         include: {
@@ -27,12 +31,16 @@ export default async function CanalesPage() {
       activos += u.contracts.length;
     });
 
+    const supervisor = channelUsers.find((u: any) => u.isChannelSupervisor) || channelUsers[0];
+    const contactName = supervisor?.name || c.supervisorEmail?.split('@')[0] || 'Admin';
+    const contactPhone = supervisor?.phone || '—';
+
     return {
       id: c.id,
       codigo: c.code,
       nombre: c.name,
-      contacto: c.supervisorEmail?.split('@')[0] || 'Admin', // Placeholder for contact name
-      telefono: '—', // No phone field in schema
+      contacto: contactName,
+      telefono: contactPhone,
       email: c.supervisorEmail || '—',
       adminEmail: c.adminEmail || '',
       managerEmail: c.managerEmail || '',

@@ -19,7 +19,20 @@ export async function POST(req: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
-    const primaryBrandId = data.brandId || (data.assignedBrandIds && data.assignedBrandIds.length > 0 ? data.assignedBrandIds[0] : null);
+    let primaryBrandId = data.brandId || (data.assignedBrandIds && data.assignedBrandIds.length > 0 ? data.assignedBrandIds[0] : null);
+    let assignedBrandIds = data.assignedBrandIds || [];
+    let assignedCompanyIds = data.assignedCompanyIds || [];
+
+    if (data.channelId && (data.role === 'CANAL' || data.role === 'COMERCIAL')) {
+      const channel = await prisma.channel.findUnique({ where: { id: data.channelId }, include: { brand: true } });
+      if (channel && channel.brandId) {
+        primaryBrandId = channel.brandId;
+        assignedBrandIds = [channel.brandId];
+        if (channel.brand?.companyId) {
+          assignedCompanyIds = [channel.brand.companyId];
+        }
+      }
+    }
 
     if (!data.name || !data.email || !data.password || !primaryBrandId) {
       return NextResponse.json({ error: 'Faltan campos obligatorios o no hay marcas asignadas' }, { status: 400 });
@@ -36,11 +49,11 @@ export async function POST(req: Request) {
         phone: data.phone || null,
         codigo: data.codigo || null,
         isChannelSupervisor: Boolean(data.isChannelSupervisor),
-        assignedBrands: data.assignedBrandIds ? {
-          connect: data.assignedBrandIds.map((id: string) => ({ id }))
+        assignedBrands: assignedBrandIds.length > 0 ? {
+          connect: assignedBrandIds.map((id: string) => ({ id }))
         } : undefined,
-        companies: data.assignedCompanyIds ? {
-          connect: data.assignedCompanyIds.map((id: string) => ({ id }))
+        companies: assignedCompanyIds.length > 0 ? {
+          connect: assignedCompanyIds.map((id: string) => ({ id }))
         } : undefined
       }
     });
