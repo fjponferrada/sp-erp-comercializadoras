@@ -37,7 +37,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
       let client = null;
       if (vatNumber) {
         client = await prisma.client.findFirst({
-          where: { vatNumber }
+          where: { vatNumber, brandId: activeBrandId }
         });
       }
 
@@ -56,8 +56,8 @@ export async function importInvoicesAction(invoicesData: any[]) {
       }
 
       // 2. Buscar SupplyPoint por CUPS
-      let supplyPoint = await prisma.supplyPoint.findUnique({
-        where: { cups }
+      let supplyPoint = await prisma.supplyPoint.findFirst({
+        where: { cups, client: { brandId: activeBrandId } }
       });
 
       if (!supplyPoint) {
@@ -112,12 +112,12 @@ export async function importInvoicesAction(invoicesData: any[]) {
       const rectifiedInvoiceNum = row['Numero factura rectificada'] || null;
       let rectifiedInvoiceId = null;
       if (rectifiedInvoiceNum) {
-        const rect = await prisma.invoice.findUnique({ where: { invoiceNumber: rectifiedInvoiceNum }});
+        const rect = await prisma.invoice.findFirst({ where: { invoiceNumber: rectifiedInvoiceNum, client: { brandId: activeBrandId } } });
         if (rect) rectifiedInvoiceId = rect.id;
       }
 
       // 5. Crear la Factura si no existe
-      const existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber } });
+      const existingInvoice = await prisma.invoice.findFirst({ where: { invoiceNumber, client: { brandId: activeBrandId } } });
       if (existingInvoice) {
         results.errors.push(`Factura duplicada ignorada: ${invoiceNumber}`);
         continue;

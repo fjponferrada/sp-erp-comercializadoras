@@ -135,7 +135,7 @@ async function migrateLeadsAndContracts() {
     await prisma.$transaction(async (tx) => {
       // 1. Cliente Unificado (con airtableId para trazar)
       const client = await tx.client.upsert({
-        where: { vatNumber },
+        where: { vatNumber_brandId: { vatNumber, brandId: defaultBrand.id } },
         update: { airtableId, businessName }, 
         create: {
           vatNumber,
@@ -150,20 +150,23 @@ async function migrateLeadsAndContracts() {
       // 2. Suministro (CUPS)
       let supplyPoint = null;
       if (cups) {
-        supplyPoint = await tx.supplyPoint.upsert({
-          where: { cups },
-          update: { airtableId },
-          create: {
-            cups,
-            address: 'Extraído Airtable',
-            city: 'Sin Ciudad',
-            postalCode: '00000',
-            province: 'Sin Provincia',
-            tariff: '2.0TD',
-            clientId: client.id,
-            airtableId
-          }
-        });
+        supplyPoint = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: defaultBrand.id } } });
+        if (supplyPoint) {
+          supplyPoint = await tx.supplyPoint.update({ where: { id: supplyPoint.id }, data: { airtableId } });
+        } else {
+          supplyPoint = await tx.supplyPoint.create({
+            data: {
+              cups,
+              address: 'Extraído Airtable',
+              city: 'Sin Ciudad',
+              postalCode: '00000',
+              province: 'Sin Provincia',
+              tariff: '2.0TD',
+              clientId: client.id,
+              airtableId
+            }
+          });
+        }
       }
       
       // 3. Crear Lead vinculado al Cliente y al CUPS (Arquitectura V2)

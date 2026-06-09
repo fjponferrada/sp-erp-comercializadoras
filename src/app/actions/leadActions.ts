@@ -73,11 +73,12 @@ export async function createLeadAction(formData: FormData) {
 
   // Ejecutamos la inserción unificada (Lead + Cliente + SupplyPoint)
   const lead = await prisma.$transaction(async (tx) => {
+    const effectiveVat = vatNumber || `TEMP-${Date.now()}`;
     const client = await tx.client.upsert({
-      where: { vatNumber: vatNumber || `TEMP-${Date.now()}` },
+      where: { vatNumber_brandId: { vatNumber: effectiveVat, brandId: user.brandId } },
       update: {},
       create: {
-        vatNumber: vatNumber || `TEMP-${Date.now()}`,
+        vatNumber: effectiveVat,
         businessName: businessName || 'Sin Nombre',
         clientType: clientType,
         brandId: user.brandId
@@ -85,7 +86,7 @@ export async function createLeadAction(formData: FormData) {
     });
 
     if (cups && type === 'LUZ') {
-      const sp = await tx.supplyPoint.findUnique({ where: { cups } });
+      const sp = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: user.brandId } } });
       if (!sp) {
         await tx.supplyPoint.create({
           data: {
@@ -100,7 +101,7 @@ export async function createLeadAction(formData: FormData) {
         });
       } else if (client.id && sp.clientId !== client.id) {
         await tx.supplyPoint.update({
-          where: { cups },
+          where: { id: sp.id },
           data: { clientId: client.id }
         });
       }
@@ -182,8 +183,10 @@ export async function createLeadAction(formData: FormData) {
         else if (forceSelfConsumption === 'NO') autoConsumo = null;
         else if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
-        await prisma.supplyPoint.update({
-          where: { cups },
+        let sp = await prisma.supplyPoint.findFirst({ where: { cups, client: { brandId: user.brandId } } });
+        if (sp) {
+          await prisma.supplyPoint.update({
+          where: { id: sp!.id },
           data: {
             tariff: String(t),
             address: sipsData.direccion || sipsData.Direccion,
@@ -194,6 +197,7 @@ export async function createLeadAction(formData: FormData) {
             selfConsumptionType: autoConsumo ? String(autoConsumo) : null
           }
         });
+        }
         
         // 5. AUTOMATIZACIÓN: Motor de Validación y Auto-Generación
         // Ahora respeta las tarifas permitidas específicamente a este comercial
@@ -291,31 +295,37 @@ export async function updateLeadCupsAction(leadId: string, newCups: string) {
       if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
       // Upsert SupplyPoint con el nuevo CUPS
-      await prisma.supplyPoint.upsert({
-        where: { cups: newCups },
-        update: {
-          tariff: String(t),
-          address: data.direccion || data.Direccion,
-          city: data.municipio || data.Municipio,
-          postalCode: data.cp || data.CP || data['CP SIPS'],
-          province: data.provincia || data.Provincia,
-          cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-          selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-          distributor: reeCode || undefined
-        },
-        create: {
-          cups: newCups,
-          tariff: String(t),
-          address: data.direccion || data.Direccion,
-          city: data.municipio || data.Municipio,
-          postalCode: data.cp || data.CP || data['CP SIPS'],
-          province: data.provincia || data.Provincia,
-          cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-          selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-          distributor: reeCode || undefined,
-          clientId: 'TEMPORAL' // Esto se corregirá cuando enlacemos con el clientId del Lead
-        }
-      });
+      let sp = await prisma.supplyPoint.findFirst({ where: { cups: newCups, client: { brandId: lead.user.brandId } } });
+      if (sp) {
+        await prisma.supplyPoint.update({
+          where: { id: sp.id },
+          data: {
+            tariff: String(t),
+            address: data.direccion || data.Direccion,
+            city: data.municipio || data.Municipio,
+            postalCode: data.cp || data.CP || data['CP SIPS'],
+            province: data.provincia || data.Provincia,
+            cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
+            selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
+            distributor: reeCode || undefined
+          }
+        });
+      } else {
+        await prisma.supplyPoint.create({
+          data: {
+            cups: newCups,
+            tariff: String(t),
+            address: data.direccion || data.Direccion,
+            city: data.municipio || data.Municipio,
+            postalCode: data.cp || data.CP || data['CP SIPS'],
+            province: data.provincia || data.Provincia,
+            cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
+            selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
+            distributor: reeCode || undefined,
+            clientId: 'TEMPORAL' // Esto se corregirá cuando enlacemos con el clientId del Lead
+          }
+        });
+      }
 
       const tarifaEsValida = lead.user.allowedAutoTariffs.includes(String(t));
       const consumoOk = Number(data.consumo) > 0 || (lead.estimatedMWh ?? 0) > 0;
@@ -364,31 +374,37 @@ export async function forceRefreshSipsAction(leadId: string) {
     let autoConsumo = data.autoconsumo || data.Autoconsumo || data['Cod Autoconsumo SIPS'];
     if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
-    await prisma.supplyPoint.upsert({
-      where: { cups: effectiveCups },
-      update: {
-        tariff: String(t),
-        address: data.direccion || data.Direccion,
-        city: data.municipio || data.Municipio,
-        postalCode: data.cp || data.CP || data['CP SIPS'],
-        province: data.provincia || data.Provincia,
-        cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-        selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-        distributor: reeCode || undefined
-      },
-      create: {
-        cups: effectiveCups,
-        tariff: String(t),
-        address: data.direccion || data.Direccion,
-        city: data.municipio || data.Municipio,
-        postalCode: data.cp || data.CP || data['CP SIPS'],
-        province: data.provincia || data.Provincia,
-        cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-        selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-        distributor: reeCode || undefined,
-        clientId: 'TEMPORAL'
-      }
-    });
+    let sp = await prisma.supplyPoint.findFirst({ where: { cups: effectiveCups, client: { brandId: lead.user.brandId } } });
+    if (sp) {
+      await prisma.supplyPoint.update({
+        where: { id: sp.id },
+        data: {
+          tariff: String(t),
+          address: data.direccion || data.Direccion,
+          city: data.municipio || data.Municipio,
+          postalCode: data.cp || data.CP || data['CP SIPS'],
+          province: data.provincia || data.Provincia,
+          cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
+          selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
+          distributor: reeCode || undefined
+        }
+      });
+    } else {
+      await prisma.supplyPoint.create({
+        data: {
+          cups: effectiveCups,
+          tariff: String(t),
+          address: data.direccion || data.Direccion,
+          city: data.municipio || data.Municipio,
+          postalCode: data.cp || data.CP || data['CP SIPS'],
+          province: data.provincia || data.Provincia,
+          cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
+          selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
+          distributor: reeCode || undefined,
+          clientId: 'TEMPORAL'
+        }
+      });
+    }
 
     const tarifaEsValida = lead.user.allowedAutoTariffs.includes(String(t));
     const consumoOk = Number(data.consumo) > 0 || (lead.estimatedMWh ?? 0) > 0;
@@ -459,17 +475,19 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
     // Actualizar Cliente si cambió NIF o Nombre
     let clientId: string | null = null;
     if (vatNumber) {
+      const user = await prisma.user.findUnique({ where: { email: session.user.email! }});
       const client = await tx.client.upsert({
-        where: { vatNumber },
+        where: { vatNumber_brandId: { vatNumber, brandId: user!.brandId } },
         update: { businessName, contactEmail: email || null, contactPhone: phone || null },
-        create: { vatNumber, businessName, contactEmail: email || null, contactPhone: phone || null, clientType: /^[ABJUV]/i.test(vatNumber) ? 'JURIDICA' : 'FISICA', brandId: session.user.brandId! }
+        create: { vatNumber, businessName, contactEmail: email || null, contactPhone: phone || null, clientType: /^[ABJUV]/i.test(vatNumber) ? 'JURIDICA' : 'FISICA', brandId: user!.brandId }
       });
       clientId = client.id;
     }
 
     // Actualizar Suministro si hay CUPS
     if (cups) {
-      const sp = await tx.supplyPoint.findUnique({ where: { cups } });
+      const user = await prisma.user.findUnique({ where: { email: session.user.email! }});
+      const sp = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: user!.brandId } } });
       if (!sp) {
         await tx.supplyPoint.create({
           data: {
@@ -484,7 +502,7 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
         });
       } else {
         await tx.supplyPoint.update({
-          where: { cups },
+          where: { id: sp.id },
           data: {
             tariff: forceTariff || parsedSipsData?.tarifa || sp.tariff,
             address: parsedSipsData?.direccion || userAddress || sp.address,

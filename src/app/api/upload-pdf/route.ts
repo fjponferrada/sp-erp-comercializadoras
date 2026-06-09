@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { put } from '@vercel/blob';
 import path from 'path';
+import { auth } from '@/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,9 +22,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
     }
 
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const user = await prisma.user.findUnique({ where: { email: session.user.email! } });
+
     // Buscamos si existe la factura en la BD
-    const invoice = await prisma.invoice.findUnique({
-      where: { invoiceNumber }
+    const invoice = await prisma.invoice.findFirst({
+      where: { invoiceNumber, client: { brandId: user!.brandId } }
     });
 
     if (!invoice) {

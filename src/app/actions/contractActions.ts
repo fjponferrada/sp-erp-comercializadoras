@@ -73,8 +73,9 @@ export async function convertLeadToContractAction(leadId: string) {
 
     // 2. Necesitamos un Client. Buscamos por NIF o creamos.
     const vatNum = lead.vatNumber || `PENDING-${lead.id}`;
+    const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
     let client = await prisma.client.findUnique({
-      where: { vatNumber: vatNum }
+      where: { vatNumber_brandId: { vatNumber: vatNum, brandId: brandIdToUse } }
     });
     
     if (client) {
@@ -102,7 +103,7 @@ export async function convertLeadToContractAction(leadId: string) {
           contactEmail2: contactEmail2,
           contactEmail3: contactEmail3,
           clientType: cData.tipoCliente || 'Desconocido',
-          brandId: lead.user?.brandId || (await prisma.brand.findFirst())?.id || '',
+          brandId: brandIdToUse,
           isMultipoint: isMultipoint,
         }
       });
@@ -110,8 +111,8 @@ export async function convertLeadToContractAction(leadId: string) {
 
     // 3. Necesitamos un SupplyPoint. Buscamos por CUPS.
     const targetCups = lead.cups || `CUPS-PENDING-${lead.id}`;
-    let supplyPoint = await prisma.supplyPoint.findUnique({
-      where: { cups: targetCups },
+    let supplyPoint = await prisma.supplyPoint.findFirst({
+      where: { cups: targetCups, client: { brandId: brandIdToUse } },
       include: { contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }
     });
 

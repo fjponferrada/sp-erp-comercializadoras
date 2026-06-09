@@ -109,7 +109,7 @@ model Client {
   businessName              String
   firstName                 String?
   lastName                  String?
-  vatNumber                 String        @unique
+  vatNumber                 String
   contactName               String?
   contactLastName           String?
   contactEmail              String?
@@ -163,6 +163,8 @@ model Client {
   supplyPoints              SupplyPoint[]
   tickets                   Ticket[]
   airtableData Json?
+
+  @@unique([vatNumber, brandId])
 }
 
 model Lead {
@@ -273,7 +275,7 @@ model Lead {
 
 model SupplyPoint {
   id                     String       @id @default(cuid())
-  cups                   String       @unique
+  cups                   String
   cups2                  String?
   address                String
   city                   String
@@ -578,7 +580,7 @@ model Contract {
 
 model Invoice {
   id                                     String       @id @default(cuid())
-  invoiceNumber                          String       @unique
+  invoiceNumber                          String
   invoiceType                            String?
   clientId                               String
   rectifiedInvoiceId                     String?

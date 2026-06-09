@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     // Buscar el cliente por NIF si se provee
     let clientId = null;
     if (nif) {
-      const client = await prisma.client.findUnique({ where: { vatNumber: nif } });
+      const client = await prisma.client.findFirst({ where: { vatNumber: nif, brandId: brandId } });
       if (client) clientId = client.id;
     }
 

@@ -7,7 +7,8 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.PRISMA_DATABASE_URL;
+const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
@@ -69,6 +70,8 @@ function parseDateSafe(val: any) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const clientNewFields = [{name: 'contactVat', type: 'String'}, {name: 'contactRole', type: 'String'}, {name: 'billingStreetType', type: 'String'}, {name: 'billingStreet', type: 'String'}, {name: 'billingNumber', type: 'String'}, {name: 'billingFloor', type: 'String'}, {name: 'billingDoor', type: 'String'}, {name: 'billingCountry', type: 'String'}, {name: 'paymentTermsDays', type: 'Int'}, {name: 'clientLifeDays', type: 'Int'}];
 const supplyNewFields = [{name: 'streetType', type: 'String'}, {name: 'street', type: 'String'}, {name: 'streetNumber', type: 'String'}, {name: 'floor', type: 'String'}, {name: 'door', type: 'String'}, {name: 'meteringEquipment', type: 'String'}, {name: 'boePower', type: 'Float'}, {name: 'sipsP1c', type: 'Float'}, {name: 'sipsP2c', type: 'Float'}, {name: 'sipsP3c', type: 'Float'}, {name: 'sipsP4c', type: 'Float'}, {name: 'sipsP5c', type: 'Float'}, {name: 'sipsP6c', type: 'Float'}, {name: 'pcSum', type: 'Float'}, {name: 'sipsPcSum', type: 'Float'}, {name: 'varPc', type: 'Float'},{name: 'demandaManualEne', type: 'Float'}, {name: 'demandaManualFeb', type: 'Float'}, {name: 'demandaManualMar', type: 'Float'}, {name: 'demandaManualAbr', type: 'Float'}, {name: 'demandaManualMay', type: 'Float'}, {name: 'demandaManualJun', type: 'Float'}, {name: 'demandaManualJul', type: 'Float'}, {name: 'demandaManualAgo', type: 'Float'}, {name: 'demandaManualSep', type: 'Float'}, {name: 'demandaManualOct', type: 'Float'}, {name: 'demandaManualNov', type: 'Float'}, {name: 'demandaManualDic', type: 'Float'},{name: 'excedentesManualEne', type: 'Float'}, {name: 'excedentesManualFeb', type: 'Float'}, {name: 'excedentesManualMar', type: 'Float'}, {name: 'excedentesManualAbr', type: 'Float'}, {name: 'excedentesManualMay', type: 'Float'}, {name: 'excedentesManualJun', type: 'Float'}, {name: 'excedentesManualJul', type: 'Float'}, {name: 'excedentesManualAgo', type: 'Float'}, {name: 'excedentesManualSep', type: 'Float'}, {name: 'excedentesManualOct', type: 'Float'}, {name: 'excedentesManualNov', type: 'Float'}, {name: 'excedentesManualDic', type: 'Float'}];
 const contractNewFields = [{name: 'tipo', type: 'String'}, {name: 'tipoC2', type: 'String'}, {name: 'peticionClienteC2', type: 'String'}, {name: 'tipoEntrada', type: 'String'}, {name: 'fechaPrevista', type: 'DateTime'}, {name: 'captacionCliente', type: 'String'}, {name: 'autoconsumo', type: 'Boolean'}, {name: 'autoconsumoFijoIndex', type: 'String'}, {name: 'atrComer', type: 'String'}, {name: 'unPrecio', type: 'Boolean'}, {name: 'suspendido', type: 'Boolean'}, {name: 'cierre', type: 'String'}, {name: 'feeP', type: 'Float'}, {name: 'descuentoCie', type: 'Float'}, {name: 'inicioProceso', type: 'DateTime'}, {name: 'gasIncluido', type: 'Boolean'}, {name: 'bolsilloSolar', type: 'Boolean'}, {name: 'modalidadContrato', type: 'String'}, {name: 'nSolicitud', type: 'String'}, {name: 'fechaProceso', type: 'DateTime'}, {name: 'fechaAceptacion', type: 'DateTime'}, {name: 'fechaPrevistaActivacion', type: 'DateTime'}, {name: 'fechaIncidencia', type: 'DateTime'}, {name: 'sinComision', type: 'Boolean'}, {name: 'm1Activado', type: 'Boolean'}, {name: 'm1Rechazado', type: 'Boolean'}, {name: 'decomision', type: 'Float'}, {name: 'decomision50', type: 'Float'}, {name: 'comision50', type: 'Float'}, {name: 'renovacion', type: 'Boolean'}, {name: 'bajaPorM1RE1', type: 'Boolean'}, {name: 'bimensual', type: 'Boolean'}, {name: 'sinPenalizacion', type: 'Boolean'}, {name: 'sinDecomision', type: 'Boolean'}, {name: 'svaAnadidoTera', type: 'Boolean'}, {name: 'penalizacionFacturada', type: 'Boolean'}, {name: 'numFacturaPenalizacion', type: 'String'}, {name: 'facturarPen', type: 'Boolean'}, {name: 'biPen', type: 'Float'}, {name: 'ivaPen', type: 'Float'}, {name: 'penalizacionEstimada', type: 'Float'}, {name: 'abonar', type: 'Float'}, {name: 'fechaFacturaPenalizacion', type: 'DateTime'}, {name: 'ajustePen', type: 'Float'}, {name: 'productoRenovacion', type: 'String'}, {name: 'renovacionSolicitada', type: 'Boolean'}, {name: 'servicioRenovacion', type: 'String'}, {name: 'renovacionTramitada', type: 'Boolean'}, {name: 'derechosExtension', type: 'Float'}, {name: 'telegestion', type: 'Boolean'}, {name: 'estadoCompilacion', type: 'String'}, {name: 'calculoCodDistri', type: 'String'}, {name: 'nombreComercial', type: 'String'}, {name: 'ip', type: 'Float'}, {name: 'fc', type: 'Float'}, {name: 'porcComisionFijo', type: 'Float'}, {name: 'porcComisionVariable', type: 'Float'}, {name: 'ajusteConsumoComision', type: 'Float'}, {name: 'comisionAjustada', type: 'Float'}, {name: 'ajusteComisionDuracionPotencia', type: 'Float'}, {name: 'decomisionSobreAjuste', type: 'Float'}, {name: 'genContratoAuto', type: 'Boolean'}, {name: 'm1sSolicitado', type: 'Boolean'}, {name: 'm1nSolicitado', type: 'Boolean'}, {name: 'tipoPm', type: 'String'}, {name: 'calculoMesAlta', type: 'String'}, {name: 'calculoMesBaja', type: 'String'}, {name: 'mesAlta', type: 'String'}, {name: 'mesBaja', type: 'String'}, {name: 'ultimoDiaFacturado', type: 'DateTime'}, {name: 'ultDiaAFacturar', type: 'DateTime'}, {name: 'retraso', type: 'Int'}, {name: 'inicioMes0', type: 'DateTime'}, {name: 'inicioMesMinus1', type: 'DateTime'}, {name: 'finMesMinus1', type: 'DateTime'}, {name: 'energiaPteMesMinus1', type: 'Float'}, {name: 'inicioMesMinus2', type: 'DateTime'}, {name: 'finMesMinus2', type: 'DateTime'}, {name: 'energiaPteMesMinus2', type: 'Float'}, {name: 'energiaPteMes0HastaHoy', type: 'Float'}, {name: 'finMes0', type: 'DateTime'}, {name: 'ultDiaFact', type: 'DateTime'}, {name: 'energiaPteMes0HastaFinMes', type: 'Float'}, {name: 'transferencia', type: 'Boolean'}, {name: 'firmaManRenov', type: 'Boolean'}, {name: 'consumoRealEstimado', type: 'String'}, {name: 'pen20TdResid', type: 'Float'}, {name: 'penNoResid', type: 'Float'}, {name: 'pen20TdResidHoy', type: 'Float'}, {name: 'horasUsoDiarios', type: 'Float'}, {name: 'tipoEnvioFacturaRenov', type: 'String'}, {name: 'diasContrato', type: 'Int'}, {name: 'diasRenovMax', type: 'Int'}, {name: 'estadoPrevio', type: 'String'}, {name: 'fechaVencimientoCalculada', type: 'DateTime'}];
@@ -76,19 +79,20 @@ const invoiceNewFieldsStr = `path String, minimoImporteIESuperado String, claseF
 const invoiceNewFields = invoiceNewFieldsStr.split(', ').map(s => { const [name, type] = s.split(' '); return {name, type}; });
 
 async function run() {
-  console.log("Iniciando WIPE y migración masiva de 200 contratos de Airtable con nuevos campos...");
+  console.log("Iniciando WIPE y MIGRACIÓN MASIVA TOTAL de contratos de Airtable...");
 
   await prisma.invoice.deleteMany();
   await prisma.commission.deleteMany();
   await prisma.contractModification.deleteMany();
   await prisma.lead.deleteMany();
+  await prisma.document.deleteMany();
   await prisma.contract.deleteMany();
   await prisma.supplyPoint.deleteMany();
   await prisma.client.deleteMany();
   await prisma.product.deleteMany();
   await prisma.channel.deleteMany();
   await prisma.user.deleteMany({ where: { email: { not: 'fjponferrada@sp-energia.com' } } });
-  console.log("Tablas limpiadas.");
+  console.log("✅ Tablas limpiadas.");
 
   let company = await prisma.company.upsert({
     where: { codigo: 'AED' },
@@ -108,9 +112,10 @@ async function run() {
     create: { name: 'Admin', email: 'fjponferrada@sp-energia.com', password: 'pwd', role: 'SUPERADMIN', brandId: brand.id }
   });
 
-  const contractsRecord = await base('CONTRATOS').select({ maxRecords: 200 }).all();
+  console.log("Descargando TODOS los contratos...");
+  const contractsRecord = await base('CONTRATOS').select().all();
   const contracts = contractsRecord.map(r => ({ id: r.id, fields: r.fields as any }));
-  console.log(`Obtenidos ${contracts.length} contratos.`);
+  console.log(`✅ Obtenidos ${contracts.length} contratos totales.`);
 
   const clientIds = new Set<string>();
   const supplyIds = new Set<string>();
@@ -126,6 +131,8 @@ async function run() {
     if (f['CONTRATO']) contractCodes.push(f['CONTRATO']);
     if (f['Comercial']) f['Comercial'].forEach((id: string) => userIds.add(id));
   }
+
+  console.log(`Descargando ${clientIds.size} clientes, ${supplyIds.size} instalaciones, ${invoiceIds.size} facturas...`);
 
   const airtableClients = await fetchChunks('CLIENTES', Array.from(clientIds));
   const airtableSupplies = await fetchChunks('INSTALACIONES', Array.from(supplyIds));
@@ -145,7 +152,13 @@ async function run() {
      }
   }
 
+  console.log(`✅ Dependencias descargadas. Iniciando inyección en PostgreSQL (${contracts.length} contratos)...`);
+
+  let count = 0;
   for (const record of contracts) {
+    count++;
+    if (count % 50 === 0) console.log(`Procesando contrato ${count} / ${contracts.length}...`);
+    
     const f = record.fields;
     const contractCode = f['CONTRATO'] || `CC_${record.id}`;
     const createdAtStr = f['Fecha Registro'] || f['Fecha Solicitud'] || new Date().toISOString();
@@ -386,7 +399,6 @@ async function run() {
     // Process Lead
     const leadData = leadsByContract.get(contractCode);
     if (leadData || true) {
-        // Find existing lead by contract ID just in case
         let lead = await prisma.lead.findUnique({ where: { contractId: contract.id } });
         if (!lead) {
             const lf = leadData ? leadData.fields : f;
@@ -466,7 +478,7 @@ async function run() {
     }
   }
 
-  console.log("¡Importación de 200 contratos de Airtable FINALIZADA!");
+  console.log("¡MIGRACIÓN MASIVA FINALIZADA CON ÉXITO!");
 }
 
 async function fetchChunks(table: string, ids: string[]): Promise<any[]> {
@@ -477,6 +489,8 @@ async function fetchChunks(table: string, ids: string[]): Promise<any[]> {
       const filter = `OR(${chunk.map(id => `RECORD_ID()="${id}"`).join(',')})`;
       const records = await base(table).select({ filterByFormula: filter }).all();
       allRecords = allRecords.concat(records.map(r => ({ id: r.id, fields: r.fields })));
+      // Rate limiting: max 5 requests per second for Airtable
+      await sleep(250); 
     }
     return allRecords;
 }
@@ -489,6 +503,7 @@ async function fetchLeadsByContracts(codes: string[]): Promise<any[]> {
       const filter = `OR(${chunk.map(c => `CONTRATO="${c}"`).join(',')})`;
       const records = await base('LEADS').select({ filterByFormula: filter }).all();
       allRecords = allRecords.concat(records.map(r => ({ id: r.id, fields: r.fields })));
+      await sleep(250);
     }
     return allRecords;
 }

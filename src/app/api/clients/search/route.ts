@@ -17,8 +17,9 @@ export async function GET(req: Request) {
     }
 
     // Buscar cliente por NIF incluyendo sus puntos de suministro asociados a sus contratos
-    const client = await prisma.client.findUnique({
-      where: { vatNumber: nif },
+    const user = await prisma.user.findUnique({ where: { email: session.user.email! } });
+    const client = await prisma.client.findFirst({
+      where: { vatNumber: nif, brandId: user!.brandId },
       include: {
         contracts: {
           include: {

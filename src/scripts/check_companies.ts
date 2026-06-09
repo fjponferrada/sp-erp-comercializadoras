@@ -12,11 +12,8 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const brands = await prisma.brand.findMany({
-    select: { id: true, name: true, slug: true, codigoMarca: true }
-  });
-  console.log('Brands in DB:');
-  console.log(brands);
+  const companies = await prisma.company.findMany();
+  console.log(companies);
 }
 
 main()

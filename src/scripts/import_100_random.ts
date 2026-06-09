@@ -283,7 +283,7 @@ async function run() {
         supply = await prisma.supplyPoint.findUnique({ where: { airtableId: supplyRecordId } });
     }
     if (!supply) {
-        supply = await prisma.supplyPoint.findUnique({ where: { cups } });
+        supply = await prisma.supplyPoint.findFirst({ where: { cups } });
     }
 
     if (!supply) {
@@ -364,7 +364,7 @@ async function run() {
       if (!invf) continue;
 
       const invoiceNumber = (invf['Numero Factura'] || invf['N Factura'] || invf['Número Factura'] || `INV_${invId}`).toString();
-      let inv = await prisma.invoice.findUnique({ where: { invoiceNumber } });
+      let inv = await prisma.invoice.findFirst({ where: { invoiceNumber } });
       if (!inv) {
         const extraInvFields = autoMapFields(invf, invoiceNewFields);
         await prisma.invoice.create({
