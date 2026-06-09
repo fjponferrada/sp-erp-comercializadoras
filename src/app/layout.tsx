@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { SessionProvider } from 'next-auth/react';
 import './globals.css';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'SP Energía ERP | Gestión de Comercializadoras',
   description: 'Software de gestión integral para comercializadoras eléctricas. Multi-comercializadora, multi-marca.',
