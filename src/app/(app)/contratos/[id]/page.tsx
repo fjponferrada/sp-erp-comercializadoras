@@ -55,11 +55,21 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     invoices: contract.invoices
   };
 
+  let versions: any[] = [];
+  if (contract.contractCode) {
+    versions = await prisma.contract.findMany({
+      where: { contractCode: contract.contractCode },
+      select: { id: true, version: true, status: true, createdAt: true },
+      orderBy: { version: 'desc' }
+    });
+  }
+
   return (
     <ContractDetailClient 
       initialContract={uiContract} 
       userRole={sessionUser?.role || 'CANAL'} 
       maxRenewalDays={maxRenewalDays} 
+      versions={versions}
     />
   );
 }

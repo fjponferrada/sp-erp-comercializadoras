@@ -29,9 +29,10 @@ import {
 } from 'lucide-react';
 import NewLeadModal from './NewLeadModal';
 import NewSolarLeadModal from '@/components/NewSolarLeadModal';
-import { duplicateLeadAction, forceRefreshSipsAction } from '@/app/actions/leadActions';
+import { duplicateLeadAction, forceRefreshSipsAction, getPaginatedLeadsAction, getLeadStatsAction } from '@/app/actions/leadActions';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { useEffect, useCallback } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LeadStatus = 'NUEVO' | 'BORRADOR GENERADO' | 'ENVIADO A FIRMA' | 'FIRMADO' | string;
@@ -103,7 +104,14 @@ const KANBAN_CARDS = [
 
 
 
-export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[] }) {
+export default function LeadsClient({ initialChannels = [] }: { initialChannels?: string[] }) {
+  const [leads, setLeads] = useState<LeadData[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState<{ totalLeads: number, statusCounts: Record<string, number>, totalMWh: number }>({
+    totalLeads: 0, statusCounts: {}, totalMWh: 0
+  });
+
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterCanal, setFilterCanal] = useState<string>('');
@@ -116,6 +124,31 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
   const [isNewSolarModalOpen, setIsNewSolarModalOpen] = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const filters = { search, status: filterStatus, canal: filterCanal };
+      const [leadsRes, statsRes] = await Promise.all([
+        getPaginatedLeadsAction(filters, page, itemsPerPage),
+        getLeadStatsAction(filters)
+      ]);
+      setLeads(leadsRes.leads);
+      setTotalItems(statsRes.totalLeads);
+      setStats(statsRes);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search, filterStatus, filterCanal, page, itemsPerPage]);
+
+  useEffect(() => {
+    const debounceId = setTimeout(() => {
+      loadData();
+    }, 300);
+    return () => clearTimeout(debounceId);
+  }, [loadData]);
 
   const userRole = (session?.user as any)?.role || 'user';
   const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
@@ -161,37 +194,17 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
       'ENVIADO A FIRMA': 0,
       'FIRMADO': 0,
     };
-    initialLeads.forEach(l => {
-      if (counts[l.status] !== undefined) counts[l.status]++;
-      else counts['NUEVO']++; // fallback
-    });
+    if (stats.statusCounts) {
+      Object.entries(stats.statusCounts).forEach(([k, v]) => {
+        counts[k] = (counts[k] || 0) + v;
+      });
+    }
     return counts;
-  }, [initialLeads]);
+  }, [stats.statusCounts]);
 
-  const totalComision = useMemo(
-    () => initialLeads.reduce((acc, l) => acc + l.comisionEst, 0),
-    [initialLeads]
-  );
+  const totalComision = stats.totalMWh * 15; // Estimación provisional basada en el totalMWh devuelto
 
-  const filtered = useMemo(() => {
-    return initialLeads.filter(l => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        l.id.toLowerCase().includes(q) ||
-        l.titular.toLowerCase().includes(q) ||
-        l.nif.toLowerCase().includes(q) ||
-        l.cups.toLowerCase().includes(q) ||
-        (l.empresa ?? '').toLowerCase().includes(q);
-      const matchStatus = !filterStatus || l.status === filterStatus;
-      const matchCanal = !filterCanal || l.canal === filterCanal;
-      return matchSearch && matchStatus && matchCanal;
-    });
-  }, [search, filterStatus, filterCanal, initialLeads]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-  const currentPage = Math.min(page, totalPages);
-  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const canalesDropdown = useMemo(() => ['Todos', ...initialChannels], [initialChannels]);
 
   const handleFilterChange = () => setPage(1);
 
@@ -246,8 +259,8 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
         >
           {KANBAN_CARDS.map((k, i) => {
             const Icon = k.icon;
-            const count = kanbanCounts[k.status];
-            const pct = initialLeads.length > 0 ? Math.round((count / initialLeads.length) * 100) : 0;
+            const count = kanbanCounts[k.status] || 0;
+            const pct = stats.totalLeads > 0 ? Math.round((count / stats.totalLeads) * 100) : 0;
             return (
               <div
                 key={k.status}
@@ -340,9 +353,9 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
           <div style={{ width: '1px', height: '40px', background: 'var(--border)' }} />
           <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
             {[
-              { label: 'Leads activos', value: initialLeads.filter(l => l.status !== 'FIRMADO').length },
-              { label: 'SIPS Verificados', value: initialLeads.filter(l => l.sipsOk).length },
-              { label: 'Tasa conversión', value: `${initialLeads.length ? Math.round((kanbanCounts['FIRMADO'] / initialLeads.length) * 100) : 0}%` },
+              { label: 'Leads totales', value: stats.totalLeads },
+              { label: 'Firmados', value: kanbanCounts['FIRMADO'] || 0 },
+              { label: 'Tasa conversión', value: `${stats.totalLeads ? Math.round(((kanbanCounts['FIRMADO'] || 0) / stats.totalLeads) * 100) : 0}%` },
             ].map(kpi => (
               <div key={kpi.label}>
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{kpi.label}</p>
@@ -396,17 +409,16 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
               onChange={e => { setFilterCanal(e.target.value); setPage(1); }}
               style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
             >
-              <option value="">Todos los canales</option>
-              <option value="Directo">Directo</option>
-              <option value="Agente">Agente</option>
-              <option value="Telemarketing">Telemarketing</option>
-              <option value="Partner">Partner</option>
-              <option value="Online">Online</option>
+              {canalesDropdown.map(c => (
+                <option key={c} value={c === 'Todos' ? '' : c}>
+                  {c === 'Todos' ? 'Todos los canales' : c}
+                </option>
+              ))}
             </select>
           </div>
 
           <div style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{filtered.length}</span> leads encontrados
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{totalItems}</span> leads encontrados
           </div>
         </div>
 
@@ -431,7 +443,14 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
                 </tr>
               </thead>
               <tbody>
-                {paginated.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
+                      <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px', display: 'block', opacity: 0.5 }} />
+                      Cargando leads...
+                    </td>
+                  </tr>
+                ) : leads.length === 0 ? (
                   <tr>
                     <td colSpan={10} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
                       <Search size={32} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }} />
@@ -439,7 +458,7 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
                     </td>
                   </tr>
                 ) : (
-                  paginated.map(lead => {
+                  leads.map(lead => {
                     return (
                       <tr 
                         key={lead.id} 
@@ -551,9 +570,9 @@ export default function LeadsClient({ initialLeads }: { initialLeads: LeadData[]
           </div>
 
           <PaginationFooter
-            currentPage={currentPage}
+            currentPage={page}
             itemsPerPage={itemsPerPage}
-            totalItems={filtered.length}
+            totalItems={totalItems}
             itemName="leads"
             onPageChange={setPage}
             onItemsPerPageChange={setItemsPerPage}

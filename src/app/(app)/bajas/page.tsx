@@ -1,55 +1,21 @@
 import React from 'react';
 import { prisma } from '@/lib/prisma';
-import { getUserVisibilityFilter } from '@/lib/permissions';
-import BajasClient, { BajaData } from './BajasClient';
+import BajasClient from './BajasClient';
+import { getPaginatedBajasAction, getBajasStatsAction } from '@/app/actions/bajasActions';
 
 export default async function BajasPage() {
-  const visibilityFilter = await getUserVisibilityFilter();
+  const [bajasResult, statsResult, products] = await Promise.all([
+    getPaginatedBajasAction(1, 100, '', 'TODOS'),
+    getBajasStatsAction(),
+    prisma.product.findMany({ orderBy: { name: 'asc' } })
+  ]);
 
-  const dbBajas = await prisma.contract.findMany({
-    where: {
-      ...visibilityFilter,
-      status: {
-        in: ['INACTIVO', 'PERDIDO']
-      }
-    },
-    include: {
-      client: true,
-      supplyPoint: true,
-      product: true
-    },
-    orderBy: {
-      terminationDate: 'desc'
-    }
-  });
-
-  const bajasData: BajaData[] = dbBajas.map(b => {
-    const dAlta = b.activationDate ? new Date(b.activationDate) : new Date();
-    const dBaja = b.terminationDate ? new Date(b.terminationDate) : new Date();
-    const diffTime = Math.abs(dBaja.getTime() - dAlta.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    return {
-      id: b.id,
-      cups: b.supplyPoint?.cups || 'Desconocido',
-      cliente: b.client?.businessName || `${b.client?.firstName || ''} ${b.client?.lastName || ''}`.trim() || 'Desconocido',
-      clientId: b.clientId,
-      telefono: b.client?.contactPhone || null,
-      email: b.client?.contactEmail || null,
-      tarifa: b.supplyPoint?.tariff || '2.0TD',
-      mwh: b.supplyPoint?.annualConsumption || 0,
-      fechaAlta: b.activationDate?.toISOString().split('T')[0] || '-',
-      fechaBaja: b.terminationDate?.toISOString().split('T')[0] || '-',
-      motivo: 'Fin de permanencia', // Airtable no tiene este campo exacto
-      canal: 'Directo', // TODO: Leer de Lead.source
-      producto: b.product?.name || 'Desconocido',
-      diasVida: diffDays
-    };
-  });
-
-  const products = await prisma.product.findMany({
-    orderBy: { name: 'asc' }
-  });
-
-  return <BajasClient initialBajas={bajasData} products={products} />;
+  return (
+    <BajasClient 
+      initialBajas={bajasResult.success ? (bajasResult.bajas || []) : []} 
+      initialTotalCount={bajasResult.success ? (bajasResult.totalCount || 0) : 0}
+      initialStats={statsResult.success ? statsResult.stats : { totalBajas: 0, bajasEsteMes: 0, totalMwhPerdido: 0, avgDias: 0, avgClientDias: 0 }}
+      products={products} 
+    />
+  );
 }

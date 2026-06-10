@@ -4,48 +4,123 @@ import { prisma } from '@/lib/prisma';
 
 export async function getEconomicAnalysis() {
   try {
-    // 1. Agrupación de Facturas por Año-Mes
-    const invoicesData: any[] = await prisma.$queryRaw`
-      SELECT 
-        TO_CHAR("issueDate", 'YYYY-MM') as month,
-        SUM("totalAmount") as total_eur,
-        SUM("totalMWh") as total_mwh,
-        SUM("margin") as margin
-      FROM "Invoice"
-      WHERE "issueDate" IS NOT NULL
-      GROUP BY TO_CHAR("issueDate", 'YYYY-MM')
-      ORDER BY month ASC
-    `;
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const filter = await getUserVisibilityFilter();
 
-    // 2. Agrupación de Altas de Contratos
-    const altasData: any[] = await prisma.$queryRaw`
-      SELECT 
-        TO_CHAR("activationDate", 'YYYY-MM') as month,
-        COUNT(id) as count,
-        SUM((SELECT "estimatedMWh" FROM "Lead" WHERE "Lead"."contractId" = "Contract"."id" LIMIT 1)) as mwh
-      FROM "Contract"
-      WHERE "activationDate" IS NOT NULL AND status IN ('ACTIVO', 'BAJA')
-      GROUP BY TO_CHAR("activationDate", 'YYYY-MM')
-      ORDER BY month ASC
-    `;
+    // 1. Fetch Invoices and Group by Month
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        contract: filter
+      },
+      select: {
+        issueDate: true,
+        baseImponibleIva: true,
+        invoiceType: true,
+        totalMWh: true,
+        margin: true
+      }
+    });
 
-    // 3. Agrupación de Bajas de Contratos
-    const bajasData: any[] = await prisma.$queryRaw`
-      SELECT 
-        TO_CHAR("terminationDate", 'YYYY-MM') as month,
-        COUNT(id) as count,
-        SUM((SELECT "estimatedMWh" FROM "Lead" WHERE "Lead"."contractId" = "Contract"."id" LIMIT 1)) as mwh
-      FROM "Contract"
-      WHERE "terminationDate" IS NOT NULL AND status = 'BAJA'
-      GROUP BY TO_CHAR("terminationDate", 'YYYY-MM')
-      ORDER BY month ASC
-    `;
+    const invoicesData: Record<string, any> = {};
+    invoices.forEach(inv => {
+      if (!inv.issueDate) return;
+      const m = `${inv.issueDate.getFullYear()}-${String(inv.issueDate.getMonth() + 1).padStart(2, '0')}`;
+      if (!invoicesData[m]) invoicesData[m] = { total_eur: 0, total_mwh: 0, margin: 0 };
+      
+      let amount = inv.baseImponibleIva || 0;
+      if (inv.invoiceType === 'Abono' && amount > 0) {
+        amount = -amount;
+      }
+      
+      invoicesData[m].total_eur += amount;
+      invoicesData[m].total_mwh += (inv.totalMWh || 0);
+      invoicesData[m].margin += (inv.margin || 0);
+    });
 
-    // 4. Consolidar los datos en un solo array de meses
+    // 2. Fetch Contracts and Group Altas/Bajas by Month
+    const contracts = await prisma.contract.findMany({
+      where: {
+        ...filter,
+        status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] }
+      },
+      select: {
+        activationDate: true,
+        terminationDate: true,
+        supplyPointId: true,
+        supplyPoint: {
+          select: { annualConsumption: true }
+        }
+      }
+    });
+
+    const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const altasData: Record<string, { count: number, mwh: number }> = {};
+    const bajasData: Record<string, { count: number, mwh: number }> = {};
+
+    const contractsByCups: Record<string, typeof contracts> = {};
+    contracts.forEach(c => {
+      if (!c.supplyPointId || !c.activationDate) return;
+      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
+      contractsByCups[c.supplyPointId].push(c);
+    });
+
+    Object.values(contractsByCups).forEach(cupsContracts => {
+      cupsContracts.sort((a, b) => a.activationDate!.getTime() - b.activationDate!.getTime());
+
+      let currentPeriod: { start: Date, end: Date | null, maxMwh: number } | null = null;
+      const periods: { start: Date, end: Date | null, mwh: number }[] = [];
+
+      for (const c of cupsContracts) {
+        const mwh = c.supplyPoint?.annualConsumption || 0;
+        
+        if (!currentPeriod) {
+          currentPeriod = { start: c.activationDate!, end: c.terminationDate || null, maxMwh: mwh };
+          continue;
+        }
+
+        const startNext = c.activationDate!;
+        
+        if (currentPeriod.end === null) {
+          currentPeriod.maxMwh = mwh;
+        } else {
+          if (startNext.getTime() <= currentPeriod.end.getTime() + GRACE_PERIOD_MS) {
+            if (!c.terminationDate) {
+              currentPeriod.end = null;
+            } else if (c.terminationDate.getTime() > currentPeriod.end.getTime()) {
+              currentPeriod.end = c.terminationDate;
+            }
+            currentPeriod.maxMwh = mwh;
+          } else {
+            periods.push({ start: currentPeriod.start, end: currentPeriod.end, mwh: currentPeriod.maxMwh });
+            currentPeriod = { start: c.activationDate!, end: c.terminationDate || null, maxMwh: mwh };
+          }
+        }
+      }
+
+      if (currentPeriod) {
+        periods.push({ start: currentPeriod.start, end: currentPeriod.end, mwh: currentPeriod.maxMwh });
+      }
+
+      periods.forEach(p => {
+        const altaM = `${p.start.getFullYear()}-${String(p.start.getMonth() + 1).padStart(2, '0')}`;
+        if (!altasData[altaM]) altasData[altaM] = { count: 0, mwh: 0 };
+        altasData[altaM].count++;
+        altasData[altaM].mwh += p.mwh;
+
+        if (p.end) {
+          const bajaM = `${p.end.getFullYear()}-${String(p.end.getMonth() + 1).padStart(2, '0')}`;
+          if (!bajasData[bajaM]) bajasData[bajaM] = { count: 0, mwh: 0 };
+          bajasData[bajaM].count++;
+          bajasData[bajaM].mwh += p.mwh;
+        }
+      });
+    });
+
+    // 4. Consolidate Data
     const allMonths = new Set<string>();
-    invoicesData.forEach(d => allMonths.add(d.month));
-    altasData.forEach(d => allMonths.add(d.month));
-    bajasData.forEach(d => allMonths.add(d.month));
+    Object.keys(invoicesData).forEach(m => allMonths.add(m));
+    Object.keys(altasData).forEach(m => allMonths.add(m));
+    Object.keys(bajasData).forEach(m => allMonths.add(m));
 
     const sortedMonths = Array.from(allMonths).sort();
     
@@ -53,20 +128,19 @@ export async function getEconomicAnalysis() {
     let activeMWh = 0;
 
     const results = sortedMonths.map(month => {
-      const inv = invoicesData.find(d => d.month === month) || { total_eur: 0, total_mwh: 0, margin: 0 };
-      const alt = altasData.find(d => d.month === month) || { count: 0, mwh: 0 };
-      const baj = bajasData.find(d => d.month === month) || { count: 0, mwh: 0 };
+      const inv = invoicesData[month] || { total_eur: 0, total_mwh: 0, margin: 0 };
+      const alt = altasData[month] || { count: 0, mwh: 0 };
+      const baj = bajasData[month] || { count: 0, mwh: 0 };
 
-      // Conversión de BigInt a Number (Prisma queryRaw devuelve BigInt en count y sum a veces)
-      const factEur = Number(inv.total_eur) || 0;
-      const factMwh = Number(inv.total_mwh) || 0;
-      const margin = Number(inv.margin) || 0;
+      const factEur = inv.total_eur;
+      const factMwh = inv.total_mwh;
+      const margin = inv.margin;
       
-      const altasCount = Number(alt.count) || 0;
-      const altasMwh = Number(alt.mwh) || 0;
+      const altasCount = alt.count;
+      const altasMwh = alt.mwh;
       
-      const bajasCount = Number(baj.count) || 0;
-      const bajasMwh = Number(baj.mwh) || 0;
+      const bajasCount = baj.count;
+      const bajasMwh = baj.mwh;
 
       // Acumulados
       activeContractsCount = activeContractsCount + altasCount - bajasCount;

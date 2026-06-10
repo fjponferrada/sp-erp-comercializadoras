@@ -9,11 +9,13 @@ import { updateContractDatesAction, sendContractToDocuSignAction, createContract
 export default function ContractDetailClient({ 
   initialContract, 
   userRole, 
-  maxRenewalDays 
+  maxRenewalDays,
+  versions = []
 }: { 
   initialContract: any, 
   userRole: string, 
-  maxRenewalDays: number 
+  maxRenewalDays: number,
+  versions?: any[]
 }) {
   const router = useRouter();
   
@@ -175,6 +177,24 @@ export default function ContractDetailClient({
               <ChevronLeft size={16} /> Volver
             </button>
             <div className="h-8 border-l border-[var(--border)] mx-2"></div>
+            {versions && versions.length > 1 && (
+              <select
+                className="form-input text-xs py-1 px-2 h-auto"
+                value={initialContract.id}
+                onChange={(e) => {
+                  if (e.target.value !== initialContract.id) {
+                    router.push(`/contratos/${e.target.value}`);
+                  }
+                }}
+                style={{ appearance: 'none', cursor: 'pointer', background: 'var(--bg-elevated)' }}
+              >
+                {versions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    Versión {v.version} - {new Date(v.createdAt).toLocaleDateString('es-ES')} ({v.status})
+                  </option>
+                ))}
+              </select>
+            )}
             <div>{getStatusBadge(initialContract.status)}</div>
           </div>
         }
@@ -292,12 +312,12 @@ export default function ContractDetailClient({
                   <DataItem label="Provincia" value={supplyPoint.province} />
 
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Potencias Contratadas (kW)</h3></div>
-                  <DataItem label="P1P" value={supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
-                  <DataItem label="P2P" value={supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
-                  <DataItem label="P3P" value={supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
-                  <DataItem label="P4P" value={supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
-                  <DataItem label="P5P" value={supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
-                  <DataItem label="P6P" value={supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
+                  <DataItem label="P1P" value={initialContract.p1c || supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
+                  <DataItem label="P2P" value={initialContract.p2c || supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
+                  <DataItem label="P3P" value={initialContract.p3c || supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
+                  <DataItem label="P4P" value={initialContract.p4c || supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
+                  <DataItem label="P5P" value={initialContract.p5c || supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
+                  <DataItem label="P6P" value={initialContract.p6c || supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
                 </SectionCard>
               )}
 

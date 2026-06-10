@@ -39,8 +39,7 @@ const baseNavGroups = [
   {
     label: 'Principal',
     items: [
-      { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
-      { href: '/analisis', icon: BarChart3, label: 'Análisis Económico' },
+      { href: '/', icon: LayoutDashboard, label: 'Dashboard' }
     ],
   },
   {

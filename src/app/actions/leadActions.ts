@@ -562,3 +562,167 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
 
   return { success: true };
 }
+
+export async function getLeadStatsAction(filters: any) {
+  const session = await auth();
+  if (!session?.user?.email) throw new Error('No autorizado');
+
+  const { getUserVisibilityFilter } = await import('@/lib/permissions');
+  const visibilityFilter = await getUserVisibilityFilter();
+
+  const where: any = { AND: [visibilityFilter] };
+
+  if (filters.search) {
+    const terms = filters.search.split(/\s+/).filter(Boolean);
+    terms.forEach((term: string) => {
+      where.AND.push({
+        OR: [
+          { businessName: { contains: term, mode: 'insensitive' } },
+          { vatNumber: { contains: term, mode: 'insensitive' } },
+          { cups: { contains: term, mode: 'insensitive' } }
+        ]
+      });
+    });
+  }
+
+  if (filters.status && filters.status !== 'Todos') {
+    where.AND.push({ status: filters.status });
+  }
+  if (filters.type && filters.type !== 'Todos') {
+    where.AND.push({ type: filters.type });
+  }
+
+  const totalLeads = await prisma.lead.count({ where });
+  
+  const statusGroup = await prisma.lead.groupBy({
+    by: ['status'],
+    where,
+    _count: { status: true }
+  });
+  
+  const statusCounts: Record<string, number> = {};
+  statusGroup.forEach(g => {
+    statusCounts[g.status] = g._count.status;
+  });
+  
+  const estimatedMWhResult = await prisma.lead.aggregate({
+    where,
+    _sum: { estimatedMWh: true }
+  });
+  const totalMWh = estimatedMWhResult._sum.estimatedMWh || 0;
+
+  return { totalLeads, statusCounts, totalMWh };
+}
+
+export async function getPaginatedLeadsAction(filters: any, page: number = 1, pageSize: number = 100) {
+  const session = await auth();
+  if (!session?.user?.email) throw new Error('No autorizado');
+
+  const { getUserVisibilityFilter } = await import('@/lib/permissions');
+  const visibilityFilter = await getUserVisibilityFilter();
+
+  const where: any = { AND: [visibilityFilter] };
+
+  if (filters.search) {
+    const terms = filters.search.split(/\s+/).filter(Boolean);
+    terms.forEach((term: string) => {
+      where.AND.push({
+        OR: [
+          { businessName: { contains: term, mode: 'insensitive' } },
+          { vatNumber: { contains: term, mode: 'insensitive' } },
+          { cups: { contains: term, mode: 'insensitive' } }
+        ]
+      });
+    });
+  }
+
+  if (filters.status && filters.status !== 'Todos') {
+    where.AND.push({ status: filters.status });
+  }
+  if (filters.type && filters.type !== 'Todos') {
+    where.AND.push({ type: filters.type });
+  }
+
+  const skip = (page - 1) * pageSize;
+
+  const leadsDB = await prisma.lead.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    skip,
+    take: pageSize,
+    include: {
+      documents: true,
+      user: true,
+      contract: true
+    }
+  });
+
+  const cupsList = leadsDB.map(l => l.cups).filter(Boolean) as string[];
+  const supplyPoints = await prisma.supplyPoint.findMany({
+    where: { cups: { in: cupsList } },
+    select: { cups: true, address: true }
+  });
+  const spMap = new Map(supplyPoints.map(sp => [sp.cups, sp.address]));
+
+  const mappedLeads = leadsDB.map(l => {
+    let direccion = l.cups ? spMap.get(l.cups) || 'Pendiente' : 'Pendiente';
+    let fechaRegistro = l.createdAt.toISOString();
+    let comercialName = l.user?.name || 'Sistema';
+    let canalName = l.source || 'Directo';
+    let cupsDisplay = l.cups || '';
+
+    if (l.contractData && typeof l.contractData === 'object') {
+      const data = l.contractData as any;
+      if ('DOMICILIO PS COMPLETO' in data) direccion = data['DOMICILIO PS COMPLETO'];
+      else if ('DOMICILIO PS' in data) direccion = data['DOMICILIO PS'];
+      else if ('DOMICILIO SOC' in data) direccion = data['DOMICILIO SOC'];
+      else if ('direccion' in data) direccion = data.direccion;
+    }
+
+    const airtableData = l.airtableData as any || null;
+    const isImported = !!airtableData;
+
+    if (isImported) {
+      if (airtableData['DOMICILIO PS COMPLETO']) direccion = airtableData['DOMICILIO PS COMPLETO'];
+      else if (airtableData['DOMICILIO PS']) direccion = airtableData['DOMICILIO PS'];
+
+      if (airtableData['Fecha Registro']) fechaRegistro = new Date(airtableData['Fecha Registro']).toISOString();
+
+      if ((!cupsDisplay || cupsDisplay.startsWith('CUPS_MOCK')) && airtableData['CUPS2']) {
+        cupsDisplay = airtableData['CUPS2'];
+      }
+
+      if (airtableData['CANAL'] && airtableData['CANAL'] !== '') {
+        canalName = Array.isArray(airtableData['CANAL']) ? airtableData['CANAL'][0] : airtableData['CANAL'];
+      }
+      
+      if (canalName !== 'Directo' && !airtableData['Comercial']) {
+          comercialName = canalName;
+      }
+    }
+
+    return {
+      id: l.id,
+      titular: l.businessName,
+      empresa: l.businessName,
+      nif: l.vatNumber || 'Pendiente',
+      cups: cupsDisplay,
+      tarifa: l.tariff || '2.0TD',
+      status: l.status || 'NUEVO',
+      canal: canalName,
+      comercial: comercialName,
+      fechaRegistro: fechaRegistro,
+      comisionEst: l.estimatedMWh ? l.estimatedMWh * 15 : 0,
+      sipsOk: l.cups || cupsDisplay ? true : false,
+      potencia: 'Varios',
+      documentsCount: l.documents.length,
+      rawLead: l as any,
+      type: l.type,
+      address: direccion,
+      contractId: l.contractId || undefined,
+      contractCode: l.contract?.contractCode || (l.contractData as any)?.['CONTRATO'] || undefined
+    };
+  });
+
+  return { leads: mappedLeads };
+}

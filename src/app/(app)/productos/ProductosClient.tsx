@@ -90,6 +90,7 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
             <option value="">Tarifa</option>
             <option value="2.0TD">2.0TD</option>
             <option value="3.0TD">3.0TD</option>
+            <option value="3.0TDVE">3.0TDVE</option>
             <option value="6.1TD">6.1TD</option>
           </select>
         </div>

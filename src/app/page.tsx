@@ -1,78 +1,17 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import {
   Zap, TrendingUp, Users, Receipt, AlertTriangle,
   ArrowUpRight, ArrowDownRight, CheckCircle2, Clock,
-  RefreshCcw, XCircle, ChevronRight
+  RefreshCcw, XCircle, ChevronRight, Activity, BatteryWarning
 } from 'lucide-react';
-
-// ——— Datos de ejemplo (se sustituirán por datos reales de la BD) ——— 
-const kpis = [
-  {
-    label: 'Contratos Activos',
-    value: '247',
-    change: '+12',
-    changeLabel: 'este mes',
-    up: true,
-    icon: CheckCircle2,
-    color: 'var(--success)',
-  },
-  {
-    label: 'MWh Activos',
-    value: '1.847',
-    change: '+8,4%',
-    changeLabel: 'vs mes anterior',
-    up: true,
-    icon: Zap,
-    color: 'var(--lime)',
-  },
-  {
-    label: 'Facturación Mes',
-    value: '98.240 €',
-    change: '+5,2%',
-    changeLabel: 'vs mes anterior',
-    up: true,
-    icon: Receipt,
-    color: 'var(--info)',
-  },
-  {
-    label: 'Margen Medio',
-    value: '7,34%',
-    change: '-0,2pp',
-    changeLabel: 'vs mes anterior',
-    up: false,
-    icon: TrendingUp,
-    color: 'var(--warning)',
-  },
-  {
-    label: 'Leads Activos',
-    value: '38',
-    change: '+6',
-    changeLabel: 'esta semana',
-    up: true,
-    icon: Users,
-    color: 'var(--lime)',
-  },
-  {
-    label: 'Incidencias Abiertas',
-    value: '4',
-    change: '-2',
-    changeLabel: 'esta semana',
-    up: true,
-    icon: AlertTriangle,
-    color: 'var(--danger)',
-  },
-];
-
-const recentContracts = [
-  { id: 'ES0031406580959001DW', client: 'Talleres Hernández S.L.', status: 'ACTIVO', tariff: '6.1TD', mwh: 187.4, since: '15/05/2026', canal: 'Aguirreclima' },
-  { id: 'ES0021000000394649KL', client: 'Clínica Dental Puerta Sur', status: 'TRAMITANDO', tariff: '3.0TD', mwh: 42.1, since: '22/05/2026', canal: 'AEC Energías' },
-  { id: 'ES0031104781919001ZF', client: 'Hostelería MR 2020 S.L.', status: 'BORRADOR', tariff: '2.0TD', mwh: 12.8, since: '28/05/2026', canal: 'Directo' },
-  { id: 'ES0031300601649001VA', client: 'Supermercados LídaSur', status: 'ACTIVO', tariff: '6.1TD', mwh: 542.0, since: '01/04/2026', canal: 'SP Asesoría' },
-  { id: 'ES0022000007621842MN', client: 'Centro Deportivo Aquasur', status: 'ACTIVO', tariff: '3.0TD', mwh: 98.7, since: '10/04/2026', canal: 'Aguirreclima' },
-];
+import { getDashboardMetricsAction } from '@/app/actions/dashboardActions';
+import { getEconomicAnalysis } from '@/app/actions/analysisActions';
+import AnalysisDashboard from '@/components/analisis/AnalysisDashboard';
+import Link from 'next/link';
 
 const statusBadge = (status: string) => {
   const map: Record<string, string> = {
@@ -81,42 +20,111 @@ const statusBadge = (status: string) => {
     BORRADOR: 'badge-draft',
     BAJA: 'badge-danger',
     RECHAZADO: 'badge-danger',
+    RECHAZO_DISTRIBUIDORA: 'badge-danger',
+    RECHAZO_COMERCIALIZADORA: 'badge-danger',
   };
   return `badge ${map[status] ?? 'badge-draft'}`;
 };
 
-const renewalAlerts = [
-  { client: 'Autopartes García S.L.', cups: 'ES0031...591LD', expiresIn: '12 días', mwh: 45.2 },
-  { client: 'Imprenta Offset Color', cups: 'ES0021...843KP', expiresIn: '18 días', mwh: 22.8 },
-  { client: 'Colegio San Lorenzo', cups: 'ES0031...102ZA', expiresIn: '25 días', mwh: 88.0 },
-];
-
 export default function DashboardPage() {
+  const [data, setData] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const [res, analysisRes] = await Promise.all([
+        getDashboardMetricsAction(),
+        getEconomicAnalysis()
+      ]);
+      if (res.success) {
+        setData(res.data);
+      } else {
+        setData({ error: res.error });
+      }
+      setAnalysisData(analysisRes || []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex' }}>
+        <Sidebar />
+        <div className="main-content" style={{ flex: 1 }}>
+          <Topbar title="Dashboard" subtitle="Cargando métricas en tiempo real..." />
+          <div style={{ padding: '24px' }}>Cargando datos reales del sistema...</div>
+        </div>
+      </div>
+    );
+  }
+
+  const kpis = data?.kpis || { activos: 0, tramitando: 0, rechazos: 0, bajas: 0, mwh: 0 };
+  const recentContracts = data?.recentContracts || [];
+  const renewalAlerts = data?.renewals || [];
+
+  const kpiCards = [
+    {
+      label: 'Contratos Activos',
+      value: kpis.activos.toString(),
+      icon: CheckCircle2,
+      color: 'var(--lime)',
+    },
+    {
+      label: 'MWh Activos (Anual)',
+      value: kpis.mwh.toLocaleString('es-ES', { minimumFractionDigits: 1 }),
+      icon: Zap,
+      color: 'var(--lime)',
+    },
+    {
+      label: 'En Tramitación (Altas)',
+      value: kpis.tramitando.toString(),
+      icon: Clock,
+      color: 'var(--info)',
+    },
+    {
+      label: 'Contratos Rechazados',
+      value: kpis.rechazos.toString(),
+      icon: AlertTriangle,
+      color: 'var(--danger)',
+    },
+    {
+      label: 'Bajas Registradas',
+      value: kpis.bajas.toString(),
+      icon: BatteryWarning,
+      color: 'var(--warning)',
+    },
+  ];
+
   return (
     <div style={{ display: 'flex' }}>
       <Sidebar />
       <div className="main-content" style={{ flex: 1 }}>
         <Topbar
           title="Dashboard"
-          subtitle="Visión general de la comercializadora · AED Energía"
+          subtitle="Visión general de la comercializadora · Métricas en tiempo real"
         />
 
         <div style={{ padding: '24px', maxWidth: '1600px' }}>
+          
+          {data?.error && (
+            <div style={{ padding: '16px', background: 'var(--danger)', color: 'white', marginBottom: '24px', borderRadius: '8px' }}>
+              <strong>Error en getDashboardMetricsAction:</strong> {data.error}
+            </div>
+          )}
 
-          {/* ——— KPIs ——— */}
+          {/* ——— KPIs Reales ——— */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '16px',
             marginBottom: '24px',
           }}>
-            {kpis.map((kpi, i) => {
+            {kpiCards.map((kpi, i) => {
               const Icon = kpi.icon;
               return (
-                <div
-                  key={kpi.label}
-                  className={`card-stat animate-fade-in-up delay-${(i + 1) * 100}`}
-                >
+                <div key={kpi.label} className={`card-stat animate-fade-in-up delay-${(i + 1) * 100}`}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                     <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {kpi.label}
@@ -132,44 +140,78 @@ export default function DashboardPage() {
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>
                     {kpi.value}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px' }}>
-                    {kpi.up
-                      ? <ArrowUpRight size={13} color="var(--success)" />
-                      : <ArrowDownRight size={13} color="var(--danger)" />
-                    }
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: kpi.up ? 'var(--success)' : 'var(--danger)' }}>
-                      {kpi.change}
-                    </span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{kpi.changeLabel}</span>
-                  </div>
                 </div>
               );
             })}
           </div>
 
-          {/* ——— Main Grid: Contratos + Alertas ——— */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', marginBottom: '16px' }}>
+          {/* ——— Renovaciones Críticas (Horizontal Stripe) ——— */}
+          {renewalAlerts.length > 0 && (
+            <div className="animate-fade-in-up delay-200" style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <RefreshCcw size={16} color="var(--warning)" />
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Renovaciones Próximas (45d)
+                </h3>
+                <span className="badge badge-warning">{renewalAlerts.length}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '8px' }}>
+                {renewalAlerts.map((r: any, i: number) => (
+                  <div key={i} className="card" style={{
+                    minWidth: '260px',
+                    padding: '16px',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s, background 0.2s',
+                    border: '1px solid rgba(245,158,11,0.2)',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-surface)')}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
+                        {r.client}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--warning)' }}>
+                        {r.expiresIn}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
+                        {r.cups?.slice(0, 16)}...
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        {r.mwh.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} MWh
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
+          {/* ——— Estado de Servicios & Contratos Recientes ——— */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
+            
             {/* Contratos Recientes */}
-            <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Contratos Recientes
+                    Actividad Reciente
                   </h2>
                   <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Últimas altas registradas
+                    Últimos contratos actualizados en el sistema
                   </p>
                 </div>
-                <a href="/contratos" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--lime)', fontWeight: 600, textDecoration: 'none' }}>
+                <Link href="/contratos" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--lime)', fontWeight: 600, textDecoration: 'none' }}>
                   Ver todos <ChevronRight size={13} />
-                </a>
+                </Link>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>CUPS</th>
+                      <th>CUPS / Referencia</th>
                       <th>Cliente</th>
                       <th>Estado</th>
                       <th>Tarifa</th>
@@ -178,10 +220,13 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {recentContracts.map((c) => (
-                      <tr key={c.id} style={{ cursor: 'pointer' }}>
+                    {recentContracts.length === 0 && (
+                      <tr><td colSpan={6} style={{textAlign: 'center', padding: '30px'}}>No hay contratos recientes</td></tr>
+                    )}
+                    {recentContracts.map((c: any) => (
+                      <tr key={c.internalId} style={{ cursor: 'pointer' }}>
                         <td className="mono-cell" style={{ color: 'var(--lime)', fontWeight: 500, fontSize: '0.75rem' }}>
-                          {c.id.slice(0, 18)}...
+                          {c.id?.slice(0, 18) || 'Sin ref'}...
                         </td>
                         <td className="primary-cell">{c.client}</td>
                         <td><span className={statusBadge(c.status)}>{c.status}</span></td>
@@ -195,131 +240,43 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Panel Derecho: Renovaciones y Estado */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-              {/* Alerta Renovaciones */}
-              <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden', border: '1px solid rgba(245,158,11,0.3)' }}>
-                <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <RefreshCcw size={15} color="var(--warning)" />
-                  <h3 style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Renovaciones Urgentes
-                  </h3>
-                  <span className="badge badge-warning" style={{ marginLeft: 'auto' }}>{renewalAlerts.length}</span>
-                </div>
-                <div style={{ padding: '8px' }}>
-                  {renewalAlerts.map((r, i) => (
-                    <div key={i} style={{
-                      padding: '10px 10px',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '4px',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s',
-                    }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <div>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>{r.client}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.cups}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--warning)' }}>{r.expiresIn}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{r.mwh} MWh</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                  <a href="/renovaciones" className="btn-secondary" style={{ width: '100%', justifyContent: 'center', padding: '8px' }}>
-                    Ver renovaciones
-                  </a>
-                </div>
-              </div>
-
-              {/* Estado del Sistema */}
-              <div className="card animate-fade-in-up delay-400">
-                <h3 style={{ margin: '0 0 12px', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Estado del Sistema
+            {/* Estado del Sistema */}
+            <div className="card animate-fade-in-up delay-400" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Activity size={16} color="var(--info)" />
+                <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Estado de Servicios
                 </h3>
+              </div>
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', flex: 1 }}>
                 {[
-                  { label: 'API SIPS (Google Cloud)', ok: true },
-                  { label: 'FTP Facturas', ok: true },
-                  { label: 'Sincronización Airtable', ok: false },
-                  { label: 'Correo (Resend)', ok: true },
+                  { label: 'Integración SIPS', ok: true },
+                  { label: 'Firmas Contratos', ok: true },
+                  { label: 'Cloudflare R2', ok: true },
+                  { label: 'Módulo Facturación', ok: false },
                 ].map((s, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < 3 ? '1px solid var(--border)' : 'none' }}>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{s.label}</span>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{s.label}</span>
                     {s.ok
-                      ? <span className="badge badge-active"><CheckCircle2 size={10} /> OK</span>
-                      : <span className="badge badge-danger"><XCircle size={10} /> Error</span>
+                      ? <span className="badge badge-active"><CheckCircle2 size={12} /> OK</span>
+                      : <span className="badge badge-draft"><Clock size={12} /> Pdte</span>
                     }
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
 
-          {/* ——— Pie: Análisis Económico por Mes ——— */}
-          <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Análisis Económico Mensual
-                </h2>
-                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Últimos 5 meses · AED Energía
-                </p>
-              </div>
-              <a href="/analisis" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--lime)', fontWeight: 600, textDecoration: 'none' }}>
-                Ver análisis completo <ChevronRight size={13} />
-              </a>
+          {/* ——— Pie: Análisis Económico Integral ——— */}
+          <div className="mt-8">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <Activity size={20} color="var(--lime)" />
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Análisis Económico y Evolución de Cartera
+              </h2>
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Mes</th>
-                    <th>Contratos Activos</th>
-                    <th>Altas</th>
-                    <th>Bajas</th>
-                    <th>MWh Activos</th>
-                    <th>Facturación €</th>
-                    <th>Facturación MWh</th>
-                    <th>€/MWh</th>
-                    <th>Margen €</th>
-                    <th>Margen %</th>
-                    <th>Margen €/MWh</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { mes: '2026-01', activos: 198, altas: 14, bajas: 2, mwh: 892.3, facEur: 58240, facMwh: 210.4, eurMwh: 277.0, margen: 4280, margenPct: '7.3%', margenMwh: 20.3 },
-                    { mes: '2026-02', activos: 210, altas: 18, bajas: 3, mwh: 941.1, facEur: 67120, facMwh: 241.8, eurMwh: 277.6, margen: 4912, margenPct: '7.3%', margenMwh: 20.3 },
-                    { mes: '2026-03', activos: 225, altas: 22, bajas: 4, mwh: 1024.5, facEur: 78440, facMwh: 289.2, eurMwh: 271.3, margen: 5720, margenPct: '7.3%', margenMwh: 19.8 },
-                    { mes: '2026-04', activos: 238, altas: 19, bajas: 6, mwh: 1124.8, facEur: 86310, facMwh: 312.4, eurMwh: 276.2, margen: 6340, margenPct: '7.3%', margenMwh: 20.3 },
-                    { mes: '2026-05', activos: 247, altas: 16, bajas: 7, mwh: 1184.2, facEur: 98240, facMwh: 352.1, eurMwh: 278.9, margen: 7210, margenPct: '7.3%', margenMwh: 20.5 },
-                  ].map((row) => (
-                    <tr key={row.mes}>
-                      <td className="mono-cell primary-cell">{row.mes}</td>
-                      <td className="mono-cell" style={{ color: 'var(--lime)', fontWeight: 600 }}>{row.activos}</td>
-                      <td className="mono-cell" style={{ color: 'var(--success)' }}>+{row.altas}</td>
-                      <td className="mono-cell" style={{ color: 'var(--danger)' }}>-{row.bajas}</td>
-                      <td className="mono-cell">{row.mwh.toLocaleString('es-ES', { minimumFractionDigits: 1 })}</td>
-                      <td className="mono-cell">{row.facEur.toLocaleString('es-ES')} €</td>
-                      <td className="mono-cell">{row.facMwh.toFixed(1)}</td>
-                      <td className="mono-cell">{row.eurMwh.toFixed(1)}</td>
-                      <td className="mono-cell" style={{ color: 'var(--success)' }}>{row.margen.toLocaleString('es-ES')} €</td>
-                      <td className="mono-cell" style={{ color: 'var(--lime)', fontWeight: 600 }}>{row.margenPct}</td>
-                      <td className="mono-cell">{row.margenMwh}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <AnalysisDashboard data={analysisData} />
           </div>
         </div>
       </div>

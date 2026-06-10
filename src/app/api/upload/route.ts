@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
+import { uploadFileToR2 } from '@/lib/r2';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,23 +11,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Almacenamiento en la Nube con Vercel Blob
-    const blob = await put(`${folder}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`, file, {
-      access: 'public',
-    });
+    // Almacenamiento en la Nube con Cloudflare R2
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const filenameSafe = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const url = await uploadFileToR2(`${folder}/${Date.now()}-${filenameSafe}`, buffer, file.type || 'application/octet-stream');
 
     return NextResponse.json({ 
       success: true, 
-      url: blob.url,
+      url: url,
       filename: file.name
     });
 
   } catch (error: any) {
-    console.error("Vercel Blob Upload error:", error);
+    console.error("R2 Upload error:", error);
     
-    if (error.message && error.message.includes("BLOB_READ_WRITE_TOKEN")) {
+    if (error.message && error.message.includes("R2_BUCKET_NAME")) {
       return NextResponse.json({ 
-        error: 'El almacenamiento en la nube no está configurado. Añade tu BLOB_READ_WRITE_TOKEN en el archivo .env' 
+        error: 'El almacenamiento en la nube no está configurado. Añade tus credenciales R2 en el archivo .env' 
       }, { status: 500 });
     }
 

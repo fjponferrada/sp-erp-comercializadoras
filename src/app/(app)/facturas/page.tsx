@@ -9,31 +9,11 @@ import { getInvoiceVisibilityFilter } from '@/lib/permissions';
 export default async function InvoicesPage() {
   const visibilityFilter = await getInvoiceVisibilityFilter();
 
-  // Obtenemos TODAS las facturas para el cliente, ordenadas por fecha (o en producción se puede paginar en bd)
-  const allInvoicesRaw = await prisma.invoice.findMany({
-    where: visibilityFilter,
-    include: { client: true, contract: true, supplyPoint: true },
-    orderBy: [
-      { issueDate: 'desc' },
-      { invoiceNumber: 'desc' }
-    ]
-  });
-
-  const allInvoices = allInvoicesRaw.map(inv => {
-    let proc = inv.procedenciaHasta || inv.origin;
-    if (!proc && inv.invoiceData && typeof inv.invoiceData === 'object') {
-      const d = inv.invoiceData as any;
-      if (d['Procedencia Hasta']) proc = d['Procedencia Hasta'];
-    }
-    return {
-      ...inv,
-      origin: proc,
-      desde: inv.desde,
-      hasta: inv.hasta,
-      contract: inv.contract,
-      supplyPoint: inv.supplyPoint
-    };
-  });
+  // Obtenemos solo la primera página de facturas para la carga inicial
+  const { getPaginatedInvoicesAction } = await import('@/app/actions/invoiceActions');
+  const result = await getPaginatedInvoicesAction(1, 100, '', '');
+  const initialInvoices = result.success ? result.invoices : [];
+  const totalCount = result.success ? result.totalCount : 0;
 
   // Contamos facturas pendientes de comunicar
   const pendingCount = await prisma.invoice.count({
@@ -66,7 +46,7 @@ export default async function InvoicesPage() {
         <PdfUploader />
       </div>
 
-      <FacturasClient initialInvoices={allInvoices} pendingCount={pendingCount} />
+      <FacturasClient initialInvoices={initialInvoices as any} pendingCount={pendingCount} initialTotalCount={totalCount as number} />
     </div>
   );
 }

@@ -104,9 +104,48 @@ export async function importInvoicesAction(invoicesData: any[]) {
       // Extraer importes
       const totalAmount = parseFloat(row['Total'] || row['TOTAL'] || '0');
       const subtotal1 = parseFloat(row['Subtotal 1'] || '0');
-      const taxAmount = parseFloat(row['Importe Impuesto'] || '0');
+      const taxAmount = parseFloat(row['Importe Impuesto CORR'] || row['Importe Impuesto'] || '0');
       const taxPercentage = parseFloat(row['Impuesto (%)'] || '5.11');
-      const totalMWh = parseFloat(row['Energía Total Consumida'] || '0') / 1000;
+      const cantidadEnergia = parseFloat(row['Cantidad Energía Total Consumida CORR'] || row['Energía Total Consumida'] || '0');
+      const totalMWh = cantidadEnergia / 1000;
+
+      // Cálculo de Margen
+      const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : 0;
+      let margenEnergia = parseNum(row['Margen Energia']);
+      let margenFactura = parseNum(row['Margen Factura']);
+      let margenPotencia = parseNum(row['Margen Potencia']);
+      let fijoIndex = row['FIJO / INDEX'] || 'Fijo';
+      
+      let fee = contract && contract.fee != null ? contract.fee : (parseNum(row['Fee Index']) || parseNum(row['FEE']) || 0);
+
+      let baseImponibleF1 = parseNum(row['BaseImponibleF1 CORR'] || row['BaseImponibleF1']);
+      let tipoFactura = row['Tipo Factura'] || 'Normal';
+      
+      let baseImponibleIva = parseNum(row['Base Imponible IVA CORR'] || row['Base Imponible IVA']);
+      if (tipoFactura === 'Abono' && baseImponibleIva > 0) {
+        baseImponibleIva = -baseImponibleIva;
+      }
+
+      let margenRelIngebau = 0;
+      if (cantidadEnergia !== 0) {
+        margenRelIngebau = 1000 * margenEnergia / cantidadEnergia;
+      }
+
+      let margenFacturaCorr = (tipoFactura === 'Abono' ? -1 : 1) * margenFactura;
+
+      let margenEstimado = 0;
+      if (fijoIndex === 'Indexado') {
+        margenEstimado = margenPotencia + fee * (cantidadEnergia / 1000);
+      } else {
+        margenEstimado = baseImponibleIva - taxAmount - baseImponibleF1 - 0.09 * cantidadEnergia;
+      }
+
+      let margin = 0;
+      if (margenRelIngebau < 70 && margenRelIngebau > -70) {
+        margin = margenFacturaCorr;
+      } else {
+        margin = margenEstimado;
+      }
 
       // Buscar si es rectificativa
       const rectifiedInvoiceNum = row['Numero factura rectificada'] || null;
@@ -126,7 +165,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
       await prisma.invoice.create({
         data: {
           invoiceNumber,
-          invoiceType: row['Tipo Factura'] || 'Normal',
+          invoiceType: tipoFactura,
           clientId: client?.id || supplyPoint.id,
           contractId: contract?.id,
           supplyPointId: supplyPoint.id,
@@ -138,6 +177,15 @@ export async function importInvoicesAction(invoicesData: any[]) {
           totalMWh,
           pdfUrl: row['PATH'] || null,
           rectifiedInvoiceId,
+          margenEnergia,
+          margenPotencia,
+          margenFactura,
+          fijoIndex,
+          fee,
+          baseImponibleIva,
+          baseImponibleF1,
+          margin,
+          invoiceData: row as any,
         }
       });
       
@@ -384,5 +432,80 @@ export async function requestPaymentTransferAction(invoiceId: string, type: 'tra
   }
 }
 
+export async function getPaginatedInvoicesAction(
+  page: number, 
+  itemsPerPage: number, 
+  searchTerm: string, 
+  filterType: string,
+  dateFrom?: string,
+  dateTo?: string
+) {
+  try {
+    const { getInvoiceVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getInvoiceVisibilityFilter();
+    
+    const whereClause: any = { ...visibilityFilter };
 
+    if (filterType) {
+      whereClause.invoiceType = filterType;
+    }
 
+    if (dateFrom || dateTo) {
+      whereClause.issueDate = {};
+      if (dateFrom) {
+        whereClause.issueDate.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        // Al final del día para incluir la fecha "hasta" completa
+        const endOfDay = new Date(dateTo);
+        endOfDay.setHours(23, 59, 59, 999);
+        whereClause.issueDate.lte = endOfDay;
+      }
+    }
+
+    if (searchTerm) {
+      whereClause.OR = [
+        { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
+        { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
+        { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
+        { invoiceData: { path: ['NOMBRE/RAZON SOCIAL'], string_contains: searchTerm } },
+      ];
+    }
+
+    const skip = (page - 1) * itemsPerPage;
+    
+    const [invoicesRaw, totalCount] = await Promise.all([
+      prisma.invoice.findMany({
+        where: whereClause,
+        include: { client: true, contract: true, supplyPoint: true },
+        orderBy: [
+          { issueDate: 'desc' },
+          { invoiceNumber: 'desc' }
+        ],
+        skip,
+        take: itemsPerPage,
+      }),
+      prisma.invoice.count({ where: whereClause })
+    ]);
+
+    const invoices = invoicesRaw.map(inv => {
+      let proc = inv.procedenciaHasta || inv.origin;
+      if (!proc && inv.invoiceData && typeof inv.invoiceData === 'object') {
+        const d = inv.invoiceData as any;
+        if (d['Procedencia Hasta']) proc = d['Procedencia Hasta'];
+      }
+      return {
+        ...inv,
+        origin: proc,
+        desde: (inv as any).desde,
+        hasta: (inv as any).hasta,
+      };
+    });
+
+    return { success: true, invoices, totalCount };
+  } catch (error: any) {
+    console.error("Error fetching paginated invoices:", error);
+    return { success: false, error: error.message };
+  }
+}

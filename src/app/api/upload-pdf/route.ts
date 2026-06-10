@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { put } from '@vercel/blob';
+import { uploadFileToR2 } from '@/lib/r2';
 import path from 'path';
 import { auth } from '@/auth';
 
@@ -55,32 +55,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Almacenamiento en la Nube con Vercel Blob
-    // Se requiere BLOB_READ_WRITE_TOKEN en .env
-    const blob = await put(`facturas/${originalFilename}`, file, {
-      access: 'public',
-      // 'addRandomSuffix: true' por defecto añade un sufijo para evitar colisiones
-    });
+    // Almacenamiento en la Nube con Cloudflare R2
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const url = await uploadFileToR2(`facturas/${Date.now()}-${originalFilename}`, buffer, file.type || 'application/pdf');
 
-    // Actualizar BD con la URL pública devuelta por Vercel Blob
+    // Actualizar BD con la URL pública devuelta por R2
     await prisma.invoice.update({
       where: { id: invoice.id },
-      data: isXml ? { xML: blob.url } : { pdfUrl: blob.url }
+      data: isXml ? { xML: url } : { pdfUrl: url }
     });
 
     return NextResponse.json({ 
       success: true, 
       invoiceNumber,
-      url: blob.url
+      url: url
     });
 
   } catch (error: any) {
     console.error("Vercel Blob Upload error:", error);
     
-    // Captura específica para cuando no hay token configurado
-    if (error.message && error.message.includes("BLOB_READ_WRITE_TOKEN")) {
+    if (error.message && error.message.includes("R2_BUCKET_NAME")) {
       return NextResponse.json({ 
-        error: 'El almacenamiento en la nube no está configurado. Añade tu BLOB_READ_WRITE_TOKEN en el archivo .env' 
+        error: 'El almacenamiento en la nube no está configurado. Añade tus credenciales de R2 en el archivo .env' 
       }, { status: 500 });
     }
 

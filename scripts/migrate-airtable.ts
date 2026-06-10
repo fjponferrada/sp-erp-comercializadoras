@@ -52,7 +52,7 @@ async function run() {
   }
 
   console.log("Descargando TODOS LOS CONTRATOS de Airtable...");
-  const contratosUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?filterByFormula=" + encodeURIComponent('NOT({CUPS}="")') + "&maxRecords=50";
+  const contratosUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CONTRATOS?filterByFormula=" + encodeURIComponent('NOT({CUPS}="")');
   const records = await fetchAllAirtableRecords(contratosUrl);
   console.log("Obtenidos " + records.length + " contratos de Airtable.");
 
@@ -72,8 +72,11 @@ async function run() {
     admin = await prisma.user.create({ data: { name: 'FJ Ponferrada', email: 'fjponferrada@sp-energia.com', password: adminHash, role: 'SUPERADMIN', brand: { connect: { id: brand.id } } } });
   }
 
-  // Fetch Invoices later
-  let allInvoices: any[] = [];
+  console.log("Descargando TODAS LAS FACTURAS de Airtable...");
+  const facturasUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/FACTURAS";
+  const allInvoicesList = await fetchAllAirtableRecords(facturasUrl);
+  console.log("Obtenidas " + allInvoicesList.length + " facturas de Airtable.");
+  const invoicesMap = new Map(allInvoicesList.map(inv => [inv.id, inv]));
 
   console.log("Descargando CANALES de Airtable...");
   const canalesUrl = "https://api.airtable.com/v0/" + AIRTABLE_BASE_ID + "/CANALES";
@@ -179,7 +182,8 @@ async function run() {
         variableCommissionPct,
         autoGenerateContract,
         maxRenewalDays,
-        products: { connect: connectProducts }
+        products: { connect: connectProducts },
+        brand: { connect: { id: brand.id } }
       }
     });
   }
@@ -234,6 +238,7 @@ async function run() {
   }
 
   // We will fetch invoices individually per contract based on Rule 14.
+  const failedContracts: any[] = [];
 
   for (const record of records) {
     const f = record.fields;
@@ -241,7 +246,7 @@ async function run() {
 
     try {
       // Mapeo Cliente robusto
-      const rawVat = f['NIF Contacto'] || f['Copia de CIF link'] || f['CONTROLSAGE']?.substring(1, 10);
+      const rawVat = f['CIF'] || f['NIF'] || f['Copia de CIF link'] || f['NIF Contacto'] || f['CONTROLSAGE']?.substring(1, 10);
       const vatNumber = rawVat ? rawVat.toString().trim() : 'UNKNOWN';
       
       const getVal = (key: string) => {
@@ -306,12 +311,12 @@ async function run() {
           brand: { connect: { id: brand.id } }
         };
 
-      let client = await prisma.client.findFirst({ where: { vatNumber } });
+      let client = await prisma.client.findFirst({ where: { vatNumber, brandId: brand.id } });
       if (!client && vatNumber !== 'UNKNOWN') {
         client = await prisma.client.create({ data: { ...clientData, vatNumber } });
       } else if (!client && vatNumber === 'UNKNOWN') {
         // Find by name if vatNumber is UNKNOWN
-        client = await prisma.client.findFirst({ where: { businessName } });
+        client = await prisma.client.findFirst({ where: { businessName, brandId: brand.id } });
         if (!client) {
             client = await prisma.client.create({ data: { ...clientData, vatNumber: `UNKNOWN_${Math.random().toString(36).substring(7)}` } });
         }
@@ -339,7 +344,7 @@ async function run() {
       const p5c = parsePower(f['P5C SIPS'] || f['P5C'] || f['P5']);
       const p6c = parsePower(f['P6C SIPS'] || f['P6C'] || f['P6']);
 
-      let supplyPoint = await prisma.supplyPoint.findFirst({ where: { cups } });
+      let supplyPoint = await prisma.supplyPoint.findFirst({ where: { cups, clientId: client!.id } });
       if (!supplyPoint) {
         if (cups) {
           const distName = Array.isArray(f['DISTRIBUIDORA']) ? f['DISTRIBUIDORA'][0] : (Array.isArray(f['Nombre Distribuidora']) ? f['Nombre Distribuidora'][0] : f['Nombre Distribuidora']);
@@ -388,7 +393,13 @@ async function run() {
         if (sUpper.includes('ACTIVO')) status = 'ACTIVO';
         else if (sUpper.includes('BAJA')) status = 'BAJA';
         else if (sUpper.includes('BORRADOR')) status = 'BORRADOR';
-        else if (sUpper.includes('RECHAZA')) status = 'RECHAZADO';
+        else if (sUpper.includes('RECHAZA') || sUpper.includes('RECHAZO')) {
+          status = 'RECHAZADO';
+          if (sUpper.includes('DISTRIBUIDORA')) status = 'RECHAZO_DISTRIBUIDORA';
+          else if (sUpper.includes('COMERCIALIZADORA')) status = 'RECHAZO_COMERCIALIZADORA';
+          else if (sUpper.includes('RIESGO')) status = 'RECHAZO_RIESGOS';
+          else if (sUpper.includes('CLIENTE')) status = 'RECHAZADO_POR_CLIENTE';
+        }
         else if (sUpper.includes('ACEPTAD')) status = 'ACEPTADO';
         else if (sUpper.includes('FINALIZ')) status = 'FINALIZADO';
       }
@@ -430,11 +441,16 @@ async function run() {
 
         let svaId = Array.isArray(f['Servicio']) ? f['Servicio'][0] : (f['Servicio'] ? String(f['Servicio']) : null);
         let svaConceptName = svaId ? (serviciosMap[svaId] || svaId) : null;
+        
+        const versionVal = parseInt(f['Version'] || '0', 10);
+        const version = isNaN(versionVal) ? 0 : versionVal;
 
         contract = await prisma.contract.create({
           data: {
             status,
             contractCode: f['CONTRATO'] || null,
+            version,
+            brandId: brand.id,
             tramitationType,
             signatureDate: f['Fecha firma contrato'] ? new Date(f['Fecha firma contrato']) : null,
             activationDate,
@@ -476,23 +492,17 @@ async function run() {
         console.log(`  -> Contrato ${airtableId} ya existía.`);
       }
 
-      // -- IMPORTAR FACTURAS (Fetch individual por ID - Regla 14) --
+      // -- IMPORTAR FACTURAS (Cruce en memoria) --
       const invoiceIds = f['FACTURASfldaa54Nua6LxjjX7'] || f['FACTURAS'] || [];
       const invoices = [];
       if (Array.isArray(invoiceIds) && invoiceIds.length > 0) {
-        console.log(`  + Encontradas ${invoiceIds.length} facturas asociadas. Descargando individualmente...`);
+        console.log(`  + Encontradas ${invoiceIds.length} facturas asociadas en memoria...`);
         for (const invId of invoiceIds) {
-          try {
-            const invUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/FACTURAS/${invId}`;
-            const invRes = await fetch(invUrl, { headers: { Authorization: "Bearer " + AIRTABLE_API_KEY } });
-            if (invRes.ok) {
-              const invData = await invRes.json();
-              invoices.push(invData);
-            } else {
-              console.log(`    [WARN] No se pudo obtener la factura ${invId}`);
-            }
-          } catch (err) {
-            console.log(`    [ERROR] Fallo en la petición de factura ${invId}`);
+          const invData = invoicesMap.get(invId);
+          if (invData) {
+            invoices.push(invData);
+          } else {
+            console.log(`    [WARN] Factura ${invId} no encontrada en el listado general.`);
           }
         }
       } else {
@@ -503,7 +513,7 @@ async function run() {
         const invFields = inv.fields;
         const invoiceNumber = invFields['Numero Factura'] || invFields['N Factura'] || `INV_MOCK_${inv.id}`;
         
-        let existingInvoice = await prisma.invoice.findFirst({ where: { invoiceNumber } });
+        let existingInvoice = await prisma.invoice.findFirst({ where: { invoiceNumber, contractId: contract.id } });
         if (!existingInvoice) {
           const issueDate = invFields['Fecha Factura'] ? new Date(invFields['Fecha Factura']) : new Date();
           const totalAmount = parseFloat(invFields['Total']) || 0;
@@ -554,10 +564,21 @@ async function run() {
 
     } catch (e: any) {
       console.error(`  [ERROR] Procesando registro ${record.id}: `, e.message);
+      failedContracts.push({
+        airtableId: record.id,
+        error: e.message,
+        fields: record.fields
+      });
     }
   }
 
-  console.log(`\n¡Migración finalizada con éxito!`);
+  if (failedContracts.length > 0) {
+    const fs = require('fs');
+    fs.writeFileSync('migration_errors.json', JSON.stringify(failedContracts, null, 2));
+    console.log(`\n¡Migración terminada con ${failedContracts.length} errores! Revisa el archivo migration_errors.json`);
+  } else {
+    console.log(`\n¡Migración finalizada con éxito total (0 errores)!`);
+  }
 }
 
 run().catch(e => { console.error("Error fatal:", e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });

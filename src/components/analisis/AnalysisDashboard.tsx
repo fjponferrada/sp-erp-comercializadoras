@@ -88,7 +88,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
             <div>
               <p className="text-sm font-medium text-slate-400">Margen Medio / MWh</p>
               <h3 className="text-3xl font-bold text-white mt-1">
-                {lastMonth?.facturacionMwh ? (lastMonth.margenEur / lastMonth.facturacionMwh).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '0,00 €'}
+                {lastMonth?.facturacionMwh ? ((lastMonth.margenEur / lastMonth.facturacionMwh) * 1000).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '0,00 €'}
               </h3>
             </div>
             <div className="bg-amber-500/20 p-3 rounded-xl">
@@ -168,7 +168,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
-              {data.map((row) => (
+              {[...data].reverse().map((row) => (
                 <tr key={row.month} className="hover:bg-slate-700/30 transition-colors">
                   <td className="px-6 py-4 font-medium text-white">{row.month}</td>
                   <td className="px-6 py-4 text-right font-medium text-rose-400">

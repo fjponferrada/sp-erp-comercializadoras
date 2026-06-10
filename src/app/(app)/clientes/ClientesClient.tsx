@@ -89,47 +89,68 @@ function StatCard({
 
 /* ─── Page ───────────────────────────────────────────────── */
 import { useRouter } from 'next/navigation';
+import React, { useEffect } from 'react';
 
-export default function ClientesClient({ clientes, userRole }: { clientes: ClienteData[], userRole?: string }) {
+export default function ClientesClient({ 
+  initialClientes, 
+  initialTotalCount,
+  stats,
+  userRole 
+}: { 
+  initialClientes: ClienteData[], 
+  initialTotalCount: number,
+  stats: { totalClientes: number, conContratoActivo: number, nuevosEsteMes: number },
+  userRole?: string 
+}) {
   const router = useRouter();
   const canCreate = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState<'Todos' | TipoPersona>('Todos');
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  /* Derived stats */
-  const totalClientes = clientes.length;
-  const conContratoActivo = clientes.filter((c) => c.cupsActivos > 0).length;
-  const nuevosEsteMes = clientes.filter((c) => c.esNuevo).length;
+  const [clientes, setClientes] = useState<ClienteData[]>(initialClientes);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [isLoading, setIsLoading] = useState(false);
 
-  /* Filtered data */
-  const filtered = useMemo(() => {
-    return clientes.filter((c) => {
-      const matchSearch =
-        search === '' ||
-        c.nombre.toLowerCase().includes(search.toLowerCase()) ||
-        c.nif.toLowerCase().includes(search.toLowerCase());
-      const matchTipo = tipoFilter === 'Todos' || c.tipo === tipoFilter;
-      return matchSearch && matchTipo;
-    });
-  }, [clientes, search, tipoFilter]);
+  useEffect(() => {
+    if (page === 1 && itemsPerPage === 100 && search === '' && tipoFilter === 'Todos') {
+      setClientes(initialClientes);
+      setTotalCount(initialTotalCount);
+      return;
+    }
 
-  /* Pagination */
-  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-  const safePage = Math.min(page, totalPages);
-  const pageData = filtered.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage);
+    const fetchClientes = async () => {
+      setIsLoading(true);
+      try {
+        const { getPaginatedClientsAction } = await import('@/app/actions/clientActions');
+        const result = await getPaginatedClientsAction(page, itemsPerPage, search, tipoFilter);
+        if (result.success && result.clients) {
+          setClientes(result.clients as ClienteData[]);
+          setTotalCount(result.totalCount || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching clients:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const handleSearch = (v: string) => {
-    setSearch(v);
+    const debounceId = setTimeout(() => {
+      fetchClientes();
+    }, 300);
+
+    return () => clearTimeout(debounceId);
+  }, [page, itemsPerPage, search, tipoFilter]);
+
+  useEffect(() => {
     setPage(1);
-  };
+  }, [search, tipoFilter, itemsPerPage]);
 
-  const handleTipo = (v: 'Todos' | TipoPersona) => {
-    setTipoFilter(v);
-    setPage(1);
-  };
+  const handleSearch = (v: string) => setSearch(v);
+  const handleTipo = (v: 'Todos' | TipoPersona) => setTipoFilter(v);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -145,22 +166,22 @@ export default function ClientesClient({ clientes, userRole }: { clientes: Clien
           <StatCard
             icon={Users}
             label="Total Clientes"
-            value={totalClientes}
+            value={stats.totalClientes}
             sub="Registros activos en el sistema"
             delay="delay-100"
           />
           <StatCard
             icon={FileCheck2}
             label="Con Contrato Activo"
-            value={conContratoActivo}
-            sub={`${totalClientes ? Math.round((conContratoActivo / totalClientes) * 100) : 0}% de la cartera`}
+            value={stats.conContratoActivo}
+            sub={`${stats.totalClientes ? Math.round((stats.conContratoActivo / stats.totalClientes) * 100) : 0}% de la cartera`}
             accent
             delay="delay-200"
           />
           <StatCard
             icon={UserPlus}
             label="Nuevos Este Mes"
-            value={nuevosEsteMes}
+            value={stats.nuevosEsteMes}
             sub="Alta reciente"
             delay="delay-300"
           />
@@ -196,7 +217,7 @@ export default function ClientesClient({ clientes, userRole }: { clientes: Clien
                   fontFamily: 'JetBrains Mono, monospace',
                 }}
               >
-                {filtered.length} resultados
+                {totalCount} resultados
               </span>
             </div>
 
@@ -252,18 +273,18 @@ export default function ClientesClient({ clientes, userRole }: { clientes: Clien
                 </tr>
               </thead>
               <tbody>
-                {pageData.length === 0 ? (
+                {clientes.length === 0 ? (
                   <tr>
                     <td
                       colSpan={8}
                       style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}
                     >
                       <Users size={32} style={{ marginBottom: 10, opacity: 0.3 }} />
-                      <p style={{ margin: 0, fontSize: '0.9rem' }}>No se encontraron clientes con los filtros aplicados.</p>
+                      <p style={{ margin: 0, fontSize: '0.9rem' }}>{isLoading ? "Cargando clientes..." : "No se encontraron clientes con los filtros aplicados."}</p>
                     </td>
                   </tr>
                 ) : (
-                  pageData.map((cliente) => {
+                  clientes.map((cliente) => {
                     const isSelected = selectedId === cliente.id;
                     return (
                       <tr
@@ -419,9 +440,9 @@ export default function ClientesClient({ clientes, userRole }: { clientes: Clien
           </div>
 
           <PaginationFooter
-            currentPage={safePage}
+            currentPage={page}
             itemsPerPage={itemsPerPage}
-            totalItems={filtered.length}
+            totalItems={totalCount}
             itemName="clientes"
             onPageChange={setPage}
             onItemsPerPageChange={setItemsPerPage}

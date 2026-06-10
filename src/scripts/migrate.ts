@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import Airtable from 'airtable';
-import { put } from '@vercel/blob';
+import { uploadFileToR2 } from '../lib/r2';
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -72,11 +72,11 @@ async function processSmartDocument(
       });
     }
 
-    // Si no existe, lo subimos a Vercel Blob (o Google Cloud)
+    // Si no existe, lo subimos a Cloudflare R2
     let finalUrl = url;
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const blob = await put(`documentos/${type.toLowerCase()}/${filename}`, buffer, { access: 'public' });
-      finalUrl = blob.url;
+    if (process.env.R2_BUCKET_NAME) {
+      const r2Url = await uploadFileToR2(`documentos/${type.toLowerCase()}/${filename}`, buffer, 'application/octet-stream');
+      finalUrl = r2Url;
     }
 
     // Registramos en el cajón documental

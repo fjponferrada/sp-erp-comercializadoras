@@ -46,41 +46,59 @@ interface Invoice {
 interface FacturasClientProps {
   initialInvoices: Invoice[];
   pendingCount: number;
+  initialTotalCount: number;
 }
 
-export default function FacturasClient({ initialInvoices, pendingCount }: FacturasClientProps) {
+export default function FacturasClient({ initialInvoices, pendingCount, initialTotalCount }: FacturasClientProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
 
-  // Filter invoices
-  const filteredInvoices = useMemo(() => {
-    return initialInvoices.filter(inv => {
-      const matchSearch = searchTerm === '' || 
-        inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inv.client?.businessName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inv.client?.firstName?.toLowerCase().includes(searchTerm.toLowerCase());
-        
-      const matchType = filterType === '' || inv.invoiceType === filterType;
-      
-      return matchSearch && matchType;
-    });
-  }, [initialInvoices, searchTerm, filterType]);
+  // Server-side state
+  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Paginate invoices
-  const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage) || 1;
-  const paginatedInvoices = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredInvoices.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredInvoices, currentPage, itemsPerPage]);
+  // Fetch from server action when filters or pagination change
+  React.useEffect(() => {
+    if (currentPage === 1 && itemsPerPage === 100 && searchTerm === '' && filterType === '' && dateFrom === '' && dateTo === '') {
+      setInvoices(initialInvoices);
+      setTotalCount(initialTotalCount);
+      return;
+    }
+
+    const fetchInvoices = async () => {
+      setIsLoading(true);
+      try {
+        const { getPaginatedInvoicesAction } = await import('@/app/actions/invoiceActions');
+        const result = await getPaginatedInvoicesAction(currentPage, itemsPerPage, searchTerm, filterType, dateFrom, dateTo);
+        if (result.success && result.invoices) {
+          setInvoices(result.invoices as Invoice[]);
+          setTotalCount(result.totalCount || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching invoices:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const debounceId = setTimeout(() => {
+      fetchInvoices();
+    }, 300); // 300ms debounce for typing in search
+
+    return () => clearTimeout(debounceId);
+  }, [currentPage, itemsPerPage, searchTerm, filterType, dateFrom, dateTo]);
 
   // Reset page when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterType, itemsPerPage]);
+  }, [searchTerm, filterType, itemsPerPage, dateFrom, dateTo]);
 
   return (
     <div className="space-y-6">
@@ -109,6 +127,25 @@ export default function FacturasClient({ initialInvoices, pendingCount }: Factur
             <option value="Rectificativa">Rectificativa</option>
           </select>
         </div>
+        <div className="flex items-center gap-2">
+          <input 
+            type="date" 
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+            className="bg-slate-900 border border-slate-700 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 cursor-pointer"
+            title="Fecha Desde"
+          />
+          <span className="text-slate-500">-</span>
+          <input 
+            type="date" 
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+            className="bg-slate-900 border border-slate-700 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 cursor-pointer"
+            title="Fecha Hasta"
+          />
+        </div>
         <SendInvoicesButton pendingCount={pendingCount} />
         <button className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
           <Download size={18} />
@@ -132,11 +169,21 @@ export default function FacturasClient({ initialInvoices, pendingCount }: Factur
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
-              {paginatedInvoices.map((invoice) => (
+              {invoices.map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-slate-700/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-medium text-white">{invoice.invoiceNumber}</div>
                     <div className="text-xs text-slate-400 mt-1">{new Date(invoice.issueDate).toLocaleDateString('es-ES')}</div>
+                    <div className="mt-1.5">
+                      <span className={`text-[10px] uppercase border px-2 py-0.5 rounded-full ${
+                        invoice.invoiceType === 'Normal' ? 'bg-slate-800/50 border-slate-700 text-slate-300' :
+                        invoice.invoiceType === 'Abono' ? 'bg-indigo-900/30 border-indigo-500/30 text-indigo-400' :
+                        invoice.invoiceType === 'Rectificativa' ? 'bg-rose-900/30 border-rose-500/30 text-rose-400' :
+                        'bg-slate-800/50 border-slate-700 text-slate-400'
+                      }`}>
+                        {invoice.invoiceType || 'Normal'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-start justify-between gap-4">
@@ -221,10 +268,10 @@ export default function FacturasClient({ initialInvoices, pendingCount }: Factur
                 </tr>
               ))}
               
-              {paginatedInvoices.length === 0 && (
+              {invoices.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
-                    No se encontraron facturas.
+                    {isLoading ? "Cargando facturas..." : "No se encontraron facturas."}
                   </td>
                 </tr>
               )}
@@ -235,7 +282,7 @@ export default function FacturasClient({ initialInvoices, pendingCount }: Factur
         <PaginationFooter
           currentPage={currentPage}
           itemsPerPage={itemsPerPage}
-          totalItems={filteredInvoices.length}
+          totalItems={totalCount}
           itemName="facturas"
           onPageChange={setCurrentPage}
           onItemsPerPageChange={setItemsPerPage}

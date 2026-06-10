@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Topbar from '@/components/Topbar';
 import { Search, TrendingDown, Zap, ExternalLink, Calendar } from 'lucide-react';
 import PaginationFooter from '@/components/PaginationFooter';
@@ -26,28 +26,47 @@ export interface BajaData {
 
 import WinbackOfferModal from '@/components/bajas/WinbackOfferModal';
 import { Phone, MessageCircle, Send } from 'lucide-react';
+import { getPaginatedBajasAction } from '@/app/actions/bajasActions';
 
-export default function BajasClient({ initialBajas, products = [] }: { initialBajas: BajaData[], products?: any[] }) {
+export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[] }) {
   const [search, setSearch] = useState('');
   const [motivoFilter, setMotivoFilter] = useState('TODOS');
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
 
-  const filtered = useMemo(() => {
-    return initialBajas.filter(b => {
-      const matchSearch = b.cliente.toLowerCase().includes(search.toLowerCase()) || b.cups.toLowerCase().includes(search.toLowerCase());
-      const matchMotivo = motivoFilter === 'TODOS' || b.motivo === motivoFilter;
-      return matchSearch && matchMotivo;
-    });
-  }, [initialBajas, search, motivoFilter]);
+  const [bajas, setBajas] = useState<BajaData[]>(initialBajas);
+  const [totalCount, setTotalCount] = useState(initialTotalCount);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-  const currentPage = Math.min(page, totalPages);
-  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  useEffect(() => {
+    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS') return;
 
-  const totalMwhPerdido = filtered.reduce((s, b) => s + b.mwh, 0);
-  const avgDias = filtered.length ? Math.round(filtered.reduce((s, b) => s + b.diasVida, 0) / filtered.length) : 0;
+    const fetchBajas = async () => {
+      setIsLoading(true);
+      try {
+        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter);
+        if (result.success && result.bajas) {
+          setBajas(result.bajas as BajaData[]);
+          setTotalCount(result.totalCount || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching bajas:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const debounceId = setTimeout(() => {
+      fetchBajas();
+    }, 300);
+
+    return () => clearTimeout(debounceId);
+  }, [page, itemsPerPage, search, motivoFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, motivoFilter]);
 
   return (
     <>
@@ -57,10 +76,10 @@ export default function BajasClient({ initialBajas, products = [] }: { initialBa
         {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '24px' }}>
           {[
-            { label: 'Bajas Este Mes',    value: String(initialBajas.length), color: 'var(--danger)',  icon: TrendingDown },
-            { label: 'MWh Perdidos',      value: `${totalMwhPerdido.toFixed(0)}`, color: 'var(--warning)', icon: Zap },
-            { label: 'Vida Media Cliente',value: `${avgDias}d`,            color: 'var(--info)',    icon: Calendar },
-            { label: 'Recuperables',      value: '0',                      color: 'var(--success)', icon: TrendingDown },
+            { label: 'Bajas Este Mes',      value: String(initialStats?.bajasEsteMes || 0), color: 'var(--danger)',  icon: TrendingDown },
+            { label: 'MWh Perdidos',        value: `${(initialStats?.totalMwhPerdido || 0).toFixed(0)}`, color: 'var(--warning)', icon: Zap },
+            { label: 'Vida Media Contrato', value: `${initialStats?.avgDias || 0}d`, color: 'var(--info)',    icon: Calendar },
+            { label: 'Vida Media Cliente',  value: `${initialStats?.avgClientDias || 0}d`, color: 'var(--success)', icon: Calendar },
           ].map((k, i) => {
             const Icon = k.icon;
             return (
@@ -82,7 +101,9 @@ export default function BajasClient({ initialBajas, products = [] }: { initialBa
           <p style={{ margin: '0 0 12px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bajas por motivo</p>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {motivos.map(m => {
-              const count = initialBajas.filter(b => b.motivo === m).length;
+              // Con SSR, lo ideal sería que `getBajasStatsAction` devuelva la agrupación por motivos, 
+              // pero como está hardcodeado a "Fin de permanencia", lo simplificamos:
+              const count = m === 'Fin de permanencia' ? initialStats?.totalBajas : 0;
               if (!count) return null;
               return (
                 <button key={m} onClick={() => setMotivoFilter(motivoFilter === m ? 'TODOS' : m)} style={{
@@ -108,7 +129,7 @@ export default function BajasClient({ initialBajas, products = [] }: { initialBa
               <input className="form-input" placeholder="Buscar cliente o CUPS..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '32px', fontSize: '0.8rem' }} />
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', fontFamily: "'JetBrains Mono', monospace" }}>
-              {filtered.length} bajas
+              {totalCount} bajas
             </div>
           </div>
 
@@ -126,13 +147,13 @@ export default function BajasClient({ initialBajas, products = [] }: { initialBa
                 </tr>
               </thead>
               <tbody>
-                {paginated.length === 0 ? (
+                {bajas.length === 0 ? (
                   <tr>
                     <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
                       No se encontraron bajas con los filtros aplicados.
                     </td>
                   </tr>
-                ) : paginated.map((b) => (
+                ) : bajas.map((b) => (
                   <tr key={b.cups} style={{ cursor: 'default' }}>
                     <td className="mono-cell" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{b.cups.slice(0, 20)}...</td>
                     <td className="primary-cell">
@@ -173,9 +194,9 @@ export default function BajasClient({ initialBajas, products = [] }: { initialBa
           </div>
 
           <PaginationFooter
-            currentPage={currentPage}
+            currentPage={page}
             itemsPerPage={itemsPerPage}
-            totalItems={filtered.length}
+            totalItems={totalCount}
             itemName="bajas"
             onPageChange={setPage}
             onItemsPerPageChange={setItemsPerPage}

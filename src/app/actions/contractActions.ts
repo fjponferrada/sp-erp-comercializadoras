@@ -2,7 +2,6 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { put } from '@vercel/blob';
 
 export async function convertLeadToContractAction(leadId: string) {
   try {
@@ -185,7 +184,7 @@ export async function convertLeadToContractAction(leadId: string) {
     let contractCode = `${prefix}${year}${month}${day}${hour}${min}${cupsLast4}`;
     
     // Para asegurar unicidad 100% en caso de concurrencia en el mismo minuto
-    const existingCode = await prisma.contract.findUnique({ where: { contractCode } });
+    const existingCode = await prisma.contract.findFirst({ where: { contractCode } });
     if (existingCode) {
       contractCode = `${contractCode}-${Math.floor(Math.random() * 1000)}`;
     }
@@ -413,6 +412,17 @@ export async function updateContractDatesAction(
       }
     }
 
+    // Calculamos expectedEndDate automáticamente si tenemos inicio de permanencia
+    let expectedEndDate = contract.expectedEndDate;
+    let duration = contract.duration || contract.product?.permanenceMonths || 12;
+
+    if (permanenceStartDate) {
+      const start = new Date(permanenceStartDate);
+      start.setMonth(start.getMonth() + duration);
+      start.setDate(start.getDate() - 1); // Restar 1 día para el fin real
+      expectedEndDate = start;
+    }
+
     // Actualizamos el contrato
     const updatedContract = await prisma.contract.update({
       where: { id: contractId },
@@ -424,6 +434,8 @@ export async function updateContractDatesAction(
         terminationDate: mergedTermination,
         tramitationType: mergedTramitationType,
         permanenceStartDate,
+        expectedEndDate,
+        duration,
       }
     });
 
@@ -609,14 +621,16 @@ export async function updateContractFull(formData: FormData) {
 
     // Handle file upload
     if (file && file.size > 0) {
-      const blob = await put(`contracts/${contractId}/${file.name}`, file, {
-        access: 'public',
-      });
+      const { uploadFileToR2 } = await import('@/lib/r2');
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const url = await uploadFileToR2(`contracts/${contractId}/${file.name}`, buffer, file.type || 'application/pdf');
+
       // Save it as a Document related to Contract
       await prisma.document.create({
         data: {
           type: 'Contrato',
-          url: blob.url,
+          url: url,
           name: file.name,
           contractId: contractId
         }
@@ -668,5 +682,330 @@ export async function updateContractFull(formData: FormData) {
   } catch (error: any) {
     console.error('Error in updateContractFull:', error);
     return { error: error.message || 'Error updating contract' };
+  }
+}
+
+export async function getPaginatedContractsAction(
+  page: number, 
+  limit: number, 
+  searchTerm: string, 
+  estadoFilter: string,
+  tarifaFilter: string,
+  canalFilter: string,
+  sortCol: string | null,
+  sortDir: 'asc' | 'desc'
+) {
+  try {
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    let whereClause: any = { ...visibilityFilter };
+
+    if (searchTerm) {
+      const terms = searchTerm.split(/\s+/).filter(Boolean);
+      
+      const searchConditions = terms.map(term => ({
+        OR: [
+          { contractCode: { contains: term, mode: 'insensitive' } },
+          { supplyPoint: { cups: { contains: term, mode: 'insensitive' } } },
+          { client: { businessName: { contains: term, mode: 'insensitive' } } },
+          { client: { firstName: { contains: term, mode: 'insensitive' } } },
+          { client: { lastName: { contains: term, mode: 'insensitive' } } },
+          { product: { name: { contains: term, mode: 'insensitive' } } }
+        ]
+      }));
+
+      if (whereClause.AND) {
+        if (Array.isArray(whereClause.AND)) {
+          whereClause.AND = [...whereClause.AND, ...searchConditions];
+        } else {
+          whereClause.AND = [whereClause.AND, ...searchConditions];
+        }
+      } else {
+        whereClause.AND = searchConditions;
+      }
+    }
+
+    if (estadoFilter && estadoFilter !== 'Todos') {
+      whereClause.status = estadoFilter;
+    }
+
+    if (tarifaFilter && tarifaFilter !== 'Todas') {
+      whereClause.supplyPoint = {
+        ...whereClause.supplyPoint,
+        tariff: tarifaFilter
+      };
+    }
+
+    if (canalFilter && canalFilter !== 'Todos') {
+      whereClause.user = {
+        ...whereClause.user,
+        channel: {
+          name: canalFilter
+        }
+      };
+    }
+
+    let orderBy: any = undefined;
+    if (sortCol) {
+      if (sortCol === 'fechaRegistro') orderBy = { createdAt: sortDir };
+      else if (sortCol === 'fechaAlta') orderBy = { activationDate: sortDir };
+      else if (sortCol === 'estado') orderBy = { status: sortDir };
+      else if (sortCol === 'cups') orderBy = { supplyPoint: { cups: sortDir } };
+      else if (sortCol === 'cliente') orderBy = { client: { businessName: sortDir } };
+      else if (sortCol === 'producto') orderBy = { product: { name: sortDir } };
+      else if (sortCol === 'consumoMwh') orderBy = { supplyPoint: { annualConsumption: sortDir } };
+      // Fallback
+      else orderBy = { createdAt: 'desc' };
+    } else {
+      orderBy = { createdAt: 'desc' };
+    }
+
+    let orderByParams: any[] = [];
+    if (orderBy) {
+      if (Array.isArray(orderBy)) {
+        orderByParams = [...orderBy];
+      } else {
+        orderByParams = [orderBy];
+      }
+    }
+    orderByParams.push({ version: 'desc' });
+
+    // Fetch all matching IDs and contract codes to deduplicate in memory
+    // This allows us to keep the complex filtering/sorting from Prisma
+    const allMatching = await prisma.contract.findMany({
+      where: whereClause,
+      select: { id: true, contractCode: true, status: true, supplyPointId: true, activationDate: true, terminationDate: true },
+      orderBy: orderByParams
+    });
+
+    // Filtramos FALSAS BAJAS (Lógica del Dashboard: si hay otro contrato dentro de 30 días de gracia, no es baja)
+    const bajaContracts = allMatching.filter(c => c.status === 'BAJA' && c.supplyPointId);
+    const falseBajaIds = new Set<string>();
+
+    if (bajaContracts.length > 0) {
+      const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+      const bajaSupplyPointIds = [...new Set(bajaContracts.map(c => c.supplyPointId))];
+
+      const siblingContracts = await prisma.contract.findMany({
+        where: { supplyPointId: { in: bajaSupplyPointIds as string[] } },
+        select: { id: true, supplyPointId: true, activationDate: true, terminationDate: true }
+      });
+
+      const contractsByCups: Record<string, typeof siblingContracts> = {};
+      for (const c of siblingContracts) {
+        if (!contractsByCups[c.supplyPointId!]) contractsByCups[c.supplyPointId!] = [];
+        contractsByCups[c.supplyPointId!].push(c);
+      }
+
+      for (const baja of bajaContracts) {
+        if (!baja.terminationDate) continue;
+
+        const siblings = contractsByCups[baja.supplyPointId!] || [];
+        const bajaTermTime = baja.terminationDate.getTime();
+        const bajaActTime = baja.activationDate ? baja.activationDate.getTime() : 0;
+
+        let isFalseBaja = false;
+        for (const sibling of siblings) {
+          if (sibling.id === baja.id) continue;
+          if (!sibling.activationDate) continue;
+
+          const siblingActTime = sibling.activationDate.getTime();
+          // Es falsa baja si un contrato hermano se activa después o igual, y antes del fin del periodo de gracia
+          if (siblingActTime >= bajaActTime && siblingActTime <= bajaTermTime + GRACE_PERIOD_MS) {
+            isFalseBaja = true;
+            break;
+          }
+        }
+
+        if (isFalseBaja) {
+          falseBajaIds.add(baja.id);
+        }
+      }
+    }
+
+    const seenCodes = new Set<string>();
+    const deduplicatedIds: string[] = [];
+
+    for (const item of allMatching) {
+      if (falseBajaIds.has(item.id)) continue; // Omitir las falsas bajas de la tabla
+      
+      if (item.contractCode) {
+        if (!seenCodes.has(item.contractCode)) {
+          seenCodes.add(item.contractCode);
+          deduplicatedIds.push(item.id);
+        }
+      } else {
+        deduplicatedIds.push(item.id);
+      }
+    }
+
+    const totalCount = deduplicatedIds.length;
+    const offset = (page - 1) * limit;
+    const pageIds = deduplicatedIds.slice(offset, offset + limit);
+
+    const contracts = await prisma.contract.findMany({
+      where: { id: { in: pageIds } },
+      include: {
+        Lead: true,
+        product: { select: { name: true } },
+        user: { select: { name: true, email: true, channel: { select: { name: true } } } },
+        client: true,
+        supplyPoint: true
+      },
+    });
+
+    // Ensure we preserve the original requested order
+    contracts.sort((a, b) => pageIds.indexOf(a.id) - pageIds.indexOf(b.id));
+
+    const uiContracts = contracts.map(c => {
+      const airtableData = (c.airtableData as any) || {};
+      
+      let signedUrl = null;
+      if (airtableData['PDF Contrato firmado'] && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
+        signedUrl = airtableData['PDF Contrato firmado'][0].url;
+      } else if (airtableData['Contrato .PDF'] && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
+        signedUrl = airtableData['Contrato .PDF'][0].url;
+      }
+
+      let draftUrl = null;
+      if (airtableData['Borrador contrato'] && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
+        draftUrl = airtableData['Borrador contrato'][0].url;
+      }
+
+      let annexUrl = null;
+      if (airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
+        annexUrl = airtableData['PDF Anexo firmado'][0].url;
+      }
+
+      return {
+        ...c,
+        lead: c.Lead,
+        client: c.client,
+        supplyPoint: c.supplyPoint,
+        user: c.user,
+        product: c.product,
+        signedUrl,
+        draftUrl,
+        annexUrl
+      };
+    });
+
+    return { success: true, contracts: uiContracts, totalCount };
+  } catch (error: any) {
+    console.error("Error fetching paginated contracts:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getContractVersionsAction(contractCode: string) {
+  try {
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const versions = await prisma.contract.findMany({
+      where: { 
+        ...visibilityFilter,
+        contractCode 
+      },
+      select: {
+        id: true,
+        version: true,
+        createdAt: true,
+        status: true
+      },
+      orderBy: { version: 'desc' }
+    });
+
+    return { success: true, versions };
+  } catch (error: any) {
+    console.error("Error fetching contract versions:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getContractStatsAction() {
+  try {
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const activos = await prisma.contract.count({
+      where: { ...visibilityFilter, status: 'ACTIVO' }
+    });
+
+    const tramitando = await prisma.contract.count({
+      where: { ...visibilityFilter, status: 'TRAMITANDO' }
+    });
+
+    // Bajas: Net Bajas logic
+    const contracts = await prisma.contract.findMany({
+      where: {
+        ...visibilityFilter,
+        status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] }
+      },
+      select: {
+        id: true,
+        activationDate: true,
+        terminationDate: true,
+        supplyPointId: true
+      }
+    });
+
+    const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+    const contractsByCups: Record<string, typeof contracts> = {};
+    contracts.forEach(c => {
+      if (!c.supplyPointId || !c.activationDate) return;
+      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
+      contractsByCups[c.supplyPointId].push(c);
+    });
+
+    let netBajasCount = 0;
+    Object.values(contractsByCups).forEach(cupsContracts => {
+      cupsContracts.sort((a, b) => a.activationDate!.getTime() - b.activationDate!.getTime());
+      let currentPeriod: { end: Date | null } | null = null;
+      let localNetBajas = 0;
+      for (const c of cupsContracts) {
+        if (!currentPeriod) {
+          currentPeriod = { end: c.terminationDate || null };
+          continue;
+        }
+        const startNext = c.activationDate!;
+        if (currentPeriod.end === null) {
+          // Open period
+        } else {
+          if (startNext.getTime() <= currentPeriod.end.getTime() + GRACE_PERIOD_MS) {
+            if (!c.terminationDate) {
+              currentPeriod.end = null;
+            } else if (c.terminationDate.getTime() > currentPeriod.end.getTime()) {
+              currentPeriod.end = c.terminationDate;
+            }
+          } else {
+            localNetBajas++;
+            currentPeriod = { end: c.terminationDate || null };
+          }
+        }
+      }
+      if (currentPeriod && currentPeriod.end !== null) {
+        localNetBajas++;
+      }
+      netBajasCount += localNetBajas;
+    });
+
+    const bajas = netBajasCount;
+
+    // MWh: Solamente de contratos activos (misma cartera viva que dashboard)
+    const activeContracts = await prisma.contract.findMany({
+      where: { ...visibilityFilter, status: 'ACTIVO' },
+      select: { supplyPoint: { select: { annualConsumption: true } } }
+    });
+    
+    let totalMwh = 0;
+    activeContracts.forEach(c => {
+      totalMwh += c.supplyPoint?.annualConsumption || 0;
+    });
+
+    return { success: true, activos, tramitando, bajas, totalMwh };
+  } catch (error: any) {
+    return { success: false, error: error.message };
   }
 }

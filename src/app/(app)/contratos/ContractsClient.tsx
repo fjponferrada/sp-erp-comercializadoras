@@ -30,6 +30,9 @@ const ESTADO_CONFIG: Record<string, { label: string; badge: string }> = {
   FINALIZADO: { label: 'Finalizado',  badge: 'badge badge-finalizado' },
   RECHAZADO:  { label: 'Rechazado',   badge: 'badge badge-danger'   },
   RECHAZO_DISTRIBUIDORA: { label: 'Rechazo Distribuidora', badge: 'badge badge-danger' },
+  RECHAZO_COMERCIALIZADORA: { label: 'Rechazo Comercializadora', badge: 'badge badge-danger' },
+  RECHAZO_RIESGOS: { label: 'Rechazo Riesgos', badge: 'badge badge-danger' },
+  RECHAZADO_POR_CLIENTE: { label: 'Rechazado por Cliente', badge: 'badge badge-danger' },
   TRAMITANDO: { label: 'Tramitando',  badge: 'badge badge-process'  },
   VERIFICANDO_FIRMA: { label: 'Verificando Firma', badge: 'badge badge-warning' },
   BAJA:       { label: 'Baja',        badge: 'badge badge-danger'   },
@@ -51,11 +54,10 @@ function formatDate(iso: Date | string | null) {
 
 function formatMwh(v: number | null) {
   if (!v) return '—';
-  return v.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' MWh';
+  return v.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' MWh';
 }
 
-const TARIFAS = ['Todas', '2.0TD', '3.0TD', '6.1TD'];
-const CANALES = ['Todos', 'Directo', 'Agente', 'Broker', 'Online'];
+const TARIFAS = ['Todas', '2.0TD', '3.0TD', '3.0TDVE', '6.1TD'];
 const ESTADOS_FILTER = [
   'Todos', 
   'ACEPTADO', 
@@ -63,15 +65,31 @@ const ESTADOS_FILTER = [
   'BORRADOR', 
   'FINALIZADO', 
   'RECHAZADO', 
-  'RECHAZO_DISTRIBUIDORA', 
+  'RECHAZO_DISTRIBUIDORA',
+  'RECHAZO_COMERCIALIZADORA',
+  'RECHAZO_RIESGOS',
+  'RECHAZADO_POR_CLIENTE',
   'TRAMITANDO', 
   'VERIFICANDO_FIRMA',
-  'BAJA', 
-  'RENOVACION'
+  'BAJA'
 ];
 
 /* ─────────────────────────── COMPONENT ──────────────────────────── */
-export default function ContractsClient({ contracts, userRole = 'CANAL' }: { contracts: any[], userRole?: string }) {
+import React, { useEffect } from 'react';
+
+export default function ContractsClient({ 
+  initialContracts, 
+  initialTotalCount,
+  stats,
+  userRole = 'CANAL',
+  initialChannels = []
+}: { 
+  initialContracts: any[], 
+  initialTotalCount: number,
+  stats: { activos: number, tramitando: number, bajas: number, totalMwh: number },
+  userRole?: string,
+  initialChannels?: string[]
+}) {
   const router = useRouter();
   const [search, setSearch]         = useState('');
   const [estadoFilter, setEstado]   = useState('Todos');
@@ -86,79 +104,94 @@ export default function ContractsClient({ contracts, userRole = 'CANAL' }: { con
   const [editingContract, setEditingContract] = useState<any | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
+  const [contracts, setContracts] = useState<any[]>(initialContracts);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const canalesDropdown = useMemo(() => ['Todos', ...initialChannels], [initialChannels]);
+
   const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
 
-  const flatContracts = useMemo(() => {
-    return contracts.map(c => ({
-      id: c.id,
-      cups: c.supplyPoint?.cups || c.lead?.cups || '—',
-      cliente: c.client?.businessName || c.client?.firstName || c.lead?.businessName || c.lead?.firstName || 'Sin Cliente',
-      direccion: c.supplyPoint?.address ? `${c.supplyPoint.address}, ${c.supplyPoint.postalCode || ''} ${c.supplyPoint.city || ''}` : 'Sin Dirección',
-      estado: c.status || 'TRAMITANDO',
-      tarifa: c.supplyPoint?.tariff || c.lead?.tariff || '—',
-      consumoMwh: c.supplyPoint?.annualConsumption || c.lead?.estimatedMWh || 0,
-      producto: c.product?.name || c.lead?.product || '—',
-      canal: c.user?.channel?.name || c.lead?.source || '—',
-      comercial: c.user?.name || c.user?.email || '—',
-      fechaAlta: c.activationDate,
-      fechaBaja: c.terminationDate,
-      fechaFirma: c.signatureDate,
-      fechaRegistro: c.createdAt,
-      inicioPermanencia: c.permanenceStartDate,
-      tramitacion: Array.isArray((c.lead?.contractData as any)?.['Tramitación a realizar']) 
-        ? (c.lead?.contractData as any)?.['Tramitación a realizar'][0] 
-        : (c.requestType || (c.lead?.contractData as any)?.['Tramitación a realizar'] || '—'),
-      contractCode: c.contractCode || (c.lead?.contractData as any)?.['CONTRATO'] || null,
-      observaciones: c.internalComments || '',
-      signedUrl: c.signedUrl,
-      draftUrl: c.draftUrl,
-      annexUrl: c.annexUrl,
-      raw: c,
-    }));
-  }, [contracts]);
-
-  const filtered = useMemo(() => {
-    let rows = flatContracts.filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch = !q || c.cups.toLowerCase().includes(q) || c.cliente.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || c.producto.toLowerCase().includes(q);
-      const matchEstado = estadoFilter === 'Todos' || c.estado === estadoFilter;
-      const matchTarifa = tarifaFilter === 'Todas' || c.tarifa === tarifaFilter;
-      const matchCanal  = canalFilter  === 'Todos' || c.canal  === canalFilter;
-      return matchSearch && matchEstado && matchTarifa && matchCanal;
-    });
-
-    if (sortCol) {
-      rows = [...rows].sort((a, b) => {
-        const va = (a as any)[sortCol] ?? '';
-        const vb = (b as any)[sortCol] ?? '';
-        const cmp = String(va).localeCompare(String(vb), 'es', { numeric: true });
-        return sortDir === 'asc' ? cmp : -cmp;
-      });
+  useEffect(() => {
+    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
+      setContracts(initialContracts);
+      setTotalCount(initialTotalCount);
+      return;
     }
 
-    return rows;
-  }, [flatContracts, search, estadoFilter, tarifaFilter, canalFilter, sortCol, sortDir]);
+    const fetchContracts = async () => {
+      setIsLoading(true);
+      try {
+        const { getPaginatedContractsAction } = await import('@/app/actions/contractActions');
+        const result = await getPaginatedContractsAction(page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, sortCol, sortDir);
+        if (result.success && result.contracts) {
+          setContracts(result.contracts);
+          setTotalCount(result.totalCount || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching contracts:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const debounceId = setTimeout(() => {
+      fetchContracts();
+    }, 300);
+
+    return () => clearTimeout(debounceId);
+  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, sortCol, sortDir]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, estadoFilter, tarifaFilter, canalFilter]);
 
   const paginated = useMemo(() => {
-    const start = (page - 1) * itemsPerPage;
-    return filtered.slice(start, start + itemsPerPage);
-  }, [filtered, page, itemsPerPage]);
+    const now = new Date();
+    const future15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
+
+    return contracts.map(c => {
+      let estado = c.status || 'TRAMITANDO';
+
+      return {
+        id: c.id,
+        cups: c.supplyPoint?.cups || c.lead?.cups || '—',
+        cliente: c.client?.businessName || c.client?.firstName || c.lead?.businessName || c.lead?.firstName || 'Sin Cliente',
+        direccion: c.supplyPoint?.address ? `${c.supplyPoint.address}, ${c.supplyPoint.postalCode || ''} ${c.supplyPoint.city || ''}` : 'Sin Dirección',
+        estado,
+        tarifa: c.supplyPoint?.tariff || c.lead?.tariff || '—',
+        consumoMwh: c.supplyPoint?.annualConsumption || c.lead?.estimatedMWh || 0,
+        producto: c.product?.name || c.lead?.product || '—',
+        canal: c.user?.channel?.name || c.lead?.source || '—',
+        comercial: c.user?.name || c.user?.email || '—',
+        fechaAlta: c.activationDate,
+        fechaBaja: c.terminationDate,
+        fechaFirma: c.signatureDate,
+        fechaRegistro: c.createdAt,
+        inicioPermanencia: c.permanenceStartDate,
+        tramitacion: Array.isArray((c.lead?.contractData as any)?.['Tramitación a realizar']) 
+          ? (c.lead?.contractData as any)?.['Tramitación a realizar'][0] 
+          : (c.requestType || (c.lead?.contractData as any)?.['Tramitación a realizar'] || '—'),
+        contractCode: c.contractCode || (c.lead?.contractData as any)?.['CONTRATO'] || null,
+        observaciones: c.internalComments || '',
+        signedUrl: c.signedUrl,
+        draftUrl: c.draftUrl,
+        annexUrl: c.annexUrl,
+        raw: c,
+      };
+    });
+  }, [contracts]);
 
   function handleSort(col: string) {
     if (sortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortCol(col); setSortDir('asc'); }
   }
 
-  const activos = flatContracts.filter(c => c.estado === 'ACTIVO').length;
-  const tramitando = flatContracts.filter(c => c.estado === 'TRAMITANDO').length;
-  const bajas = flatContracts.filter(c => c.estado === 'BAJA').length;
-  const totalMwh = flatContracts.reduce((acc, c) => acc + (c.consumoMwh || 0), 0);
-
   const STATS = [
-    { label: 'Contratos Activos', value: activos.toString(), delta: 'Actualizado', positive: true, icon: Zap, color: 'var(--success)', glow: 'rgba(34,197,94,0.12)' },
-    { label: 'En Tramitación', value: tramitando.toString(), delta: 'Pendientes de activación', positive: null, icon: Loader2, color: 'var(--info)', glow: 'rgba(59,130,246,0.12)' },
-    { label: 'Bajas', value: bajas.toString(), delta: 'Histórico', positive: true, icon: TrendingDown, color: 'var(--danger)', glow: 'rgba(239,68,68,0.10)' },
-    { label: 'MWh Totales', value: totalMwh.toLocaleString('es-ES', { maximumFractionDigits: 0 }), delta: 'Cartera actual', positive: true, icon: BarChart3, color: 'var(--lime)', glow: 'var(--lime-glow)' },
+    { label: 'Contratos Activos', value: stats.activos.toString(), delta: 'Actualizado', positive: true, icon: Zap, color: 'var(--success)', glow: 'rgba(34,197,94,0.12)' },
+    { label: 'En Tramitación', value: stats.tramitando.toString(), delta: 'Pendientes de activación', positive: null, icon: Loader2, color: 'var(--info)', glow: 'rgba(59,130,246,0.12)' },
+    { label: 'Bajas', value: stats.bajas.toString(), delta: 'Histórico', positive: true, icon: TrendingDown, color: 'var(--danger)', glow: 'rgba(239,68,68,0.10)' },
+    { label: 'MWh Totales', value: stats.totalMwh.toLocaleString('es-ES', { maximumFractionDigits: 0 }), delta: 'Cartera actual', positive: true, icon: BarChart3, color: 'var(--lime)', glow: 'var(--lime-glow)' },
   ];
 
   const handleRefresh = () => {
@@ -216,13 +249,13 @@ export default function ContractsClient({ contracts, userRole = 'CANAL' }: { con
 
             <div style={{ position: 'relative', minWidth: '140px' }}>
               <select className="form-input" value={canalFilter} onChange={e => { setCanal(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                {CANALES.map(c => <option key={c} value={c}>{c === 'Todos' ? 'Canal: Todos' : c}</option>)}
+                {canalesDropdown.map(c => <option key={c} value={c}>{c === 'Todos' ? 'Canal: Todos' : c}</option>)}
               </select>
               <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
             </div>
 
             <div style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-              Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{filtered.length}</span> de {flatContracts.length}
+              Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{totalCount}</span> resultados
             </div>
           </div>
 
@@ -267,7 +300,7 @@ export default function ContractsClient({ contracts, userRole = 'CANAL' }: { con
                   <tr>
                     <td colSpan={11} style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)' }}>
                       <FileText size={32} style={{ marginBottom: '8px', opacity: 0.3, display: 'block', margin: '0 auto 8px' }} />
-                      No se encontraron contratos con los filtros aplicados.
+                      {isLoading ? "Cargando contratos..." : "No se encontraron contratos con los filtros aplicados."}
                     </td>
                   </tr>
                 ) : paginated.map((c) => {
@@ -451,7 +484,7 @@ export default function ContractsClient({ contracts, userRole = 'CANAL' }: { con
           <PaginationFooter
             currentPage={page}
             itemsPerPage={itemsPerPage}
-            totalItems={filtered.length}
+            totalItems={totalCount}
             itemName="contratos"
             onPageChange={setPage}
             onItemsPerPageChange={setItemsPerPage}

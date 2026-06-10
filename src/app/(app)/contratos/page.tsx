@@ -1,62 +1,33 @@
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
-import { getUserVisibilityFilter } from '@/lib/permissions';
+import { getContractStatsAction, getPaginatedContractsAction } from '@/app/actions/contractActions';
 import ContractsClient from './ContractsClient';
+
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ContratosPage() {
   const session = await auth();
   const userRole = session?.user?.role || 'CANAL';
-  const visibilityFilter = await getUserVisibilityFilter();
 
-  const contracts = await prisma.contract.findMany({
-    where: visibilityFilter,
-    include: {
-      Lead: true,
-      product: { select: { name: true } },
-      user: { select: { name: true, email: true, channel: { select: { name: true } } } },
-      client: true,
-      supplyPoint: true
-    },
-    orderBy: {
-      createdAt: 'desc'
-    }
-  });
+  const [statsResult, contractsResult, channelsResult] = await Promise.all([
+    getContractStatsAction(),
+    getPaginatedContractsAction(1, 100, '', 'Todos', 'Todas', 'Todos', 'fechaRegistro', 'desc'),
+    prisma.channel.findMany({ select: { name: true }, orderBy: { name: 'asc' } })
+  ]);
 
-  // Remap uppercase relations to lowercase for the UI component
-  const uiContracts = contracts.map(c => {
-    const airtableData = (c.airtableData as any) || {};
-    
-    let signedUrl = null;
-    if (airtableData['PDF Contrato firmado'] && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
-      signedUrl = airtableData['PDF Contrato firmado'][0].url;
-    } else if (airtableData['Contrato .PDF'] && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
-      signedUrl = airtableData['Contrato .PDF'][0].url;
-    }
+  const stats = statsResult.success ? statsResult : { activos: 0, tramitando: 0, bajas: 0, totalMwh: 0 };
+  const initialContracts = contractsResult.success ? contractsResult.contracts : [];
+  const initialTotalCount = contractsResult.success ? contractsResult.totalCount : 0;
+  const initialChannels = channelsResult.map(c => c.name);
 
-    let draftUrl = null;
-    if (airtableData['Borrador contrato'] && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
-      draftUrl = airtableData['Borrador contrato'][0].url;
-    }
-
-    let annexUrl = null;
-    if (airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
-      annexUrl = airtableData['PDF Anexo firmado'][0].url;
-    }
-
-    return {
-      ...c,
-      lead: c.Lead,
-      client: c.client,
-      supplyPoint: c.supplyPoint,
-      user: c.user,
-      product: c.product,
-      signedUrl,
-      draftUrl,
-      annexUrl
-    };
-  });
-
-  return <ContractsClient contracts={uiContracts} userRole={userRole} />;
+  return (
+    <ContractsClient 
+      initialContracts={initialContracts as any} 
+      initialTotalCount={initialTotalCount as number}
+      stats={stats as any}
+      userRole={userRole} 
+      initialChannels={initialChannels}
+    />
+  );
 }

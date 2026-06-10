@@ -6,6 +6,8 @@ import { Search, RefreshCcw, Calendar, Zap, CheckCircle2, XCircle, AlertTriangle
 import PaginationFooter from '@/components/PaginationFooter';
 import Link from 'next/link';
 import RenovarModal from '@/components/renovaciones/RenovarModal';
+import { useEffect } from 'react';
+import { getPaginatedRenovacionesAction } from '@/app/actions/renovacionesActions';
 
 export interface RenovacionData {
   id: string;
@@ -15,6 +17,7 @@ export interface RenovacionData {
   direccion: string;
   cliente: string;
   telefonoContacto: string;
+  emailContacto: string;
   emailComercial: string;
   fechaActivacion: string;
   tarifa: string;
@@ -33,7 +36,7 @@ const estadoBadge = (estado: string, dias: number) => {
   return <span className="badge badge-draft">{dias} días</span>;
 };
 
-export default function RenovacionesClient({ initialRenovaciones, products = [] }: { initialRenovaciones: RenovacionData[], products?: any[] }) {
+export default function RenovacionesClient({ initialRenovaciones, initialTotalCount, initialStats, products = [] }: { initialRenovaciones: RenovacionData[], initialTotalCount: number, initialStats: any, products?: any[] }) {
   const [search, setSearch] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('TODOS');
   const [tarifaFilter, setTarifaFilter] = useState('TODAS');
@@ -45,24 +48,44 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
   const [renovarModalOpen, setRenovarModalOpen] = useState(false);
   const [selectedRenovacion, setSelectedRenovacion] = useState<RenovacionData | null>(null);
 
-  const tarifasUnicas = Array.from(new Set(initialRenovaciones.map(r => r.tarifa))).sort();
+  const [renovaciones, setRenovaciones] = useState<RenovacionData[]>(initialRenovaciones);
+  const [totalCount, setTotalCount] = useState(initialTotalCount);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const filtered = initialRenovaciones.filter(r => {
-    const matchSearch = r.cliente.toLowerCase().includes(search.toLowerCase()) ||
-      r.cups.toLowerCase().includes(search.toLowerCase());
-    const matchEstado = estadoFilter === 'TODOS' || r.estado === estadoFilter;
-    const matchTarifa = tarifaFilter === 'TODAS' || r.tarifa === tarifaFilter;
-    const matchOculto = !ocultos.includes(r.id);
-    return matchSearch && matchEstado && matchTarifa && matchOculto;
-  });
+  // Las tarifas en el selector se pueden mantener hardcodeadas o cargarlas del catálogo
+  const tarifasUnicas = ['2.0TD', '3.0TD', '3.0TDVE', '6.1TD', '6.2TD'];
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-  const currentPage = Math.min(page, totalPages);
-  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  useEffect(() => {
+    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'TODOS' && tarifaFilter === 'TODAS') return;
 
-  const urgentes = initialRenovaciones.filter(r => r.estado === 'URGENTE').length;
-  const proximos = initialRenovaciones.filter(r => r.estado === 'PROXIMO').length;
-  const totalMwhRenovar = filtered.reduce((s, r) => s + r.mwh, 0);
+    const fetchRenovaciones = async () => {
+      setIsLoading(true);
+      try {
+        const result = await getPaginatedRenovacionesAction(page, itemsPerPage, search, tarifaFilter, estadoFilter);
+        if (result.success && result.renovaciones) {
+          setRenovaciones(result.renovaciones as RenovacionData[]);
+          setTotalCount(result.totalCount || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching renovaciones:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const debounceId = setTimeout(() => {
+      fetchRenovaciones();
+    }, 300);
+
+    return () => clearTimeout(debounceId);
+  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, estadoFilter, tarifaFilter]);
+
+  // Aplicar ocultación local
+  const displayedRenovaciones = renovaciones.filter(r => !ocultos.includes(r.id));
 
   return (
     <>
@@ -73,10 +96,10 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
         {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '24px' }}>
           {[
-            { label: 'Renovaciones Urgentes', value: String(urgentes),  sub: '< 20 días',     color: 'var(--danger)',  icon: AlertTriangle },
-            { label: 'Próximas (20–40 días)', value: String(proximos),  sub: 'Planificar ya',  color: 'var(--warning)', icon: Calendar },
-            { label: 'Total en Cola',         value: String(filtered.length), sub: 'pendientes', color: 'var(--lime)', icon: RefreshCcw },
-            { label: 'MWh en Riesgo',         value: `${totalMwhRenovar.toFixed(0)}`, sub: 'MWh/año',    color: 'var(--info)',    icon: Zap },
+            { label: 'Renovaciones Urgentes', value: String(initialStats?.urgentes || 0),  sub: '< 20 días',     color: 'var(--danger)',  icon: AlertTriangle },
+            { label: 'Próximas (20–40 días)', value: String(initialStats?.proximos || 0),  sub: 'Planificar ya',  color: 'var(--warning)', icon: Calendar },
+            { label: 'Total en Cola',         value: String(initialStats?.totalEnCola || 0), sub: 'pendientes', color: 'var(--lime)', icon: RefreshCcw },
+            { label: 'MWh en Riesgo',         value: `${(initialStats?.totalMwhRenovar || 0).toFixed(0)}`, sub: 'MWh/año',    color: 'var(--info)',    icon: Zap },
           ].map((k, i) => {
             const Icon = k.icon;
             return (
@@ -115,7 +138,7 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
             </select>
             
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', fontFamily: "'JetBrains Mono', monospace" }}>
-              {filtered.length} contratos
+              {totalCount} contratos
             </div>
           </div>
 
@@ -126,18 +149,19 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
                   <th className="px-6 py-4">Cliente / Contacto</th>
                   <th className="px-6 py-4">Suministro</th>
                   <th className="px-6 py-4">Contrato</th>
+                  <th className="px-6 py-4">Canal</th>
                   <th className="px-6 py-4 text-center">Estado</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/50">
-                {paginated.length === 0 ? (
+                {displayedRenovaciones.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
                       No hay contratos que venzan próximamente con los filtros actuales.
                     </td>
                   </tr>
-                ) : paginated.map((r) => {
+                ) : displayedRenovaciones.map((r) => {
                   const renovado = renovados.includes(r.id);
                   return (
                     <tr key={r.id} style={{ opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }} className="hover:bg-slate-800/30">
@@ -147,7 +171,7 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
                         <div className="font-bold text-white mb-2">{r.cliente}</div>
                         <div className="flex flex-col gap-1 text-xs text-slate-400">
                           <div className="flex items-center gap-2"><Phone size={12} className="text-slate-500"/> {r.telefonoContacto}</div>
-                          <div className="flex items-center gap-2"><Mail size={12} className="text-slate-500"/> {r.emailComercial}</div>
+                          <div className="flex items-center gap-2" title={`Comercial asignado: ${r.emailComercial}`}><Mail size={12} className="text-slate-500"/> {r.emailContacto}</div>
                         </div>
                       </td>
 
@@ -170,6 +194,13 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
                           <div><span className="text-slate-500">Producto:</span> <span className="text-amber-400 font-medium">{r.producto}</span></div>
                           <div><span className="text-slate-500">Activación:</span> {r.fechaActivacion}</div>
                           <div><span className="text-slate-500">Vencimiento:</span> <span className="text-white font-medium">{r.vencimiento}</span></div>
+                        </div>
+                      </td>
+
+                      {/* CANAL */}
+                      <td className="px-6 py-4 align-top">
+                        <div className="mt-2 text-sm text-slate-300 font-medium">
+                          {r.canal}
                         </div>
                       </td>
 
@@ -204,9 +235,9 @@ export default function RenovacionesClient({ initialRenovaciones, products = [] 
           </div>
 
           <PaginationFooter
-            currentPage={currentPage}
+            currentPage={page}
             itemsPerPage={itemsPerPage}
-            totalItems={filtered.length}
+            totalItems={totalCount}
             itemName="renovaciones"
             onPageChange={setPage}
             onItemsPerPageChange={setItemsPerPage}

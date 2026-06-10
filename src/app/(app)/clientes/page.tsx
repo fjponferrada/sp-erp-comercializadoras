@@ -1,53 +1,27 @@
 import React from 'react';
-import { prisma } from '@/lib/prisma';
-import { getClientVisibilityFilter } from '@/lib/permissions';
+import { getClientStatsAction, getPaginatedClientsAction } from '@/app/actions/clientActions';
 import ClientesClient, { ClienteData } from './ClientesClient';
 import { auth } from '@/auth';
 
 export default async function ClientesPage() {
   const session = await auth();
   const userRole = session?.user?.role || 'CANAL';
-  const visibilityFilter = await getClientVisibilityFilter();
 
-  const dbClientes = await prisma.client.findMany({
-    where: visibilityFilter,
-    include: {
-      contracts: {
-        include: {
-          supplyPoint: true
-        }
-      }
-    },
-    orderBy: [
-      { businessName: 'asc' },
-      { firstName: 'asc' }
-    ]
-  });
+  const [statsResult, clientsResult] = await Promise.all([
+    getClientStatsAction(),
+    getPaginatedClientsAction(1, 100, '', 'Todos')
+  ]);
 
-  const clientesData: ClienteData[] = dbClientes.map(c => {
-    // Calcular CUPS activos
-    let cupsActivos = 0;
-    c.contracts.forEach(contract => {
-      if (contract.status === 'ACTIVO' && contract.supplyPoint) {
-        cupsActivos++;
-      }
-    });
+  const stats = statsResult.success ? statsResult : { totalClientes: 0, conContratoActivo: 0, nuevosEsteMes: 0 };
+  const initialClientes = clientsResult.success ? clientsResult.clients : [];
+  const initialTotalCount = clientsResult.success ? clientsResult.totalCount : 0;
 
-    const isEmpresa = c.vatNumber.toUpperCase().startsWith('A') || c.vatNumber.toUpperCase().startsWith('B');
-
-    return {
-      id: c.id,
-      nif: c.vatNumber,
-      nombre: c.businessName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Desconocido',
-      tipo: isEmpresa ? 'Empresa' : 'Particular',
-      contratos: c.contracts.length,
-      cupsActivos,
-      email: c.contactEmail || '-',
-      telefono: c.contactPhone || '-',
-      fechaAlta: c.createdAt.toISOString().split('T')[0],
-      esNuevo: (new Date().getTime() - c.createdAt.getTime()) < 30 * 24 * 60 * 60 * 1000 // Menos de 30 días
-    };
-  });
-
-  return <ClientesClient clientes={clientesData} userRole={userRole} />;
+  return (
+    <ClientesClient 
+      initialClientes={initialClientes as any} 
+      initialTotalCount={initialTotalCount as number}
+      stats={stats as any}
+      userRole={userRole} 
+    />
+  );
 }
