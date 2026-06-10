@@ -1,0 +1,6 @@
+dump.sql
+sync_errors.json
+.env
+.env.local
+.gemini
+node_modules
