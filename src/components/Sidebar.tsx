@@ -17,13 +17,13 @@ import {
   Package,
   Share2,
   AlertCircle,
-  BarChart3,
   Settings,
-  ChevronDown,
   Building2,
   Sun,
   Tag,
-  LogOut
+  LogOut,
+  FileWarning,
+  UploadCloud
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -51,6 +51,15 @@ const baseNavGroups = [
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
       { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones' },
       { href: '/bajas', icon: TrendingDown, label: 'Bajas' },
+    ],
+  },
+  {
+    label: 'DISTRIBUIDORAS',
+    items: [
+      { href: '/importar-switching', icon: UploadCloud, label: 'Importar Switching' },
+      { href: '/switching-warnings', icon: AlertCircle, label: 'Eventos Switchings' },
+      { href: '/reclamaciones', icon: FileWarning, label: 'Reclamaciones' },
+      { href: '/ficheros-f1', icon: FileText, label: 'Ficheros F1' },
     ],
   },
   {

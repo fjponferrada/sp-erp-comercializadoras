@@ -283,9 +283,11 @@ export default function ContractDetailClient({
                     <DataItem label="Duración (Meses)" value={initialContract.duration || initialContract.product?.permanenceMonths || '12'} />
                     
                     <DataItem label="Fecha Firma" value={initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato ? new Date(initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Prev. Activación" value={initialContract.fechaPrevistaActivacion ? new Date(initialContract.fechaPrevistaActivacion).toLocaleDateString('es-ES') : '-'} />
                     <DataItem label="Fecha Activación" value={initialContract.activationDate ? new Date(initialContract.activationDate).toLocaleDateString('es-ES') : '-'} />
                     <DataItem label="Inicio Permanencia" value={initialContract.permanenceStartDate ? new Date(initialContract.permanenceStartDate).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Fecha Baja Estimada" value={initialContract.expectedEndDate ? new Date(initialContract.expectedEndDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha de Baja" value={initialContract.terminationDate ? new Date(initialContract.terminationDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Prev. Baja" value={initialContract.fechaPrevistaBaja ? new Date(initialContract.fechaPrevistaBaja).toLocaleDateString('es-ES') : '-'} />
                   </SectionCard>
 
                   <SectionCard title="Servicios de Valor Añadido (SVA)" icon={Settings} delay={100}>
@@ -489,7 +491,218 @@ export default function ContractDetailClient({
           </div>
         )}
 
-        {['Switching', 'Reclamaciones', 'Consumos', 'F1s'].includes(activeTab) && (
+        {activeTab === 'Switching' && (
+          <div className="card p-6 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <RefreshCw className="text-gray-400" /> Histórico Switching (XMLs)
+              </h2>
+            </div>
+            
+            {!initialContract.switchingEvents || initialContract.switchingEvents.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 border border-dashed border-[var(--border-strong)] rounded-lg">
+                No hay registros de switching procesados para este CUPS.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-left">
+                      <th className="py-3 px-4 font-semibold text-gray-400">FECHA INTERCAMBIO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">CÓD. SOLICITUD</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PROCESO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PASO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">ESTADO A/R</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">FECHA A/R</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">FECHA PREV. ACT.</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">OBSERVACIONES</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">ARCHIVO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {initialContract.switchingEvents.map((ev: any) => (
+                      <tr key={ev.id} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors text-sm">
+                        <td className="py-3 px-4 text-gray-300 whitespace-nowrap">
+                          {ev.fechaSolicitud ? new Date(ev.fechaSolicitud).toLocaleDateString('es-ES') : (ev.fechaAviso ? new Date(ev.fechaAviso).toLocaleDateString('es-ES') : '-')}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-gray-400">{ev.codigoSolicitud || '-'}</td>
+                        <td className="py-3 px-4 text-[var(--lime)] font-bold">{ev.proceso || '-'}</td>
+                        <td className="py-3 px-4 text-gray-300">{ev.paso || '-'}</td>
+                        <td className="py-3 px-4">
+                          {ev.estadoAR ? (
+                            <span className={`px-2 py-1 rounded text-xs font-bold max-w-max ${
+                              ev.estadoAR === 'ACEPTADO' ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border border-[rgba(34,197,94,0.3)]' :
+                              ev.estadoAR === 'RECHAZADO' ? 'bg-[rgba(239,68,68,0.15)] text-red-400 border border-[rgba(239,68,68,0.3)]' :
+                              'bg-[var(--bg-elevated)] border-[var(--border)] text-gray-400'
+                            }`}>
+                              {ev.estadoAR}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-gray-400">{ev.fechaAR ? new Date(ev.fechaAR).toLocaleDateString('es-ES') : '-'}</td>
+                        <td className="py-3 px-4 text-gray-300 font-medium">{ev.fechaPrevActivacion ? new Date(ev.fechaPrevActivacion).toLocaleDateString('es-ES') : '-'}</td>
+                        <td className="py-3 px-4 text-gray-500 max-w-[200px] truncate" title={ev.observaciones || ''}>{ev.observaciones || '-'}</td>
+                        <td className="py-3 px-4">
+                          {ev.xmlUrl ? (
+                            <a href={ev.xmlUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[var(--lime)] hover:text-white transition-colors" title="Descargar XML Original">
+                              <Download size={14} /> XML
+                            </a>
+                          ) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'Reclamaciones' && (
+          <div className="card p-6 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <AlertTriangle className="text-gray-400" /> Reclamaciones (R1)
+              </h2>
+            </div>
+            
+            {!initialContract.claims || initialContract.claims.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 border border-dashed border-[var(--border-strong)] rounded-lg">
+                No hay reclamaciones registradas para este contrato.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-left">
+                      <th className="py-3 px-4 font-semibold text-gray-400">CÓD. SOLICITUD</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">CÓD. DISTRIBUIDORA</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-center">DÍAS ABIERTA</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PASO 01</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PASO 02</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">COMENTARIOS PASO 03</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">RESOLUCIÓN PASO 05</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {initialContract.claims.map((claim: any) => (
+                      <tr key={claim.codigoSolicitud} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors text-sm">
+                        <td className="py-3 px-4 font-mono text-gray-400">
+                          <div className="flex items-center gap-2">
+                            {claim.codigoSolicitud}
+                            {claim.paso01?.xmlUrl && (
+                              <a href={claim.paso01.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 01" className="text-gray-500 hover:text-[var(--lime)]">
+                                <Download size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-gray-400">{claim.codigoReclamacion || '-'}</td>
+                        <td className="py-3 px-4 font-bold text-center">
+                          {claim.diasAbierta !== null ? claim.diasAbierta : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-gray-400">
+                          {claim.paso01?.fecha ? new Date(claim.paso01.fecha).toLocaleDateString('es-ES') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-gray-400">
+                          <div className="flex items-center gap-2">
+                            {claim.paso02?.fecha ? new Date(claim.paso02.fecha).toLocaleDateString('es-ES') : '-'}
+                            {claim.paso02?.xmlUrl && (
+                              <a href={claim.paso02.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 02" className="text-gray-500 hover:text-[var(--lime)]">
+                                <Download size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-gray-400 max-w-xs truncate" title={claim.paso03?.comentario || ''}>
+                          <div className="flex items-center gap-2">
+                            <span className="truncate">{claim.paso03?.comentario || '-'}</span>
+                            {claim.paso03?.xmlUrl && (
+                              <a href={claim.paso03.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 03" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
+                                <Download size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-gray-400 max-w-xs truncate" title={claim.paso05?.comentario || ''}>
+                          <div className="flex items-center gap-2">
+                            <span className="truncate">{claim.paso05?.comentario || '-'}</span>
+                            {claim.paso05?.xmlUrl && (
+                              <a href={claim.paso05.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 05" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
+                                <Download size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'F1s' && (
+          <div className="card p-6 animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <FileSpreadsheet className="text-gray-400" /> Histórico de Ficheros F1
+              </h2>
+            </div>
+            
+            {!initialContract.f1Invoices || initialContract.f1Invoices.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 border border-dashed border-[var(--border-strong)] rounded-lg">
+                No hay ficheros F1 registrados para este contrato.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] text-left">
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs">FECHA EMISIÓN</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs">Nº FACTURA</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs">PERIODO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs text-right">BASE IMP.</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs text-right">PEAJES</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs text-right">CARGOS</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs text-right">TOTAL</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-xs text-center">XML</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {initialContract.f1Invoices.map((f1: any) => (
+                      <tr key={f1.id} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors text-sm">
+                        <td className="py-3 px-4 text-gray-300 whitespace-nowrap">
+                          {f1.fechaEmision ? new Date(f1.fechaEmision).toLocaleDateString('es-ES') : '-'}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-[var(--lime)] font-bold">{f1.numeroFactura || '-'}</td>
+                        <td className="py-3 px-4 text-gray-300 text-xs">
+                          {f1.fechaInicio && f1.fechaFin 
+                            ? `${new Date(f1.fechaInicio).toLocaleDateString('es-ES')} - ${new Date(f1.fechaFin).toLocaleDateString('es-ES')}`
+                            : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-gray-300 text-right">{f1.baseImponible != null ? `${f1.baseImponible.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €` : '-'}</td>
+                        <td className="py-3 px-4 text-gray-300 text-right">{f1.totalPeajes != null ? `${f1.totalPeajes.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €` : '-'}</td>
+                        <td className="py-3 px-4 text-gray-300 text-right">{f1.totalCargos != null ? `${f1.totalCargos.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €` : '-'}</td>
+                        <td className="py-3 px-4 text-white font-bold text-right">{f1.saldoFactura != null ? `${f1.saldoFactura.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €` : '-'}</td>
+                        <td className="py-3 px-4 text-center">
+                          {f1.xmlUrl ? (
+                            <a href={f1.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML" className="flex items-center justify-center gap-1 text-[var(--lime)] hover:text-white transition-colors">
+                              <Download size={14} /> XML
+                            </a>
+                          ) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {['Consumos'].includes(activeTab) && (
           <div className="flex flex-col items-center justify-center py-20 px-4 border border-dashed border-[var(--border-strong)] rounded-2xl bg-[var(--bg-elevated)] animate-fade-in-up">
             <div className="w-16 h-16 bg-[var(--bg-base)] rounded-full flex items-center justify-center mb-4">
               <RefreshCw size={24} className="text-gray-500 animate-spin-slow" />

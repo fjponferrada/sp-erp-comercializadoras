@@ -37,10 +37,10 @@ model Company {
 }
 
 model Brand {
-  id                    String    @id @default(cuid())
+  id                    String     @id @default(cuid())
   name                  String
-  slug                  String    @unique
-  codigoMarca           String?   @unique
+  slug                  String     @unique
+  codigoMarca           String?    @unique
   address               String?
   email                 String?
   contactPerson         String?
@@ -52,17 +52,17 @@ model Brand {
   textoPromocional      String?
   manual                String?
   penalizacion          Float?
-  marcaVisible          Boolean   @default(true)
-  gestionTickets        Boolean   @default(true)
-  envioPromocion        Boolean   @default(false)
-  envioCliente          Boolean   @default(false)
-  envioCorreo           Boolean   @default(false)
+  marcaVisible          Boolean    @default(true)
+  gestionTickets        Boolean    @default(true)
+  envioPromocion        Boolean    @default(false)
+  envioCliente          Boolean    @default(false)
+  envioCorreo           Boolean    @default(false)
   logoUrl               String?
   faviconUrl            String?
-  accentColor           String    @default("#DEFF9A")
-  bgColor               String    @default("#0B0F19")
-  surfaceColor          String    @default("#111827")
-  borderColor           String    @default("#1E2A3A")
+  accentColor           String     @default("#DEFF9A")
+  bgColor               String     @default("#0B0F19")
+  surfaceColor          String     @default("#111827")
+  borderColor           String     @default("#1E2A3A")
   bankName1             String?
   bankIban1             String?
   bankName2             String?
@@ -70,16 +70,16 @@ model Brand {
   bankName3             String?
   bankIban3             String?
   companyId             String
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  company               Company   @relation(fields: [companyId], references: [id])
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  company               Company    @relation(fields: [companyId], references: [id])
   clients               Client[]
   products              Product[]
   tickets               Ticket[]
   users                 User[]
   contracts             Contract[]
   channels              Channel[]
-  User_BackofficeBrands User[]    @relation("BackofficeBrands")
+  User_BackofficeBrands User[]     @relation("BackofficeBrands")
 }
 
 model User {
@@ -164,221 +164,223 @@ model Client {
   solarQuotes               SolarQuote[]
   supplyPoints              SupplyPoint[]
   tickets                   Ticket[]
-  airtableData Json?
+  airtableData              Json?
 
   @@unique([vatNumber, brandId])
 }
 
 model Lead {
-  id                               String     @id @default(cuid())
-  businessName                     String
-  firstName                        String?
-  lastName                         String?
-  vatNumber                        String?
-  email                            String?
-  phone                            String?
-  status                           String     @default("NUEVO")
-  source                           String?
-  type                             String     @default("LUZ")
-  solarData                        Json?
-  contractData                     Json?
-  isMultipoint                     Boolean    @default(false)
-  contactEmail2                    String?
-  contactEmail3                    String?
-  cups                             String?
-  estimatedMWh                     Float?
-  tariff                           String?    @default("2.0TD")
-  productType                      String?
-  product                          String?
-  additionalServices               String?
-  wantsComparison                  Boolean    @default(false)
-  sipsOk                           Boolean    @default(false)
-  sipsMessages                     String?
-  fee                              Float?
-  pexc                             Float?
-  signatureType                    String?
-  docusignEnvelopeId               String?    @unique
-  contractId                       String?    @unique
-  userId                           String
-  airtableId                       String?    @unique
-  createdAt                        DateTime   @default(now())
-  updatedAt                        DateTime   @updatedAt
-  isB2B                            Boolean?
-  contactVat                       String?
-  hasPanels                        Boolean?
-  comments                         String?
-  generateOffer                    Boolean?
-  offerDate                        DateTime?
-  monthlyExpense                   String?
-  ipP1                             Float?
-  ipP2                             Float?
-  ipP3                             Float?
-  ipP4                             Float?
-  ipP5                             Float?
-  ipP6                             Float?
-  p1c                              Float?
-  p2c                              Float?
-  p3c                              Float?
-  p4c                              Float?
-  p5c                              Float?
-  p6c                              Float?
-  p1pDaily                         Float?
-  p2pDaily                         Float?
-  p3pDaily                         Float?
-  p4pDaily                         Float?
-  p5pDaily                         Float?
-  p6pDaily                         Float?
-  p1eActual                        Float?
-  p2eActual                        Float?
-  p3eActual                        Float?
-  p4eActual                        Float?
-  p5eActual                        Float?
-  p6eActual                        Float?
-  priceService                     Float?
-  priceServiceActual               Float?
-  comparative                      String?
-  savings                          Float?
-  cups2                            String?
-  sipsCnae                         String?
-  sipsPostalCode                   String?
-  sipsTariff                       String?
-  sipsLastModDate                  DateTime?
-  sipsUpdateOwnScript              Boolean?
-  sipsUpdateIngebauScript          Boolean?
-  sipsUpdateIngebau                Boolean?
-  errorTariff                      String?
-  errorProductTariff               String?
-  errorVat                         String?
-  errorSelfConsumption             String?
-  errorCnae                        String?
-  errorCp                          String?
-  errorPostal                      String?
-  lastInvoiceUrl                   String?
-  generateDraft                    Boolean?
-  verificationReq                  Boolean?
-  remakeDraft                      Boolean?
-  triggerDuplicate                 Boolean?
-  wpName                           String?
-  sipsSelfConsCode                 String?
-  contactName                      String?
-  contactLastName                  String?
-  contactRole                      String?
-  iban                             String?
-  paymentMethod                    String?
-  paperInvoice                     Boolean?
-  invoiceDelivery                  String?
-  tramitationType                  String?
-  mandateDouble                    Boolean?
-  documents                        Document[]
-  contract                         Contract?  @relation(fields: [contractId], references: [id])
-  user                             User       @relation(fields: [userId], references: [id])
-  airtableData Json?
+  id                      String     @id @default(cuid())
+  businessName            String
+  firstName               String?
+  lastName                String?
+  vatNumber               String?
+  email                   String?
+  phone                   String?
+  status                  String     @default("NUEVO")
+  source                  String?
+  type                    String     @default("LUZ")
+  solarData               Json?
+  contractData            Json?
+  isMultipoint            Boolean    @default(false)
+  contactEmail2           String?
+  contactEmail3           String?
+  cups                    String?
+  estimatedMWh            Float?
+  tariff                  String?    @default("2.0TD")
+  productType             String?
+  product                 String?
+  additionalServices      String?
+  wantsComparison         Boolean    @default(false)
+  sipsOk                  Boolean    @default(false)
+  sipsMessages            String?
+  fee                     Float?
+  pexc                    Float?
+  signatureType           String?
+  docusignEnvelopeId      String?    @unique
+  contractId              String?    @unique
+  userId                  String
+  airtableId              String?    @unique
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+  isB2B                   Boolean?
+  contactVat              String?
+  hasPanels               Boolean?
+  comments                String?
+  generateOffer           Boolean?
+  offerDate               DateTime?
+  monthlyExpense          String?
+  ipP1                    Float?
+  ipP2                    Float?
+  ipP3                    Float?
+  ipP4                    Float?
+  ipP5                    Float?
+  ipP6                    Float?
+  p1c                     Float?
+  p2c                     Float?
+  p3c                     Float?
+  p4c                     Float?
+  p5c                     Float?
+  p6c                     Float?
+  p1pDaily                Float?
+  p2pDaily                Float?
+  p3pDaily                Float?
+  p4pDaily                Float?
+  p5pDaily                Float?
+  p6pDaily                Float?
+  p1eActual               Float?
+  p2eActual               Float?
+  p3eActual               Float?
+  p4eActual               Float?
+  p5eActual               Float?
+  p6eActual               Float?
+  priceService            Float?
+  priceServiceActual      Float?
+  comparative             String?
+  savings                 Float?
+  cups2                   String?
+  sipsCnae                String?
+  sipsPostalCode          String?
+  sipsTariff              String?
+  sipsLastModDate         DateTime?
+  sipsUpdateOwnScript     Boolean?
+  sipsUpdateIngebauScript Boolean?
+  sipsUpdateIngebau       Boolean?
+  errorTariff             String?
+  errorProductTariff      String?
+  errorVat                String?
+  errorSelfConsumption    String?
+  errorCnae               String?
+  errorCp                 String?
+  errorPostal             String?
+  lastInvoiceUrl          String?
+  generateDraft           Boolean?
+  verificationReq         Boolean?
+  remakeDraft             Boolean?
+  triggerDuplicate        Boolean?
+  wpName                  String?
+  sipsSelfConsCode        String?
+  contactName             String?
+  contactLastName         String?
+  contactRole             String?
+  iban                    String?
+  paymentMethod           String?
+  paperInvoice            Boolean?
+  invoiceDelivery         String?
+  tramitationType         String?
+  mandateDouble           Boolean?
+  documents               Document[]
+  contract                Contract?  @relation(fields: [contractId], references: [id])
+  user                    User       @relation(fields: [userId], references: [id])
+  airtableData            Json?
 }
 
 model SupplyPoint {
-  id                     String       @id @default(cuid())
-  cups                   String
-  cups2                  String?
-  address                String
-  city                   String
-  postalCode             String
-  province               String
-  country                String       @default("España")
-  tariff                 String
-  distributor            String?
-  annualConsumption      Float?
-  p1c                    Float?
-  p2c                    Float?
-  p3c                    Float?
-  p4c                    Float?
-  p5c                    Float?
-  p6c                    Float?
-  cnae                   String?
-  p1p                    Float?
-  p2p                    Float?
-  p3p                    Float?
-  p4p                    Float?
-  p5p                    Float?
-  p6p                    Float?
-  hasSelfConsumption     Boolean      @default(false)
-  selfConsumptionType    String?
-  cie                    String?
-  cieSelfConsumption     String?
-  cadastralReference     String?
-  cadastreProvince       String?
-  cadastreCity           String?
-  cadastreStreetType     String?
-  cadastreAddress        String?
-  cadastreNumber         String?
-  cadastreBlock          String?
-  cadastreFloor          String?
-  cadastreDoor           String?
-  cau                    String?
-  cauType                String?
-  cauSubtype             String?
-  cauCollective          String?
-  cil                    String?
-  generatorTechnology    String?
-  installedPowerGen      Float?
-  installationType       String?
-  meteringScheme         String?
-  distributorReeCode     String?
-  distributorName        String?
-  clientId               String
-  airtableId             String?      @unique
-  streetType             String?
-  street                 String?
-  streetNumber           String?
-  floor                  String?
-  door                   String?
-  addressAddition        String?
-  meteringEquipment      String?
-  boePower               Float?
-  fileCie                String?
-  fileCieSelfConsump     String?
-  sipsCnae               String?
-  sipsPostalCode         String?
-  sipsTariff             String?
-  sipsP1c                Float?
-  sipsP2c                Float?
-  sipsP3c                Float?
-  sipsP4c                Float?
-  sipsP5c                Float?
-  sipsP6c                Float?
-  pcSum                  Float?
-  sipsPcSum              Float?
-  varPc                  Float?
-  demandaManualEne       Float?
-  demandaManualFeb       Float?
-  demandaManualMar       Float?
-  demandaManualAbr       Float?
-  demandaManualMay       Float?
-  demandaManualJun       Float?
-  demandaManualJul       Float?
-  demandaManualAgo       Float?
-  demandaManualSep       Float?
-  demandaManualOct       Float?
-  demandaManualNov       Float?
-  demandaManualDic       Float?
-  excedentesManualEne    Float?
-  excedentesManualFeb    Float?
-  excedentesManualMar    Float?
-  excedentesManualAbr    Float?
-  excedentesManualMay    Float?
-  excedentesManualJun    Float?
-  excedentesManualJul    Float?
-  excedentesManualAgo    Float?
-  excedentesManualSep    Float?
-  excedentesManualOct    Float?
-  excedentesManualNov    Float?
-  excedentesManualDic    Float?
-  contracts              Contract[]
-  documents              Document[]
-  invoices               Invoice[]
-  solarQuotes            SolarQuote[]
-  client                 Client       @relation(fields: [clientId], references: [id])
-  tickets                Ticket[]
-  airtableData Json?
+  id                  String           @id @default(cuid())
+  cups                String
+  cups2               String?
+  address             String
+  city                String
+  postalCode          String
+  province            String
+  country             String           @default("España")
+  tariff              String
+  distributor         String?
+  annualConsumption   Float?
+  p1c                 Float?
+  p2c                 Float?
+  p3c                 Float?
+  p4c                 Float?
+  p5c                 Float?
+  p6c                 Float?
+  cnae                String?
+  p1p                 Float?
+  p2p                 Float?
+  p3p                 Float?
+  p4p                 Float?
+  p5p                 Float?
+  p6p                 Float?
+  hasSelfConsumption  Boolean          @default(false)
+  selfConsumptionType String?
+  cie                 String?
+  cieSelfConsumption  String?
+  cadastralReference  String?
+  cadastreProvince    String?
+  cadastreCity        String?
+  cadastreStreetType  String?
+  cadastreAddress     String?
+  cadastreNumber      String?
+  cadastreBlock       String?
+  cadastreFloor       String?
+  cadastreDoor        String?
+  cau                 String?
+  cauType             String?
+  cauSubtype          String?
+  cauCollective       String?
+  cil                 String?
+  generatorTechnology String?
+  installedPowerGen   Float?
+  installationType    String?
+  meteringScheme      String?
+  distributorReeCode  String?
+  distributorName     String?
+  clientId            String
+  airtableId          String?          @unique
+  streetType          String?
+  street              String?
+  streetNumber        String?
+  floor               String?
+  door                String?
+  addressAddition     String?
+  meteringEquipment   String?
+  boePower            Float?
+  fileCie             String?
+  fileCieSelfConsump  String?
+  sipsCnae            String?
+  sipsPostalCode      String?
+  sipsTariff          String?
+  sipsP1c             Float?
+  sipsP2c             Float?
+  sipsP3c             Float?
+  sipsP4c             Float?
+  sipsP5c             Float?
+  sipsP6c             Float?
+  pcSum               Float?
+  sipsPcSum           Float?
+  varPc               Float?
+  demandaManualEne    Float?
+  demandaManualFeb    Float?
+  demandaManualMar    Float?
+  demandaManualAbr    Float?
+  demandaManualMay    Float?
+  demandaManualJun    Float?
+  demandaManualJul    Float?
+  demandaManualAgo    Float?
+  demandaManualSep    Float?
+  demandaManualOct    Float?
+  demandaManualNov    Float?
+  demandaManualDic    Float?
+  excedentesManualEne Float?
+  excedentesManualFeb Float?
+  excedentesManualMar Float?
+  excedentesManualAbr Float?
+  excedentesManualMay Float?
+  excedentesManualJun Float?
+  excedentesManualJul Float?
+  excedentesManualAgo Float?
+  excedentesManualSep Float?
+  excedentesManualOct Float?
+  excedentesManualNov Float?
+  excedentesManualDic Float?
+  contracts           Contract[]
+  documents           Document[]
+  invoices            Invoice[]
+  solarQuotes         SolarQuote[]
+  client              Client           @relation(fields: [clientId], references: [id])
+  tickets             Ticket[]
+  airtableData        Json?
+  switchingEvents     SwitchingEvent[]
+  f1Invoices          F1Invoice[]
 }
 
 model Product {
@@ -417,176 +419,180 @@ model Product {
 }
 
 model Contract {
-  id                               String                 @id @default(cuid())
-  status                           String
-  contractCode                     String?
-  version                          Int                    @default(0)
-  tramitationType                  String?
-  duration                         Int?
-  signatureDate                    DateTime?
-  requestDate                      DateTime?
-  activationDate                   DateTime?
-  permanenceStartDate              DateTime?
-  expectedEndDate                  DateTime?
-  terminationDate                  DateTime?
-  docusignEnvelopeId               String?                @unique
-  commissionBase                   Float?
-  commissionFinal                  Float?
-  commissionVariable               Float?
-  penalization                     Float?
-  svaConcept                       String?
-  svaPrice                         Float?
-  svaDuration                      Int?
-  svaStartDate                     DateTime?
-  fee                              Float?
-  pexc                             Float?
-  cgBolsilloSolar                  Float?
-  deviationCost                    Float?
-  p1e                              Float?
-  p2e                              Float?
-  p3e                              Float?
-  p4e                              Float?
-  p5e                              Float?
-  p6e                              Float?
-  p1p                              Float?
-  p2p                              Float?
-  p3p                              Float?
-  p4p                              Float?
-  p5p                              Float?
-  p6p                              Float?
-  p1c                              Float?
-  p2c                              Float?
-  p3c                              Float?
-  p4c                              Float?
-  p5c                              Float?
-  p6c                              Float?
-  discountStartDate                DateTime?
-  discountEndDate                  DateTime?
-  discountPrice                    Float?
-  distributorMsg                   String?
-  internalComments                 String?
-  previousContractId               String?                @unique
-  clientId                         String
-  supplyPointId                    String
-  productId                        String
-  userId                           String
-  airtableId                       String?                @unique
-  createdAt                        DateTime               @default(now())
-  updatedAt                        DateTime               @updatedAt
-  isB2B                            Boolean?
-  tipo                             String?
-  tipoC2                           String?
-  peticionClienteC2                String?
-  tipoEntrada                      String?
-  fechaPrevista                    DateTime?
-  captacionCliente                 String?
-  autoconsumo                      Boolean?
-  autoconsumoFijoIndex             String?
-  atrComer                         String?
-  unPrecio                         Boolean?
-  suspendido                       Boolean?
-  cierre                           String?
-  feeP                             Float?
-  descuentoCie                     Float?
-  inicioProceso                    DateTime?
-  gasIncluido                      Boolean?
-  bolsilloSolar                    Boolean?
-  modalidadContrato                String?
-  nSolicitud                       String?
-  fechaProceso                     DateTime?
-  fechaAceptacion                  DateTime?
-  fechaPrevistaActivacion          DateTime?
-  fechaIncidencia                  DateTime?
-  sinComision                      Boolean?
-  m1Activado                       Boolean?
-  m1Rechazado                      Boolean?
-  decomision                       Float?
-  decomision50                     Float?
-  comision50                       Float?
-  renovacion                       Boolean?
-  bajaPorM1RE1                     Boolean?
-  bimensual                        Boolean?
-  sinPenalizacion                  Boolean?
-  sinDecomision                    Boolean?
-  svaAnadidoTera                   Boolean?
-  penalizacionFacturada            Boolean?
-  numFacturaPenalizacion           String?
-  facturarPen                      Boolean?
-  biPen                            Float?
-  ivaPen                           Float?
-  penalizacionEstimada             Float?
-  abonar                           Float?
-  fechaFacturaPenalizacion         DateTime?
-  ajustePen                        Float?
-  productoRenovacion               String?
-  renovacionSolicitada             Boolean?
-  servicioRenovacion               String?
-  renovacionTramitada              Boolean?
-  derechosExtension                Float?
-  telegestion                      Boolean?
-  estadoCompilacion                String?
-  calculoCodDistri                 String?
-  nombreComercial                  String?
-  ip                               Float?
-  fc                               Float?
-  porcComisionFijo                 Float?
-  porcComisionVariable             Float?
-  ajusteConsumoComision            Float?
-  comisionAjustada                 Float?
-  ajusteComisionDuracionPotencia   Float?
-  decomisionSobreAjuste            Float?
-  genContratoAuto                  Boolean?
-  m1sSolicitado                    Boolean?
-  m1nSolicitado                    Boolean?
-  tipoPm                           String?
-  calculoMesAlta                   String?
-  calculoMesBaja                   String?
-  mesAlta                          String?
-  mesBaja                          String?
-  ultimoDiaFacturado               DateTime?
-  ultDiaAFacturar                  DateTime?
-  retraso                          Int?
-  inicioMes0                       DateTime?
-  inicioMesMinus1                  DateTime?
-  finMesMinus1                     DateTime?
-  energiaPteMesMinus1              Float?
-  inicioMesMinus2                  DateTime?
-  finMesMinus2                     DateTime?
-  energiaPteMesMinus2              Float?
-  energiaPteMes0HastaHoy           Float?
-  finMes0                          DateTime?
-  ultDiaFact                       DateTime?
-  energiaPteMes0HastaFinMes        Float?
-  transferencia                    Boolean?
-  firmaManRenov                    Boolean?
-  consumoRealEstimado              String?
-  pen20TdResid                     Float?
-  penNoResid                       Float?
-  pen20TdResidHoy                  Float?
-  horasUsoDiarios                  Float?
-  tipoEnvioFacturaRenov            String?
-  diasContrato                     Int?
-  diasRenovMax                     Int?
-  filePdfDraft                     String?
-  filePdfSigned                    String?
-  isMultipoint                     Boolean?
-  estadoPrevio                     String?
-  fechaVencimientoCalculada        DateTime?
-  Commission                       Commission?
-  client                           Client                 @relation(fields: [clientId], references: [id])
-  contract                         Contract?              @relation("ContractToContract", fields: [previousContractId], references: [id])
-  other_Contract                   Contract?              @relation("ContractToContract")
-  product                          Product                @relation(fields: [productId], references: [id])
-  supplyPoint                      SupplyPoint            @relation(fields: [supplyPointId], references: [id])
-  user                             User                   @relation(fields: [userId], references: [id])
-  ContractModification             ContractModification[]
-  documents                        Document[]
-  invoices                         Invoice[]
-  Lead                             Lead?
-  AdditionalService                AdditionalService[]
-  airtableData Json?
-  brandId      String?
-  brand        Brand?                 @relation(fields: [brandId], references: [id])
+  id                             String                 @id @default(cuid())
+  status                         String
+  contractCode                   String?
+  version                        Int                    @default(0)
+  tramitationType                String?
+  duration                       Int?
+  signatureDate                  DateTime?
+  requestDate                    DateTime?
+  activationDate                 DateTime?
+  permanenceStartDate            DateTime?
+  expectedEndDate                DateTime?
+  terminationDate                DateTime?
+  docusignEnvelopeId             String?                @unique
+  commissionBase                 Float?
+  commissionFinal                Float?
+  commissionVariable             Float?
+  penalization                   Float?
+  svaConcept                     String?
+  svaPrice                       Float?
+  svaDuration                    Int?
+  svaStartDate                   DateTime?
+  fee                            Float?
+  pexc                           Float?
+  cgBolsilloSolar                Float?
+  deviationCost                  Float?
+  p1e                            Float?
+  p2e                            Float?
+  p3e                            Float?
+  p4e                            Float?
+  p5e                            Float?
+  p6e                            Float?
+  p1p                            Float?
+  p2p                            Float?
+  p3p                            Float?
+  p4p                            Float?
+  p5p                            Float?
+  p6p                            Float?
+  p1c                            Float?
+  p2c                            Float?
+  p3c                            Float?
+  p4c                            Float?
+  p5c                            Float?
+  p6c                            Float?
+  discountStartDate              DateTime?
+  discountEndDate                DateTime?
+  discountPrice                  Float?
+  distributorMsg                 String?
+  internalComments               String?
+  previousContractId             String?                @unique
+  clientId                       String
+  supplyPointId                  String
+  productId                      String
+  userId                         String
+  airtableId                     String?                @unique
+  createdAt                      DateTime               @default(now())
+  updatedAt                      DateTime               @updatedAt
+  isB2B                          Boolean?
+  tipo                           String?
+  tipoC2                         String?
+  peticionClienteC2              String?
+  tipoEntrada                    String?
+  fechaPrevista                  DateTime?
+  captacionCliente               String?
+  autoconsumo                    Boolean?
+  autoconsumoFijoIndex           String?
+  atrComer                       String?
+  unPrecio                       Boolean?
+  suspendido                     Boolean?
+  cierre                         String?
+  feeP                           Float?
+  descuentoCie                   Float?
+  inicioProceso                  DateTime?
+  gasIncluido                    Boolean?
+  bolsilloSolar                  Boolean?
+  modalidadContrato              String?
+  nSolicitud                     String?
+  fechaProceso                   DateTime?
+  fechaAceptacion                DateTime?
+  fechaRechazo                   DateTime?
+  fechaPrevistaActivacion        DateTime?
+  fechaPrevistaBaja              DateTime?
+  fechaIncidencia                DateTime?
+  sinComision                    Boolean?
+  m1Activado                     Boolean?
+  m1Rechazado                    Boolean?
+  decomision                     Float?
+  decomision50                   Float?
+  comision50                     Float?
+  renovacion                     Boolean?
+  bajaPorM1RE1                   Boolean?
+  bimensual                      Boolean?
+  sinPenalizacion                Boolean?
+  sinDecomision                  Boolean?
+  svaAnadidoTera                 Boolean?
+  penalizacionFacturada          Boolean?
+  numFacturaPenalizacion         String?
+  facturarPen                    Boolean?
+  biPen                          Float?
+  ivaPen                         Float?
+  penalizacionEstimada           Float?
+  abonar                         Float?
+  fechaFacturaPenalizacion       DateTime?
+  ajustePen                      Float?
+  productoRenovacion             String?
+  renovacionSolicitada           Boolean?
+  servicioRenovacion             String?
+  renovacionTramitada            Boolean?
+  derechosExtension              Float?
+  telegestion                    Boolean?
+  estadoCompilacion              String?
+  calculoCodDistri               String?
+  nombreComercial                String?
+  ip                             Float?
+  fc                             Float?
+  porcComisionFijo               Float?
+  porcComisionVariable           Float?
+  ajusteConsumoComision          Float?
+  comisionAjustada               Float?
+  ajusteComisionDuracionPotencia Float?
+  decomisionSobreAjuste          Float?
+  genContratoAuto                Boolean?
+  m1sSolicitado                  Boolean?
+  m1nSolicitado                  Boolean?
+  tipoPm                         String?
+  calculoMesAlta                 String?
+  calculoMesBaja                 String?
+  mesAlta                        String?
+  mesBaja                        String?
+  ultimoDiaFacturado             DateTime?
+  ultDiaAFacturar                DateTime?
+  retraso                        Int?
+  inicioMes0                     DateTime?
+  inicioMesMinus1                DateTime?
+  finMesMinus1                   DateTime?
+  energiaPteMesMinus1            Float?
+  inicioMesMinus2                DateTime?
+  finMesMinus2                   DateTime?
+  energiaPteMesMinus2            Float?
+  energiaPteMes0HastaHoy         Float?
+  finMes0                        DateTime?
+  ultDiaFact                     DateTime?
+  energiaPteMes0HastaFinMes      Float?
+  transferencia                  Boolean?
+  firmaManRenov                  Boolean?
+  consumoRealEstimado            String?
+  pen20TdResid                   Float?
+  penNoResid                     Float?
+  pen20TdResidHoy                Float?
+  horasUsoDiarios                Float?
+  tipoEnvioFacturaRenov          String?
+  diasContrato                   Int?
+  diasRenovMax                   Int?
+  filePdfDraft                   String?
+  filePdfSigned                  String?
+  isMultipoint                   Boolean?
+  estadoPrevio                   String?
+  fechaVencimientoCalculada      DateTime?
+  Commission                     Commission?
+  client                         Client                 @relation(fields: [clientId], references: [id])
+  contract                       Contract?              @relation("ContractToContract", fields: [previousContractId], references: [id])
+  other_Contract                 Contract?              @relation("ContractToContract")
+  product                        Product                @relation(fields: [productId], references: [id])
+  supplyPoint                    SupplyPoint            @relation(fields: [supplyPointId], references: [id])
+  user                           User                   @relation(fields: [userId], references: [id])
+  ContractModification           ContractModification[]
+  documents                      Document[]
+  invoices                       Invoice[]
+  Lead                           Lead?
+  AdditionalService              AdditionalService[]
+  airtableData                   Json?
+  brandId                        String?
+  brand                          Brand?                 @relation(fields: [brandId], references: [id])
+  switchingEvents                SwitchingEvent[]
+  f1Invoices                     F1Invoice[]
 
   @@unique([contractCode, version, brandId])
 }
@@ -1159,7 +1165,7 @@ model Invoice {
   invoice                                Invoice?     @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
   otherInvoices                          Invoice[]    @relation("InvoiceToInvoice")
   supplyPoint                            SupplyPoint? @relation(fields: [supplyPointId], references: [id])
-  airtableData Json?
+  airtableData                           Json?
 }
 
 model AdditionalService {
@@ -1316,4 +1322,70 @@ enum TicketStatus {
   PENDIENTE_RESOLUCION
   RESUELTA
   CERRADA
+}
+
+model SwitchingEvent {
+  id String @id @default(cuid())
+
+  // Clave única anti-duplicados (ej: codigoSolicitud_cups_proceso_paso)
+  uniqueProcess String   @unique
+  fechaAviso    DateTime @default(now())
+
+  // Datos extraídos del XML
+  fechaSolicitud      DateTime?
+  codigoSolicitud     String?
+  proceso             String // "Proceso" (ej. "C1_11", "B1_02")
+  procesoBase         String // El directorio raíz (ej. "C1", "F1", "R1") para filtrar fácil
+  paso                String?
+  estadoAR            String?
+  fechaAR             DateTime?
+  fechaPrevActivacion DateTime?
+  fechaActivacionAlta DateTime?
+  fechaActivacionBaja DateTime?
+  observaciones       String?
+  xmlUrl              String? // Ruta en R2: switching/recibidos/C2/...
+  codigoReclamacion   String?
+  isAnnulled          Boolean   @default(false)
+
+  // Sistema de Warnings
+  tipoError  String?
+  warning    String?
+  isResolved Boolean @default(false)
+
+  // Vínculos Relacionales
+  supplyPointId String?
+  supplyPoint   SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model F1Invoice {
+  id String @id @default(cuid())
+
+  supplyPointId String?
+  supplyPoint   SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+
+  numeroFactura String?
+  fechaEmision  DateTime?
+  fechaInicio   DateTime?
+  fechaFin      DateTime?
+
+  facturaRealizada Boolean @default(true)
+  baseImponible    Float?
+  totalPeajes      Float?
+  totalCargos      Float?
+  saldoFactura     Float?
+
+  xmlUrl   String?
+  jsonData Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

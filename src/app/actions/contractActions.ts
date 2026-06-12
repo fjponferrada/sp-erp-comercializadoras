@@ -595,10 +595,42 @@ export async function updateContractFull(formData: FormData) {
     const status = formData.get('status') as string;
     const internalComments = formData.get('internalComments') as string;
     const signatureDate = formData.get('signatureDate') as string;
+    const requestDate = formData.get('requestDate') as string;
     const activationDate = formData.get('activationDate') as string;
     const terminationDate = formData.get('terminationDate') as string;
     const permanenceStartDate = formData.get('permanenceStartDate') as string;
+    const expectedEndDate = formData.get('expectedEndDate') as string;
+    const discountStartDate = formData.get('discountStartDate') as string;
+    const discountEndDate = formData.get('discountEndDate') as string;
+    const svaStartDate = formData.get('svaStartDate') as string;
+    
     const tramitationType = formData.get('tramitationType') as string;
+    const tipo = formData.get('tipo') as string;
+    const tipoC2 = formData.get('tipoC2') as string;
+    const distributorMsg = formData.get('distributorMsg') as string;
+    const svaConcept = formData.get('svaConcept') as string;
+
+    const duration = formData.get('duration') ? parseInt(formData.get('duration') as string) : undefined;
+    const svaDuration = formData.get('svaDuration') ? parseInt(formData.get('svaDuration') as string) : undefined;
+
+    const parseF = (val: FormDataEntryValue | null) => val && val !== '' ? parseFloat(val as string) : undefined;
+    const commissionBase = parseF(formData.get('commissionBase'));
+    const commissionFinal = parseF(formData.get('commissionFinal'));
+    const commissionVariable = parseF(formData.get('commissionVariable'));
+    const penalization = parseF(formData.get('penalization'));
+    const svaPrice = parseF(formData.get('svaPrice'));
+    const fee = parseF(formData.get('fee'));
+    const pexc = parseF(formData.get('pexc'));
+    const cgBolsilloSolar = parseF(formData.get('cgBolsilloSolar'));
+    const deviationCost = parseF(formData.get('deviationCost'));
+    const discountPrice = parseF(formData.get('discountPrice'));
+    
+    const p1e = parseF(formData.get('p1e')); const p2e = parseF(formData.get('p2e')); const p3e = parseF(formData.get('p3e'));
+    const p4e = parseF(formData.get('p4e')); const p5e = parseF(formData.get('p5e')); const p6e = parseF(formData.get('p6e'));
+    const p1p = parseF(formData.get('p1p')); const p2p = parseF(formData.get('p2p')); const p3p = parseF(formData.get('p3p'));
+    const p4p = parseF(formData.get('p4p')); const p5p = parseF(formData.get('p5p')); const p6p = parseF(formData.get('p6p'));
+    const p1c = parseF(formData.get('p1c')); const p2c = parseF(formData.get('p2c')); const p3c = parseF(formData.get('p3c'));
+    const p4c = parseF(formData.get('p4c')); const p5c = parseF(formData.get('p5c')); const p6c = parseF(formData.get('p6c'));
 
     const distributor = formData.get('distributor') as string;
     const annualConsumptionStr = formData.get('annualConsumption') as string;
@@ -670,10 +702,26 @@ export async function updateContractFull(formData: FormData) {
         status: status || undefined,
         internalComments: internalComments,
         signatureDate: signatureDate ? new Date(signatureDate) : null,
+        requestDate: requestDate ? new Date(requestDate) : null,
         activationDate: activationDate ? new Date(activationDate) : null,
         terminationDate: terminationDate ? new Date(terminationDate) : null,
         permanenceStartDate: permanenceStartDate ? new Date(permanenceStartDate) : null,
+        expectedEndDate: expectedEndDate ? new Date(expectedEndDate) : null,
+        discountStartDate: discountStartDate ? new Date(discountStartDate) : null,
+        discountEndDate: discountEndDate ? new Date(discountEndDate) : null,
+        svaStartDate: svaStartDate ? new Date(svaStartDate) : null,
         tramitationType: tramitationType || undefined,
+        tipo: tipo || undefined,
+        tipoC2: tipoC2 || undefined,
+        distributorMsg: distributorMsg,
+        svaConcept: svaConcept,
+        duration: duration,
+        svaDuration: svaDuration,
+        commissionBase, commissionFinal, commissionVariable,
+        penalization, svaPrice, fee, pexc, cgBolsilloSolar, deviationCost, discountPrice,
+        p1e, p2e, p3e, p4e, p5e, p6e,
+        p1p, p2p, p3p, p4p, p5p, p6p,
+        p1c, p2c, p3c, p4c, p5c, p6c,
       }
     });
 
@@ -1007,5 +1055,25 @@ export async function getContractStatsAction() {
     return { success: true, activos, tramitando, bajas, totalMwh };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+}
+
+export async function getFullContractAction(id: string) {
+  try {
+    const { prisma } = await import('@/lib/prisma');
+    const contract = await prisma.contract.findUnique({
+      where: { id },
+      include: {
+        Lead: true,
+        product: true,
+        user: { include: { channel: true } },
+        client: true,
+        supplyPoint: true
+      }
+    });
+    if (!contract) return { success: false, error: 'No encontrado' };
+    return { success: true, contract };
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }

@@ -2,6 +2,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import ContractDetailClient from './ContractDetailClient';
+import { getClaimsAction } from '@/app/actions/claimsActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,17 +45,6 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     notFound();
   }
   
-  // Remap uppercase relations to lowercase for the UI component
-  const uiContract = {
-    ...contract,
-    lead: contract.Lead ? { ...contract.Lead, documents: contract.Lead.documents } : null,
-    client: contract.client,
-    supplyPoint: contract.supplyPoint,
-    user: contract.user,
-    product: contract.product,
-    invoices: contract.invoices
-  };
-
   let versions: any[] = [];
   if (contract.contractCode) {
     versions = await prisma.contract.findMany({
@@ -63,6 +53,52 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       orderBy: { version: 'desc' }
     });
   }
+
+  // Fetch Switching Events for this CUPS, excluding irrelevant ones
+  let switchingEvents: any[] = [];
+  if (contract.supplyPointId) {
+    switchingEvents = await prisma.switchingEvent.findMany({
+      where: {
+        supplyPointId: contract.supplyPointId,
+        procesoBase: { notIn: ['F1', 'R1', 'P0', 'Q1', 'W1', 'T1'] }
+      },
+      orderBy: { fechaAviso: 'desc' }
+    });
+  }
+
+  // Fetch Claims (R1) for this contract
+  let claims: any[] = [];
+  const claimsResult = await getClaimsAction(contract.id);
+  if (claimsResult.success) {
+    claims = claimsResult.data;
+  }
+
+  // Fetch F1 Invoices for this contract dynamically by dates
+  let f1Invoices: any[] = [];
+  if (contract.supplyPointId && contract.activationDate) {
+    f1Invoices = await prisma.f1Invoice.findMany({
+      where: {
+        supplyPointId: contract.supplyPointId,
+        fechaFin: { gte: contract.activationDate },
+        ...(contract.terminationDate ? { fechaInicio: { lte: contract.terminationDate } } : {})
+      },
+      orderBy: { fechaEmision: 'desc' }
+    });
+  }
+
+  // Remap uppercase relations to lowercase for the UI component
+  const uiContract = {
+    ...contract,
+    lead: contract.Lead ? { ...contract.Lead, documents: contract.Lead.documents } : null,
+    client: contract.client,
+    supplyPoint: contract.supplyPoint,
+    user: contract.user,
+    product: contract.product,
+    invoices: contract.invoices,
+    f1Invoices,
+    switchingEvents,
+    claims
+  };
 
   return (
     <ContractDetailClient 

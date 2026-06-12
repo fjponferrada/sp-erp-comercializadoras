@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import Topbar from '@/components/Topbar';
 import {
   Zap,
@@ -111,6 +112,22 @@ export default function ContractsClient({
   const canalesDropdown = useMemo(() => ['Todos', ...initialChannels], [initialChannels]);
 
   const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+
+  const handleEditContract = async (contractId: string) => {
+    const loadingToast = toast.loading('Cargando datos del contrato...');
+    try {
+      const { getFullContractAction } = await import('@/app/actions/contractActions');
+      const result = await getFullContractAction(contractId);
+      if (result.success && result.contract) {
+        toast.dismiss(loadingToast);
+        setEditingContract(result.contract);
+      } else {
+        toast.error('Error cargando contrato: ' + result.error, { id: loadingToast });
+      }
+    } catch (e) {
+      toast.error('Error de red al cargar el contrato', { id: loadingToast });
+    }
+  };
 
   useEffect(() => {
     if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
@@ -304,8 +321,8 @@ export default function ContractsClient({
                     </td>
                   </tr>
                 ) : paginated.map((c) => {
-                  const est = ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
                   const estUpper = String(c.estado).toUpperCase();
+                  const est = ESTADO_CONFIG[estUpper] || ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
                   const hasSignedDoc = !!c.signedUrl || ['FIRMADO', 'ACEPTADO', 'ACTIVO', 'FINALIZADO', 'TRAMITANDO'].includes(estUpper);
 
                   return (
@@ -426,7 +443,7 @@ export default function ContractsClient({
 
                           {canEdit && (
                             <button 
-                              onClick={() => setEditingContract(c.raw)}
+                              onClick={() => handleEditContract(c.raw.id)}
                               className="p-1.5 text-gray-400 hover:text-[var(--lime)] rounded hover:bg-[rgba(132,204,22,0.1)] transition-colors"
                               title="Editar Contrato"
                             >
@@ -459,7 +476,7 @@ export default function ContractsClient({
                                     </>
                                   ) : (
                                     <>
-                                      <button onClick={() => { setOpenDropdown(null); if (canEdit) setEditingContract(c.raw); else alert("Contacte al backoffice para subir documentos."); }} className="w-full text-left px-4 py-2.5 text-xs text-[var(--lime)] hover:text-white hover:bg-[rgba(132,204,22,0.1)] flex items-center gap-2">
+                                      <button onClick={() => { setOpenDropdown(null); if (canEdit) handleEditContract(c.raw.id); else alert("Contacte al backoffice para subir documentos."); }} className="w-full text-left px-4 py-2.5 text-xs text-[var(--lime)] hover:text-white hover:bg-[rgba(132,204,22,0.1)] flex items-center gap-2">
                                         <Upload size={14} /> 
                                         {c.tramitacion === 'M1' || c.tramitacion === 'M1N' ? 'Subir Anexo firmado' : 'Subir contrato firmado'}
                                       </button>
@@ -492,12 +509,14 @@ export default function ContractsClient({
         </div>
       </div>
 
-      <EditContractModal 
-        isOpen={!!editingContract} 
-        onClose={() => setEditingContract(null)} 
-        contract={editingContract || {}} 
-        onSuccess={handleRefresh} 
-      />
+      {!!editingContract && (
+        <EditContractModal 
+          isOpen={true} 
+          onClose={() => setEditingContract(null)} 
+          contract={editingContract} 
+          onSuccess={handleRefresh} 
+        />
+      )}
     </div>
   );
 }
