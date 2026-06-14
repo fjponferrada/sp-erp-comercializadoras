@@ -373,8 +373,8 @@ export async function convertLeadToContractAction(leadId: string) {
       const dirPSObj = extractAddrObj(cData.direccionSuministro);
 
       let nombreTitular = formatField(lead.businessName) || '';
-      let apellido1 = formatField(lead.firstName) || formatField(cData.primerApellido) || '';
-      let apellido2 = formatField(lead.lastName) || formatField(cData.segundoApellido) || '';
+      let apellido1 = formatField(cData.primerApellido) || '';
+      let apellido2 = formatField(cData.segundoApellido) || '';
 
       // The CRM stores the Full Name in businessName. To extract just the "Name" for the docx:
       if (nombreTitular && apellido1) {
@@ -391,21 +391,21 @@ export async function convertLeadToContractAction(leadId: string) {
         '2apetit': apellido2,
         nif: formatField(lead.vatNumber) || '',
         cnae: formatField(cData.cnae) || '',
-        direcciontitular: formatField(lead.address) || formatField(cData.direccion) || '',
-        cptit: formatField(lead.zipCode) || formatField(cData.cp) || dirTitObj.cp || '',
-        loctit: formatField(lead.city) || formatField(cData.poblacion) || dirTitObj.poblacion || '',
-        provtit: formatField(lead.province) || formatField(cData.provincia) || dirTitObj.provincia || '',
+        direcciontitular: formatField(cData.direccion) || '',
+        cptit: formatField(cData.cp) || dirTitObj.cp || '',
+        loctit: formatField(cData.poblacion) || dirTitObj.poblacion || '',
+        provtit: formatField(cData.provincia) || dirTitObj.provincia || '',
         mailtitular: formatField(lead.email) || '',
         tlftitular: formatField(lead.phone) || '',
         mvtitular: '',
-        nombrerep: formatField(lead.representativeName) || '',
-        nifrep: formatField(lead.representativeVat) || '',
+        nombrerep: formatField(cData.representanteLegal) || '',
+        nifrep: formatField(cData.dniRepresentante) || '',
         cups: formatField(lead.cups) || '',
         tarifa: formatField(lead.tariff) || '',
-        direccionPS: formatField(lead.supplyAddress) || formatField(cData.direccionSuministro?.address) || formatField(cData.direccionSuministro) || formatField(lead.address) || formatField(cData.direccion) || '',
-        cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(lead.zipCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || '',
-        localidadPS: formatField(cData.direccionSuministro?.city) || formatField(lead.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || '',
-        provPS: formatField(cData.direccionSuministro?.province) || formatField(lead.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || '',
+        direccionPS: formatField(cData.direccionSuministro?.address) || formatField(cData.direccionSuministro) || formatField(cData.direccion) || '',
+        cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || '',
+        localidadPS: formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || '',
+        provPS: formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || '',
         ftraspapel: (cData.facturasPapel === 'Si' || cData.facturaPapel === 'Si') ? 'Correo Postal' : 'Email',
         iban: cData.iban || '',
         nombreprod: product.name || '',
@@ -940,17 +940,17 @@ export async function sendContractToDocuSignAction(contractId: string) {
     if (!contract.pdfUrl) return { error: 'El contrato no tiene un PDF de borrador generado.' };
     
     // Obtener email y nombre
-    const cData: any = typeof contract.contractData === 'string' ? JSON.parse(contract.contractData) : (contract.contractData || {});
+    const cData: any = typeof contract.airtableData === 'string' ? JSON.parse(contract.airtableData) : (contract.airtableData || {});
     
     // Extracción robusta de datos buscando en Lead, Client, SupplyPoint, y luego en el JSON cData
     // Prioridad 1: Lead (estado de negociación)
     // Prioridad 2: cData (JSON del Lead / Airtable)
     // Prioridad 3: Client / SupplyPoint (estado consolidado, pero podría ser antiguo)
     
-    let signerEmail = contract.Lead?.email || cData.email || cData.contactEmail || contract.client?.email;
+    let signerEmail = contract.Lead?.email || cData.email || cData.contactEmail || contract.client?.contactEmail;
     let signerName = contract.Lead?.businessName || cData.businessName || contract.client?.businessName || 'Cliente';
-    let signerPhone = contract.Lead?.phone || cData.phone || contract.client?.phone || '';
-    let nif = contract.Lead?.vatNumber || cData.nif || cData.cif || contract.client?.nif || '';
+    let signerPhone = contract.Lead?.phone || cData.phone || contract.client?.contactPhone || '';
+    let nif = contract.Lead?.vatNumber || cData.nif || cData.cif || contract.client?.vatNumber || '';
     
     let cups = contract.Lead?.cups || cData.cups || contract.supplyPoint?.cups || '';
     let address = cData.direccionSuministro?.address || cData.direccionSuministro || cData.direccion || contract.supplyPoint?.address || '';
