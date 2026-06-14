@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Upload, Loader2, Save } from 'lucide-react';
 import { updateContractFull } from '@/app/actions/contractActions';
+import { TIPO_TRAMITACION_MAPPING } from '@/lib/tramitationMapper';
 
 interface EditContractModalProps {
   isOpen: boolean;
@@ -226,7 +227,6 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
           {[
             { id: 'general', label: 'General' },
             { id: 'fechas', label: 'Fechas' },
-            { id: 'cliente', label: 'Cliente y CUPS' },
             { id: 'precios', label: 'Precios y Energía' },
             { id: 'sva', label: 'Otros (SVA / Comisiones)' },
           ].map(tab => (
@@ -268,9 +268,18 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
                       {ESTADOS.map(e => <option key={e} value={e}>{e.replace('_', ' ')}</option>)}
                     </select>
                   </div>
-                  <InputField label="Tipo" name="tipo" />
-                  <InputField label="Tipo C2" name="tipoC2" />
-                  <InputField label="Tipo Tramitación" name="tramitationType" />
+                  <div>
+                    <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Tipo Tramitación</label>
+                    <select 
+                      name="tramitationType" 
+                      value={formData.tramitationType || ''} 
+                      onChange={handleChange} 
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:border-lime-500/50 transition-all outline-none"
+                    >
+                      <option value="">Seleccione...</option>
+                      {Object.keys(TIPO_TRAMITACION_MAPPING).map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
                   <InputField label="Duración (meses)" name="duration" type="number" />
                   
                   <div className="flex items-center pt-8">
@@ -353,29 +362,7 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
               </div>
             )}
 
-            {activeTab === 'cliente' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <InputField label="CIF Titular" name="vatNumber" />
-                <InputField label="E-Mail Contacto" name="contactEmail" type="email" />
-                <InputField label="E-Mail Factura" name="invoiceEmail" type="email" />
-                <InputField label="Teléfono Contacto" name="contactPhone" />
-                <InputField label="IBAN" name="iban" />
-                <InputField label="CNAE" name="cnae" />
-                <div className="col-span-full border-b border-white/10 my-2"></div>
-                <InputField label="Código Distribuidora (REE)" name="distributor" />
-                <InputField label="Tarifa de Acceso" name="tariff" />
-                <InputField label="Consumo Anual (kWh)" name="annualConsumption" type="number" />
-                <div>
-                  <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Comercial</label>
-                  <input 
-                    type="text" 
-                    disabled
-                    value={contract.user?.name || contract.user?.email || 'No asignado'} 
-                    className="w-full bg-white/5 border border-transparent rounded-lg px-4 py-2.5 text-white/50 text-sm cursor-not-allowed"
-                  />
-                </div>
-              </div>
-            )}
+
 
             {activeTab === 'precios' && (
               <div className="space-y-8">
@@ -413,7 +400,7 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-white font-bold mb-4 border-b border-white/10 pb-2">Estimación Consumos (kWh)</h3>
+                    <h3 className="text-white font-bold mb-4 border-b border-white/10 pb-2">Potencias Contratadas (kW)</h3>
                     <div className="space-y-3">
                       <InputField label="P1C" name="p1c" type="number" />
                       <InputField label="P2C" name="p2c" type="number" />
