@@ -32,7 +32,7 @@ function getAddressString(field: any): string {
   return String(field);
 }
 
-function getTitularAddress(cData: any): string {
+export function getTitularAddress(cData: any): string {
   if (!cData) return '';
   if (cData['Domicilio Titular Completo']) return String(cData['Domicilio Titular Completo']);
   if (cData.nombreVia) {
@@ -42,7 +42,7 @@ function getTitularAddress(cData: any): string {
   return getAddressString(cData.direccion);
 }
 
-function getSupplyAddress(cData: any): string {
+export function getSupplyAddress(cData: any): string {
   if (!cData) return '';
   if (cData['DOMICILIO PS COMPLETO']) return String(cData['DOMICILIO PS COMPLETO']);
   if (cData['Domicilio Instalación Completo']) return String(cData['Domicilio Instalación Completo']);

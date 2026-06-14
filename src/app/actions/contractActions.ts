@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
 import docusign from 'docusign-esign';
 import { createAndSendEnvelope } from '@/lib/docusign';
-import { buildTemplateDataFromLead } from '@/lib/templateBuilder';
+import { buildTemplateDataFromLead, getSupplyAddress } from '@/lib/templateBuilder';
 export async function convertLeadToContractAction(leadId: string) {
   try {
     // 1. Verificar si ya existe un contrato para este Lead
@@ -231,10 +231,10 @@ export async function convertLeadToContractAction(leadId: string) {
       supplyPoint = await prisma.supplyPoint.create({
         data: {
           cups: targetCups,
-          address: typeof cData.direccion === 'string' ? cData.direccion : (cData.direccion?.address || cData.direccion?.direccion || 'Pendiente'),
-          city: cData.poblacion || 'Pendiente',
-          postalCode: cData.cp || '00000',
-          province: cData.provincia || 'Pendiente',
+          address: getSupplyAddress(cData) || 'Pendiente',
+          city: cData.sPoblacion || cData.poblacion || cData['Población Instalación'] || 'Pendiente',
+          postalCode: cData.sCp || cData.cp || cData['Código Postal Instalación'] || '00000',
+          province: cData.sProvincia || cData.provincia || cData['Provincia Instalación'] || 'Pendiente',
           tariff: lead.tariff || '2.0TD',
           clientId: client.id,
         },
