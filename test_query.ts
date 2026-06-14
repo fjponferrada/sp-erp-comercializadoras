@@ -9,24 +9,22 @@ const prisma = new PrismaClient({ adapter })
 
 async function main() {
   try {
-    const leadsDB = await prisma.lead.findMany({
-      where: {}, // test empty filter first
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      include: {
-        documents: true,
-        user: true,
-        contract: true
-      }
-    });
-
-    const cupsList = leadsDB.map(l => l.cups).filter(Boolean) as string[];
     const supplyPoints = await prisma.supplyPoint.findMany({
-      where: { cups: { in: cupsList } },
-      select: { cups: true, address: true }
+      where: { cups: { contains: 'ES0307000014568075GW' } }
     });
+    console.log("SupplyPoints:", supplyPoints);
 
-    console.log("SUCCESS:", leadsDB.length, supplyPoints.length);
+    const leads = await prisma.lead.findMany({
+      where: { cups: { contains: 'ES0307000014568075GW' } }
+    });
+    console.log("Leads:", leads);
+    
+    const contracts = await prisma.contract.findMany({
+      where: { nSolicitud: { contains: '202620696615' } }
+    });
+    console.log("Contracts:", contracts);
+
+    console.log("SUCCESS");
   } catch(e) {
     console.error("ERROR:", e);
   }

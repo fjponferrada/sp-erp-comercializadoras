@@ -4,27 +4,24 @@ function formatField(field: any): string {
   return String(field).toUpperCase();
 }
 
-function extractAddressParts(fullAddress: string) {
-  if (!fullAddress) return { cp: '', poblacion: '', provincia: '' };
-  const parts = fullAddress.split(',');
-  if (parts.length >= 3) {
-    const cp = parts[parts.length - 1]?.trim() || '';
-    const prov = parts[parts.length - 2]?.trim() || '';
-    const pob = parts[parts.length - 3]?.trim() || '';
-    return { cp, poblacion: pob, provincia: prov };
+function extractAddrObj(field: any) {
+  if (!field) return {};
+  if (typeof field === 'string' && field.startsWith('{')) {
+    try { return JSON.parse(field); } catch(e){ return {}; }
   }
-  return { cp: '', poblacion: '', provincia: '' };
+  if (typeof field === 'object' && !Array.isArray(field)) return field;
+  return {};
 }
 
 export function buildTemplateDataFromLead(lead: any, cData: any, product: any, contract: any, isB2B: boolean) {
   // Parsing titular address
-  const dirTitObj = extractAddressParts(cData.direccion || '');
-  const dirPSObj = extractAddressParts(cData.direccionSuministro?.address || cData.direccionSuministro || cData.direccion || '');
+  const dirTitObj = extractAddrObj(cData.direccion);
+  const dirPSObj = extractAddrObj(cData.direccionSuministro);
 
   // Separar nombre y apellidos
-  let nombreTitular = formatField(cData.nombreApellidos || lead.companyName || '');
-  let apellido1 = formatField(cData.apellido1 || '');
-  let apellido2 = formatField(cData.apellido2 || '');
+  let nombreTitular = formatField(lead.businessName) || '';
+  let apellido1 = formatField(cData.primerApellido) || '';
+  let apellido2 = formatField(cData.segundoApellido) || '';
 
   if (!apellido1 && nombreTitular) {
     const tokens = nombreTitular.split(/\s+/);
