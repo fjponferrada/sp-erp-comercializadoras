@@ -16,30 +16,32 @@ export async function getPaginatedSupplyPointsAction(page: number, limit: number
   try {
     const skip = (page - 1) * limit;
 
-    const { getClientVisibilityFilter } = await import('@/lib/permissions');
-    const visibilityFilter = await getClientVisibilityFilter();
+    const { getSupplyPointVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getSupplyPointVisibilityFilter();
 
-    const whereClause: any = {
-      client: visibilityFilter
+    let whereClause: any = {
+      AND: [{ ...visibilityFilter }]
     };
 
     if (search.trim() !== '') {
       const isCupsSearch = search.toUpperCase().startsWith('ES') || /[A-Z0-9]{15,}/i.test(search);
       if (isCupsSearch) {
-        whereClause.cups = { contains: search, mode: 'insensitive' };
+        whereClause.AND.push({ cups: { contains: search, mode: 'insensitive' } });
       } else {
-        whereClause.OR = [
-          { cups: { contains: search, mode: 'insensitive' } },
-          { address: { contains: search, mode: 'insensitive' } },
-          {
-            client: {
-              OR: [
-                { businessName: { contains: search, mode: 'insensitive' } },
-                { vatNumber: { contains: search, mode: 'insensitive' } }
-              ]
+        whereClause.AND.push({
+          OR: [
+            { cups: { contains: search, mode: 'insensitive' } },
+            { address: { contains: search, mode: 'insensitive' } },
+            {
+              client: {
+                OR: [
+                  { businessName: { contains: search, mode: 'insensitive' } },
+                  { vatNumber: { contains: search, mode: 'insensitive' } }
+                ]
+              }
             }
-          }
-        ];
+          ]
+        });
       }
     }
 

@@ -199,3 +199,55 @@ export async function getChannelVisibilityFilter() {
     brandId: activeBrandId
   };
 }
+
+export async function getSupplyPointVisibilityFilter() {
+  const session = await auth();
+  if (!session?.user) return { id: 'not_logged_in' };
+
+  const { id: userId, role, channelId } = session.user as any;
+  const activeBrandId = await getActiveBrand(session.user);
+  const safeUserId = userId || 'missing_user_id';
+
+  if (role === 'SUPERADMIN') {
+    return {}; // No filter, full visibility
+  }
+
+  if (role === 'COMPANYADMIN') {
+    const prismaUser = await import('@/lib/prisma').then(m => m.prisma.user.findUnique({
+      where: { id: safeUserId },
+      include: { companies: true }
+    }));
+    const companyIds = prismaUser?.companies.map(c => c.id) || [];
+    return {
+      client: {
+        brand: { companyId: { in: companyIds } }
+      }
+    };
+  }
+
+  if (role === 'BACKOFFICE') {
+    return {
+      client: {
+        brandId: activeBrandId
+      }
+    };
+  }
+
+  if (role === 'CANAL' && channelId) {
+    return {
+      client: { brandId: activeBrandId },
+      OR: [
+        { contracts: { some: { user: { channelId: channelId } } } },
+        { contracts: { some: { userId: safeUserId } } }
+      ]
+    };
+  }
+
+  // Default for COMERCIAL
+  return {
+    client: { brandId: activeBrandId },
+    OR: [
+      { contracts: { some: { userId: safeUserId } } }
+    ]
+  };
+}
