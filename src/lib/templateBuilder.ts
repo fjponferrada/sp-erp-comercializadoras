@@ -32,6 +32,27 @@ function getAddressString(field: any): string {
   return String(field);
 }
 
+function getTitularAddress(cData: any): string {
+  if (!cData) return '';
+  if (cData['Domicilio Titular Completo']) return String(cData['Domicilio Titular Completo']);
+  if (cData.nombreVia) {
+    const parts = [cData.tipoVia, cData.nombreVia, cData.tipoNumeracion, cData.numKm, cData.adicional].filter(Boolean);
+    if (parts.length > 0) return parts.join(' ');
+  }
+  return getAddressString(cData.direccion);
+}
+
+function getSupplyAddress(cData: any): string {
+  if (!cData) return '';
+  if (cData['DOMICILIO PS COMPLETO']) return String(cData['DOMICILIO PS COMPLETO']);
+  if (cData['Domicilio Instalación Completo']) return String(cData['Domicilio Instalación Completo']);
+  if (cData.sNombreVia) {
+    const parts = [cData.sTipoVia, cData.sNombreVia, cData.sTipoNumeracion, cData.sNumero, cData.sAdicional].filter(Boolean);
+    if (parts.length > 0) return parts.join(' ');
+  }
+  return getAddressString(cData.direccionSuministro);
+}
+
 export function buildTemplateDataFromLead(lead: any, cData: any, product: any, contract: any, isB2B: boolean, client: any = null, supplyPoint: any = null) {
   // Parsing titular address
   const dirTitObj = extractAddrObj(cData.direccion);
@@ -71,21 +92,21 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     '2apetit': apellido2,
     nif: formatField(lead.vatNumber) || '',
     cnae: formatField(cData.cnae) || '',
-    direcciontitular: formatField(getAddressString(cData.direccion)) || formatField(sp.address) || '',
+    direcciontitular: formatField(getTitularAddress(cData)) || formatField(sp.address) || '',
     cptit: formatField(cData.cp) || dirTitObj.cp || formatField(sp.postalCode) || '',
     loctit: formatField(cData.poblacion) || dirTitObj.poblacion || formatField(sp.city) || '',
     provtit: formatField(cData.provincia) || dirTitObj.provincia || formatField(sp.province) || '',
     mailtitular: formatField(lead.email) || '',
     tlftitular: formatField(lead.phone) || '',
     mvtitular: '',
-    nombrerep: formatField(cData.representanteLegal) || '',
-    nifrep: formatField(cData.dniRepresentante) || '',
+    nombrerep: formatField(cData.representanteLegal) || formatField(cData.contactoNombre ? `${cData.contactoNombre} ${cData.contactoApellidos || ''}` : '') || '',
+    nifrep: formatField(cData.dniRepresentante) || formatField(cData.contactoNif) || '',
     cups: formatField(lead.cups) || '',
-    tarifa: formatField(lead.tariff) || '',
-    direccionPS: formatField(getAddressString(cData.direccionSuministro)) || formatField(getAddressString(cData.direccion)) || formatField(sp.address) || '',
-    cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || formatField(sp.postalCode) || '',
-    localidadPS: formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || formatField(sp.city) || '',
-    provPS: formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || formatField(sp.province) || '',
+    tarifa: formatField(lead.tariff) || formatField(cData.tarifa) || '',
+    direccionPS: formatField(getSupplyAddress(cData)) || formatField(getTitularAddress(cData)) || formatField(sp.address) || '',
+    cpPS: formatField(cData.sCp) || formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || formatField(sp.postalCode) || '',
+    localidadPS: formatField(cData.sPoblacion) || formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || formatField(sp.city) || '',
+    provPS: formatField(cData.sProvincia) || formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || formatField(sp.province) || '',
     ftraspapel: (cData.facturasPapel === 'Si' || cData.facturaPapel === 'Si') ? 'Correo Postal' : 'Email',
     iban: cData.iban || '',
     nombreprod: product?.name || '',
