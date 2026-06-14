@@ -450,6 +450,8 @@ async function run() {
             version,
             brandId: brand.id,
             tramitationType,
+            tipo: tramitationType ? getTramitationCodes(tramitationType).tipo : null,
+            tipoC2: tramitationType ? getTramitationCodes(tramitationType).tipoC2 : null,
             signatureDate: f['Fecha firma contrato'] ? new Date(f['Fecha firma contrato']) : null,
             activationDate,
             permanenceStartDate,

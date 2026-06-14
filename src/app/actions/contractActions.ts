@@ -6,6 +6,8 @@ import { randomUUID } from 'crypto';
 import docusign from 'docusign-esign';
 import { createAndSendEnvelope } from '@/lib/docusign';
 import { buildTemplateDataFromLead, getSupplyAddress } from '@/lib/templateBuilder';
+import { getTramitationCodes } from '@/lib/tramitationMapper';
+
 export async function convertLeadToContractAction(leadId: string) {
   try {
     // 1. Verificar si ya existe un contrato para este Lead
@@ -300,6 +302,8 @@ export async function convertLeadToContractAction(leadId: string) {
         contractCode,
         iban: cData.iban || null,
         tramitationType: cData.tipoTramitacion || 'Alta nueva',
+        tipo: getTramitationCodes(cData.tipoTramitacion || 'Alta nueva').tipo,
+        tipoC2: getTramitationCodes(cData.tipoTramitacion || 'Alta nueva').tipoC2,
         p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
         p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
         p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
@@ -785,6 +789,8 @@ export async function updateContractDatesAction(
         activationDate: mergedActivation,
         terminationDate: mergedTermination,
         tramitationType: mergedTramitationType,
+        tipo: getTramitationCodes(mergedTramitationType).tipo,
+        tipoC2: getTramitationCodes(mergedTramitationType).tipoC2,
         permanenceStartDate,
         expectedEndDate,
         duration,
@@ -961,7 +967,7 @@ export async function sendContractToDocuSignAction(contractId: string) {
       signerEmail,
       emailSubject,
       emailBlurb,
-      signerPhone // Pasamos el teléfono resuelto (Lead, cData o Client)
+      signerPhone // Pasamos el teléfono resuelto (Lead, cData or Client)
     );
 
     // 3. Guardar el envelopeId
@@ -1144,8 +1150,8 @@ export async function updateContractFull(formData: FormData) {
         discountEndDate: discountEndDate ? new Date(discountEndDate) : null,
         svaStartDate: svaStartDate ? new Date(svaStartDate) : null,
         tramitationType: tramitationType || undefined,
-        tipo: tipo || undefined,
-        tipoC2: tipoC2 || undefined,
+        tipo: tipo || (tramitationType ? getTramitationCodes(tramitationType).tipo : undefined),
+        tipoC2: tipoC2 || (tramitationType ? getTramitationCodes(tramitationType).tipoC2 : undefined),
         distributorMsg: distributorMsg,
         svaConcept: svaConcept,
         duration: duration,
