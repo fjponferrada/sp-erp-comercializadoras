@@ -36,8 +36,7 @@ export async function POST(req: Request) {
 
       // Autenticar con JWT para descargar documento
       const jwt = require('jsonwebtoken');
-      const isProduction = process.env.NODE_ENV === 'production' && process.env.DOCUSIGN_ENV === 'production';
-      const authServer = isProduction ? 'account.docusign.com' : 'account-d.docusign.com';
+      const authServer = process.env.DOCUSIGN_OAUTH_BASE_PATH || 'account-d.docusign.com';
       const privateKey = process.env.DOCUSIGN_PRIVATE_KEY?.replace(/\\n/g, '\n') || '';
 
       const token = jwt.sign({
@@ -57,12 +56,16 @@ export async function POST(req: Request) {
       });
       const results = await tokenRes.json();
       
+      if (results.error) {
+        throw new Error(`Error de auth en webhook: ${results.error} - ${results.error_description}`);
+      }
+      
       const accessToken = results.access_token;
       const accountId = process.env.DOCUSIGN_ACCOUNT_ID || '';
       
       // Descargamos el documento "combined" directamente usando fetch con el token
       // Es más seguro para binarios que el getDocument del SDK en NodeJS
-      const basePath = isProduction ? 'https://eu.docusign.net/restapi' : 'https://demo.docusign.net/restapi';
+      const basePath = process.env.DOCUSIGN_BASE_PATH || 'https://demo.docusign.net/restapi';
       const downloadUrl = `${basePath}/v2.1/accounts/${accountId}/envelopes/${envelopeId}/documents/combined`;
       
       const res = await fetch(downloadUrl, {
