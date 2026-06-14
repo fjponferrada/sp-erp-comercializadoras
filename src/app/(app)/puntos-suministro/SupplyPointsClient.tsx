@@ -76,7 +76,7 @@ export default function SupplyPointsClient({
 
   return (
     <div className="flex-1 bg-black/40 h-[100vh] overflow-y-auto w-full relative">
-      <Topbar title="Puntos de Suministro" userRole={userRole} />
+      <Topbar title="Puntos de Suministro" />
 
       <div className="p-8 pb-32 max-w-[1600px] mx-auto w-full space-y-6">
         
