@@ -1342,10 +1342,10 @@ export async function getPaginatedContractsAction(
     const uiContracts = contracts.map(c => {
       const airtableData = (c.airtableData as any) || {};
       
-      let signedUrl = null;
-      if (airtableData['PDF Contrato firmado'] && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
+      let signedUrl = c.filePdfSigned || null;
+      if (!signedUrl && airtableData['PDF Contrato firmado'] && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
         signedUrl = airtableData['PDF Contrato firmado'][0].url;
-      } else if (airtableData['Contrato .PDF'] && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
+      } else if (!signedUrl && airtableData['Contrato .PDF'] && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
         signedUrl = airtableData['Contrato .PDF'][0].url;
       }
 
