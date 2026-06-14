@@ -30,12 +30,11 @@ export default function SupplyPointsClient({
   const [supplyPoints, setSupplyPoints] = useState(initialSupplyPoints);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(100);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedSupplyPoint, setSelectedSupplyPoint] = useState<any>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
-  const limit = 100;
 
   useEffect(() => {
     const fetchSupplyPoints = async () => {
@@ -53,7 +52,7 @@ export default function SupplyPointsClient({
     }, 400);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm, page]);
+  }, [searchTerm, page, limit]);
 
   const handleEdit = (sp: any) => {
     setSelectedSupplyPoint(sp);
@@ -220,6 +219,7 @@ export default function SupplyPointsClient({
         totalItems={totalCount} 
         itemsPerPage={limit} 
         onPageChange={setPage} 
+        onItemsPerPageChange={setLimit}
         itemName="suministros" 
       />
 
