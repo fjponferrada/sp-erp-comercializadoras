@@ -195,7 +195,7 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
         
         // Parse VAT
         const vat = leadToEdit.vatNumber || cd.vatNumber || ad['CIF'] || ad['NIF'] || ad['Copia de CIF link'] || ad['NIF Contacto'] || '';
-        const esJuridica = vat ? /^[ABJUV]/i.test(vat.trim()) : false;
+        const esJuridica = vat ? !/^([0-9XYZ])/i.test(vat.trim()) : false;
 
         // Parse Names from Dictionary Rules
         let rawBusinessName = cd.nombre || getScalar(ad['NOMBRE/RAZON SOCIAL']) || getScalar(ad['NOMBRERAZON SOCIAL']) || '';

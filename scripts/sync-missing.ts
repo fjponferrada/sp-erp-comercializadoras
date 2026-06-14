@@ -360,11 +360,14 @@ async function run() {
           const province = getVal('Provincia Instalación') ? getVal('Provincia Instalación').toString().trim() : (getVal('PROVINCIA_CONT') ? getVal('PROVINCIA_CONT').toString().trim() : 'Desconocida');
           const streetType = getVal('Tipo de vía Instalación') ? getVal('Tipo de vía Instalación').toString().trim() : null;
           const street = getVal('Calle Instalación') ? getVal('Calle Instalación').toString().trim() : null;
+          const streetNumber = getVal('Número Instalación') ? getVal('Número Instalación').toString().trim() : null;
+          const floor = getVal('Piso Instalación') ? getVal('Piso Instalación').toString().trim() : null;
+          const door = getVal('Puerta Instalación') ? getVal('Puerta Instalación').toString().trim() : null;
           const addressAddition = getVal('Adicional Instalación') ? getVal('Adicional Instalación').toString().trim() : null;
 
           supplyPoint = await prisma.supplyPoint.create({ 
             data: { 
-              cups, address: supplyAddress, postalCode, city, province, streetType, street, addressAddition,
+              cups, address: supplyAddress, postalCode, city, province, streetType, street, streetNumber, floor, door, addressAddition,
               tariff, annualConsumption, cnae, p1c, p2c, p3c, p4c, p5c, p6c, distributor,
               clientId: client!.id, airtableData: f as any 
             } 

@@ -75,7 +75,7 @@ export async function createLeadAction(formData: FormData) {
 
   // 2. AUTOMATIZACIÓN: Validación B2B instantánea
   // Evaluamos la primera letra del NIF/CIF
-  const esJuridica = vatNumber ? /^[ABJUV]/i.test(vatNumber) : false;
+  const esJuridica = vatNumber ? !/^([0-9XYZ])/i.test(vatNumber) : false;
   const clientType = esJuridica ? 'JURIDICA' : 'FISICA'; // B2B logic resuelta nativamente
 
   // ==========================================
@@ -649,7 +649,7 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
   // VALIDACIONES DE NEGOCIO (Reglas 73, 74, 75)
   // ==========================================
   if (contractData?.generateOffer === false) {
-    const esJuridica = vatNumber ? /^[ABJUV]/i.test(vatNumber) : false;
+    const esJuridica = vatNumber ? !/^([0-9XYZ])/i.test(vatNumber) : false;
     // Regla 75: Validación Representante Legal (B2B)
     if (esJuridica) {
       const repName = contractData.representativeName || '';
@@ -709,7 +709,7 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
       const client = await tx.client.upsert({
         where: { vatNumber_brandId: { vatNumber, brandId: user!.brandId } },
         update: { businessName, contactEmail: email || null, contactPhone: phone || null },
-        create: { vatNumber, businessName, contactEmail: email || null, contactPhone: phone || null, clientType: /^[ABJUV]/i.test(vatNumber) ? 'JURIDICA' : 'FISICA', brandId: user!.brandId }
+        create: { vatNumber, businessName, contactEmail: email || null, contactPhone: phone || null, clientType: /^([0-9XYZ])/i.test(vatNumber) ? 'FISICA' : 'JURIDICA', brandId: user!.brandId }
       });
       clientId = client.id;
     }

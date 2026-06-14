@@ -61,9 +61,20 @@ export async function convertLeadToContractAction(leadId: string) {
       validationErrors.push("El Código Postal del Punto de Suministro debe tener 5 dígitos.");
     }
 
-    // 4. Tarifa / Consumo
-    if (!lead.estimatedMWh || lead.estimatedMWh <= 0) {
-      validationErrors.push("El consumo anual estimado debe ser mayor a 0.");
+    // 4. Tarifa / Consumo (SIPS Jerarquía)
+    let finalConsumptionMWh = lead.estimatedMWh || 0;
+    const sRaw: any = lead.sipsRawData || {};
+    const sipsConsumoKWh = Number(sRaw.consumo || sRaw.Consumo || sRaw.annualConsumption || 0);
+    const sipsConsumoMWh = sipsConsumoKWh / 1000;
+
+    if (sipsConsumoMWh > 0) {
+      finalConsumptionMWh = sipsConsumoMWh;
+    }
+
+    if (finalConsumptionMWh <= 0) {
+      validationErrors.push("El consumo anual estimado debe ser mayor a 0. SIPS no devolvió un consumo válido y no se ha introducido manualmente en la ficha del Lead.");
+    } else {
+      lead.estimatedMWh = finalConsumptionMWh;
     }
 
     if (!cData.cnae) {
@@ -209,7 +220,7 @@ export async function convertLeadToContractAction(leadId: string) {
           contactEmail2: contactEmail2,
           contactEmail3: contactEmail3,
           contactPhone: lead.phone,
-          clientType: cData.tipoCliente || (/^[ABJUV]/i.test(vatNum) ? 'Empresa' : 'Persona física'),
+          clientType: cData.tipoCliente || (/^([0-9XYZ])/i.test(vatNum) ? 'Persona física' : 'Empresa'),
           brandId: brandIdToUse,
           isMultipoint: isMultipoint,
         }
@@ -402,6 +413,7 @@ export async function convertLeadToContractAction(leadId: string) {
         contractId: contract.id,
         status: 'CONTRATADO',
         contractData: cData,
+        estimatedMWh: lead.estimatedMWh,
       },
     });
 
@@ -468,9 +480,20 @@ export async function remakeContractAction(leadId: string) {
       validationErrors.push("El Código Postal del Punto de Suministro debe tener 5 dígitos.");
     }
 
-    // 4. Tarifa / Consumo
-    if (!lead.estimatedMWh || lead.estimatedMWh <= 0) {
-      validationErrors.push("El consumo anual estimado debe ser mayor a 0.");
+    // 4. Tarifa / Consumo (SIPS Jerarquía)
+    let finalConsumptionMWh = lead.estimatedMWh || 0;
+    const sRaw: any = lead.sipsRawData || {};
+    const sipsConsumoKWh = Number(sRaw.consumo || sRaw.Consumo || sRaw.annualConsumption || 0);
+    const sipsConsumoMWh = sipsConsumoKWh / 1000;
+
+    if (sipsConsumoMWh > 0) {
+      finalConsumptionMWh = sipsConsumoMWh;
+    }
+
+    if (finalConsumptionMWh <= 0) {
+      validationErrors.push("El consumo anual estimado debe ser mayor a 0. SIPS no devolvió un consumo válido y no se ha introducido manualmente en la ficha del Lead.");
+    } else {
+      lead.estimatedMWh = finalConsumptionMWh;
     }
 
     if (!cData.cnae) {
@@ -595,7 +618,7 @@ export async function remakeContractAction(leadId: string) {
         contactEmail2: contactEmail2,
         contactEmail3: contactEmail3,
         contactPhone: lead.phone,
-        clientType: cData.tipoCliente || (lead.vatNumber && /^[ABJUV]/i.test(lead.vatNumber) ? 'Empresa' : 'Persona física'),
+        clientType: cData.tipoCliente || (lead.vatNumber && /^([0-9XYZ])/i.test(lead.vatNumber) ? 'Persona física' : 'Empresa'),
         isMultipoint: isMultipoint,
       }
     });
@@ -674,7 +697,10 @@ export async function remakeContractAction(leadId: string) {
 
     await prisma.lead.update({
       where: { id: leadId },
-      data: { contractData: cData }
+      data: { 
+        contractData: cData,
+        estimatedMWh: lead.estimatedMWh
+      }
     });
 
     if (!isMultipoint) {
@@ -1100,45 +1126,13 @@ export async function updateContractFull(formData: FormData) {
     const newStatus = status || existing.status;
     const isActivo = newStatus === 'ACTIVO';
 
-    // Update Client
-    if (existing.clientId) {
-      await prisma.client.update({
-        where: { id: existing.clientId },
-        data: {
-          vatNumber: vatNumber || undefined,
-          contactEmail: contactEmail || undefined,
-          invoiceEmail: invoiceEmail || undefined,
-          contactPhone: contactPhone || undefined,
-        }
-      });
-    }
-
-    // Update SupplyPoint
-    if (existing.supplyPointId) {
-      await prisma.supplyPoint.update({
-        where: { id: existing.supplyPointId },
-        data: {
-          distributor: distributor || undefined,
-          annualConsumption: annualConsumptionStr ? parseFloat(annualConsumptionStr) : undefined,
-          ...(isActivo && iban ? { iban: iban } : {}),
-          ...(isActivo && cnae ? { cnae: cnae } : {}),
-          ...(isActivo && tariff ? { tariff: tariff } : {}),
-          ...(isActivo && p1c !== null ? { p1p: p1c } : {}),
-          ...(isActivo && p2c !== null ? { p2p: p2c } : {}),
-          ...(isActivo && p3c !== null ? { p3p: p3c } : {}),
-          ...(isActivo && p4c !== null ? { p4p: p4c } : {}),
-          ...(isActivo && p5c !== null ? { p5p: p5c } : {}),
-          ...(isActivo && p6c !== null ? { p6p: p6c } : {}),
-        }
-      });
-    }
-
+    // Contract data is a snapshot. We no longer update Client or SupplyPoint from here.
     // Update Contract
     await prisma.contract.update({
       where: { id: contractId },
       data: {
         status: status || undefined,
-        iban: (!isActivo && iban) ? iban : undefined,
+        iban: iban || undefined,
         internalComments: internalComments,
         signatureDate: signatureDate ? new Date(signatureDate) : null,
         requestDate: requestDate ? new Date(requestDate) : null,

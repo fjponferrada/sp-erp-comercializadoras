@@ -48,6 +48,7 @@ const baseNavGroups = [
       { href: '/leads', icon: Users, label: 'Leads' },
       { href: '/contratos', icon: FileText, label: 'Contratos' },
       { href: '/clientes', icon: Building2, label: 'Clientes' },
+      { href: '/puntos-suministro', icon: Zap, label: 'Puntos de Suministro' },
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
       { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones' },
       { href: '/bajas', icon: TrendingDown, label: 'Bajas' },

@@ -365,7 +365,7 @@ export default function ContractDetailClient({
                 <SectionCard title="Datos Técnicos del Punto de Suministro" icon={Zap} delay={0}>
                   <DataItem highlight label="CUPS" value={<span className="font-mono tracking-widest">{supplyPoint.cups || lead.cups}</span>} />
                   <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">{supplyPoint.tariff || lead.tariff}</span>} />
-                  <DataItem label="Consumo Anual (MWh)" value={supplyPoint.annualConsumption || lead.estimatedMWh} />
+                  <DataItem label="Consumo Anual Estimado (MWh)" value={lead.estimatedMWh} />
                   <DataItem label="Distribuidora" value={supplyPoint.distributorName ? supplyPoint.distributorName.replace(/^\[.*?\]\s*/, '') : (supplyPoint.distributor ? supplyPoint.distributor.replace(/^\[.*?\]\s*/, '') : 'EDISTRIBUCION')} />
                   
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Dirección de Suministro</h3></div>
