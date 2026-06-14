@@ -56,6 +56,7 @@ const baseNavGroups = [
   },
   {
     label: 'DISTRIBUIDORAS',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
       { href: '/importar-switching', icon: UploadCloud, label: 'Importar Switching' },
       { href: '/switching-warnings', icon: AlertCircle, label: 'Eventos Switchings' },

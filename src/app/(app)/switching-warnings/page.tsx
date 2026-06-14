@@ -1,4 +1,5 @@
 import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 import { getPaginatedSwitchingEventsAction } from '@/app/actions/switchingActions';
 import SwitchingWarningsClient from './SwitchingWarningsClient';
 
@@ -7,6 +8,10 @@ export const dynamic = 'force-dynamic';
 export default async function SwitchingWarningsPage() {
   const session = await auth();
   const userRole = session?.user?.role || 'CANAL';
+
+  if (['COMERCIAL', 'CANAL'].includes(userRole)) {
+    redirect('/');
+  }
 
   // Traemos todos los eventos (false) en vez de solo los warnings, con paginación de 50
   const result = await getPaginatedSwitchingEventsAction(1, 50, '', false, '', 'fechaSolicitud');
