@@ -66,7 +66,7 @@ export async function POST(req: Request) {
       // Descargamos el documento "combined" directamente usando fetch con el token
       // Es más seguro para binarios que el getDocument del SDK en NodeJS
       const basePath = process.env.DOCUSIGN_BASE_PATH || 'https://demo.docusign.net/restapi';
-      const downloadUrl = `${basePath}/v2.1/accounts/${accountId}/envelopes/${envelopeId}/documents/combined`;
+      const downloadUrl = `${basePath}/v2.1/accounts/${accountId}/envelopes/${envelopeId}/documents/combined?certificate=true`;
       
       const res = await fetch(downloadUrl, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
