@@ -19,9 +19,6 @@ export default function ClientHeaderActions({ client, userRole }: { client: any,
             Editar Datos
           </button>
         )}
-        <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium transition-colors">
-          Nuevo Contrato
-        </button>
       </div>
 
       {isEditModalOpen && (
