@@ -28,6 +28,8 @@ export async function POST(req: Request) {
         type: data.type,
         tariff: data.tariff,
         isAvailableCrm: data.isAvailableCrm,
+        isCustomizable: data.isCustomizable,
+        pricingModel: data.pricingModel,
         permanenceMonths: data.permanenceMonths,
         
         hasSelfConsumption: data.hasSelfConsumption,
@@ -62,5 +64,35 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error(error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email as string }
+    });
+    
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+
+    const products = await prisma.product.findMany({
+      where: {
+        brandId: user.brandId,
+        isAvailableCrm: true
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    return NextResponse.json({ success: true, data: products });
+  } catch (error: any) {
+    console.error(error);
+    return NextResponse.json({ success: false, error: 'Error interno' }, { status: 500 });
   }
 }

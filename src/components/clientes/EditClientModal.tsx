@@ -11,8 +11,7 @@ export default function EditClientModal({ client, onClose }: { client: any, onCl
     vatNumber: client.vatNumber || '',
     contactEmail: client.contactEmail || '',
     contactPhone: client.contactPhone || '',
-    billingAddress: client.billingAddress || '',
-    iban: client.iban || ''
+    billingAddress: client.billingAddress || ''
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,16 +82,6 @@ export default function EditClientModal({ client, onClose }: { client: any, onCl
             <input 
               type="text" name="billingAddress" value={formData.billingAddress} onChange={handleChange}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 outline-none"
-            />
-          </div>
-
-          <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl mt-4">
-            <label className="block text-sm font-semibold text-amber-500 mb-1">Cuenta Bancaria (IBAN)</label>
-            <p className="text-xs text-amber-400/80 mb-2">Modificar este campo notificará automáticamente al dpto. financiero.</p>
-            <input 
-              type="text" name="iban" value={formData.iban} onChange={handleChange}
-              placeholder="ES00 0000 0000 0000 0000"
-              className="w-full bg-slate-900 border border-amber-500/30 rounded-lg px-4 py-2 text-white focus:border-amber-500 outline-none font-mono"
             />
           </div>
 

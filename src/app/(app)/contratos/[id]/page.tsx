@@ -86,12 +86,27 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     });
   }
 
+  let finalDistributorName = contract.supplyPoint?.distributorName;
+  if (!finalDistributorName || /^\d{4}$/.test(contract.supplyPoint?.distributor || '')) {
+     const cups = contract.supplyPoint?.cups || contract.Lead?.cups || '';
+     const reeCode = contract.supplyPoint?.distributorReeCode || cups.substring(2, 6);
+     if (reeCode && reeCode.length === 4) {
+        const dbDistri = await prisma.distributor.findFirst({ where: { reeCode } });
+        if (dbDistri) {
+           finalDistributorName = dbDistri.name;
+        }
+     }
+  }
+
   // Remap uppercase relations to lowercase for the UI component
   const uiContract = {
     ...contract,
     lead: contract.Lead ? { ...contract.Lead, documents: contract.Lead.documents } : null,
     client: contract.client,
-    supplyPoint: contract.supplyPoint,
+    supplyPoint: {
+      ...contract.supplyPoint,
+      distributorName: finalDistributorName || contract.supplyPoint?.distributorName,
+    },
     user: contract.user,
     product: contract.product,
     invoices: contract.invoices,

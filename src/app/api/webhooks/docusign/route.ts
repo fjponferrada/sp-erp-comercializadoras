@@ -15,24 +15,7 @@ export async function POST(req: Request) {
     }
 
     if (event === 'envelope-completed') {
-      // 1. Buscar en Lead
-      const lead = await prisma.lead.findUnique({
-        where: { docusignEnvelopeId: envelopeId }
-      });
-
-      if (lead) {
-        await prisma.lead.update({
-          where: { id: lead.id },
-          data: {
-            status: 'FIRMADO' // Actualizar al estado correspondiente
-            // TODO: En un sistema real, aquí descargaríamos el PDF de Docusign y lo subiríamos a Vercel Blob,
-            // guardando la URL en 'signedUrl'. Por ahora solo marcamos fecha y estado.
-          }
-        });
-        return NextResponse.json({ success: true, type: 'Lead', id: lead.id });
-      }
-
-      // 2. Si no es Lead, buscar en Contract
+      // 1. Buscar en Contract
       const contract = await prisma.contract.findUnique({
         where: { docusignEnvelopeId: envelopeId }
       });

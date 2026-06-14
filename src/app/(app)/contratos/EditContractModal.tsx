@@ -125,6 +125,7 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
     p4c: contract.p4c ?? supplyPoint.p4c ?? lead.p4c ?? supplyPoint.p4p ?? '', 
     p5c: contract.p5c ?? supplyPoint.p5c ?? lead.p5c ?? supplyPoint.p5p ?? '', 
     p6c: contract.p6c ?? supplyPoint.p6c ?? lead.p6c ?? supplyPoint.p6p ?? '',
+    tariff: supplyPoint.tariff ?? lead.tariff ?? '',
 
     requestType: contract.requestType || '',
     isBajaM1: contract.requestType === 'M1',
@@ -136,8 +137,8 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
     contactEmail: client.contactEmail || lead.email || '',
     invoiceEmail: client.invoiceEmail || lead.invoiceEmail || client.contactEmail || lead.email || '',
     contactPhone: client.contactPhone || lead.phone || '',
-    iban: client.iban || lead.iban || '',
-    cnae: supplyPoint.cnae || '',
+    iban: supplyPoint.iban || contract.iban || (client as any).iban || (lead as any).iban || '',
+    cnae: supplyPoint.cnae || (client as any).cnae || lead.cnae || '',
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -362,6 +363,7 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
                 <InputField label="CNAE" name="cnae" />
                 <div className="col-span-full border-b border-white/10 my-2"></div>
                 <InputField label="Código Distribuidora (REE)" name="distributor" />
+                <InputField label="Tarifa de Acceso" name="tariff" />
                 <InputField label="Consumo Anual (kWh)" name="annualConsumption" type="number" />
                 <div>
                   <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Comercial</label>

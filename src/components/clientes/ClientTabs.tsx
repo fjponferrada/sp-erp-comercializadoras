@@ -80,19 +80,6 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices }
               </div>
             </div>
 
-            <div className="bg-slate-800/30 border border-slate-700 rounded-2xl p-6">
-              <h4 className="text-lg font-semibold text-white mb-4">Datos Bancarios</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-slate-500">IBAN</p>
-                  <p className="text-slate-200 font-mono">{client.iban || 'No registrado'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-500">Forma de Pago</p>
-                  <p className="text-slate-200">{client.paymentMethod || 'No especificada'}</p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 

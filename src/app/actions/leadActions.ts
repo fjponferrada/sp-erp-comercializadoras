@@ -39,17 +39,32 @@ export async function createLeadAction(formData: FormData) {
   const solarDataStr = formData.get('solarData') as string;
   const solarData = solarDataStr ? JSON.parse(solarDataStr) : null;
   
-  const sipsDataStr = formData.get('sipsData') as string;
-  let parsedSipsData = null;
-  if (sipsDataStr) {
-    try { parsedSipsData = JSON.parse(sipsDataStr); } catch (e) {}
-  }
+  // Movido arriba
 
   // Ahora leemos contractData como un JSON completo enviado desde el cliente
   const contractDataStr = formData.get('contractData') as string;
   let contractData: any = {};
   if (contractDataStr) {
     try { contractData = JSON.parse(contractDataStr); } catch (e) {}
+  }
+
+  const sipsDataStr = formData.get('sipsData') as string;
+  let parsedSipsData = null;
+  if (sipsDataStr) {
+    try { 
+      parsedSipsData = JSON.parse(sipsDataStr); 
+    } catch (e) {}
+  }
+
+  if (parsedSipsData) {
+    const sCnae = parsedSipsData.cnae || parsedSipsData.CNAE || parsedSipsData['CNAE SIPS'];
+    if (sCnae) contractData.cnae = sCnae;
+    
+    const sCp = parsedSipsData.cp || parsedSipsData.CP || parsedSipsData['CP SIPS'];
+    if (sCp) {
+      if (!contractData.direccionSuministro) contractData.direccionSuministro = {};
+      contractData.direccionSuministro.postalCode = sCp;
+    }
   }
 
   const documentsStr = formData.get('documents') as string;
@@ -62,6 +77,61 @@ export async function createLeadAction(formData: FormData) {
   // Evaluamos la primera letra del NIF/CIF
   const esJuridica = vatNumber ? /^[ABJUV]/i.test(vatNumber) : false;
   const clientType = esJuridica ? 'JURIDICA' : 'FISICA'; // B2B logic resuelta nativamente
+
+  // ==========================================
+  // VALIDACIONES DE NEGOCIO (Reglas 73, 74, 75)
+  // ==========================================
+  if (contractData?.generateOffer === false && type === 'LUZ') {
+    // Regla 75: Validación Representante Legal (B2B)
+    if (esJuridica) {
+      const repName = contractData.representativeName || '';
+      const repLast = contractData.representativeLastName || '';
+      const repVat = contractData.representativeVat || '';
+      if (!repName.trim() || !repLast.trim() || !repVat.trim()) {
+        throw new Error('Validación fallida (Regla 75): Los contratos para personas jurídicas requieren obligatoriamente los datos del representante legal (DNI, Nombre y Apellidos).');
+      }
+    }
+
+    const technicalTariff = forceTariff || parsedSipsData?.tarifa || '2.0TD';
+    
+    // Regla 73: Congruencia Producto vs Tarifa
+    if (product) {
+      let productTariff: string | null = null;
+      if (product.startsWith('cm')) {
+        const dbProduct = await prisma.product.findUnique({ where: { id: product } });
+        if (dbProduct) productTariff = dbProduct.tariff;
+      } else {
+        const dbProduct = await prisma.product.findFirst({ where: { name: product.trim() } });
+        if (dbProduct) productTariff = dbProduct.tariff;
+      }
+      
+      if (productTariff && productTariff !== technicalTariff) {
+        throw new Error(`Validación fallida (Regla 73): Incongruencia de producto/tarifa. El producto exige tarifa ${productTariff}, pero el suministro tiene tarifa ${technicalTariff}.`);
+      }
+    }
+
+    // Regla 74: Validación Cruzada SIPS
+    if (parsedSipsData) {
+      const tramType = contractData.tramitationType || '';
+      if (tramType === 'Cambio comercializadora sin cambios' || tramType === 'Modificación de datos administrativos' || tramType === 'Cambio comercializadora con cambios administrativos') {
+        if (technicalTariff !== parsedSipsData.tarifa) {
+          throw new Error('Validación fallida (Regla 74): Para este tipo de tramitación, la Tarifa de Acceso solicitada debe coincidir exactamente con la de SIPS.');
+        }
+
+        const sP1 = Number(parsedSipsData.p1 || 0); const sP2 = Number(parsedSipsData.p2 || 0); const sP3 = Number(parsedSipsData.p3 || 0);
+        const sP4 = Number(parsedSipsData.p4 || 0); const sP5 = Number(parsedSipsData.p5 || 0); const sP6 = Number(parsedSipsData.p6 || 0);
+        const rP1 = Number(contractData.p1c || 0); const rP2 = Number(contractData.p2c || 0); const rP3 = Number(contractData.p3c || 0);
+        const rP4 = Number(contractData.p4c || 0); const rP5 = Number(contractData.p5c || 0); const rP6 = Number(contractData.p6c || 0);
+
+        if (Math.abs(sP1 - rP1) > 0.01 || Math.abs(sP2 - rP2) > 0.01 || Math.abs(sP3 - rP3) > 0.01 || 
+            Math.abs(sP4 - rP4) > 0.01 || Math.abs(sP5 - rP5) > 0.01 || Math.abs(sP6 - rP6) > 0.01) {
+          throw new Error('Validación fallida (Regla 74): Para este tipo de tramitación, las Potencias solicitadas deben coincidir exactamente con las registradas en SIPS.');
+        }
+      }
+    }
+  }
+  // ==========================================
+
 
   // 3. AUTOMATIZACIÓN: Valores por defecto del Comercial
   const leadSource = user.defaultSource || 'Directo';
@@ -114,7 +184,8 @@ export async function createLeadAction(formData: FormData) {
         userId: user.id,
         type,
         solarData,
-        contractData, // <-- Guardamos la nueva lógica reactiva completa
+        contractData,
+        ...(parsedSipsData ? { sipsRawData: parsedSipsData } : {}),
         wantsComparison,
         productType: productType || null,
         product: product || null,
@@ -127,22 +198,6 @@ export async function createLeadAction(formData: FormData) {
         monthlyExpense: contractData?.monthlyExpense ? String(contractData?.monthlyExpense) : null,
         savings: contractData?.savings ? Number(contractData?.savings) : null,
         comparative: contractData?.comparative || null,
-        comments: contractData?.comments || null,
-        priceServiceActual: contractData?.priceServiceActual ? Number(contractData?.priceServiceActual) : null,
-        
-        p1eActual: contractData?.p1eActual ? Number(contractData?.p1eActual) : null,
-        p2eActual: contractData?.p2eActual ? Number(contractData?.p2eActual) : null,
-        p3eActual: contractData?.p3eActual ? Number(contractData?.p3eActual) : null,
-        p4eActual: contractData?.p4eActual ? Number(contractData?.p4eActual) : null,
-        p5eActual: contractData?.p5eActual ? Number(contractData?.p5eActual) : null,
-        p6eActual: contractData?.p6eActual ? Number(contractData?.p6eActual) : null,
-
-        p1pDaily: contractData?.p1pDaily ? Number(contractData?.p1pDaily) : null,
-        p2pDaily: contractData?.p2pDaily ? Number(contractData?.p2pDaily) : null,
-        p3pDaily: contractData?.p3pDaily ? Number(contractData?.p3pDaily) : null,
-        p4pDaily: contractData?.p4pDaily ? Number(contractData?.p4pDaily) : null,
-        p5pDaily: contractData?.p5pDaily ? Number(contractData?.p5pDaily) : null,
-        p6pDaily: contractData?.p6pDaily ? Number(contractData?.p6pDaily) : null,
         sipsOk: type === 'FV' ? true : (parsedSipsData ? true : false),
         sipsMessages: type === 'FV' ? 'Estudio Fotovoltaico' : (parsedSipsData ? 'Pre-completado por SIPS (Cliente)' : null)
       }
@@ -179,20 +234,8 @@ export async function createLeadAction(formData: FormData) {
         else if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
         let sp = await prisma.supplyPoint.findFirst({ where: { cups, client: { brandId: user.brandId } } });
-        if (sp) {
-          await prisma.supplyPoint.update({
-          where: { id: sp!.id },
-          data: {
-            tariff: String(t),
-            address: sipsData.direccion || sipsData.Direccion,
-            city: sipsData.municipio || sipsData.Municipio,
-            postalCode: sipsData.cp || sipsData.CP || sipsData['CP SIPS'],
-            province: sipsData.provincia || sipsData.Provincia,
-            cnae: sipsData.cnae || sipsData.CNAE || sipsData['CNAE SIPS'],
-            selfConsumptionType: autoConsumo ? String(autoConsumo) : null
-          }
-        });
-        }
+        // ELIMINADO: No sobrescribimos la información base del SupplyPoint existente al crear un Lead.
+        // La actualización de SupplyPoint solo se hace si no existía, o cuando el contrato se activa definitivamente.
         
         // 5. AUTOMATIZACIÓN: Motor de Validación y Auto-Generación
         // Ahora respeta las tarifas permitidas específicamente a este comercial
@@ -211,6 +254,7 @@ export async function createLeadAction(formData: FormData) {
           where: { id: lead.id },
           data: {
             sipsOk: true,
+            sipsRawData: sipsData,
             sipsMessages: 'Validado correctamente',
             status: newStatus
           }
@@ -234,32 +278,166 @@ export async function createLeadAction(formData: FormData) {
   return { success: true, leadId: lead.id };
 }
 
-export async function duplicateLeadAction(leadId: string) {
-  const session = await auth();
-  if (!session?.user?.email) throw new Error('No autorizado');
+// Helper para normalizar números y tipos
+const getScalar = (val: any) => {
+  if (val === null || val === undefined) return '';
+  if (Array.isArray(val)) return val.length > 0 ? String(val[0]) : '';
+  if (typeof val === 'object') return '';
+  return String(val);
+};
 
-  const oldLead = await prisma.lead.findUnique({ where: { id: leadId } });
-  if (!oldLead) throw new Error('Lead no encontrado');
+const normNum = (val: any) => {
+  const upper = String(val || '').toUpperCase().trim();
+  if (upper.includes('NÚM') || upper.includes('NUM')) return 'NÚMERO';
+  if (upper.includes('KM')) return 'KM';
+  if (upper.includes('S/N') || upper.includes('SN')) return 'S/N';
+  return 'NÚMERO';
+};
 
-  const newLead = await prisma.lead.create({
-    data: {
-      businessName: oldLead.businessName + ' (Copia)',
-      firstName: oldLead.firstName,
-      lastName: oldLead.lastName,
-      vatNumber: oldLead.vatNumber,
-      email: oldLead.email,
-      phone: oldLead.phone,
-      status: 'NUEVO', // El clon siempre empieza en NUEVO
-      source: oldLead.source,
-      cups: oldLead.cups,
-      estimatedMWh: oldLead.estimatedMWh,
-      tariff: oldLead.tariff,
-      userId: oldLead.userId,
-      // No copiamos contratos ni documentos
+const normProdType = (val: any) => {
+  const upper = String(val || '').toUpperCase().trim();
+  if (upper === 'FIJO' || upper === 'INDEXADO' || upper === 'FIJO_PERS' || upper === 'INDEXADO_PERS') return upper;
+  if (upper.includes('INDEX')) return 'INDEXADO';
+  return 'FIJO';
+};
+
+// Convierte un lead bruto de Airtable al formato limpio del CRM
+function translateAirtableToNativeCRM(oldLead: any) {
+  const cd = oldLead.contractData || {};
+  const ad = oldLead.airtableData || {};
+
+  // Logica de extracción copiada de NewLeadModal
+  let vat = oldLead.vatNumber || cd.vatNumber || getScalar(ad['NIF / CIF Titular']) || getScalar(ad['DNI / CIF Titular']) || getScalar(ad['DNI/CIF Titular']) || '';
+  let rawBusinessName = oldLead.businessName || cd.businessName || getScalar(ad['Razón social / Nombre']) || getScalar(ad['Nombre Titular']) || getScalar(ad['NOMBRE Y APELLIDOS']) || getScalar(ad['Nombre completo Titular']) || '';
+  
+  const esJuridica = vat && /^[A-HJ-NP-SW]\d{7}[0-9A-J]$/i.test(vat);
+  let pAp = cd.primerApellido || getScalar(ad['Primer Apellido']) || getScalar(ad['Primer apellido Titular']) || '';
+  let sAp = cd.segundoApellido || getScalar(ad['Segundo Apellido']) || getScalar(ad['Segundo apellido Titular']) || '';
+
+  if (rawBusinessName) rawBusinessName = rawBusinessName.replace(/\(Copia\)/ig, '').trim();
+  if (pAp) pAp = pAp.replace(/\(Copia\)/ig, '').trim();
+  if (sAp) sAp = sAp.replace(/\(Copia\)/ig, '').trim();
+
+  // Reconstruir el nombre completo si es una persona física y los apellidos no están ya incluidos
+  let finalBusinessName = rawBusinessName;
+  const tipoPersona = cd.tipoPersona || (esJuridica ? 'JURIDICA' : 'FISICA');
+  if (tipoPersona === 'FISICA') {
+    if (pAp && !finalBusinessName.toUpperCase().includes(pAp.toUpperCase())) {
+      finalBusinessName += ` ${pAp}`;
     }
-  });
+    if (sAp && !finalBusinessName.toUpperCase().includes(sAp.toUpperCase())) {
+      finalBusinessName += ` ${sAp}`;
+    }
+  }
+  finalBusinessName = finalBusinessName.replace(/\s+/g, ' ').trim();
 
-  return { success: true, leadId: newLead.id };
+  const rawTipoProducto = normProdType(oldLead.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']));
+
+  // Formato nativo para ContractData (JSON Estructurado)
+  const contractData = {
+    tipoPersona: cd.tipoPersona || (esJuridica ? 'JURIDICA' : 'FISICA'),
+    primerApellido: pAp,
+    segundoApellido: sAp,
+    cnae: oldLead.sipsCnae || cd.cnae || getScalar(ad['CNAE']) || getScalar(ad['SIPS Cnae']) || '',
+    direccion: {
+      tipoVia: cd.tipoVia || getScalar(ad['Tipo de vía Titular']) || 'Calle',
+      nombreVia: cd.nombreVia || getScalar(ad['Calle Titular']) || getScalar(ad['DOMICILIO SOC']) || '',
+      tipoNumeracion: cd.tipoNumeracion || normNum(getScalar(ad['Tipo de numeración Titular'])),
+      numKm: cd.numKm || getScalar(ad['Número Titular']) || '',
+      adicional: cd.adicional || getScalar(ad['Adicional Titular']) || '',
+      cp: cd.cp || getScalar(ad['CP SOC']) || '',
+      poblacion: cd.poblacion || getScalar(ad['Población Titular']) || getScalar(ad['POBLACION SOC']) || '',
+      provincia: cd.provincia || getScalar(ad['Provincia Titular']) || getScalar(ad['PROVINCIA SOC']) || '',
+      pais: cd.pais || getScalar(ad['País Titular']) || 'España'
+    },
+    direccionSuministro: {
+      tipoVia: cd.sTipoVia || getScalar(ad['Tipo de vía Instalación']) || 'Calle',
+      nombreVia: cd.sNombreVia || getScalar(ad['Calle Instalación']) || getScalar(ad['DOMICILIO PS']) || getScalar(ad['DOMICILIO PS COMPLETO']) || '',
+      tipoNumeracion: cd.sTipoNumeracion || normNum(getScalar(ad['Tipo de numeración Instalación'])),
+      numKm: cd.sNumKm || getScalar(ad['Número Instalación']) || '',
+      adicional: cd.sAdicional || getScalar(ad['Adicional Instalación']) || '',
+      cp: cd.sCp || getScalar(ad['Código Postal Instalación']) || getScalar(ad['CP_CONT']) || '',
+      poblacion: cd.sPoblacion || getScalar(ad['Población Instalación']) || getScalar(ad['POBLACION_CONT']) || '',
+      provincia: cd.sProvincia || getScalar(ad['Provincia Instalación']) || getScalar(ad['PROVINCIA_CONT']) || '',
+      pais: cd.sPais || 'España'
+    },
+    contactoNombre: oldLead.contactName || cd.contactoNombre || getScalar(ad['Nombre Contacto']) || '',
+    contactoApellidos: oldLead.contactLastName || cd.contactoApellidos || getScalar(ad['Apellidos Contacto']) || '',
+    contactoNif: oldLead.contactVat || cd.contactoNif || getScalar(ad['NIF Contacto']) || '',
+    
+    nombreInstalacion: cd.nombreInstalacion || '',
+    tipoTramitacion: oldLead.tramitationType || cd.tipoTramitacion || getScalar(ad['Tramitación a realizar']) || getScalar(ad['Tipo']) || 'Alta nueva',
+    firmaManuscrita: cd.firmaManuscrita || false,
+    bolsilloSolar: cd.bolsilloSolar || (getScalar(ad['¿Asociar a Bolsillo Solar?']) === 'SI' || getScalar(ad['CG Bolsillo Solar']) ? 'SI' : 'NO'),
+    
+    iban: oldLead.iban || cd.iban || getScalar(ad['IBAN']) || getScalar(ad['Certificado IBAN']) || '',
+    formaPago: oldLead.paymentMethod || cd.formaPago || 'Domiciliación',
+    envioFactura: oldLead.invoiceDelivery || cd.envioFactura || (getScalar(ad['¿Facturas papel?']) === 'true' || getScalar(ad['¿Facturas papel?']) === 'SI' || getScalar(ad['¿Facturas papel?']) === 'Sí' ? 'Postal' : 'Email'),
+    
+    potencias: {
+      p1: cd.potencias?.p1 || cd.p1c || String(oldLead.p1c || getScalar(ad['P1C']) || ''),
+      p2: cd.potencias?.p2 || cd.p2c || String(oldLead.p2c || getScalar(ad['P2C']) || ''),
+      p3: cd.potencias?.p3 || cd.p3c || String(oldLead.p3c || getScalar(ad['P3C']) || ''),
+      p4: cd.potencias?.p4 || cd.p4c || String(oldLead.p4c || getScalar(ad['P4C']) || ''),
+      p5: cd.potencias?.p5 || cd.p5c || String(oldLead.p5c || getScalar(ad['P5C']) || ''),
+      p6: cd.potencias?.p6 || cd.p6c || String(oldLead.p6c || getScalar(ad['P6C']) || '')
+    },
+    indexado: {
+      ip1: cd.indexado?.ip1 || cd.ip1 || String(getScalar(ad['IP1']) || ''),
+      ip2: cd.indexado?.ip2 || cd.ip2 || String(getScalar(ad['IP2']) || ''),
+      ip3: cd.indexado?.ip3 || cd.ip3 || String(getScalar(ad['IP3']) || ''),
+      ip4: cd.indexado?.ip4 || cd.ip4 || String(getScalar(ad['IP4']) || ''),
+      ip5: cd.indexado?.ip5 || cd.ip5 || String(getScalar(ad['IP5']) || ''),
+      ip6: cd.indexado?.ip6 || cd.ip6 || String(getScalar(ad['IP6']) || ''),
+      fee: cd.indexado?.fee || cd.feeIndex || String(getScalar(ad['FEE']) || '')
+    },
+    pexc: cd.pexc || String(getScalar(ad['PExc']) || getScalar(ad['PExc Personalizado']) || '')
+  };
+
+  return {
+    contractData,
+    nativeFields: {
+      businessName: finalBusinessName,
+      vatNumber: vat,
+      email: oldLead.email || cd.email || getScalar(ad['EMAIL']) || getScalar(ad['Email Contacto']) || '',
+      phone: oldLead.phone || cd.phone || getScalar(ad['TLF']) || getScalar(ad['Teléfono Contacto']) || '',
+      cups: oldLead.cups || cd.cups || getScalar(ad['CUPS']) || getScalar(ad['CUPS2']) || '',
+      tariff: oldLead.tariff || cd.tarifa || getScalar(ad['Tarifa']) || '2.0TD',
+      productType: rawTipoProducto,
+      product: String(oldLead.product || cd.product || getScalar(ad['Producto']) || getScalar(ad['Producto y Servicio']) || '').trim(),
+      additionalServices: oldLead.additionalServices || cd.serviciosAdicionales || ''
+    }
+  };
+}
+
+export async function duplicateLeadAction(leadId: string) {
+  try {
+    const session = await auth();
+    if (!session?.user?.email) throw new Error('No autorizado');
+  
+    const oldLead = await prisma.lead.findUnique({ where: { id: leadId } });
+    if (!oldLead) throw new Error('Lead no encontrado');
+  
+    const { id, createdAt, updatedAt, contractId, docusignEnvelopeId, triggerDuplicate, status, airtableId, airtableData, contractData: oldCd, ...rest } = oldLead as any;
+  
+    // Limpieza de estructura al duplicar (Traducción definitiva a CRM nativo)
+    const { contractData, nativeFields } = translateAirtableToNativeCRM(oldLead);
+
+    const newLead = await prisma.lead.create({
+      data: {
+        ...rest,
+        ...nativeFields,
+        contractData, // Guardamos el JSON estructurado limpio
+        airtableData: null, // Destruimos el JSON sucio en la copia
+        status: 'NUEVO', // El clon siempre empieza en NUEVO
+      }
+    });
+  
+    return { success: true, leadId: newLead.id };
+  } catch (error: any) {
+    console.error('Error in duplicateLeadAction:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 export async function updateLeadCupsAction(leadId: string, newCups: string) {
@@ -291,21 +469,8 @@ export async function updateLeadCupsAction(leadId: string, newCups: string) {
 
       // Upsert SupplyPoint con el nuevo CUPS
       let sp = await prisma.supplyPoint.findFirst({ where: { cups: newCups, client: { brandId: lead.user.brandId } } });
-      if (sp) {
-        await prisma.supplyPoint.update({
-          where: { id: sp.id },
-          data: {
-            tariff: String(t),
-            address: data.direccion || data.Direccion,
-            city: data.municipio || data.Municipio,
-            postalCode: data.cp || data.CP || data['CP SIPS'],
-            province: data.provincia || data.Provincia,
-            cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-            selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-            distributor: reeCode || undefined
-          }
-        });
-      } else {
+      // ELIMINADO: No sobrescribimos la información base del SupplyPoint existente al actualizar un Lead.
+      if (!sp) {
         await prisma.supplyPoint.create({
           data: {
             cups: newCups,
@@ -332,7 +497,7 @@ export async function updateLeadCupsAction(leadId: string, newCups: string) {
 
       await prisma.lead.update({
         where: { id: lead.id },
-        data: { sipsOk: true, sipsMessages: 'SIPS Validado tras cambio de CUPS', status: newStatus }
+        data: { sipsOk: true, sipsRawData: data, sipsMessages: 'SIPS Validado tras cambio de CUPS', status: newStatus }
       });
     } else {
       await prisma.lead.update({
@@ -370,21 +535,7 @@ export async function forceRefreshSipsAction(leadId: string) {
     if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
     let sp = await prisma.supplyPoint.findFirst({ where: { cups: effectiveCups, client: { brandId: lead.user.brandId } } });
-    if (sp) {
-      await prisma.supplyPoint.update({
-        where: { id: sp.id },
-        data: {
-          tariff: String(t),
-          address: data.direccion || data.Direccion,
-          city: data.municipio || data.Municipio,
-          postalCode: data.cp || data.CP || data['CP SIPS'],
-          province: data.provincia || data.Provincia,
-          cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-          selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-          distributor: reeCode || undefined
-        }
-      });
-    } else {
+    if (!sp) {
       await prisma.supplyPoint.create({
         data: {
           cups: effectiveCups,
@@ -409,9 +560,26 @@ export async function forceRefreshSipsAction(leadId: string) {
       newStatus = 'BORRADOR GENERADO';
     }
 
+    const cData = typeof lead.contractData === 'object' && lead.contractData ? lead.contractData : {};
+
+    const sCnae = data.cnae || data.CNAE || data['CNAE SIPS'];
+    if (sCnae) (cData as any).cnae = sCnae;
+    
+    const sCp = data.cp || data.CP || data['CP SIPS'];
+    if (sCp) {
+      if (!(cData as any).direccionSuministro) (cData as any).direccionSuministro = {};
+      (cData as any).direccionSuministro.postalCode = sCp;
+    }
+
     await prisma.lead.update({
       where: { id: lead.id },
-      data: { sipsOk: true, sipsMessages: 'SIPS Refrescado Correctamente', status: newStatus }
+      data: { 
+        sipsOk: true,
+        sipsRawData: data,
+        sipsMessages: 'SIPS Refrescado Correctamente', 
+        status: newStatus,
+        contractData: cData
+      }
     });
 
     return { success: true, message: 'Datos SIPS actualizados correctamente' };
@@ -459,12 +627,79 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
   if (contractDataStr) {
     try { contractData = JSON.parse(contractDataStr); } catch (e) {}
   }
+
+  if (parsedSipsData) {
+    const sCnae = parsedSipsData.cnae || parsedSipsData.CNAE || parsedSipsData['CNAE SIPS'];
+    if (sCnae) contractData.cnae = sCnae;
+    
+    const sCp = parsedSipsData.cp || parsedSipsData.CP || parsedSipsData['CP SIPS'];
+    if (sCp) {
+      if (!contractData.direccionSuministro) contractData.direccionSuministro = {};
+      contractData.direccionSuministro.postalCode = sCp;
+    }
+  }
   
   const documentsStr = formData.get('documents') as string;
   let documents: any[] = [];
   if (documentsStr) {
     try { documents = JSON.parse(documentsStr); } catch (e) {}
   }
+
+  // ==========================================
+  // VALIDACIONES DE NEGOCIO (Reglas 73, 74, 75)
+  // ==========================================
+  if (contractData?.generateOffer === false) {
+    const esJuridica = vatNumber ? /^[ABJUV]/i.test(vatNumber) : false;
+    // Regla 75: Validación Representante Legal (B2B)
+    if (esJuridica) {
+      const repName = contractData.representativeName || '';
+      const repLast = contractData.representativeLastName || '';
+      const repVat = contractData.representativeVat || '';
+      if (!repName.trim() || !repLast.trim() || !repVat.trim()) {
+        throw new Error('Validación fallida (Regla 75): Los contratos para personas jurídicas requieren obligatoriamente los datos del representante legal (DNI, Nombre y Apellidos).');
+      }
+    }
+
+    const technicalTariff = forceTariff || parsedSipsData?.tarifa || '2.0TD';
+    
+    // Regla 73: Congruencia Producto vs Tarifa
+    const product = formData.get('product') as string;
+    if (product) {
+      let productTariff: string | null = null;
+      if (product.startsWith('cm')) {
+        const dbProduct = await prisma.product.findUnique({ where: { id: product } });
+        if (dbProduct) productTariff = dbProduct.tariff;
+      } else {
+        const dbProduct = await prisma.product.findFirst({ where: { name: product.trim() } });
+        if (dbProduct) productTariff = dbProduct.tariff;
+      }
+      
+      if (productTariff && productTariff !== technicalTariff) {
+        throw new Error(`Validación fallida (Regla 73): Incongruencia de producto/tarifa. El producto exige tarifa ${productTariff}, pero el suministro tiene tarifa ${technicalTariff}.`);
+      }
+    }
+
+    // Regla 74: Validación Cruzada SIPS
+    if (parsedSipsData) {
+      const tramType = contractData.tramitationType || '';
+      if (tramType === 'Cambio comercializadora sin cambios' || tramType === 'Modificación de datos administrativos' || tramType === 'Cambio comercializadora con cambios administrativos') {
+        if (technicalTariff !== parsedSipsData.tarifa) {
+          throw new Error('Validación fallida (Regla 74): Para este tipo de tramitación, la Tarifa de Acceso solicitada debe coincidir exactamente con la de SIPS.');
+        }
+
+        const sP1 = Number(parsedSipsData.p1 || 0); const sP2 = Number(parsedSipsData.p2 || 0); const sP3 = Number(parsedSipsData.p3 || 0);
+        const sP4 = Number(parsedSipsData.p4 || 0); const sP5 = Number(parsedSipsData.p5 || 0); const sP6 = Number(parsedSipsData.p6 || 0);
+        const rP1 = Number(contractData.p1c || 0); const rP2 = Number(contractData.p2c || 0); const rP3 = Number(contractData.p3c || 0);
+        const rP4 = Number(contractData.p4c || 0); const rP5 = Number(contractData.p5c || 0); const rP6 = Number(contractData.p6c || 0);
+
+        if (Math.abs(sP1 - rP1) > 0.01 || Math.abs(sP2 - rP2) > 0.01 || Math.abs(sP3 - rP3) > 0.01 || 
+            Math.abs(sP4 - rP4) > 0.01 || Math.abs(sP5 - rP5) > 0.01 || Math.abs(sP6 - rP6) > 0.01) {
+          throw new Error('Validación fallida (Regla 74): Para este tipo de tramitación, las Potencias solicitadas deben coincidir exactamente con las registradas en SIPS.');
+        }
+      }
+    }
+  }
+  // ==========================================
 
   await prisma.$transaction(async (tx) => {
     // Actualizar Cliente si cambió NIF o Nombre
@@ -525,22 +760,6 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
         monthlyExpense: contractData?.monthlyExpense ? String(contractData?.monthlyExpense) : null,
         savings: contractData?.savings ? Number(contractData?.savings) : null,
         comparative: contractData?.comparative || null,
-        comments: contractData?.comments || null,
-        priceServiceActual: contractData?.priceServiceActual ? Number(contractData?.priceServiceActual) : null,
-        
-        p1eActual: contractData?.p1eActual ? Number(contractData?.p1eActual) : null,
-        p2eActual: contractData?.p2eActual ? Number(contractData?.p2eActual) : null,
-        p3eActual: contractData?.p3eActual ? Number(contractData?.p3eActual) : null,
-        p4eActual: contractData?.p4eActual ? Number(contractData?.p4eActual) : null,
-        p5eActual: contractData?.p5eActual ? Number(contractData?.p5eActual) : null,
-        p6eActual: contractData?.p6eActual ? Number(contractData?.p6eActual) : null,
-
-        p1pDaily: contractData?.p1pDaily ? Number(contractData?.p1pDaily) : null,
-        p2pDaily: contractData?.p2pDaily ? Number(contractData?.p2pDaily) : null,
-        p3pDaily: contractData?.p3pDaily ? Number(contractData?.p3pDaily) : null,
-        p4pDaily: contractData?.p4pDaily ? Number(contractData?.p4pDaily) : null,
-        p5pDaily: contractData?.p5pDaily ? Number(contractData?.p5pDaily) : null,
-        p6pDaily: contractData?.p6pDaily ? Number(contractData?.p6pDaily) : null,
       }
     });
 
@@ -676,7 +895,14 @@ export async function getPaginatedLeadsAction(filters: any, page: number = 1, pa
       if ('DOMICILIO PS COMPLETO' in data) direccion = data['DOMICILIO PS COMPLETO'];
       else if ('DOMICILIO PS' in data) direccion = data['DOMICILIO PS'];
       else if ('DOMICILIO SOC' in data) direccion = data['DOMICILIO SOC'];
-      else if ('direccion' in data) direccion = data.direccion;
+      else if ('direccion' in data) {
+        if (typeof data.direccion === 'object' && data.direccion !== null) {
+          const d = data.direccion;
+          direccion = `${d.tipoVia || ''} ${d.nombreVia || ''} ${d.numero || ''}, ${d.cp || ''} ${d.poblacion || ''} ${d.provincia || ''}`.replace(/\s+/g, ' ').trim();
+        } else {
+          direccion = data.direccion;
+        }
+      }
     }
 
     const airtableData = l.airtableData as any || null;

@@ -55,27 +55,37 @@ export default function ContractDetailClient({
   };
   const canRequestMod = isAdmin || (userRole === 'CANAL' && isWithinRenewalPeriod());
 
-  const cData = initialContract.contractData || {};
+  const cData = initialContract.contractData || initialContract.airtableData || {};
   const leadData = initialContract.lead?.contractData || {};
   const lead = initialContract.lead || {};
   const client = initialContract.client || {};
   const supplyPoint = initialContract.supplyPoint || {};
 
+  const getNombreSolo = () => {
+    const fullName = client.businessName || lead.businessName || '';
+    const apellidos = `${client.primerApellido || leadData.primerApellido || ''} ${client.segundoApellido || leadData.segundoApellido || ''}`.trim() || leadData.apellidosContacto || '';
+    if (apellidos && fullName.toLowerCase().includes(apellidos.toLowerCase())) {
+      const regex = new RegExp(apellidos.trim(), 'i');
+      return fullName.replace(regex, '').trim() || fullName;
+    }
+    return fullName;
+  };
+
   const getPricesFromLead = (ld: any) => {
     return {
-      p1E: initialContract.p1e || '0.000',
-      p2E: initialContract.p2e || '0.000',
-      p3E: initialContract.p3e || '0.000',
-      p4E: initialContract.p4e || '0.000',
-      p5E: initialContract.p5e || '0.000',
-      p6E: initialContract.p6e || '0.000',
-      p1P: initialContract.p1p || '-',
-      p2P: initialContract.p2p || '-',
-      p3P: initialContract.p3p || '-',
-      p4P: initialContract.p4p || '-',
-      p5P: initialContract.p5p || '-',
-      p6P: initialContract.p6p || '-',
-      fee: initialContract.fee || initialContract.commissionBase || '0.00'
+      p1E: initialContract.p1e || cData['P1E'] || cData['P1E (from Producto)']?.[0] || '0.000',
+      p2E: initialContract.p2e || cData['P2E'] || cData['P2E (from Producto)']?.[0] || '0.000',
+      p3E: initialContract.p3e || cData['P3E'] || cData['P3E (from Producto)']?.[0] || '0.000',
+      p4E: initialContract.p4e || cData['P4E'] || cData['P4E (from Producto)']?.[0] || '0.000',
+      p5E: initialContract.p5e || cData['P5E'] || cData['P5E (from Producto)']?.[0] || '0.000',
+      p6E: initialContract.p6e || cData['P6E'] || cData['P6E (from Producto)']?.[0] || '0.000',
+      p1P: initialContract.p1p || cData['P1P'] || cData['P1P (from Producto)']?.[0] || '-',
+      p2P: initialContract.p2p || cData['P2P'] || cData['P2P (from Producto)']?.[0] || '-',
+      p3P: initialContract.p3p || cData['P3P'] || cData['P3P (from Producto)']?.[0] || '-',
+      p4P: initialContract.p4p || cData['P4P'] || cData['P4P (from Producto)']?.[0] || '-',
+      p5P: initialContract.p5p || cData['P5P'] || cData['P5P (from Producto)']?.[0] || '-',
+      p6P: initialContract.p6p || cData['P6P'] || cData['P6P (from Producto)']?.[0] || '-',
+      fee: initialContract.fee || initialContract.commissionBase || cData['Fee Index'] || cData['Fee Index (from Producto)']?.[0] || '0.00'
     };
   };
 
@@ -95,7 +105,7 @@ export default function ContractDetailClient({
         if (serviciosMap[svaName]) {
             svaName = serviciosMap[svaName];
         } else {
-            const prodYServ = initialContract.airtableData?.['Producto y Servicio'];
+            const prodYServ = (initialContract.contractData?.['Producto y Servicio']) || (initialContract.airtableData?.['Producto y Servicio']);
             if (prodYServ && typeof prodYServ === 'string') {
                 const match = prodYServ.match(/"([^"]+)"/);
                 if (match) svaName = match[1];
@@ -166,6 +176,25 @@ export default function ContractDetailClient({
     { id: 'Datos CAU', icon: Battery },
   ];
 
+  const airtableData = (initialContract.airtableData as any) || {};
+  
+  let draftUrl = initialContract.pdfUrl || null;
+  if (!draftUrl && airtableData['Borrador contrato'] && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
+    draftUrl = airtableData['Borrador contrato'][0].url;
+  }
+
+  let signedUrl = initialContract.filePdfSigned || null;
+  if (!signedUrl && airtableData['PDF Contrato firmado'] && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
+    signedUrl = airtableData['PDF Contrato firmado'][0].url;
+  } else if (!signedUrl && airtableData['Contrato .PDF'] && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
+    signedUrl = airtableData['Contrato .PDF'][0].url;
+  }
+
+  let annexUrl = null;
+  if (!annexUrl && airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
+    annexUrl = airtableData['PDF Anexo firmado'][0].url;
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)', paddingBottom: '100px' }}>
       <Topbar
@@ -177,6 +206,32 @@ export default function ContractDetailClient({
               <ChevronLeft size={16} /> Volver
             </button>
             <div className="h-8 border-l border-[var(--border)] mx-2"></div>
+            {draftUrl && (
+              <a 
+                href={draftUrl} 
+                target="_blank" 
+                rel="noreferrer"
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Download size={16} /> Descargar Borrador
+              </a>
+            )}
+            {initialContract.status === 'BORRADOR' && (
+              <button 
+                onClick={async () => {
+                  setIsSendingSignature(true);
+                  const res = await sendContractToDocuSignAction(initialContract.id);
+                  setIsSendingSignature(false);
+                  if (res.error) alert(res.error);
+                  else router.refresh();
+                }} 
+                disabled={isSendingSignature}
+                className="btn-primary flex items-center gap-2"
+              >
+                {isSendingSignature ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />} 
+                {isSendingSignature ? 'Enviando...' : 'Enviar a DocuSign'}
+              </button>
+            )}
             {versions && versions.length > 1 && (
               <select
                 className="form-input text-xs py-1 px-2 h-auto"
@@ -246,7 +301,14 @@ export default function ContractDetailClient({
               {activeSubTab === 'Datos Administrativos' && (
                 <SectionCard title="Datos Administrativos" icon={User} delay={0}>
                   <DataItem label="Tipo de Cliente" value={client.clientType || lead.clientType || 'Empresa'} />
-                  <DataItem label="Razón Social / Nombre" value={client.businessName || lead.businessName} />
+                  {((client.clientType || lead.clientType || '').toLowerCase().includes('física') || (client.clientType || lead.clientType || '').toLowerCase().includes('fisica')) ? (
+                    <>
+                      <DataItem label="Nombre" value={getNombreSolo()} />
+                      <DataItem label="Apellidos" value={`${client.primerApellido || leadData.primerApellido || ''} ${client.segundoApellido || leadData.segundoApellido || ''}`.trim() || leadData.apellidosContacto || '-'} />
+                    </>
+                  ) : (
+                    <DataItem label="Razón Social" value={client.businessName || lead.businessName} />
+                  )}
                   <DataItem label="NIF / CIF" value={client.vatNumber || lead.vatNumber} />
                   <DataItem label="CNAE" value={supplyPoint?.cnae || '-'} />
                   
@@ -267,7 +329,7 @@ export default function ContractDetailClient({
                   <DataItem label="Código Postal" value={client.billingPostalCode || lead.titularPostalCode} />
                   <DataItem label="Población" value={client.billingCity || lead.titularCity} />
                   <DataItem label="Provincia" value={client.billingProvince || lead.titularProvince} />
-                  <DataItem label="IBAN" value={client.iban || lead.iban} />
+                  <DataItem label="IBAN" value={initialContract.supplyPoint?.iban || initialContract.iban || (client as any).iban || (lead as any)?.iban} />
                   <DataItem label="SWIFT" value={client.swift} />
                   <DataItem label="¿Factura Papel?" value={(client.paperInvoice || lead.paperInvoice) ? 'Sí' : 'No'} />
                   <DataItem label="Email Factura" value={client.invoiceEmail || lead.invoiceEmail || client.contactEmail || lead.email} />
@@ -305,10 +367,13 @@ export default function ContractDetailClient({
                   <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">{supplyPoint.tariff || lead.tariff}</span>} />
                   <DataItem label="Consumo Anual (MWh)" value={supplyPoint.annualConsumption || lead.estimatedMWh} />
                   <DataItem label="Distribuidora" value={supplyPoint.distributorName ? supplyPoint.distributorName.replace(/^\[.*?\]\s*/, '') : (supplyPoint.distributor ? supplyPoint.distributor.replace(/^\[.*?\]\s*/, '') : 'EDISTRIBUCION')} />
-                  <DataItem label="Cód. REE Distri." value={supplyPoint.distributorReeCode || '0031'} />
                   
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Dirección de Suministro</h3></div>
-                  <DataItem label="Dirección" value={supplyPoint.address || lead.address} />
+                  <DataItem label="Dirección" value={
+                    (leadData.direccionSuministro || leadData.direccion) 
+                      ? `${(leadData.direccionSuministro || leadData.direccion).tipoVia || ''} ${(leadData.direccionSuministro || leadData.direccion).nombreVia || ''} ${(leadData.direccionSuministro || leadData.direccion).tipoNumeracion || ''} ${(leadData.direccionSuministro || leadData.direccion).numKm || ''} ${(leadData.direccionSuministro || leadData.direccion).adicional || ''}`.trim() 
+                      : (supplyPoint.address || lead.address)
+                  } />
                   <DataItem label="Código Postal" value={supplyPoint.postalCode} />
                   <DataItem label="Población" value={supplyPoint.city} />
                   <DataItem label="Provincia" value={supplyPoint.province} />

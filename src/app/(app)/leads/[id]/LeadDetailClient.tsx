@@ -3,14 +3,18 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Topbar from '@/components/Topbar';
-import { ChevronLeft, FileText, CheckCircle, Zap, AlertTriangle, Building, Search, FileCheck, MapPin, User, Calendar, CreditCard, Banknote, XCircle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, FileText, CheckCircle, Zap, AlertTriangle, Building, Search, FileCheck, MapPin, User, Calendar, CreditCard, Banknote, XCircle, RefreshCw, Database } from 'lucide-react';
 import { convertLeadToContractAction, remakeContractAction } from '@/app/actions/contractActions';
+import ProductModal from '@/app/(app)/productos/ProductModal';
+import SupplyPointModal from '@/components/SupplyPointModal';
 
 export default function LeadDetailClient({ initialLead }: { initialLead: any }) {
   const router = useRouter();
   const [isConverting, setIsConverting] = useState(false);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isSupplyPointModalOpen, setIsSupplyPointModalOpen] = useState(false);
 
   const getPricesFromLead = (lead: any) => {
     const cData = typeof lead.contractData === 'object' && lead.contractData ? lead.contractData : {};
@@ -113,7 +117,7 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
     if (!initialLead.cnae && initialLead.contract?.supplyPoint?.cnae) initialLead.cnae = initialLead.contract.supplyPoint.cnae;
     if (!initialLead.cnae && initialLead.contract?.client?.cnae) initialLead.cnae = initialLead.contract.client.cnae;
     
-    if (!initialLead.iban && initialLead.contract?.client?.iban) initialLead.iban = initialLead.contract.client.iban;
+    if (!initialLead.iban && initialLead.contract?.supplyPoint?.iban) initialLead.iban = initialLead.contract.supplyPoint.iban;
     if (!initialLead.iban && airtableData['IBAN']) initialLead.iban = airtableData['IBAN'];
 
     const tPersona = Array.isArray(airtableData['Tipo de persona']) ? airtableData['Tipo de persona'][0] : airtableData['Tipo de persona'];
@@ -153,18 +157,31 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
     }
   }
 
+  // Normalizar datos nativos si no vienen del import
+  if (!initialLead.clientType && cData.tipoPersona) {
+    initialLead.clientType = cData.tipoPersona === 'FISICA' ? 'Persona física' : (cData.tipoPersona === 'JURIDICA' ? 'Persona jurídica' : cData.tipoPersona);
+  }
+  if (!initialLead.distributor) {
+    if (initialLead.dbDistributor) {
+      initialLead.distributor = initialLead.dbDistributor;
+    } else if (initialLead.cups && initialLead.cups.length >= 6) {
+      initialLead.distributor = initialLead.cups.substring(2, 6);
+    }
+  }
+
   // Formateo de fechas
   const fechaRegistro = initialLead.createdAt 
     ? new Date(initialLead.createdAt).toLocaleString('es-ES', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '-';
 
-  // Potencias (fallback a sipsData)
-  const p1 = cData.p1 || initialLead.sipsData?.p1 || '-';
-  const p2 = cData.p2 || initialLead.sipsData?.p2 || '-';
-  const p3 = cData.p3 || initialLead.sipsData?.p3 || '-';
-  const p4 = cData.p4 || initialLead.sipsData?.p4 || '-';
-  const p5 = cData.p5 || initialLead.sipsData?.p5 || '-';
-  const p6 = cData.p6 || initialLead.sipsData?.p6 || '-';
+  // Potencias (fallback a sipsRawData)
+  const sData = (initialLead as any).sipsRawData || cData.sipsData || {};
+  const p1 = cData.p1 || cData.potencias?.p1 || sData.p1 || '-';
+  const p2 = cData.p2 || cData.potencias?.p2 || sData.p2 || '-';
+  const p3 = cData.p3 || cData.potencias?.p3 || sData.p3 || '-';
+  const p4 = cData.p4 || cData.potencias?.p4 || sData.p4 || '-';
+  const p5 = cData.p5 || cData.potencias?.p5 || sData.p5 || '-';
+  const p6 = cData.p6 || cData.potencias?.p6 || sData.p6 || '-';
 
   const DataItem = ({ label, value, icon: Icon, highlight }: { label: string, value: React.ReactNode, icon?: any, highlight?: boolean }) => (
     <div className={`p-4 rounded-xl border transition-all ${highlight ? 'bg-[rgba(222,255,154,0.03)] border-[var(--lime)] border-opacity-30' : 'bg-[var(--bg-elevated)] border-[var(--border)]'}`}>
@@ -243,7 +260,7 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
                 }}
               >
                 {isConverting ? <CheckCircle size={16} className="animate-spin" /> : <FileCheck size={16} />} 
-                {isConverting ? 'Convirtiendo...' : 'Convertir a Contrato'}
+                {isConverting ? 'Generando...' : 'Generar Contrato'}
               </button>
             )}
             
@@ -311,24 +328,87 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
 
         {/* BLOQUE: DATOS DEL CLIENTE */}
         <SectionCard title="Datos del Cliente (Titular)" icon={User} delay={100}>
-          <DataItem icon={Building} label="Razón Social / Nombre" value={initialLead.businessName} />
-          <DataItem icon={CreditCard} label="CIF / NIF" value={initialLead.vatNumber || cData.nif || '-'} />
-          <DataItem label="CNAE" value={initialLead.cnae || cData.cnae || '-'} />
+          <DataItem icon={Building} label="Razón Social / Nombre" value={
+            initialLead.dbClient ? (
+              <span 
+                className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50"
+                onClick={() => router.push(`/clientes/${initialLead.dbClient.id}`)}
+              >
+                {initialLead.businessName}
+              </span>
+            ) : (
+              initialLead.businessName
+            )
+          } />
+          <DataItem icon={CreditCard} label="CIF / NIF" value={
+            initialLead.dbClient ? (
+              <span 
+                className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50"
+                onClick={() => router.push(`/clientes/${initialLead.dbClient.id}`)}
+              >
+                {initialLead.vatNumber || cData.nif || '-'}
+              </span>
+            ) : (
+              initialLead.vatNumber || cData.nif || '-'
+            )
+          } />
           <DataItem icon={Search} label="Tipo de Cliente" value={cData.tipoCliente || initialLead.clientType || '-'} />
           <DataItem label="Teléfono" value={initialLead.phone || cData.tlf || '-'} />
           <DataItem label="Email" value={initialLead.email || cData.email || '-'} />
           <DataItem label="Contacto Adicional" value={`${cData.nombreContacto || ''} ${cData.apellidosContacto || ''}`} />
-          <DataItem icon={Banknote} label="IBAN" value={cData.iban || initialLead.iban || '-'} />
         </SectionCard>
 
         {/* BLOQUE: DATOS DE SUMINISTRO (SIPS) */}
         <SectionCard title="Análisis de Suministro y Potencias" icon={Zap} delay={200}>
           <div className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-            <DataItem highlight icon={Zap} label="CUPS" value={<span className="font-mono tracking-widest">{initialLead.cups || cData.cups || '-'}</span>} />
-            <DataItem icon={MapPin} label="Dirección de Suministro" value={`${initialLead.address || cData.direccion || '-'} (${initialLead.province || cData.provincia || '-'})`} />
+            <DataItem highlight icon={Zap} label="CUPS" value={
+              initialLead.dbSupplyPoint ? (
+                <span 
+                  className="font-mono tracking-widest cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50"
+                  onClick={() => setIsSupplyPointModalOpen(true)}
+                >
+                  {initialLead.cups || cData.cups || '-'}
+                </span>
+              ) : (
+                <span className="font-mono tracking-widest">{initialLead.cups || cData.cups || '-'}</span>
+              )
+            } />
+            <div className="col-span-full mt-2 border-t border-slate-800/50 pt-4">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><MapPin size={14}/> Ubicación del Suministro</h4>
+              {(() => {
+                const d = cData.direccionSuministro || cData.direccion || cData;
+                const ad = (initialLead.airtableData as any) || {};
+                const getScalar = (val: any) => Array.isArray(val) ? val[0] : val;
+
+                const tipoVia = d.tipoVia || d.sTipoVia || getScalar(ad['Tipo de vía Instalación']) || '';
+                const nombreVia = d.nombreVia || d.sNombreVia || getScalar(ad['Calle Instalación']) || getScalar(ad['DOMICILIO PS']) || getScalar(ad['DOMICILIO PS COMPLETO']) || '';
+                const tipoNumeracion = d.tipoNumeracion || d.sTipoNumeracion || getScalar(ad['Tipo de numeración Instalación']) || '';
+                const numero = d.numero || d.numKm || d.sNumero || d.sNumKm || getScalar(ad['Número Instalación']) || '';
+                const adicional = d.adicional || d.sAdicional || getScalar(ad['Adicional Instalación']) || '';
+                
+                const cp = d.cp || d.sCp || getScalar(ad['Código Postal Instalación']) || getScalar(ad['CP PS']) || '';
+                const poblacion = d.poblacion || d.sPoblacion || getScalar(ad['Población Instalación']) || getScalar(ad['POBLACION PS']) || '';
+                const provincia = d.provincia || d.sProvincia || getScalar(ad['Provincia Instalación']) || getScalar(ad['PROVINCIA PS']) || '';
+
+                const direccionCompleta = `${tipoVia} ${nombreVia} ${tipoNumeracion} ${numero} ${adicional}`.replace(/\s+/g, ' ').trim();
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="sm:col-span-2 md:col-span-4">
+                      <DataItem label="Dirección Completa" value={direccionCompleta || '-'} />
+                    </div>
+                    <DataItem label="Código Postal" value={cp || '-'} />
+                    <DataItem label="Población" value={poblacion || '-'} />
+                    <DataItem label="Provincia" value={provincia || '-'} />
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-          <div className="col-span-full mb-2">
+          <div className="col-span-full mb-2 grid grid-cols-1 md:grid-cols-3 gap-4">
             <DataItem label="Distribuidora" value={initialLead.distributor || cData.distribuidora || '-'} />
+            <DataItem label="CNAE" value={initialLead.cnae || cData.cnae || '-'} />
+            <DataItem icon={Banknote} label="IBAN" value={cData.iban || initialLead.iban || '-'} />
           </div>
           <DataItem label="Potencia P1 (kW)" value={p1} />
           <DataItem label="Potencia P2 (kW)" value={p2} />
@@ -342,29 +422,68 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
         <SectionCard title="Datos de Captación" icon={FileText} delay={300}>
           <DataItem icon={Calendar} label="Fecha de Registro" value={fechaRegistro} />
           <DataItem label="Comercial Asignado" value={initialLead.user?.name || initialLead.comercialName || '-'} />
-          <DataItem label="Producto Ofrecido" value={initialLead.product || '-'} />
+          <DataItem 
+            label="Producto Ofrecido" 
+            value={
+              initialLead.dbProduct ? (
+                <span 
+                  className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50"
+                  onClick={() => setIsProductModalOpen(true)}
+                >
+                  {initialLead.dbProduct.name}
+                </span>
+              ) : (
+                initialLead.productName || initialLead.product || '-'
+              )
+            } 
+          />
           <DataItem label="Tipo de Producto" value={initialLead.productType || '-'} />
           <DataItem label="¿Tiene Autoconsumo?" value={
-            <span className={`px-2 py-1 rounded text-xs font-bold ${cData.autoconsumo ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
-              {cData.autoconsumo ? 'SÍ' : 'NO'}
+            <span className={`px-2 py-1 rounded text-xs font-bold ${cData.autoconsumo === true || cData.autoconsumo === 'SI' || cData.autoconsumo === 'Sí' || cData.autoconsumo === 'Si' ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+              {cData.autoconsumo === true || cData.autoconsumo === 'SI' || cData.autoconsumo === 'Sí' || cData.autoconsumo === 'Si' ? 'SÍ' : 'NO'}
             </span>
           } />
           <DataItem label="Bolsillo Solar" value={
-            <span className={`px-2 py-1 rounded text-xs font-bold ${cData.bolsilloSolar ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-800 text-gray-400'}`}>
-              {cData.bolsilloSolar ? 'SÍ (ACTIVO)' : 'NO'}
+            <span className={`px-2 py-1 rounded text-xs font-bold ${cData.bolsilloSolar === true || cData.bolsilloSolar === 'SI' || cData.bolsilloSolar === 'Sí' || cData.bolsilloSolar === 'Si' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-800 text-gray-400'}`}>
+              {cData.bolsilloSolar === true || cData.bolsilloSolar === 'SI' || cData.bolsilloSolar === 'Sí' || cData.bolsilloSolar === 'Si' ? 'SÍ (ACTIVO)' : 'NO'}
             </span>
           } />
           <DataItem label="Envío de Factura" value={cData.envioFactura || 'Email (Digital)'} />
-          <DataItem label="Tramitación" value={cData.tramitacion || 'Cambio Comercializadora'} />
+          <DataItem label="Tramitación" value={cData.tramitacion || cData.tipoTramitacion || initialLead.tramitationType || 'Cambio comercializadora sin cambios'} />
         </SectionCard>
 
-        {/* ERRORES SIPS (Si los hay) */}
+        {/* AVISOS SIPS */}
         {(initialLead.sipsMessages) && (
-          <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/5 flex items-start gap-3 animate-fade-in-up delay-400">
-            <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={20} />
+          <div className={`p-4 rounded-xl border flex items-start gap-3 animate-fade-in-up delay-400 ${initialLead.sipsOk ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+            {initialLead.sipsOk ? (
+              <CheckCircle className="text-green-500 shrink-0 mt-0.5" size={20} />
+            ) : (
+              <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={20} />
+            )}
             <div>
-              <h3 className="text-red-400 font-bold mb-1">Avisos del SIPS</h3>
-              <p className="text-red-200/80 text-sm">{initialLead.sipsMessages}</p>
+              <h3 className={`font-bold mb-1 ${initialLead.sipsOk ? 'text-green-400' : 'text-red-400'}`}>
+                {initialLead.sipsOk ? 'Estado de SIPS' : 'Avisos del SIPS'}
+              </h3>
+              <p className={`text-sm ${initialLead.sipsOk ? 'text-green-200/80' : 'text-red-200/80'}`}>
+                {initialLead.sipsMessages}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* DATOS EN BRUTO DE SIPS */}
+        {((initialLead as any).sipsRawData || cData.sipsData) && typeof ((initialLead as any).sipsRawData || cData.sipsData) === 'object' && (
+          <div className="mt-8 bg-gray-900/50 rounded-xl border border-gray-800 overflow-hidden">
+            <div className="bg-gray-800/50 px-4 py-3 border-b border-gray-800 flex items-center gap-2">
+              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              <h3 className="text-sm font-semibold text-gray-300">Datos descargados de SIPS</h3>
+            </div>
+            <div className="p-4 overflow-x-auto">
+              <pre className="text-xs text-emerald-400/80 font-mono">
+                {JSON.stringify((initialLead as any).sipsRawData || cData.sipsData, null, 2)}
+              </pre>
             </div>
           </div>
         )}
@@ -405,6 +524,26 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE EDICIÓN DE PRODUCTO */}
+      {isProductModalOpen && initialLead.dbProduct && (
+        <ProductModal 
+          product={initialLead.dbProduct}
+          onClose={() => setIsProductModalOpen(false)}
+          onSaved={() => {
+            setIsProductModalOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* MODAL DE PUNTO DE SUMINISTRO */}
+      {isSupplyPointModalOpen && initialLead.dbSupplyPoint && (
+        <SupplyPointModal
+          supplyPoint={initialLead.dbSupplyPoint}
+          onClose={() => setIsSupplyPointModalOpen(false)}
+        />
       )}
     </div>
   );

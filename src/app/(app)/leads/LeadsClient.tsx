@@ -165,7 +165,13 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
   const handleDuplicate = async (leadId: string) => {
     try {
       const res = await duplicateLeadAction(leadId);
-      if (res.success) router.refresh();
+      if (res.success) {
+        setSearch('');
+        setFilterStatus('');
+        setFilterCanal('');
+        setPage(1);
+        loadData();
+      }
     } catch (error) {
       console.error('Error al duplicar:', error);
       alert('Error al duplicar el Lead');
@@ -177,7 +183,7 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
       const res = await forceRefreshSipsAction(leadId);
       if (res.success) {
         alert('SIPS actualizado correctamente');
-        router.refresh();
+        loadData();
       } else {
         alert(res.message || 'Error al actualizar SIPS');
       }
@@ -556,8 +562,8 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
                             <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: '0.72rem', gap: '4px' }} title="Refrescar SIPS" onClick={(e) => { e.stopPropagation(); handleRefreshSips(lead.id); }}>
                               <RefreshCw size={13} />
                             </button>
-                            <button className="btn-ghost" style={{ padding: '5px 8px', fontSize: '0.72rem' }} title="Más opciones">
-                              <MoreHorizontal size={13} />
+                            <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: '0.72rem', gap: '4px', color: 'var(--blue)' }} title="Duplicar Lead" onClick={(e) => { e.stopPropagation(); handleDuplicate(lead.id); }}>
+                              <Copy size={13} />
                             </button>
                           </div>
                         </td>

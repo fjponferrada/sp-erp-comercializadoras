@@ -9,6 +9,9 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
     isAvailableCrm: product?.isAvailableCrm ?? true,
     permanenceMonths: product?.permanenceMonths || 12,
     gasIncluido: product?.gasIncluido || false,
+    // General
+    isCustomizable: product?.isCustomizable || false,
+    pricingModel: product?.pricingModel || 'FIXED',
     
     // Autoconsumo
     hasSelfConsumption: product?.hasSelfConsumption || false,
@@ -132,15 +135,17 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
               <div className="grid grid-cols-2 gap-4">
                 <InputField label="Nombre del Producto" field="name" />
                 
+                <InputField label="Descripción del Tipo (ej. Precio fijo único)" field="type" />
+                
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Tipo de Producto</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Modelo de Precio (Interno)</label>
                   <select
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                    value={formData.type}
-                    onChange={e => setFormData({ ...formData, type: e.target.value })}
+                    value={formData.pricingModel}
+                    onChange={e => setFormData({ ...formData, pricingModel: e.target.value })}
                   >
-                    <option value="FIX">Precio Fijo</option>
-                    <option value="INDEXED">Indexado Pass-Through</option>
+                    <option value="FIXED">Fijo</option>
+                    <option value="INDEXED">Indexado</option>
                   </select>
                 </div>
 
@@ -162,7 +167,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
                 <InputField label="Permanencia (Meses)" field="permanenceMonths" type="number" />
               </div>
 
-              <div className="flex gap-6 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+              <div className="flex flex-wrap gap-6 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -181,6 +186,16 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
                     onChange={e => setFormData({ ...formData, gasIncluido: e.target.checked })}
                   />
                   <span className="text-sm text-slate-200">Gas Incluido</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded bg-slate-900 border-slate-600 text-indigo-500"
+                    checked={formData.isCustomizable}
+                    onChange={e => setFormData({ ...formData, isCustomizable: e.target.checked })}
+                  />
+                  <span className="text-sm text-slate-200">¿Es Personalizable?</span>
                 </label>
               </div>
             </div>

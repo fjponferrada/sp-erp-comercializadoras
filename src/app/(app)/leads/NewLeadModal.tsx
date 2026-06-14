@@ -15,6 +15,17 @@ interface NewLeadModalProps {
 const PROVINCIAS = ["Álava", "Albacete", "Alicante", "Almería", "Asturias", "Ávila", "Badajoz", "Barcelona", "Burgos", "Cáceres", "Cádiz", "Cantabria", "Castellón", "Ciudad Real", "Córdoba", "Cuenca", "Girona", "Granada", "Guadalajara", "Guipúzcoa", "Huelva", "Huesca", "Islas Baleares", "Jaén", "La Coruña", "La Rioja", "Las Palmas", "León", "Lleida", "Lugo", "Madrid", "Málaga", "Murcia", "Navarra", "Ourense", "Palencia", "Pontevedra", "Salamanca", "Santa Cruz de Tenerife", "Segovia", "Sevilla", "Soria", "Tarragona", "Teruel", "Toledo", "Valencia", "Valladolid", "Vizcaya", "Zamora", "Zaragoza"];
 const TIPOS_VIA = ["Calle", "Avenida", "Plaza", "Paseo", "Camino", "Carretera", "Ronda", "Pasaje", "Polígono"];
 
+const TRAMITACIONES = [
+  'Alta nueva',
+  'Cambio comercializadora sin cambios',
+  'Cambio comercializadora con cambios administrativos',
+  'Cambio comercializadora con cambios técnicos',
+  'Cambio comercializadora con cambios técnicos y administrativos',
+  'Modificación de datos administrativos',
+  'Modificación de datos técnicos',
+  'Modificación de datos administrativos y técnicos'
+];
+
 function FileUpload({ label, onUpload, value }: { label: string, onUpload: (url: string) => void, value: string | null }) {
   const [uploading, setUploading] = useState(false);
 
@@ -101,7 +112,18 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
     cups: '',
     tarifa: '2.0TD',
     nombreInstalacion: '',
-    tipoTramitacion: 'Alta Nueva',
+    sTipoVia: 'Calle',
+    sNombreVia: '',
+    sTipoNumeracion: 'NÚMERO',
+    sNumero: '',
+    sAdicional: '',
+    sCp: '',
+    sPoblacion: '',
+    sProvincia: '',
+    sPais: 'España',
+    
+    // Contrato
+    tipoTramitacion: 'Alta nueva',
     autoconsumo: 'NO',
     firmaManuscrita: false,
 
@@ -148,13 +170,132 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
     verificacionAed: false
   });
 
+  const [productsDb, setProductsDb] = useState<any[]>([]);
+
   useEffect(() => {
     if (isOpen) {
+      // Cargar productos de la base de datos
+      fetch('/api/products')
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            setProductsDb(data.data);
+          }
+        })
+        .catch(err => console.error('Error fetching products:', err));
+
       setStep(1);
       setError('');
       setSipsData(null);
-      // Omitimos cargar datos de leadToEdit por ahora para simplificar el alta,
-      // pero si existe se podrían mapear aquí.
+      
+      if (leadToEdit) {
+        const cd = (leadToEdit.contractData as any) || {};
+        const ad = (leadToEdit.airtableData as any) || {};
+        const getScalar = (val: any) => Array.isArray(val) ? val[0] : val;
+        
+        // Parse VAT
+        const vat = leadToEdit.vatNumber || cd.vatNumber || ad['CIF'] || ad['NIF'] || ad['Copia de CIF link'] || ad['NIF Contacto'] || '';
+        const esJuridica = vat ? /^[ABJUV]/i.test(vat.trim()) : false;
+
+        // Parse Names from Dictionary Rules
+        let rawBusinessName = cd.nombre || getScalar(ad['NOMBRE/RAZON SOCIAL']) || getScalar(ad['NOMBRERAZON SOCIAL']) || '';
+        let pAp = leadToEdit.firstName || cd.primerApellido || ad['Primer Apellido'] || ad['Primer apellido Titular'] || '';
+        let sAp = leadToEdit.lastName || cd.segundoApellido || ad['Segundo Apellido'] || ad['Segundo apellido Titular'] || '';
+        
+        if (!esJuridica && !rawBusinessName) {
+          rawBusinessName = leadToEdit.businessName || cd.businessName || ad['NOMBRE Y APELLIDOS'] || ad['Nombre completo Titular'] || '';
+          const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          if (pAp) rawBusinessName = rawBusinessName.replace(new RegExp(`\\b${escapeRegExp(pAp)}\\b`, 'i'), '');
+          if (sAp) rawBusinessName = rawBusinessName.replace(new RegExp(`\\b${escapeRegExp(sAp)}\\b`, 'i'), '');
+          rawBusinessName = rawBusinessName.replace('(Copia)', '').replace(/^,\s*|\s*,\s*$/g, '').trim();
+        } else if (esJuridica && !rawBusinessName) {
+          rawBusinessName = leadToEdit.businessName || cd.businessName || ad['NOMBRE Y APELLIDOS'] || ad['Nombre completo Titular'] || '';
+        }
+
+        const normNum = (val: any) => {
+          const upper = String(val || '').toUpperCase().trim();
+          if (upper.includes('NÚM') || upper.includes('NUM')) return 'NÚMERO';
+          if (upper.includes('KM')) return 'KM';
+          if (upper.includes('S/N') || upper.includes('SN')) return 'S/N';
+          return 'NÚMERO';
+        };
+
+        const normProdType = (val: any) => {
+          const upper = String(val || '').toUpperCase().trim();
+          if (upper === 'FIJO' || upper === 'INDEXADO' || upper === 'FIJO_PERS' || upper === 'INDEXADO_PERS') return upper;
+          if (upper.includes('INDEX')) return 'INDEXADO';
+          return 'FIJO';
+        };
+        
+        let rawTipoProducto = normProdType(leadToEdit.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']));
+
+        setData(prev => ({
+          ...prev,
+          tipoPersona: cd.tipoPersona || (esJuridica ? 'JURIDICA' : 'FISICA'),
+          businessName: rawBusinessName,
+          primerApellido: pAp,
+          segundoApellido: sAp,
+          vatNumber: vat,
+          email: leadToEdit.email || cd.email || getScalar(ad['EMAIL']) || getScalar(ad['Email Contacto']) || '',
+          phone: leadToEdit.phone || cd.phone || getScalar(ad['TLF']) || getScalar(ad['Teléfono Contacto']) || '',
+          cnae: leadToEdit.sipsCnae || cd.cnae || getScalar(ad['CNAE']) || getScalar(ad['SIPS Cnae']) || '',
+          
+          tipoVia: cd.direccion?.tipoVia || cd.tipoVia || getScalar(ad['Tipo de vía Titular']) || 'Calle',
+          nombreVia: cd.direccion?.nombreVia || cd.nombreVia || getScalar(ad['Calle Titular']) || getScalar(ad['DOMICILIO SOC']) || '',
+          tipoNumeracion: cd.direccion?.tipoNumeracion || cd.tipoNumeracion || normNum(getScalar(ad['Tipo de numeración Titular'])),
+          numKm: cd.direccion?.numKm || cd.numKm || getScalar(ad['Número Titular']) || '',
+          adicional: cd.direccion?.adicional || cd.adicional || getScalar(ad['Adicional Titular']) || '',
+          cp: cd.direccion?.cp || cd.cp || getScalar(ad['CP SOC']) || '',
+          poblacion: cd.direccion?.poblacion || cd.poblacion || getScalar(ad['Población Titular']) || getScalar(ad['POBLACION SOC']) || '',
+          provincia: cd.direccion?.provincia || cd.provincia || getScalar(ad['Provincia Titular']) || getScalar(ad['PROVINCIA SOC']) || '',
+          pais: cd.direccion?.pais || cd.pais || getScalar(ad['País Titular']) || 'España',
+
+          sTipoVia: cd.direccionSuministro?.tipoVia || cd.sTipoVia || getScalar(ad['Tipo de vía Instalación']) || 'Calle',
+          sNombreVia: cd.direccionSuministro?.nombreVia || cd.sNombreVia || getScalar(ad['Calle Instalación']) || getScalar(ad['DOMICILIO PS']) || getScalar(ad['DOMICILIO PS COMPLETO']) || '',
+          sTipoNumeracion: cd.direccionSuministro?.tipoNumeracion || cd.sTipoNumeracion || normNum(getScalar(ad['Tipo de numeración Instalación'])),
+          sNumero: cd.direccionSuministro?.numKm || cd.sNumero || cd.sNumKm || getScalar(ad['Número Instalación']) || '',
+          sAdicional: cd.direccionSuministro?.adicional || cd.sAdicional || getScalar(ad['Adicional Instalación']) || '',
+          sCp: cd.direccionSuministro?.cp || cd.sCp || getScalar(ad['Código Postal Instalación']) || getScalar(ad['CP PS']) || '',
+          sPoblacion: cd.direccionSuministro?.poblacion || cd.sPoblacion || getScalar(ad['Población Instalación']) || getScalar(ad['POBLACION PS']) || '',
+          sProvincia: cd.direccionSuministro?.provincia || cd.sProvincia || getScalar(ad['Provincia Instalación']) || getScalar(ad['PROVINCIA PS']) || '',
+          sPais: cd.direccionSuministro?.pais || cd.sPais || getScalar(ad['País Instalación']) || 'España',
+          
+          contactoNombre: leadToEdit.contactName || cd.contactoNombre || getScalar(ad['Nombre Contacto']) || '',
+          contactoApellidos: leadToEdit.contactLastName || cd.contactoApellidos || getScalar(ad['Apellidos Contacto']) || '',
+          contactoNif: leadToEdit.contactVat || cd.contactoNif || getScalar(ad['NIF Contacto']) || '',
+          
+          cups: leadToEdit.cups || cd.cups || getScalar(ad['CUPS']) || getScalar(ad['CUPS2']) || '',
+          tarifa: leadToEdit.tariff || cd.tarifa || getScalar(ad['Tarifa']) || '2.0TD',
+          nombreInstalacion: cd.nombreInstalacion || '',
+          tipoTramitacion: leadToEdit.tramitationType || cd.tipoTramitacion || getScalar(ad['Tramitación a realizar']) || getScalar(ad['Tipo']) || 'Alta nueva',
+          autoconsumo: leadToEdit.hasPanels ? 'SI' : (cd.autoconsumo || (getScalar(ad['¿Autoconsumo?']) === true || getScalar(ad['¿Autoconsumo?']) === 'true' || getScalar(ad['¿Autoconsumo?']) === 'Sí' || getScalar(ad['Autoconsumo']) === 'SI' ? 'SI' : 'NO')),
+          firmaManuscrita: cd.firmaManuscrita || false,
+          
+          bolsilloSolar: cd.bolsilloSolar || (getScalar(ad['¿Asociar a Bolsillo Solar?']) === 'SI' || getScalar(ad['CG Bolsillo Solar']) ? 'SI' : 'NO'),
+          tipoProducto: rawTipoProducto,
+          product: leadToEdit.product || cd.product || getScalar(ad['Producto']) || getScalar(ad['Producto y Servicio']) || '',
+          formaPago: leadToEdit.paymentMethod || cd.formaPago || 'Domiciliación',
+          iban: leadToEdit.iban || cd.iban || getScalar(ad['IBAN']) || getScalar(ad['Certificado IBAN']) || '',
+          envioFactura: leadToEdit.invoiceDelivery || cd.envioFactura || (getScalar(ad['¿Facturas papel?']) === true || getScalar(ad['¿Facturas papel?']) === 'SI' || getScalar(ad['¿Facturas papel?']) === 'Sí' ? 'Postal' : 'Email'),
+          serviciosAdicionales: leadToEdit.additionalServices || cd.serviciosAdicionales || '',
+          
+          p1c: cd.potencias?.p1 || cd.p1c || String(leadToEdit.p1c || getScalar(ad['P1C']) || ''),
+          p2c: cd.potencias?.p2 || cd.p2c || String(leadToEdit.p2c || getScalar(ad['P2C']) || ''),
+          p3c: cd.potencias?.p3 || cd.p3c || String(leadToEdit.p3c || getScalar(ad['P3C']) || ''),
+          p4c: cd.potencias?.p4 || cd.p4c || String(leadToEdit.p4c || getScalar(ad['P4C']) || ''),
+          p5c: cd.potencias?.p5 || cd.p5c || String(leadToEdit.p5c || getScalar(ad['P5C']) || ''),
+          p6c: cd.potencias?.p6 || cd.p6c || String(leadToEdit.p6c || getScalar(ad['P6C']) || ''),
+          
+          ip1: cd.indexado?.ip1 || cd.ip1 || String(getScalar(ad['IP1']) || ''),
+          ip2: cd.indexado?.ip2 || cd.ip2 || String(getScalar(ad['IP2']) || ''),
+          ip3: cd.indexado?.ip3 || cd.ip3 || String(getScalar(ad['IP3']) || ''),
+          ip4: cd.indexado?.ip4 || cd.ip4 || String(getScalar(ad['IP4']) || ''),
+          ip5: cd.indexado?.ip5 || cd.ip5 || String(getScalar(ad['IP5']) || ''),
+          ip6: cd.indexado?.ip6 || cd.ip6 || String(getScalar(ad['IP6']) || ''),
+          feeIndex: cd.indexado?.fee || cd.feeIndex || String(getScalar(ad['FEE']) || ''),
+          pexc: cd.pexc || String(getScalar(ad['PExc']) || getScalar(ad['PExc Personalizado']) || '')
+        }));
+      }
     }
   }, [isOpen, leadToEdit]);
 
@@ -181,14 +322,17 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
       if (!json.success) throw new Error(json.message);
       
       setSipsData(json.data);
-      if (json.data.tarifa) updateData('tarifa', json.data.tarifa);
-      
-      // Auto-rellenar campos de dirección si están vacíos
-      if (!data.cp) updateData('cp', json.data.cp || '');
-      if (!data.poblacion) updateData('poblacion', json.data.poblacion || json.data.municipio || '');
-      if (!data.provincia) updateData('provincia', json.data.provincia || '');
-      if (!data.cnae) updateData('cnae', json.data.cnae || '');
-      
+      const psData = json.data?.data?.ps?.[0];
+      if (psData) {
+        if (psData.TarifaATR) updateData('tarifa', psData.TarifaATR);
+        
+        // Auto-rellenar campos de dirección Suministro (SIPS pertenece a la instalación)
+        // Sobrescribimos forzosamente los campos si SIPS nos da el dato real (SIPS es la fuente de la verdad para la distribuidora)
+        if (psData.CódigoPostalPS) updateData('sCp', psData.CódigoPostalPS);
+        if (psData.MunicipioPS) updateData('sPoblacion', psData.MunicipioPS);
+        // (La provincia en SIPS viene en código, por ejemplo '14', así que el usuario la seleccionará del desplegable)
+        if (psData.CNAE) updateData('cnae', psData.CNAE);
+      }
     } catch (err: any) {
       setError(err.message || 'Error consultando SIPS');
     } finally {
@@ -248,6 +392,17 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
           poblacion: data.poblacion,
           provincia: data.provincia,
           pais: data.pais
+        },
+        direccionSuministro: {
+          tipoVia: data.sTipoVia,
+          nombreVia: data.sNombreVia,
+          tipoNumeracion: data.sTipoNumeracion,
+          numKm: data.sNumero,
+          adicional: data.sAdicional,
+          cp: data.sCp,
+          poblacion: data.sPoblacion,
+          provincia: data.sProvincia,
+          pais: data.sPais
         },
         contactoNombre: data.tipoPersona === 'JURIDICA' ? data.contactoNombre : '',
         contactoApellidos: data.tipoPersona === 'JURIDICA' ? data.contactoApellidos : '',
@@ -420,8 +575,6 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
 
                 <Input label="Email" field="email" type="email" width="half" required={mode === 'contract'} />
                 <Input label="Teléfono" field="phone" width="half" required={mode === 'contract'} />
-                
-                {mode === 'contract' && <Input label="CNAE" field="cnae" width="half" />}
               </div>
             </div>
 
@@ -484,15 +637,30 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
 
               <div className="grid grid-cols-2 gap-4 relative z-10">
                 <Select label="Tarifa" field="tarifa" options={['2.0TD', '3.0TD', '3.0TDVE', '6.1TD']} width="half" />
+                {mode === 'contract' && <Input label="CNAE" field="cnae" width="half" />}
                 <Input label="Nombre Instalación" field="nombreInstalacion" width="half" />
+              </div>
+
+              <div className="mt-6 border-t border-[#1E2A3A] pt-6">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 text-[#DEFF9A]">Dirección de Suministro</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <Select label="Tipo de vía" field="sTipoVia" options={TIPOS_VIA} width="third" />
+                  <Input label="Nombre Vía" field="sNombreVia" width="col-span-2" />
+                  <Select label="Tipo numeración" field="sTipoNumeracion" options={['NÚMERO', 'KM', 'S/N']} width="third" />
+                  <Input label="Núm/Km" field="sNumero" width="third" />
+                  <Input label="Adicional (Piso, Puerta)" field="sAdicional" width="third" />
+                  <Input label="Código Postal" field="sCp" width="third" />
+                  <Input label="Población" field="sPoblacion" width="third" />
+                  <Select label="Provincia" field="sProvincia" options={PROVINCIAS} width="third" />
+                </div>
               </div>
             </div>
 
             {mode === 'contract' && (
               <div className="bg-[#111827] border border-[#1E2A3A] rounded-xl p-5 shadow-lg">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 border-b border-[#1E2A3A] pb-2 text-[#DEFF9A]">Datos del Contrato</h3>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <Select label="Tramitación a realizar" field="tipoTramitacion" options={['Alta Nueva', 'Cambio Comercializador', 'Cambio Titular', 'Baja']} width="half" />
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <Select label="Tramitación a realizar" field="tipoTramitacion" options={TRAMITACIONES} width="half" />
                   <Select label="¿Autoconsumo?" field="autoconsumo" options={['NO', 'SI']} width="half" />
                 </div>
                 <label className="flex items-center gap-3 p-3 border border-[#1E2A3A] rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
@@ -516,7 +684,36 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
               <div className="grid grid-cols-2 gap-4 mb-5">
                 <Select label="¿Asociar a Bolsillo Solar?" field="bolsilloSolar" options={['NO', 'SI']} width="half" />
                 <Select label="Tipo de Producto" field="tipoProducto" options={['FIJO', 'INDEXADO', 'FIJO_PERS', 'INDEXADO_PERS']} width="half" />
-                <Input label="Producto" field="product" width="half" />
+                
+                {/* Selector de Producto Dinámico */}
+                <div className="flex flex-col">
+                  <label className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">Producto</label>
+                  <select
+                    value={data.product}
+                    onChange={(e) => setData({ ...data, product: e.target.value })}
+                    className="w-full bg-[#0B0F19] border border-[#1E2A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#DEFF9A] transition-colors appearance-none"
+                  >
+                    <option value="">Seleccione un producto...</option>
+                    {productsDb.filter(p => {
+                      if (p.tariff && p.tariff !== data.tarifa) return false;
+                      if (data.autoconsumo === 'NO' && p.hasSelfConsumption) return false;
+                      if (data.autoconsumo === 'SI' && !p.hasSelfConsumption) return false;
+                      
+                      const reqType = data.tipoProducto ? data.tipoProducto.replace('_PERS', '') : '';
+                      if (reqType === 'FIJO' && p.pricingModel !== 'FIXED' && !p.name.toLowerCase().includes('fijo')) return false;
+                      if (reqType === 'INDEXADO' && p.pricingModel !== 'INDEXED' && !p.name.toLowerCase().includes('indexado')) return false;
+                      
+                      return true;
+                    }).map(p => (
+                      <option key={p.id} value={p.name}>{p.name}</option>
+                    ))}
+                    {/* Fallback por si el producto asignado no existe en la base de datos pero estaba guardado */}
+                    {data.product && !productsDb.find(p => p.name === data.product) && (
+                      <option value={data.product}>{data.product} (Histórico)</option>
+                    )}
+                  </select>
+                </div>
+                
                 <Input label="Servicios Adicionales" field="serviciosAdicionales" width="half" />
               </div>
               {mode === 'contract' && (

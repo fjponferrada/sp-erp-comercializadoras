@@ -128,10 +128,6 @@ model Client {
   isMultipoint              Boolean       @default(false)
   cnae                      String?
   clientType                String?
-  iban                      String?
-  swift                     String?
-  paymentMethod             String?
-  mandateSigned             Boolean       @default(false)
   paperInvoice              Boolean       @default(false)
   invoiceEmail              String?
   billingAddress            String?
@@ -172,8 +168,6 @@ model Client {
 model Lead {
   id                      String     @id @default(cuid())
   businessName            String
-  firstName               String?
-  lastName                String?
   vatNumber               String?
   email                   String?
   phone                   String?
@@ -182,9 +176,8 @@ model Lead {
   type                    String     @default("LUZ")
   solarData               Json?
   contractData            Json?
+  sipsRawData             Json?
   isMultipoint            Boolean    @default(false)
-  contactEmail2           String?
-  contactEmail3           String?
   cups                    String?
   estimatedMWh            Float?
   tariff                  String?    @default("2.0TD")
@@ -194,81 +187,15 @@ model Lead {
   wantsComparison         Boolean    @default(false)
   sipsOk                  Boolean    @default(false)
   sipsMessages            String?
-  fee                     Float?
-  pexc                    Float?
-  signatureType           String?
-  docusignEnvelopeId      String?    @unique
   contractId              String?    @unique
   userId                  String
   airtableId              String?    @unique
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
-  isB2B                   Boolean?
-  contactVat              String?
-  hasPanels               Boolean?
-  comments                String?
   generateOffer           Boolean?
-  offerDate               DateTime?
   monthlyExpense          String?
-  ipP1                    Float?
-  ipP2                    Float?
-  ipP3                    Float?
-  ipP4                    Float?
-  ipP5                    Float?
-  ipP6                    Float?
-  p1c                     Float?
-  p2c                     Float?
-  p3c                     Float?
-  p4c                     Float?
-  p5c                     Float?
-  p6c                     Float?
-  p1pDaily                Float?
-  p2pDaily                Float?
-  p3pDaily                Float?
-  p4pDaily                Float?
-  p5pDaily                Float?
-  p6pDaily                Float?
-  p1eActual               Float?
-  p2eActual               Float?
-  p3eActual               Float?
-  p4eActual               Float?
-  p5eActual               Float?
-  p6eActual               Float?
-  priceService            Float?
-  priceServiceActual      Float?
   comparative             String?
   savings                 Float?
-  cups2                   String?
-  sipsCnae                String?
-  sipsPostalCode          String?
-  sipsTariff              String?
-  sipsLastModDate         DateTime?
-  sipsUpdateOwnScript     Boolean?
-  sipsUpdateIngebauScript Boolean?
-  sipsUpdateIngebau       Boolean?
-  errorTariff             String?
-  errorProductTariff      String?
-  errorVat                String?
-  errorSelfConsumption    String?
-  errorCnae               String?
-  errorCp                 String?
-  errorPostal             String?
-  lastInvoiceUrl          String?
-  generateDraft           Boolean?
-  verificationReq         Boolean?
-  remakeDraft             Boolean?
-  triggerDuplicate        Boolean?
-  wpName                  String?
-  sipsSelfConsCode        String?
-  contactName             String?
-  contactLastName         String?
-  contactRole             String?
-  iban                    String?
-  paymentMethod           String?
-  paperInvoice            Boolean?
-  invoiceDelivery         String?
-  tramitationType         String?
-  mandateDouble           Boolean?
   documents               Document[]
   contract                Contract?  @relation(fields: [contractId], references: [id])
   user                    User       @relation(fields: [userId], references: [id])
@@ -294,6 +221,10 @@ model SupplyPoint {
   p5c                 Float?
   p6c                 Float?
   cnae                String?
+  iban                String?
+  swift               String?
+  paymentMethod       String?
+  mandateSigned       Boolean          @default(false)
   p1p                 Float?
   p2p                 Float?
   p3p                 Float?
@@ -379,6 +310,8 @@ model SupplyPoint {
   client              Client           @relation(fields: [clientId], references: [id])
   tickets             Ticket[]
   airtableData        Json?
+  contractData        Json?
+  sipsRawData         Json?
   switchingEvents     SwitchingEvent[]
   f1Invoices          F1Invoice[]
 }
@@ -409,6 +342,8 @@ model Product {
   p5p                  Float?
   p6p                  Float?
   isAvailableCrm       Boolean    @default(true)
+  isCustomizable       Boolean    @default(false)
+  pricingModel         String     @default("FIXED")
   commissionType       String     @default("MARGIN_PERCENTAGE")
   powerTiersCommission Json?
   permanenceMonths     Int?
@@ -432,6 +367,7 @@ model Contract {
   expectedEndDate                DateTime?
   terminationDate                DateTime?
   docusignEnvelopeId             String?                @unique
+  iban                           String?
   commissionBase                 Float?
   commissionFinal                Float?
   commissionVariable             Float?
@@ -456,6 +392,11 @@ model Contract {
   p4p                            Float?
   p5p                            Float?
   p6p                            Float?
+  feeExcedentes                  Float?
+  pricingModel                   String?
+  commissionType                 String?
+  powerTiersCommission           Json?
+  permanenceMonths               Int?
   p1c                            Float?
   p2c                            Float?
   p3c                            Float?
@@ -475,107 +416,20 @@ model Contract {
   airtableId                     String?                @unique
   createdAt                      DateTime               @default(now())
   updatedAt                      DateTime               @updatedAt
-  isB2B                          Boolean?
   tipo                           String?
   tipoC2                         String?
-  peticionClienteC2              String?
-  tipoEntrada                    String?
   fechaPrevista                  DateTime?
-  captacionCliente               String?
   autoconsumo                    Boolean?
-  autoconsumoFijoIndex           String?
-  atrComer                       String?
-  unPrecio                       Boolean?
   suspendido                     Boolean?
-  cierre                         String?
-  feeP                           Float?
-  descuentoCie                   Float?
-  inicioProceso                  DateTime?
-  gasIncluido                    Boolean?
   bolsilloSolar                  Boolean?
-  modalidadContrato              String?
   nSolicitud                     String?
-  fechaProceso                   DateTime?
   fechaAceptacion                DateTime?
   fechaRechazo                   DateTime?
   fechaPrevistaActivacion        DateTime?
   fechaPrevistaBaja              DateTime?
-  fechaIncidencia                DateTime?
-  sinComision                    Boolean?
-  m1Activado                     Boolean?
-  m1Rechazado                    Boolean?
-  decomision                     Float?
-  decomision50                   Float?
-  comision50                     Float?
-  renovacion                     Boolean?
-  bajaPorM1RE1                   Boolean?
-  bimensual                      Boolean?
-  sinPenalizacion                Boolean?
-  sinDecomision                  Boolean?
-  svaAnadidoTera                 Boolean?
-  penalizacionFacturada          Boolean?
-  numFacturaPenalizacion         String?
-  facturarPen                    Boolean?
-  biPen                          Float?
-  ivaPen                         Float?
-  penalizacionEstimada           Float?
-  abonar                         Float?
-  fechaFacturaPenalizacion       DateTime?
-  ajustePen                      Float?
-  productoRenovacion             String?
-  renovacionSolicitada           Boolean?
-  servicioRenovacion             String?
-  renovacionTramitada            Boolean?
-  derechosExtension              Float?
-  telegestion                    Boolean?
-  estadoCompilacion              String?
-  calculoCodDistri               String?
-  nombreComercial                String?
-  ip                             Float?
-  fc                             Float?
-  porcComisionFijo               Float?
-  porcComisionVariable           Float?
-  ajusteConsumoComision          Float?
-  comisionAjustada               Float?
-  ajusteComisionDuracionPotencia Float?
-  decomisionSobreAjuste          Float?
   genContratoAuto                Boolean?
-  m1sSolicitado                  Boolean?
-  m1nSolicitado                  Boolean?
-  tipoPm                         String?
-  calculoMesAlta                 String?
-  calculoMesBaja                 String?
-  mesAlta                        String?
-  mesBaja                        String?
-  ultimoDiaFacturado             DateTime?
-  ultDiaAFacturar                DateTime?
-  retraso                        Int?
-  inicioMes0                     DateTime?
-  inicioMesMinus1                DateTime?
-  finMesMinus1                   DateTime?
-  energiaPteMesMinus1            Float?
-  inicioMesMinus2                DateTime?
-  finMesMinus2                   DateTime?
-  energiaPteMesMinus2            Float?
-  energiaPteMes0HastaHoy         Float?
-  finMes0                        DateTime?
-  ultDiaFact                     DateTime?
-  energiaPteMes0HastaFinMes      Float?
   transferencia                  Boolean?
-  firmaManRenov                  Boolean?
-  consumoRealEstimado            String?
-  pen20TdResid                   Float?
-  penNoResid                     Float?
-  pen20TdResidHoy                Float?
-  horasUsoDiarios                Float?
-  tipoEnvioFacturaRenov          String?
-  diasContrato                   Int?
-  diasRenovMax                   Int?
-  filePdfDraft                   String?
-  filePdfSigned                  String?
   isMultipoint                   Boolean?
-  estadoPrevio                   String?
-  fechaVencimientoCalculada      DateTime?
   Commission                     Commission?
   client                         Client                 @relation(fields: [clientId], references: [id])
   contract                       Contract?              @relation("ContractToContract", fields: [previousContractId], references: [id])
@@ -593,6 +447,8 @@ model Contract {
   brand                          Brand?                 @relation(fields: [brandId], references: [id])
   switchingEvents                SwitchingEvent[]
   f1Invoices                     F1Invoice[]
+  pdfUrl                         String?
+  filePdfSigned                  String?
 
   @@unique([contractCode, version, brandId])
 }
@@ -1388,4 +1244,16 @@ model F1Invoice {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Distributor {
+    id           String   @id @default(cuid())
+    reeCode      String   @unique
+    name         String
+    emailAtr     String?
+    phone        String?
+    portalUrl    String?
+    registroCnmc String?
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
 }

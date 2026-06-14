@@ -2,13 +2,15 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-
+import { randomUUID } from 'crypto';
+import docusign from 'docusign-esign';
+import { createAndSendEnvelope } from '@/lib/docusign';
 export async function convertLeadToContractAction(leadId: string) {
   try {
     // 1. Verificar si ya existe un contrato para este Lead
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { contract: true, user: true },
+      include: { contract: true, user: { include: { brand: true } } },
     });
 
     if (!lead) {
@@ -24,20 +26,36 @@ export async function convertLeadToContractAction(leadId: string) {
     const cData: any = lead.contractData || {};
 
     // 1. SIPS OK
-    if (lead.sipsMessages && lead.sipsMessages.length > 0) {
+    if (!lead.sipsOk && lead.sipsMessages && lead.sipsMessages.length > 0 && lead.sipsMessages !== 'SIPS Refrescado Correctamente') {
       validationErrors.push(`Aviso de SIPS pendiente de revisión: ${lead.sipsMessages}`);
     }
 
     // 2. Error NIF apoderado/titular
-    const vat = lead.vatNumber || cData.nif;
+    const vat = lead.vatNumber || cData.nif || '';
     if (!vat || !/^[A-Z0-9]{8,9}$/i.test(vat.replace(/[-\s]/g, ''))) {
       validationErrors.push("El NIF/CIF del titular está vacío o no tiene un formato válido.");
     }
 
-    // 3. Error CP
-    const cp = cData.cp || cData.codigoPostal;
-    if (!cp || !/^\d{5}$/.test(cp)) {
-      validationErrors.push("El Código Postal del punto de suministro debe tener 5 dígitos.");
+    // 2.5 Validación de Apoderado para Personas Jurídicas
+    const isJuridica = /^[A-W]/i.test(vat.replace(/[-\s]/g, '')) && !/^[XYZ]/i.test(vat.replace(/[-\s]/g, ''));
+    if (isJuridica) {
+      const apoderadoNombre = cData.contactoNombre || '';
+      const apoderadoApellidos = cData.contactoApellidos || '';
+      const apoderadoNif = cData.contactoNif;
+
+      if (!apoderadoNombre || !apoderadoApellidos || !apoderadoNif) {
+        validationErrors.push("Para personas jurídicas (empresas o comunidades), es obligatorio rellenar los datos del Apoderado (Nombre, Apellidos y NIF).");
+      }
+    }
+
+    // 3. Error CP Titular y Suministro
+    const cpTitular = cData.cp || cData.codigoPostal || cData.direccion?.cp;
+    if (cpTitular && !/^\d{5}$/.test(String(cpTitular).trim())) {
+      validationErrors.push("El Código Postal del Titular debe tener 5 dígitos.");
+    }
+    const cpSuministro = cData.sCp || cData.direccionSuministro?.cp || cData.direccion?.cp || cpTitular;
+    if (!cpSuministro || !/^\d{5}$/.test(String(cpSuministro).trim())) {
+      validationErrors.push("El Código Postal del Punto de Suministro debe tener 5 dígitos.");
     }
 
     // 4. Tarifa / Consumo
@@ -47,6 +65,91 @@ export async function convertLeadToContractAction(leadId: string) {
 
     if (!cData.cnae) {
       validationErrors.push("El CNAE no puede estar vacío.");
+    }
+
+    // 5. Comparar CP y CNAE con SIPS (Universal: BD o sipsRawData)
+    if (lead.cups) {
+      const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
+      const dbSupplyPoint = await prisma.supplyPoint.findFirst({
+        where: {
+          cups: { startsWith: lead.cups.substring(0, 20) },
+          client: { brandId: brandIdToUse }
+        }
+      });
+
+      let sipsPostalCode: string | null = null;
+      let sipsCnae: string | null = null;
+      let sipsTariff: string | null = null;
+      let sipsP: (number | null)[] = [null, null, null, null, null, null];
+
+      if (dbSupplyPoint) {
+         sipsPostalCode = dbSupplyPoint.sipsPostalCode;
+         sipsCnae = dbSupplyPoint.sipsCnae;
+         sipsTariff = dbSupplyPoint.sipsTariff;
+         sipsP = [dbSupplyPoint.sipsP1c, dbSupplyPoint.sipsP2c, dbSupplyPoint.sipsP3c, dbSupplyPoint.sipsP4c, dbSupplyPoint.sipsP5c, dbSupplyPoint.sipsP6c];
+      }
+
+      // Fallback a lead.sipsRawData
+      const sRaw: any = lead.sipsRawData || {};
+      if (!sipsPostalCode && (sRaw.postalCode || sRaw.codigoPostal || sRaw.cp)) {
+         sipsPostalCode = String(sRaw.postalCode || sRaw.codigoPostal || sRaw.cp);
+      }
+      if (!sipsCnae && sRaw.cnae) sipsCnae = String(sRaw.cnae);
+      if (!sipsTariff && (sRaw.tariff || sRaw.tarifa)) sipsTariff = String(sRaw.tariff || sRaw.tarifa);
+      
+      for(let i=1; i<=6; i++) {
+         if (sipsP[i-1] === null) {
+            const rawP = sRaw[`p${i}`] || sRaw[`p${i}c`];
+            if (rawP !== undefined && rawP !== null) {
+                sipsP[i-1] = parseFloat(rawP);
+            }
+         }
+      }
+
+      if (sipsPostalCode && cpSuministro && sipsPostalCode !== cpSuministro) {
+        validationErrors.push(`El Código Postal introducido (${cpSuministro}) no coincide con el del SIPS (${sipsPostalCode}).`);
+      }
+      if (sipsCnae && cData.cnae && sipsCnae !== cData.cnae) {
+        validationErrors.push(`El CNAE introducido (${cData.cnae}) no coincide con el del SIPS (${sipsCnae}).`);
+      }
+
+      // 6. Validar Potencias y Tarifa si no hay cambios técnicos
+      const tramitacion = cData.tipoTramitacion || '';
+      const requiereVerificacionTecnica = [
+        'Cambio comercializadora sin cambios',
+        'Cambio comercializadora con cambios administrativos',
+        'Modificación de datos administrativos'
+      ].includes(tramitacion);
+
+      if (requiereVerificacionTecnica) {
+        if (sipsTariff && lead.tariff && sipsTariff !== lead.tariff) {
+          validationErrors.push(`La tarifa solicitada (${lead.tariff}) no coincide con la del SIPS (${sipsTariff}) para este tipo de tramitación.`);
+        }
+        for (let i = 1; i <= 6; i++) {
+          const reqPStr = cData.potencias?.[`p${i}`] || cData[`p${i}c`] || cData[`p${i}`];
+          const reqP = parseFloat(reqPStr);
+          const sP = sipsP[i-1];
+          if (!isNaN(reqP) && sP !== null && sP !== undefined) {
+             if (Math.abs(reqP - sP) > 0.01) {
+                validationErrors.push(`La potencia P${i} solicitada (${reqP} kW) no coincide con la del SIPS (${sP} kW). Selecciona un trámite 'con cambios técnicos' si deseas alterarla.`);
+             }
+          }
+        }
+      }
+    }
+
+    // 7. Validar congruencia de Tarifa del Producto
+    if (lead.product) {
+      let p = null;
+      if (lead.product.startsWith('cm')) {
+        p = await prisma.product.findUnique({ where: { id: lead.product } });
+      } else {
+        p = await prisma.product.findFirst({ where: { name: lead.product.trim() } });
+      }
+      
+      if (p && p.tariff && lead.tariff && p.tariff !== lead.tariff) {
+        validationErrors.push(`Incongruencia: El producto seleccionado (${p.name}) es para la tarifa ${p.tariff}, pero el contrato se intenta generar con la tarifa ${lead.tariff}.`);
+      }
     }
 
     if (validationErrors.length > 0) {
@@ -60,8 +163,8 @@ export async function convertLeadToContractAction(leadId: string) {
     const isMultipoint = lead.isMultipoint || lead.businessName.toUpperCase().includes('ERANOVUM');
 
     let contactEmail = lead.email;
-    let contactEmail2 = lead.contactEmail2;
-    let contactEmail3 = lead.contactEmail3;
+    let contactEmail2 = '';
+    let contactEmail3 = '';
 
     if (isMultipoint && lead.businessName.toUpperCase().includes('ERANOVUM')) {
        cData.emailFactura = 'finance@eranovum.energy';
@@ -82,11 +185,12 @@ export async function convertLeadToContractAction(leadId: string) {
         where: { id: client.id },
         data: {
           businessName: lead.businessName,
-          firstName: lead.firstName,
-          lastName: lead.lastName,
+          firstName: cData.contactoNombre || '',
+          lastName: cData.contactoApellidos || '',
           contactEmail: contactEmail || client.contactEmail,
           contactEmail2: contactEmail2 || client.contactEmail2,
           contactEmail3: contactEmail3 || client.contactEmail3,
+          contactPhone: lead.phone || client.contactPhone,
           clientType: cData.tipoCliente || client.clientType,
           isMultipoint: isMultipoint || client.isMultipoint,
         }
@@ -95,12 +199,13 @@ export async function convertLeadToContractAction(leadId: string) {
       client = await prisma.client.create({
         data: {
           businessName: lead.businessName,
-          firstName: lead.firstName,
-          lastName: lead.lastName,
+          firstName: cData.contactoNombre || '',
+          lastName: cData.contactoApellidos || '',
           vatNumber: vatNum,
           contactEmail: contactEmail,
           contactEmail2: contactEmail2,
           contactEmail3: contactEmail3,
+          contactPhone: lead.phone,
           clientType: cData.tipoCliente || 'Desconocido',
           brandId: brandIdToUse,
           isMultipoint: isMultipoint,
@@ -118,18 +223,6 @@ export async function convertLeadToContractAction(leadId: string) {
     let previousContractId = null;
 
     if (supplyPoint) {
-      // Mantenemos el clientId original hasta que se active el nuevo contrato
-      supplyPoint = await prisma.supplyPoint.update({
-        where: { id: supplyPoint.id },
-        data: {
-          address: cData.direccion || supplyPoint.address,
-          city: cData.poblacion || supplyPoint.city,
-          postalCode: cData.cp || supplyPoint.postalCode,
-          province: cData.provincia || supplyPoint.province,
-          tariff: lead.tariff || supplyPoint.tariff,
-        },
-        include: { contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }
-      });
       if (supplyPoint.contracts && supplyPoint.contracts.length > 0) {
         previousContractId = supplyPoint.contracts[0].id;
       }
@@ -149,38 +242,43 @@ export async function convertLeadToContractAction(leadId: string) {
     }
 
     // 4. Necesitamos un Product. Buscamos uno o creamos genérico.
-    let product = await prisma.product.findFirst({
-      where: { name: lead.product || 'Producto Genérico' }
-    });
+    let product = null;
+    if (lead.product && lead.product.startsWith('cm')) {
+      product = await prisma.product.findUnique({ where: { id: lead.product } });
+    } else {
+      const pName = (lead.product || 'Producto Genérico').trim();
+      product = await prisma.product.findFirst({ where: { name: pName } });
+    }
 
     if (!product) {
       const brand = await prisma.brand.findFirst(); // Asumimos que hay al menos una marca
       if (!brand) throw new Error("No hay marcas configuradas en el sistema.");
       product = await prisma.product.create({
         data: {
-          name: lead.product || 'Producto Genérico',
+          name: (lead.product || 'Producto Genérico').trim(),
           type: lead.productType || 'FIX',
           brandId: brand.id,
         }
       });
     }
 
-    // Generación de código de contrato exacto a Airtable
+    // Generación de código de contrato
     const now = new Date();
     const year = now.getFullYear().toString().slice(-2);
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
-    const hour = now.getHours();
-    const min = now.getMinutes();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hour = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
     
-    // Canal genérico o extraer del lead si lo hubiera, usaremos 'AED' genérico + 'AV' + tipo
     const isCompany = client.vatNumber.toUpperCase().startsWith('A') || client.vatNumber.toUpperCase().startsWith('B');
     const typeChar = isCompany ? 'E' : 'P';
-    const prefix = `AEDAV${typeChar}`;
+    
+    const brandPrefix = lead.user?.brand?.codigoMarca || 'AED';
+    const userPrefix = lead.user?.codigo || 'U';
+    const prefix = `${brandPrefix}${userPrefix}${typeChar}`;
     
     const cupsLast4 = supplyPoint.cups ? supplyPoint.cups.slice(-4) : '0000';
     
-    // Fórmula de Airtable: {Código Canal} & {Código comercial} & {Año firma} & {Mes} & {Día} & {Hora} & {Min} & {Digitos CUPS}
     let contractCode = `${prefix}${year}${month}${day}${hour}${min}${cupsLast4}`;
     
     // Para asegurar unicidad 100% en caso de concurrencia en el mismo minuto
@@ -199,10 +297,155 @@ export async function convertLeadToContractAction(leadId: string) {
         status: isMultipoint ? 'ACEPTADO' : 'BORRADOR',
         previousContractId: previousContractId,
         contractCode,
+        iban: cData.iban || null,
+        tramitationType: cData.tipoTramitacion || 'Alta nueva',
+        p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
+        p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
+        p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
+        p4c: parseFloat(cData.potencias?.p4 || cData.p4c || cData.p4) || null,
+        p5c: parseFloat(cData.potencias?.p5 || cData.p5c || cData.p5) || null,
+        p6c: parseFloat(cData.potencias?.p6 || cData.p6c || cData.p6) || null,
+        p1p: parseFloat(cData['P1P'] || cData['P1P (from Producto)']?.[0]) || product.p1p || null,
+        p2p: parseFloat(cData['P2P'] || cData['P2P (from Producto)']?.[0]) || product.p2p || null,
+        p3p: parseFloat(cData['P3P'] || cData['P3P (from Producto)']?.[0]) || product.p3p || null,
+        p4p: parseFloat(cData['P4P'] || cData['P4P (from Producto)']?.[0]) || product.p4p || null,
+        p5p: parseFloat(cData['P5P'] || cData['P5P (from Producto)']?.[0]) || product.p5p || null,
+        p6p: parseFloat(cData['P6P'] || cData['P6P (from Producto)']?.[0]) || product.p6p || null,
+        p1e: parseFloat(cData['P1E'] || cData['P1E (from Producto)']?.[0]) || product.p1e || null,
+        p2e: parseFloat(cData['P2E'] || cData['P2E (from Producto)']?.[0]) || product.p2e || null,
+        p3e: parseFloat(cData['P3E'] || cData['P3E (from Producto)']?.[0]) || product.p3e || null,
+        p4e: parseFloat(cData['P4E'] || cData['P4E (from Producto)']?.[0]) || product.p4e || null,
+        p5e: parseFloat(cData['P5E'] || cData['P5E (from Producto)']?.[0]) || product.p5e || null,
+        p6e: parseFloat(cData['P6E'] || cData['P6E (from Producto)']?.[0]) || product.p6e || null,
+        fee: parseFloat(cData['Fee Index'] || cData['Fee Index (from Producto)']?.[0]) || product.fee || null,
+        pexc: parseFloat(cData.pexc) || product.pexc || null,
+        feeExcedentes: parseFloat(cData.feeExcedentes) || product.feeExcedentes || null,
+        cgBolsilloSolar: parseFloat(cData.cgBolsilloSolar) || product.cgBolsilloSolar || null,
+        deviationCost: parseFloat(cData.deviationCost) || product.deviationCost || null,
+        pricingModel: product.pricingModel || null,
+        commissionType: product.commissionType || null,
+        powerTiersCommission: product.powerTiersCommission ? product.powerTiersCommission : undefined,
+        permanenceMonths: product.permanenceMonths || null,
       },
     });
 
-    // 3. Vincular el Contrato al Lead y cambiar el estado del Lead a CONTRATADO
+    // 3. Generar DOCX, convertir a PDF vía DocuSign y subir a R2
+    try {
+      const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
+      const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
+      const { uploadFileToR2 } = await import('@/lib/r2');
+      
+      const vat = (lead.vatNumber || '').trim().toUpperCase();
+      const isPersonaFisica = /^[0-9XYZ]/.test(vat) && vat.length === 9;
+      const cnae = (cData.cnae || '').trim();
+      const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
+      const isB2B = !isCore;
+
+      const formatField = (field: any): string => {
+        if (!field) return '';
+        if (typeof field === 'string') return field;
+        if (Array.isArray(field)) return field.map(formatField).join(', ');
+        if (typeof field === 'object') {
+          if (field.tipoVia && field.nombreVia) {
+            const parts = [
+              field.tipoVia,
+              field.nombreVia,
+              field.tipoNumeracion ? `${field.tipoNumeracion} ${field.numKm || field.numero || ''}`.trim() : (field.numKm || field.numero || ''),
+              field.adicional
+            ].filter(Boolean);
+            return parts.join(' ');
+          }
+          return field.address || field.name || field.value || field.street || JSON.stringify(field);
+        }
+        return String(field);
+      };
+
+      const extractAddrObj = (field: any) => {
+        if (!field) return {};
+        if (typeof field === 'string' && field.startsWith('{')) {
+          try { return JSON.parse(field); } catch(e){ return {}; }
+        }
+        if (typeof field === 'object' && !Array.isArray(field)) return field;
+        return {};
+      };
+
+      const dirTitObj = extractAddrObj(cData.direccion);
+      const dirPSObj = extractAddrObj(cData.direccionSuministro);
+
+      let nombreTitular = formatField(lead.businessName) || '';
+      let apellido1 = formatField(lead.firstName) || formatField(cData.primerApellido) || '';
+      let apellido2 = formatField(lead.lastName) || formatField(cData.segundoApellido) || '';
+
+      // The CRM stores the Full Name in businessName. To extract just the "Name" for the docx:
+      if (nombreTitular && apellido1) {
+        nombreTitular = nombreTitular.replace(new RegExp(apellido1, 'ig'), '').trim();
+      }
+      if (nombreTitular && apellido2) {
+        nombreTitular = nombreTitular.replace(new RegExp(apellido2, 'ig'), '').trim();
+      }
+      nombreTitular = nombreTitular.replace(/\s+/g, ' ').trim(); // clean multiple spaces
+
+      const templateData = {
+        nombretit: nombreTitular,
+        '1apetit': apellido1,
+        '2apetit': apellido2,
+        nif: formatField(lead.vatNumber) || '',
+        cnae: formatField(cData.cnae) || '',
+        direcciontitular: formatField(lead.address) || formatField(cData.direccion) || '',
+        cptit: formatField(lead.zipCode) || formatField(cData.cp) || dirTitObj.cp || '',
+        loctit: formatField(lead.city) || formatField(cData.poblacion) || dirTitObj.poblacion || '',
+        provtit: formatField(lead.province) || formatField(cData.provincia) || dirTitObj.provincia || '',
+        mailtitular: formatField(lead.email) || '',
+        tlftitular: formatField(lead.phone) || '',
+        mvtitular: '',
+        nombrerep: formatField(lead.representativeName) || '',
+        nifrep: formatField(lead.representativeVat) || '',
+        cups: formatField(lead.cups) || '',
+        tarifa: formatField(lead.tariff) || '',
+        direccionPS: formatField(lead.supplyAddress) || formatField(cData.direccionSuministro?.address) || formatField(cData.direccionSuministro) || formatField(lead.address) || formatField(cData.direccion) || '',
+        cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(lead.zipCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || '',
+        localidadPS: formatField(cData.direccionSuministro?.city) || formatField(lead.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || '',
+        provPS: formatField(cData.direccionSuministro?.province) || formatField(lead.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || '',
+        ftraspapel: (cData.facturasPapel === 'Si' || cData.facturaPapel === 'Si') ? 'Correo Postal' : 'Email',
+        iban: cData.iban || '',
+        nombreprod: product.name || '',
+        tipoprod: product.type || product.pricingModel || '',
+        fee: contract.fee || '0',
+        dsv: contract.deviationCost || '0',
+        p1e: contract.p1e || '0', p2e: contract.p2e || '0', p3e: contract.p3e || '0', p4e: contract.p4e || '0', p5e: contract.p5e || '0', p6e: contract.p6e || '0',
+        p1c: contract.p1c || '0', p2c: contract.p2c || '0', p3c: contract.p3c || '0', p4c: contract.p4c || '0', p5c: contract.p5c || '0', p6c: contract.p6c || '0',
+        p1p: contract.p1p || '0', p2p: contract.p2p || '0', p3p: contract.p3p || '0', p4p: contract.p4p || '0', p5p: contract.p5p || '0', p6p: contract.p6p || '0',
+        MESESPERMANENCIA: contract.permanenceMonths || '0',
+        servicios: cData.svaConcept || '',
+        consumoanual: lead.estimatedMWh ? (lead.estimatedMWh * 1000).toString() : (cData.consumoEstimado || cData.consumoAnual || '0'),
+        tramitacion: cData.tipoTramitacion || '',
+        modalidadauto: cData.autoconsumo === 'Si' ? 'Con excedentes' : 'Sin autoconsumo',
+        pexc: contract.pexc || '0',
+        feeexc: contract.feeExcedentes || '0',
+        asociarabolsillo: contract.cgBolsilloSolar ? 'Si' : 'No',
+        cbolsillosolar: contract.cgBolsilloSolar || '0',
+        fechafirma: new Date().toLocaleDateString('es-ES'),
+        numcontrato: contract.contractCode || '',
+      };
+
+      const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
+      
+      // Convertir a PDF usando DocuSign como conversor de alta fidelidad
+      const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
+      
+      const fileName = `Contrato_AED_${contract.contractCode}.pdf`;
+      const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+
+      await prisma.contract.update({
+        where: { id: contract.id },
+        data: { pdfUrl: uploadedUrl }
+      });
+    } catch (pdfError) {
+      console.error("Error generando PDF para el contrato nativo:", pdfError);
+      // No hacemos throw para no cancelar el alta del contrato, se queda en null y lo pueden regenerar
+    }
+
+    // 4. Vincular el Contrato al Lead y cambiar el estado del Lead a CONTRATADO
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -227,7 +470,7 @@ export async function remakeContractAction(leadId: string) {
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { contract: true, user: true },
+      include: { contract: true, user: { include: { brand: true } } },
     });
 
     if (!lead) {
@@ -243,7 +486,7 @@ export async function remakeContractAction(leadId: string) {
     const cData: any = lead.contractData || {};
 
     // 1. SIPS OK
-    if (lead.sipsMessages && lead.sipsMessages.length > 0) {
+    if (!lead.sipsOk && lead.sipsMessages && lead.sipsMessages.length > 0 && lead.sipsMessages !== 'SIPS Refrescado Correctamente') {
       validationErrors.push(`Aviso de SIPS pendiente de revisión: ${lead.sipsMessages}`);
     }
 
@@ -253,10 +496,26 @@ export async function remakeContractAction(leadId: string) {
       validationErrors.push("El NIF/CIF del titular está vacío o no tiene un formato válido.");
     }
 
-    // 3. Error CP
-    const cp = cData.cp || cData.codigoPostal;
-    if (!cp || !/^\d{5}$/.test(cp)) {
-      validationErrors.push("El Código Postal del punto de suministro debe tener 5 dígitos.");
+    // 2.5 Validación de Apoderado para Personas Jurídicas
+    const isJuridica = /^[A-W]/i.test(vat.replace(/[-\s]/g, '')) && !/^[XYZ]/i.test(vat.replace(/[-\s]/g, ''));
+    if (isJuridica) {
+      const apoderadoNombre = cData.contactoNombre || '';
+      const apoderadoApellidos = cData.contactoApellidos || '';
+      const apoderadoNif = cData.contactoNif;
+
+      if (!apoderadoNombre || !apoderadoApellidos || !apoderadoNif) {
+        validationErrors.push("Para personas jurídicas (empresas o comunidades), es obligatorio rellenar los datos del Apoderado (Nombre, Apellidos y NIF).");
+      }
+    }
+
+    // 3. Error CP Titular y Suministro
+    const cpTitular = cData.cp || cData.codigoPostal || cData.direccion?.cp;
+    if (cpTitular && !/^\d{5}$/.test(String(cpTitular).trim())) {
+      validationErrors.push("El Código Postal del Titular debe tener 5 dígitos.");
+    }
+    const cpSuministro = cData.sCp || cData.direccionSuministro?.cp || cData.direccion?.cp || cpTitular;
+    if (!cpSuministro || !/^\d{5}$/.test(String(cpSuministro).trim())) {
+      validationErrors.push("El Código Postal del Punto de Suministro debe tener 5 dígitos.");
     }
 
     // 4. Tarifa / Consumo
@@ -266,6 +525,91 @@ export async function remakeContractAction(leadId: string) {
 
     if (!cData.cnae) {
       validationErrors.push("El CNAE no puede estar vacío.");
+    }
+
+    // 5. Comparar CP y CNAE con SIPS (Universal: BD o sipsRawData)
+    if (lead.cups) {
+      const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
+      const dbSupplyPoint = await prisma.supplyPoint.findFirst({
+        where: {
+          cups: { startsWith: lead.cups.substring(0, 20) },
+          client: { brandId: brandIdToUse }
+        }
+      });
+
+      let sipsPostalCode: string | null = null;
+      let sipsCnae: string | null = null;
+      let sipsTariff: string | null = null;
+      let sipsP: (number | null)[] = [null, null, null, null, null, null];
+
+      if (dbSupplyPoint) {
+         sipsPostalCode = dbSupplyPoint.sipsPostalCode;
+         sipsCnae = dbSupplyPoint.sipsCnae;
+         sipsTariff = dbSupplyPoint.sipsTariff;
+         sipsP = [dbSupplyPoint.sipsP1c, dbSupplyPoint.sipsP2c, dbSupplyPoint.sipsP3c, dbSupplyPoint.sipsP4c, dbSupplyPoint.sipsP5c, dbSupplyPoint.sipsP6c];
+      }
+
+      // Fallback a lead.sipsRawData
+      const sRaw: any = lead.sipsRawData || {};
+      if (!sipsPostalCode && (sRaw.postalCode || sRaw.codigoPostal || sRaw.cp)) {
+         sipsPostalCode = String(sRaw.postalCode || sRaw.codigoPostal || sRaw.cp);
+      }
+      if (!sipsCnae && sRaw.cnae) sipsCnae = String(sRaw.cnae);
+      if (!sipsTariff && (sRaw.tariff || sRaw.tarifa)) sipsTariff = String(sRaw.tariff || sRaw.tarifa);
+      
+      for(let i=1; i<=6; i++) {
+         if (sipsP[i-1] === null) {
+            const rawP = sRaw[`p${i}`] || sRaw[`p${i}c`];
+            if (rawP !== undefined && rawP !== null) {
+                sipsP[i-1] = parseFloat(rawP);
+            }
+         }
+      }
+
+      if (sipsPostalCode && cpSuministro && sipsPostalCode !== cpSuministro) {
+        validationErrors.push(`El Código Postal introducido (${cpSuministro}) no coincide con el del SIPS (${sipsPostalCode}).`);
+      }
+      if (sipsCnae && cData.cnae && sipsCnae !== cData.cnae) {
+        validationErrors.push(`El CNAE introducido (${cData.cnae}) no coincide con el del SIPS (${sipsCnae}).`);
+      }
+
+      // 6. Validar Potencias y Tarifa si no hay cambios técnicos
+      const tramitacion = cData.tipoTramitacion || '';
+      const requiereVerificacionTecnica = [
+        'Cambio comercializadora sin cambios',
+        'Cambio comercializadora con cambios administrativos',
+        'Modificación de datos administrativos'
+      ].includes(tramitacion);
+
+      if (requiereVerificacionTecnica) {
+        if (sipsTariff && lead.tariff && sipsTariff !== lead.tariff) {
+          validationErrors.push(`La tarifa solicitada (${lead.tariff}) no coincide con la del SIPS (${sipsTariff}) para este tipo de tramitación.`);
+        }
+        for (let i = 1; i <= 6; i++) {
+          const reqPStr = cData.potencias?.[`p${i}`] || cData[`p${i}c`] || cData[`p${i}`];
+          const reqP = parseFloat(reqPStr);
+          const sP = sipsP[i-1];
+          if (!isNaN(reqP) && sP !== null && sP !== undefined) {
+             if (Math.abs(reqP - sP) > 0.01) {
+                validationErrors.push(`La potencia P${i} solicitada (${reqP} kW) no coincide con la del SIPS (${sP} kW). Selecciona un trámite 'con cambios técnicos' si deseas alterarla.`);
+             }
+          }
+        }
+      }
+    }
+
+    // 7. Validar congruencia de Tarifa del Producto
+    if (lead.product) {
+      let p = null;
+      if (lead.product.startsWith('cm')) {
+        p = await prisma.product.findUnique({ where: { id: lead.product } });
+      } else {
+        p = await prisma.product.findFirst({ where: { name: lead.product.trim() } });
+      }
+      
+      if (p && p.tariff && lead.tariff && p.tariff !== lead.tariff) {
+        validationErrors.push(`Incongruencia: El producto seleccionado (${p.name}) es para la tarifa ${p.tariff}, pero el contrato se intenta generar con la tarifa ${lead.tariff}.`);
+      }
     }
 
     if (validationErrors.length > 0) {
@@ -279,8 +623,8 @@ export async function remakeContractAction(leadId: string) {
     const isMultipoint = lead.isMultipoint || lead.businessName.toUpperCase().includes('ERANOVUM');
 
     let contactEmail = lead.email;
-    let contactEmail2 = lead.contactEmail2;
-    let contactEmail3 = lead.contactEmail3;
+    let contactEmail2 = '';
+    let contactEmail3 = '';
 
     if (isMultipoint && lead.businessName.toUpperCase().includes('ERANOVUM')) {
        cData.emailFactura = 'finance@eranovum.energy';
@@ -294,8 +638,8 @@ export async function remakeContractAction(leadId: string) {
       where: { id: lead.contract.clientId },
       data: {
         businessName: lead.businessName,
-        firstName: lead.firstName,
-        lastName: lead.lastName,
+        firstName: cData.contactoNombre || '',
+        lastName: cData.contactoApellidos || '',
         vatNumber: lead.vatNumber || `PENDING-${lead.id}`,
         contactEmail: contactEmail,
         contactEmail2: contactEmail2,
@@ -320,16 +664,20 @@ export async function remakeContractAction(leadId: string) {
     });
 
     // Producto
-    let product = await prisma.product.findFirst({
-      where: { name: lead.product || 'Producto Genérico' }
-    });
+    let product = null;
+    if (lead.product && lead.product.startsWith('cm')) {
+      product = await prisma.product.findUnique({ where: { id: lead.product } });
+    } else {
+      const pName = (lead.product || 'Producto Genérico').trim();
+      product = await prisma.product.findFirst({ where: { name: pName } });
+    }
 
     if (!product) {
       const brand = await prisma.brand.findFirst();
       if (brand) {
         product = await prisma.product.create({
           data: {
-            name: lead.product || 'Producto Genérico',
+            name: (lead.product || 'Producto Genérico').trim(),
             type: lead.productType || 'FIX',
             brandId: brand.id,
           }
@@ -344,6 +692,33 @@ export async function remakeContractAction(leadId: string) {
         productId: product?.id || lead.contract.productId,
         status: isMultipoint ? 'ACEPTADO' : 'BORRADOR', // Vuelve a Borrador al rehacer salvo si es Multipunto
         updatedAt: new Date(),
+        p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
+        p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
+        p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
+        p4c: parseFloat(cData.potencias?.p4 || cData.p4c || cData.p4) || null,
+        p5c: parseFloat(cData.potencias?.p5 || cData.p5c || cData.p5) || null,
+        p6c: parseFloat(cData.potencias?.p6 || cData.p6c || cData.p6) || null,
+        p1p: parseFloat(cData['P1P'] || cData['P1P (from Producto)']?.[0]) || product?.p1p || null,
+        p2p: parseFloat(cData['P2P'] || cData['P2P (from Producto)']?.[0]) || product?.p2p || null,
+        p3p: parseFloat(cData['P3P'] || cData['P3P (from Producto)']?.[0]) || product?.p3p || null,
+        p4p: parseFloat(cData['P4P'] || cData['P4P (from Producto)']?.[0]) || product?.p4p || null,
+        p5p: parseFloat(cData['P5P'] || cData['P5P (from Producto)']?.[0]) || product?.p5p || null,
+        p6p: parseFloat(cData['P6P'] || cData['P6P (from Producto)']?.[0]) || product?.p6p || null,
+        p1e: parseFloat(cData['P1E'] || cData['P1E (from Producto)']?.[0]) || product?.p1e || null,
+        p2e: parseFloat(cData['P2E'] || cData['P2E (from Producto)']?.[0]) || product?.p2e || null,
+        p3e: parseFloat(cData['P3E'] || cData['P3E (from Producto)']?.[0]) || product?.p3e || null,
+        p4e: parseFloat(cData['P4E'] || cData['P4E (from Producto)']?.[0]) || product?.p4e || null,
+        p5e: parseFloat(cData['P5E'] || cData['P5E (from Producto)']?.[0]) || product?.p5e || null,
+        p6e: parseFloat(cData['P6E'] || cData['P6E (from Producto)']?.[0]) || product?.p6e || null,
+        fee: parseFloat(cData['Fee Index'] || cData['Fee Index (from Producto)']?.[0]) || product?.fee || null,
+        pexc: parseFloat(cData.pexc) || product?.pexc || null,
+        feeExcedentes: parseFloat(cData.feeExcedentes) || product?.feeExcedentes || null,
+        cgBolsilloSolar: parseFloat(cData.cgBolsilloSolar) || product?.cgBolsilloSolar || null,
+        deviationCost: parseFloat(cData.deviationCost) || product?.deviationCost || null,
+        pricingModel: product?.pricingModel || null,
+        commissionType: product?.commissionType || null,
+        powerTiersCommission: product?.powerTiersCommission ? product.powerTiersCommission : undefined,
+        permanenceMonths: product?.permanenceMonths || null,
       },
     });
 
@@ -503,12 +878,28 @@ export async function updateContractDatesAction(
       }
     }
 
-    // Si el estado es ACTIVO (o BAJA, implica que llegó a activarse), el SupplyPoint es de este cliente
-    if ((newStatus === 'ACTIVO' || newStatus === 'BAJA') && contract.clientId !== contract.supplyPoint.clientId) {
+    // Si el estado es ACTIVO (o BAJA, implica que llegó a activarse), actualizamos el SupplyPoint
+    if (newStatus === 'ACTIVO' || newStatus === 'BAJA') {
+      const cData = contract.airtableData as any || {};
+      const newTariff = contract.product?.tariff || contract.supplyPoint.tariff;
+
       await prisma.supplyPoint.update({
         where: { id: contract.supplyPointId },
         data: {
-          clientId: contract.clientId
+          clientId: contract.clientId,
+          address: cData.direccion || contract.supplyPoint.address,
+          city: cData.poblacion || contract.supplyPoint.city,
+          postalCode: cData.cp || contract.supplyPoint.postalCode,
+          province: cData.provincia || contract.supplyPoint.province,
+          tariff: newTariff,
+          cnae: cData.cnae || contract.supplyPoint.cnae,
+          iban: contract.iban || cData.iban || contract.supplyPoint.iban,
+          p1c: contract.p1c ?? contract.supplyPoint.p1c,
+          p2c: contract.p2c ?? contract.supplyPoint.p2c,
+          p3c: contract.p3c ?? contract.supplyPoint.p3c,
+          p4c: contract.p4c ?? contract.supplyPoint.p4c,
+          p5c: contract.p5c ?? contract.supplyPoint.p5c,
+          p6c: contract.p6c ?? contract.supplyPoint.p6c,
         }
       });
     }
@@ -538,20 +929,71 @@ export async function sendContractToDocuSignAction(contractId: string) {
   try {
     const contract = await prisma.contract.findUnique({
       where: { id: contractId },
-      include: { Lead: true }
+      include: { 
+        Lead: true,
+        client: true,
+        supplyPoint: true
+      }
     });
 
     if (!contract) return { error: 'Contrato no encontrado' };
+    if (!contract.pdfUrl) return { error: 'El contrato no tiene un PDF de borrador generado.' };
+    
+    // Obtener email y nombre
+    const cData: any = typeof contract.contractData === 'string' ? JSON.parse(contract.contractData) : (contract.contractData || {});
+    
+    // Extracción robusta de datos buscando en Lead, Client, SupplyPoint, y luego en el JSON cData
+    // Prioridad 1: Lead (estado de negociación)
+    // Prioridad 2: cData (JSON del Lead / Airtable)
+    // Prioridad 3: Client / SupplyPoint (estado consolidado, pero podría ser antiguo)
+    
+    let signerEmail = contract.Lead?.email || cData.email || cData.contactEmail || contract.client?.email;
+    let signerName = contract.Lead?.businessName || cData.businessName || contract.client?.businessName || 'Cliente';
+    let signerPhone = contract.Lead?.phone || cData.phone || contract.client?.phone || '';
+    let nif = contract.Lead?.vatNumber || cData.nif || cData.cif || contract.client?.nif || '';
+    
+    let cups = contract.Lead?.cups || cData.cups || contract.supplyPoint?.cups || '';
+    let address = cData.direccionSuministro?.address || cData.direccionSuministro || cData.direccion || contract.supplyPoint?.address || '';
+    let postalCode = cData.direccionSuministro?.postalCode || cData.cp || cData.sCp || contract.supplyPoint?.postalCode || '';
+    let city = cData.direccionSuministro?.city || cData.poblacion || contract.supplyPoint?.city || '';
+    let province = cData.direccionSuministro?.province || cData.provincia || contract.supplyPoint?.province || '';
+    let iban = cData.iban || contract.iban || '';
 
-    // Aquí iría la lógica del SDK de DocuSign Node.js
-    // 1. Generar PDF (usando la misma lógica que el endpoint /api/pdf/contract)
-    // 2. Crear un Envelope de DocuSign
-    // 3. Añadir al firmante (contract.lead.email o contract.contactEmail)
-    // 4. Enviar
+    if (!signerEmail) return { error: 'El cliente no tiene un email registrado para enviar a DocuSign.' };
 
-    console.log(`Simulando envío a DocuSign para el contrato ${contractId}`);
+    // 1. Descargar el PDF desde Cloudflare R2
+    const pdfResponse = await fetch(contract.pdfUrl);
+    if (!pdfResponse.ok) {
+      throw new Error(`Error al descargar el PDF desde R2. Status: ${pdfResponse.status}`);
+    }
+    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
-    // Como simulación, podemos dejarlo en BORRADOR pero marcando que ya se ha enviado (podríamos añadir un campo sentToSignatureDate en el schema en el futuro)
+    // Construir el emailBlurb con los datos EXACTOS del sistema antiguo
+    const introMessage = "UNA VEZ LEÍDO TODO EL DOCUMENTO, PULSE EN CUALQUIER PARTE DEL MISMO, AGREGUE SU FIRMA Y PULSE EN FINALIZAR. NO ES NECESARIO REALIZAR NINGÚN OTRO PASO NI AÑADIR INFORMACIÓN ADICIONAL.";
+    const dataMessage = `Por favor, compruebe los datos de su solicitud antes de proceder con la firma. Titular: ${signerName}. identificador: ${nif}. Dirección del punto de suministro: ${address} CP: ${postalCode} Población/Municipio: ${city} Provincia: ${province}. CUPS (en factura): ${cups}. IBAN: ${iban}. Tlfn. Contacto: ${signerPhone}. E-Mail Contacto: ${signerEmail}.`;
+    const emailBlurb = `${introMessage} ${dataMessage}`;
+    
+    // Título del sobre exacto al sistema antiguo (Código de contrato / Contrato de suministro eléctrico)
+    const emailSubject = `${contract.contractCode || contract.Lead?.airtableId || contractId} / Contrato de suministro eléctrico`;
+
+    // 2. Enviar a DocuSign (ahora con soporte para SMS multi-canal)
+    const envelopeId = await createAndSendEnvelope(
+      contractId,
+      pdfBuffer,
+      signerName,
+      signerEmail,
+      emailSubject,
+      emailBlurb,
+      signerPhone // Pasamos el teléfono resuelto (Lead, cData o Client)
+    );
+
+    // 3. Guardar el envelopeId
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        docusignEnvelopeId: envelopeId
+      }
+    });
     
     return { success: true, message: 'Contrato enviado a firma exitosamente.' };
   } catch (error: any) {
@@ -559,6 +1001,7 @@ export async function sendContractToDocuSignAction(contractId: string) {
     return { error: error.message || 'Error desconocido al enviar a DocuSign' };
   }
 }
+
 
 export async function createContractModificationAction(contractId: string, type: string, changes: any) {
   try {
@@ -640,6 +1083,7 @@ export async function updateContractFull(formData: FormData) {
     const contactPhone = formData.get('contactPhone') as string;
     const iban = formData.get('iban') as string;
     const cnae = formData.get('cnae') as string;
+    const tariff = formData.get('tariff') as string;
 
     const file = formData.get('signedContractPdf') as File | null;
 
@@ -669,6 +1113,10 @@ export async function updateContractFull(formData: FormData) {
       });
     }
 
+    // Determine if we should update SupplyPoint or Contract with IBAN
+    const newStatus = status || existing.status;
+    const isActivo = newStatus === 'ACTIVO';
+
     // Update Client
     if (existing.clientId) {
       await prisma.client.update({
@@ -678,8 +1126,6 @@ export async function updateContractFull(formData: FormData) {
           contactEmail: contactEmail || undefined,
           invoiceEmail: invoiceEmail || undefined,
           contactPhone: contactPhone || undefined,
-          iban: iban || undefined,
-          cnae: cnae || undefined,
         }
       });
     }
@@ -691,6 +1137,15 @@ export async function updateContractFull(formData: FormData) {
         data: {
           distributor: distributor || undefined,
           annualConsumption: annualConsumptionStr ? parseFloat(annualConsumptionStr) : undefined,
+          ...(isActivo && iban ? { iban: iban } : {}),
+          ...(isActivo && cnae ? { cnae: cnae } : {}),
+          ...(isActivo && tariff ? { tariff: tariff } : {}),
+          ...(isActivo && p1c !== null ? { p1p: p1c } : {}),
+          ...(isActivo && p2c !== null ? { p2p: p2c } : {}),
+          ...(isActivo && p3c !== null ? { p3p: p3c } : {}),
+          ...(isActivo && p4c !== null ? { p4p: p4c } : {}),
+          ...(isActivo && p5c !== null ? { p5p: p5c } : {}),
+          ...(isActivo && p6c !== null ? { p6p: p6c } : {}),
         }
       });
     }
@@ -700,6 +1155,7 @@ export async function updateContractFull(formData: FormData) {
       where: { id: contractId },
       data: {
         status: status || undefined,
+        iban: (!isActivo && iban) ? iban : undefined,
         internalComments: internalComments,
         signatureDate: signatureDate ? new Date(signatureDate) : null,
         requestDate: requestDate ? new Date(requestDate) : null,
@@ -916,8 +1372,8 @@ export async function getPaginatedContractsAction(
         signedUrl = airtableData['Contrato .PDF'][0].url;
       }
 
-      let draftUrl = null;
-      if (airtableData['Borrador contrato'] && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
+      let draftUrl = c.pdfUrl || null;
+      if (!draftUrl && airtableData['Borrador contrato'] && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
         draftUrl = airtableData['Borrador contrato'][0].url;
       }
 

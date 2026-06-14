@@ -23,6 +23,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         type: data.type,
         tariff: data.tariff,
         isAvailableCrm: data.isAvailableCrm,
+        isCustomizable: data.isCustomizable,
+        pricingModel: data.pricingModel,
         permanenceMonths: data.permanenceMonths,
         
         hasSelfConsumption: data.hasSelfConsumption,
