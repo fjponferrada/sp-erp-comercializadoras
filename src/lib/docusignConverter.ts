@@ -1,35 +1,9 @@
-import jwt from 'jsonwebtoken';
+import { getDocuSignAccessToken } from './docusign';
 
 export async function convertDocxToPdfViaDocuSign(docxBuffer: Buffer): Promise<Buffer> {
-  const isProduction = process.env.NODE_ENV === 'production' && process.env.DOCUSIGN_ENV === 'production';
-  const authServer = isProduction ? 'account.docusign.com' : 'account-d.docusign.com';
-  const privateKey = process.env.DOCUSIGN_PRIVATE_KEY?.replace(/\\n/g, '\n') || '';
-
-  const token = jwt.sign({
-    iss: process.env.DOCUSIGN_INTEGRATION_KEY,
-    sub: process.env.DOCUSIGN_USER_ID,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    aud: authServer,
-    scope: "signature impersonation"
-  }, privateKey, { algorithm: 'RS256' });
-
-  const oauthUrl = `https://${authServer}/oauth/token`;
-  const tokenRes = await fetch(oauthUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${token}`
-  });
-  
-  if (!tokenRes.ok) {
-    const errorText = await tokenRes.text();
-    throw new Error(`Error autenticando con DocuSign: ${errorText}`);
-  }
-  
-  const results = await tokenRes.json();
-  const accessToken = results.access_token;
+  const accessToken = await getDocuSignAccessToken();
   const accountId = process.env.DOCUSIGN_ACCOUNT_ID || '';
-  const basePath = isProduction ? 'https://eu.docusign.net/restapi' : 'https://demo.docusign.net/restapi';
+  const basePath = process.env.DOCUSIGN_BASE_PATH || 'https://demo.docusign.net/restapi';
 
   // 1. Create Draft Envelope with the DOCX
   const createEnvelopeUrl = `${basePath}/v2.1/accounts/${accountId}/envelopes`;
