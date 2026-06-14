@@ -1,13 +1,12 @@
-import docusign from 'docusign-esign';
+import jwt from 'jsonwebtoken';
 
 /**
- * Autentica mediante JWT en DocuSign y devuelve un ApiClient configurado.
+ * Autentica mediante JWT en DocuSign y devuelve el Access Token.
  */
-export async function getDocuSignClient(): Promise<docusign.ApiClient> {
+export async function getDocuSignAccessToken(): Promise<string> {
   const integrationKey = process.env.DOCUSIGN_INTEGRATION_KEY;
   const userId = process.env.DOCUSIGN_USER_ID;
   const rsaKeyRaw = process.env.DOCUSIGN_PRIVATE_KEY;
-  const basePath = process.env.DOCUSIGN_BASE_PATH || 'https://demo.docusign.net/restapi';
   const oauthBasePath = process.env.DOCUSIGN_OAUTH_BASE_PATH || 'account-d.docusign.com';
 
   if (!integrationKey || !userId || !rsaKeyRaw) {
@@ -17,25 +16,40 @@ export async function getDocuSignClient(): Promise<docusign.ApiClient> {
   // Handle newlines if stored as single line string in .env
   const rsaKey = rsaKeyRaw.replace(/\\n/g, '\n');
 
-  const dsApiClient = new docusign.ApiClient();
-  dsApiClient.setOAuthBasePath(oauthBasePath);
-  
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: integrationKey,
+    sub: userId,
+    aud: oauthBasePath,
+    iat: now,
+    exp: now + 3600,
+    scope: 'signature impersonation'
+  };
+
+  const token = jwt.sign(payload, rsaKey, { algorithm: 'RS256' });
+
   try {
-    const results = await dsApiClient.requestJWTUserToken(
-      integrationKey,
-      userId,
-      ['signature', 'impersonation'],
-      Buffer.from(rsaKey, 'utf8'),
-      3600
-    );
+    const response = await fetch(`https://${oauthBasePath}/oauth/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: token
+      }).toString()
+    });
 
-    const accessToken = results.body.access_token;
-    dsApiClient.addDefaultHeader('Authorization', 'Bearer ' + accessToken);
-    dsApiClient.setBasePath(basePath);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error authenticating with DocuSign JWT:', errorText);
+      throw new Error('Error al autenticar con DocuSign JWT.');
+    }
 
-    return dsApiClient;
-  } catch (error: any) {
-    console.error('Error authenticating with DocuSign JWT:', error?.response?.body || error);
+    const data = await response.json();
+    return data.access_token;
+  } catch (error) {
+    console.error('Error in DocuSign JWT fetch:', error);
     throw new Error('Error al autenticar con DocuSign.');
   }
 }
@@ -49,7 +63,7 @@ export async function createAndSendEnvelope(
   emailBlurb?: string,
   signerPhone?: string
 ): Promise<string> {
-  const dsApiClient = await getDocuSignClient();
+  const accessToken = await getDocuSignAccessToken();
   const accountId = process.env.DOCUSIGN_ACCOUNT_ID;
 
   if (!accountId) {
@@ -125,7 +139,6 @@ export async function createAndSendEnvelope(
     ];
   }
 
-  const token = dsApiClient.defaultHeaders['Authorization'];
   const basePath = process.env.DOCUSIGN_BASE_PATH || 'https://demo.docusign.net/restapi';
   const endpoint = `${basePath}/v2.1/accounts/${accountId}/envelopes`;
 
@@ -133,7 +146,7 @@ export async function createAndSendEnvelope(
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': token,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
@@ -150,31 +163,5 @@ export async function createAndSendEnvelope(
   } catch (error: any) {
     console.error('Excepción al enviar a DocuSign:', error);
     throw new Error('Error de conexión al enviar el contrato a DocuSign.');
-  }
-}
-
-/**
- * Descarga el documento combinado (PDF + Certificado) de un Envelope ya firmado.
- */
-export async function downloadSignedDocument(envelopeId: string): Promise<Buffer> {
-  const dsApiClient = await getDocuSignClient();
-  const accountId = process.env.DOCUSIGN_ACCOUNT_ID;
-
-  if (!accountId) {
-    throw new Error('Falta DOCUSIGN_ACCOUNT_ID en .env');
-  }
-
-  const envelopesApi = new docusign.EnvelopesApi(dsApiClient);
-  
-  try {
-    // "combined" downloads the PDF and the Certificate in a single file
-    const results = await envelopesApi.getDocument(accountId, envelopeId, 'combined', {});
-    
-    // In docusign-esign Node SDK, getDocument returns the file contents.
-    // If it's returning a string, we might need to convert it. 
-    return Buffer.from(results, 'binary');
-  } catch (error: any) {
-    console.error('Error downloading DocuSign Document:', error?.response?.body || error);
-    throw new Error('Error al descargar el documento firmado de DocuSign.');
   }
 }

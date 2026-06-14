@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['docusign-esign'],
+  // Configuración por defecto
 };
 
 export default nextConfig;
