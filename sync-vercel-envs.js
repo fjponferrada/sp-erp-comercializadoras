@@ -12,12 +12,12 @@ for (const line of lines) {
   if (currentKey) {
     currentValue += '\n' + line;
     if (line.endsWith('"')) {
-      vars[currentKey] = currentValue.slice(0, -1); // remove trailing quote
+      vars[currentKey] = currentValue.slice(0, -1);
       currentKey = null;
       currentValue = '';
     }
   } else {
-    if (line.startsWith('DOCUSIGN_') && line.includes('=')) {
+    if ((line.startsWith('DOCUSIGN_') || line.startsWith('R2_')) && line.includes('=')) {
       const idx = line.indexOf('=');
       const key = line.substring(0, idx);
       let val = line.substring(idx + 1);
@@ -35,12 +35,11 @@ for (const line of lines) {
 }
 
 const keysToAdd = [
-  'DOCUSIGN_OAUTH_BASE_PATH',
-  'DOCUSIGN_BASE_PATH',
-  'DOCUSIGN_INTEGRATION_KEY',
-  'DOCUSIGN_USER_ID',
-  'DOCUSIGN_ACCOUNT_ID',
-  'DOCUSIGN_PRIVATE_KEY'
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_NAME',
+  'R2_PUBLIC_URL'
 ];
 
 for (const key of keysToAdd) {
