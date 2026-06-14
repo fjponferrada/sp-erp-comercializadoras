@@ -209,7 +209,7 @@ export async function convertLeadToContractAction(leadId: string) {
           contactEmail2: contactEmail2,
           contactEmail3: contactEmail3,
           contactPhone: lead.phone,
-          clientType: cData.tipoCliente || 'Desconocido',
+          clientType: cData.tipoCliente || (/^[ABJUV]/i.test(vatNum) ? 'Empresa' : 'Persona física'),
           brandId: brandIdToUse,
           isMultipoint: isMultipoint,
         }
@@ -595,7 +595,7 @@ export async function remakeContractAction(leadId: string) {
         contactEmail2: contactEmail2,
         contactEmail3: contactEmail3,
         contactPhone: lead.phone,
-        clientType: cData.tipoCliente || 'Desconocido',
+        clientType: cData.tipoCliente || (lead.vatNumber && /^[ABJUV]/i.test(lead.vatNumber) ? 'Empresa' : 'Persona física'),
         isMultipoint: isMultipoint,
       }
     });
