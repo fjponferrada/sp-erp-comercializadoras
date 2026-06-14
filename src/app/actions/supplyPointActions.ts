@@ -76,11 +76,19 @@ export async function getSupplyPointDetailsAction(id: string) {
   }
 
   try {
-    const supplyPoint = await prisma.supplyPoint.findUnique({
-      where: { id },
+    const { getSupplyPointVisibilityFilter, getUserVisibilityFilter } = await import('@/lib/permissions');
+    const spFilter = await getSupplyPointVisibilityFilter();
+    const contractFilter = await getUserVisibilityFilter();
+
+    const supplyPoint = await prisma.supplyPoint.findFirst({
+      where: { 
+        id,
+        AND: [spFilter]
+      },
       include: {
         client: true,
         contracts: {
+          where: contractFilter,
           orderBy: { createdAt: 'desc' },
           include: {
             product: true,
