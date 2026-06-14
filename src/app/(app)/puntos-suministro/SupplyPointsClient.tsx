@@ -42,8 +42,8 @@ export default function SupplyPointsClient({
       setLoading(true);
       const result = await getPaginatedSupplyPointsAction(page, limit, searchTerm);
       if (result.success) {
-        setSupplyPoints(result.supplyPoints);
-        setTotalCount(result.totalCount);
+        setSupplyPoints(result.supplyPoints || []);
+        setTotalCount(result.totalCount || 0);
       }
       setLoading(false);
     };
@@ -66,8 +66,8 @@ export default function SupplyPointsClient({
       setLoading(true);
       const result = await getPaginatedSupplyPointsAction(page, limit, searchTerm);
       if (result.success) {
-        setSupplyPoints(result.supplyPoints);
-        setTotalCount(result.totalCount);
+        setSupplyPoints(result.supplyPoints || []);
+        setTotalCount(result.totalCount || 0);
       }
       setLoading(false);
     };
