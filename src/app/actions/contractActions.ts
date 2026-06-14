@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
 import docusign from 'docusign-esign';
 import { createAndSendEnvelope } from '@/lib/docusign';
+import { buildTemplateDataFromLead } from '@/lib/templateBuilder';
 export async function convertLeadToContractAction(leadId: string) {
   try {
     // 1. Verificar si ya existe un contrato para este Lead
@@ -371,62 +372,7 @@ export async function convertLeadToContractAction(leadId: string) {
 
       const dirTitObj = extractAddrObj(cData.direccion);
       const dirPSObj = extractAddrObj(cData.direccionSuministro);
-
-      let nombreTitular = formatField(lead.businessName) || '';
-      let apellido1 = formatField(cData.primerApellido) || '';
-      let apellido2 = formatField(cData.segundoApellido) || '';
-
-      // The CRM stores the Full Name in businessName. To extract just the "Name" for the docx:
-      if (nombreTitular && apellido1) {
-        nombreTitular = nombreTitular.replace(new RegExp(apellido1, 'ig'), '').trim();
-      }
-      if (nombreTitular && apellido2) {
-        nombreTitular = nombreTitular.replace(new RegExp(apellido2, 'ig'), '').trim();
-      }
-      nombreTitular = nombreTitular.replace(/\s+/g, ' ').trim(); // clean multiple spaces
-
-      const templateData = {
-        nombretit: nombreTitular,
-        '1apetit': apellido1,
-        '2apetit': apellido2,
-        nif: formatField(lead.vatNumber) || '',
-        cnae: formatField(cData.cnae) || '',
-        direcciontitular: formatField(cData.direccion) || '',
-        cptit: formatField(cData.cp) || dirTitObj.cp || '',
-        loctit: formatField(cData.poblacion) || dirTitObj.poblacion || '',
-        provtit: formatField(cData.provincia) || dirTitObj.provincia || '',
-        mailtitular: formatField(lead.email) || '',
-        tlftitular: formatField(lead.phone) || '',
-        mvtitular: '',
-        nombrerep: formatField(cData.representanteLegal) || '',
-        nifrep: formatField(cData.dniRepresentante) || '',
-        cups: formatField(lead.cups) || '',
-        tarifa: formatField(lead.tariff) || '',
-        direccionPS: formatField(cData.direccionSuministro?.address) || formatField(cData.direccionSuministro) || formatField(cData.direccion) || '',
-        cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || '',
-        localidadPS: formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || '',
-        provPS: formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || '',
-        ftraspapel: (cData.facturasPapel === 'Si' || cData.facturaPapel === 'Si') ? 'Correo Postal' : 'Email',
-        iban: cData.iban || '',
-        nombreprod: product.name || '',
-        tipoprod: product.type || product.pricingModel || '',
-        fee: contract.fee || '0',
-        dsv: contract.deviationCost || '0',
-        p1e: contract.p1e || '0', p2e: contract.p2e || '0', p3e: contract.p3e || '0', p4e: contract.p4e || '0', p5e: contract.p5e || '0', p6e: contract.p6e || '0',
-        p1c: contract.p1c || '0', p2c: contract.p2c || '0', p3c: contract.p3c || '0', p4c: contract.p4c || '0', p5c: contract.p5c || '0', p6c: contract.p6c || '0',
-        p1p: contract.p1p || '0', p2p: contract.p2p || '0', p3p: contract.p3p || '0', p4p: contract.p4p || '0', p5p: contract.p5p || '0', p6p: contract.p6p || '0',
-        MESESPERMANENCIA: contract.permanenceMonths || '0',
-        servicios: cData.svaConcept || '',
-        consumoanual: lead.estimatedMWh ? (lead.estimatedMWh * 1000).toString() : (cData.consumoEstimado || cData.consumoAnual || '0'),
-        tramitacion: cData.tipoTramitacion || '',
-        modalidadauto: cData.autoconsumo === 'Si' ? 'Con excedentes' : 'Sin autoconsumo',
-        pexc: contract.pexc || '0',
-        feeexc: contract.feeExcedentes || '0',
-        asociarabolsillo: contract.cgBolsilloSolar ? 'Si' : 'No',
-        cbolsillosolar: contract.cgBolsilloSolar || '0',
-        fechafirma: new Date().toLocaleDateString('es-ES'),
-        numcontrato: contract.contractCode || '',
-      };
+      const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B);
 
       const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
       
@@ -440,9 +386,9 @@ export async function convertLeadToContractAction(leadId: string) {
         where: { id: contract.id },
         data: { pdfUrl: uploadedUrl }
       });
-    } catch (pdfError) {
+    } catch (pdfError: any) {
       console.error("Error generando PDF para el contrato nativo:", pdfError);
-      // No hacemos throw para no cancelar el alta del contrato, se queda en null y lo pueden regenerar
+      return { error: 'Error crítico al generar PDF: ' + (pdfError.message || String(pdfError)) };
     }
 
     // 4. Vincular el Contrato al Lead y cambiar el estado del Lead a CONTRATADO
@@ -726,6 +672,37 @@ export async function remakeContractAction(leadId: string) {
       where: { id: leadId },
       data: { contractData: cData }
     });
+
+    if (!isMultipoint) {
+      try {
+        const { buildTemplateDataFromLead } = await import('@/lib/templateBuilder');
+        const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
+        const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
+        const { uploadFileToR2 } = await import('@/lib/r2');
+
+        const vat = lead.vatNumber || '';
+        const isPersonaFisica = /^[0-9XYZ]/.test(vat) && vat.length === 9;
+        const cnae = (cData.cnae || '').trim();
+        const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
+        const isB2B = !isCore;
+
+        const templateData = buildTemplateDataFromLead(lead, cData, product, lead.contract, isB2B);
+        const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
+        
+        const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
+        
+        const fileName = `Contrato_AED_${lead.contract.contractCode}.pdf`;
+        const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+
+        await prisma.contract.update({
+          where: { id: lead.contract.id },
+          data: { pdfUrl: uploadedUrl }
+        });
+      } catch (pdfError: any) {
+        console.error("Error generando PDF al rehacer el contrato nativo:", pdfError);
+        return { error: 'Error crítico al regenerar PDF: ' + (pdfError.message || String(pdfError)) };
+      }
+    }
 
     return { success: true, contractId: lead.contract.id };
 
