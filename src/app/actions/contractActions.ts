@@ -231,7 +231,7 @@ export async function convertLeadToContractAction(leadId: string) {
       supplyPoint = await prisma.supplyPoint.create({
         data: {
           cups: targetCups,
-          address: cData.direccion || 'Pendiente',
+          address: typeof cData.direccion === 'string' ? cData.direccion : (cData.direccion?.address || cData.direccion?.direccion || 'Pendiente'),
           city: cData.poblacion || 'Pendiente',
           postalCode: cData.cp || '00000',
           province: cData.provincia || 'Pendiente',
@@ -601,7 +601,7 @@ export async function remakeContractAction(leadId: string) {
       where: { id: lead.contract.supplyPointId },
       data: {
         cups: lead.cups || `CUPS-PENDING-${lead.id}`,
-        address: cData.direccion || 'Pendiente',
+        address: typeof cData.direccion === 'string' ? cData.direccion : (cData.direccion?.address || cData.direccion?.direccion || 'Pendiente'),
         city: cData.poblacion || 'Pendiente',
         postalCode: cData.cp || '00000',
         province: cData.provincia || 'Pendiente',
