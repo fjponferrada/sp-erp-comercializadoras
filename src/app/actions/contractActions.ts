@@ -372,7 +372,7 @@ export async function convertLeadToContractAction(leadId: string) {
 
       const dirTitObj = extractAddrObj(cData.direccion);
       const dirPSObj = extractAddrObj(cData.direccionSuministro);
-      const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B, client);
+      const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B, client, supplyPoint);
 
       const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
       
@@ -416,7 +416,7 @@ export async function remakeContractAction(leadId: string) {
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { contract: { include: { client: true } }, user: { include: { brand: true } } },
+      include: { contract: { include: { client: true, supplyPoint: true } }, user: { include: { brand: true } } },
     });
 
     if (!lead) {
@@ -686,7 +686,7 @@ export async function remakeContractAction(leadId: string) {
         const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
         const isB2B = !isCore;
 
-        const templateData = buildTemplateDataFromLead(lead, cData, product, lead.contract, isB2B, lead.contract?.client);
+        const templateData = buildTemplateDataFromLead(lead, cData, product, lead.contract, isB2B, lead.contract?.client, lead.contract?.supplyPoint);
         const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
         
         const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);

@@ -32,7 +32,7 @@ function getAddressString(field: any): string {
   return String(field);
 }
 
-export function buildTemplateDataFromLead(lead: any, cData: any, product: any, contract: any, isB2B: boolean, client: any = null) {
+export function buildTemplateDataFromLead(lead: any, cData: any, product: any, contract: any, isB2B: boolean, client: any = null, supplyPoint: any = null) {
   // Parsing titular address
   const dirTitObj = extractAddrObj(cData.direccion);
   const dirPSObj = extractAddrObj(cData.direccionSuministro);
@@ -63,16 +63,18 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
   }
   nombreTitular = nombreTitular.replace(/\s+/g, ' ').trim(); // clean multiple spaces
 
+  const sp = supplyPoint || contract?.supplyPoint || {};
+
   return {
     nombretit: nombreTitular,
     '1apetit': apellido1,
     '2apetit': apellido2,
     nif: formatField(lead.vatNumber) || '',
     cnae: formatField(cData.cnae) || '',
-    direcciontitular: formatField(getAddressString(cData.direccion)) || formatField(client?.address) || '',
-    cptit: formatField(cData.cp) || dirTitObj.cp || formatField(client?.postalCode) || '',
-    loctit: formatField(cData.poblacion) || dirTitObj.poblacion || formatField(client?.city) || '',
-    provtit: formatField(cData.provincia) || dirTitObj.provincia || formatField(client?.province) || '',
+    direcciontitular: formatField(getAddressString(cData.direccion)) || formatField(sp.address) || '',
+    cptit: formatField(cData.cp) || dirTitObj.cp || formatField(sp.postalCode) || '',
+    loctit: formatField(cData.poblacion) || dirTitObj.poblacion || formatField(sp.city) || '',
+    provtit: formatField(cData.provincia) || dirTitObj.provincia || formatField(sp.province) || '',
     mailtitular: formatField(lead.email) || '',
     tlftitular: formatField(lead.phone) || '',
     mvtitular: '',
@@ -80,10 +82,10 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     nifrep: formatField(cData.dniRepresentante) || '',
     cups: formatField(lead.cups) || '',
     tarifa: formatField(lead.tariff) || '',
-    direccionPS: formatField(getAddressString(cData.direccionSuministro)) || formatField(getAddressString(cData.direccion)) || '',
-    cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || '',
-    localidadPS: formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || '',
-    provPS: formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || '',
+    direccionPS: formatField(getAddressString(cData.direccionSuministro)) || formatField(getAddressString(cData.direccion)) || formatField(sp.address) || '',
+    cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || formatField(sp.postalCode) || '',
+    localidadPS: formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || formatField(sp.city) || '',
+    provPS: formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || formatField(sp.province) || '',
     ftraspapel: (cData.facturasPapel === 'Si' || cData.facturaPapel === 'Si') ? 'Correo Postal' : 'Email',
     iban: cData.iban || '',
     nombreprod: product?.name || '',
