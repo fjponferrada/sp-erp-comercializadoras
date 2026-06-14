@@ -9,10 +9,15 @@ import Topbar from '@/components/Topbar';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 
+import { auth } from '@/auth';
+
 export default async function ClientPage({ params }: { params: { id: string } }) {
   // Await params carefully because of Next.js versions
   const resolvedParams = await Promise.resolve(params);
   
+  const session = await auth();
+  const userRole = session?.user?.role || 'CANAL';
+
   const client = await prisma.client.findUnique({
     where: { id: resolvedParams.id },
     include: {
@@ -71,7 +76,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
             </div>
           </div>
           
-          <ClientHeaderActions client={client} />
+          <ClientHeaderActions client={client} userRole={userRole} />
         </div>
 
         {/* INFO RÁPIDA DE CONTACTO */}

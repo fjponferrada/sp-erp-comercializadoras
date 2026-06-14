@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import {
@@ -27,11 +29,21 @@ const statusBadge = (status: string) => {
 };
 
 export default function DashboardPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  
   const [data, setData] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (status === 'loading') return;
+    const userRole = (session?.user as any)?.role || 'CANAL';
+    if (['COMERCIAL', 'CANAL'].includes(userRole)) {
+      router.push('/clientes');
+      return;
+    }
+
     async function load() {
       const [res, analysisRes] = await Promise.all([
         getDashboardMetricsAction(),
@@ -46,7 +58,7 @@ export default function DashboardPage() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [session, status, router]);
 
   if (loading) {
     return (

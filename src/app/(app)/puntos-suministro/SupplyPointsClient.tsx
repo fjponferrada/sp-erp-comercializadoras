@@ -196,13 +196,15 @@ export default function SupplyPointsClient({
                           >
                             <Eye size={16} />
                           </Link>
-                          <button
-                            onClick={() => handleEdit(sp)}
-                            className="p-2 bg-white/5 hover:bg-lime-500/20 text-white/60 hover:text-lime-400 rounded-lg border border-white/5 hover:border-lime-500/30 transition-all"
-                            title="Editar Suministro"
-                          >
-                            <Edit size={16} />
-                          </button>
+                          {!['COMERCIAL', 'CANAL'].includes(userRole) && (
+                            <button
+                              onClick={() => handleEdit(sp)}
+                              className="p-2 bg-white/5 hover:bg-lime-500/20 text-white/60 hover:text-lime-400 rounded-lg border border-white/5 hover:border-lime-500/30 transition-all"
+                              title="Editar Suministro"
+                            >
+                              <Edit size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

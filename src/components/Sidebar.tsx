@@ -38,6 +38,7 @@ const baseNavGroups = [
   },
   {
     label: 'Principal',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
       { href: '/', icon: LayoutDashboard, label: 'Dashboard' }
     ],

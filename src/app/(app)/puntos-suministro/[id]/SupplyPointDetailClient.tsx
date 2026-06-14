@@ -72,13 +72,15 @@ export default function SupplyPointDetailClient({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-sm font-medium transition-colors"
-            >
-              <Edit size={16} />
-              <span>Editar Datos</span>
-            </button>
+            {!['COMERCIAL', 'CANAL'].includes(userRole) && (
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-sm font-medium transition-colors"
+              >
+                <Edit size={16} />
+                <span>Editar Datos</span>
+              </button>
+            )}
           </div>
         </div>
 
