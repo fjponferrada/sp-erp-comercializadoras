@@ -13,7 +13,26 @@ function extractAddrObj(field: any) {
   return {};
 }
 
-export function buildTemplateDataFromLead(lead: any, cData: any, product: any, contract: any, isB2B: boolean) {
+function getAddressString(field: any): string {
+  if (!field) return '';
+  if (typeof field === 'string') {
+    if (field.startsWith('{')) {
+      try {
+        const obj = JSON.parse(field);
+        return obj.address || obj.direccion || obj.fullAddress || '';
+      } catch(e) {
+        return field;
+      }
+    }
+    return field;
+  }
+  if (typeof field === 'object') {
+    return field.address || field.direccion || field.fullAddress || '';
+  }
+  return String(field);
+}
+
+export function buildTemplateDataFromLead(lead: any, cData: any, product: any, contract: any, isB2B: boolean, client: any = null) {
   // Parsing titular address
   const dirTitObj = extractAddrObj(cData.direccion);
   const dirPSObj = extractAddrObj(cData.direccionSuministro);
@@ -50,10 +69,10 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     '2apetit': apellido2,
     nif: formatField(lead.vatNumber) || '',
     cnae: formatField(cData.cnae) || '',
-    direcciontitular: formatField(cData.direccion) || '',
-    cptit: formatField(cData.cp) || dirTitObj.cp || '',
-    loctit: formatField(cData.poblacion) || dirTitObj.poblacion || '',
-    provtit: formatField(cData.provincia) || dirTitObj.provincia || '',
+    direcciontitular: formatField(getAddressString(cData.direccion)) || formatField(client?.address) || '',
+    cptit: formatField(cData.cp) || dirTitObj.cp || formatField(client?.postalCode) || '',
+    loctit: formatField(cData.poblacion) || dirTitObj.poblacion || formatField(client?.city) || '',
+    provtit: formatField(cData.provincia) || dirTitObj.provincia || formatField(client?.province) || '',
     mailtitular: formatField(lead.email) || '',
     tlftitular: formatField(lead.phone) || '',
     mvtitular: '',
@@ -61,7 +80,7 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     nifrep: formatField(cData.dniRepresentante) || '',
     cups: formatField(lead.cups) || '',
     tarifa: formatField(lead.tariff) || '',
-    direccionPS: formatField(cData.direccionSuministro?.address) || formatField(cData.direccionSuministro) || formatField(cData.direccion) || '',
+    direccionPS: formatField(getAddressString(cData.direccionSuministro)) || formatField(getAddressString(cData.direccion)) || '',
     cpPS: formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || '',
     localidadPS: formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || '',
     provPS: formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || '',

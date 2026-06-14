@@ -372,7 +372,7 @@ export async function convertLeadToContractAction(leadId: string) {
 
       const dirTitObj = extractAddrObj(cData.direccion);
       const dirPSObj = extractAddrObj(cData.direccionSuministro);
-      const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B);
+      const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B, client);
 
       const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
       
@@ -686,7 +686,7 @@ export async function remakeContractAction(leadId: string) {
         const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
         const isB2B = !isCore;
 
-        const templateData = buildTemplateDataFromLead(lead, cData, product, lead.contract, isB2B);
+        const templateData = buildTemplateDataFromLead(lead, cData, product, lead.contract, isB2B, lead.client);
         const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
         
         const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
