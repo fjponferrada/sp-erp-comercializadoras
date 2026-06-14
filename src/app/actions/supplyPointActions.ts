@@ -16,8 +16,11 @@ export async function getPaginatedSupplyPointsAction(page: number, limit: number
   try {
     const skip = (page - 1) * limit;
 
+    const { getClientVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getClientVisibilityFilter();
+
     const whereClause: any = {
-      client: { brandId: user.brandId }
+      client: visibilityFilter
     };
 
     if (search.trim() !== '') {
