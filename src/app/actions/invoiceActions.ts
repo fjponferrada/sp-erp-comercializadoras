@@ -252,6 +252,9 @@ export async function importInvoicesAction(invoicesData: any[]) {
           baseImponibleIva,
           baseImponibleF1,
           margin,
+          codigoContrato: row['Codigo Contrato'] || row['Contrato'] || null,
+          procedenciaDesde: row['Procedencia Desde'] || null,
+          procedenciaHasta: row['Procedencia Hasta'] || null,
           invoiceData: row as any,
         }
       });
