@@ -81,14 +81,18 @@ export async function importInvoicesAction(invoicesData: any[]) {
       const issueDate = new Date(rawDate);
 
       // 3. Buscar Contrato correcto para ese CUPS en esa fecha
-      // Lógica avanzada (Reemplaza el Script V2 de Airtable):
-      // Busca el contrato cuya fecha de inicio es anterior a la factura y cuya baja es posterior o nula.
+      const rawDateDesde = row['Fecha Desde'] || row['Desde'] || row['desde'] || row['Fecha Cobro'] || new Date().toISOString();
+      const fechaDesdeFactura = new Date(rawDateDesde);
+
+      // Lógica de Desempate Temporal (Estilo Airtable Script V2):
+      // Si el contrato terminó ANTES de que empezara esta factura, no es el correcto.
+      // Si no tiene fecha de baja (vacío) o es >= que el inicio de la factura, es el ganador.
       let contract = await prisma.contract.findFirst({
         where: { 
           supplyPointId: supplyPoint.id,
           OR: [
-            { activationDate: { lte: issueDate }, terminationDate: null },
-            { activationDate: { lte: issueDate }, terminationDate: { gte: issueDate } }
+            { terminationDate: null },
+            { terminationDate: { gte: fechaDesdeFactura } }
           ]
         },
         orderBy: { activationDate: 'desc' }
