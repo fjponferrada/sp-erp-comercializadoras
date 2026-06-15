@@ -82,11 +82,16 @@ export async function importInvoicesAction(invoicesData: any[]) {
         if (typeof val === 'number') {
           return new Date((val - 25569) * 86400 * 1000);
         }
-        if (typeof val === 'string' && val.includes('/')) {
+        if (typeof val === 'string') {
+          if (val.includes('/')) {
             const parts = val.split('/');
             if (parts.length === 3) {
                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
             }
+          } else if (/^\d+$/.test(val)) {
+            // Es un número de serie de Excel convertido a string por el modo raw
+            return new Date((parseInt(val, 10) - 25569) * 86400 * 1000);
+          }
         }
         const d = new Date(val);
         if (isNaN(d.getTime())) return new Date();

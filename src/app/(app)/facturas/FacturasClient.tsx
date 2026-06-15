@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, Filter, Download, Eye, MessageCircle, Phone } from 'lucide-react';
 import Link from 'next/link';
 import PaginationFooter from '@/components/PaginationFooter';
+import { formatDateUTC } from '@/lib/utils/date';
 import SendInvoicesButton from '@/components/facturas/SendInvoicesButton';
 import RequestPaymentButton from '@/components/facturas/RequestPaymentButton';
 
@@ -173,7 +174,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                 <tr key={invoice.id} className="hover:bg-slate-700/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-medium text-white">{invoice.invoiceNumber}</div>
-                    <div className="text-xs text-slate-400 mt-1">{new Date(invoice.issueDate).toLocaleDateString('es-ES')}</div>
+                    <div className="text-xs text-slate-400 mt-1">{formatDateUTC(invoice.issueDate)}</div>
                     <div className="mt-1.5">
                       <span className={`text-[10px] uppercase border px-2 py-0.5 rounded-full ${
                         invoice.invoiceType === 'Normal' ? 'bg-slate-800/50 border-slate-700 text-slate-300' :
@@ -216,13 +217,13 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                   <td className="px-6 py-4 text-xs">
                     {(invoice as any).desde && (invoice as any).hasta ? (
                       <div className="flex flex-col gap-1">
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Desde:</span> <span className="text-slate-300 font-medium">{new Date((invoice as any).desde).toLocaleDateString('es-ES')}</span></div>
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Hasta:</span> <span className="text-slate-300 font-medium">{new Date((invoice as any).hasta).toLocaleDateString('es-ES')}</span></div>
+                        <div className="flex justify-between w-32"><span className="text-slate-500">Desde:</span> <span className="text-slate-300 font-medium">{formatDateUTC((invoice as any).desde)}</span></div>
+                        <div className="flex justify-between w-32"><span className="text-slate-500">Hasta:</span> <span className="text-slate-300 font-medium">{formatDateUTC((invoice as any).hasta)}</span></div>
                       </div>
                     ) : invoice.billingStart && invoice.billingEnd ? (
                       <div className="flex flex-col gap-1">
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Desde:</span> <span className="text-slate-300 font-medium">{new Date(invoice.billingStart).toLocaleDateString('es-ES')}</span></div>
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Hasta:</span> <span className="text-slate-300 font-medium">{new Date(invoice.billingEnd).toLocaleDateString('es-ES')}</span></div>
+                        <div className="flex justify-between w-32"><span className="text-slate-500">Desde:</span> <span className="text-slate-300 font-medium">{formatDateUTC(invoice.billingStart)}</span></div>
+                        <div className="flex justify-between w-32"><span className="text-slate-500">Hasta:</span> <span className="text-slate-300 font-medium">{formatDateUTC(invoice.billingEnd)}</span></div>
                       </div>
                     ) : (
                       <span className="text-slate-500 italic">No especificado</span>
@@ -230,7 +231,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                   </td>
                   <td className="px-6 py-4 text-xs">
                     {invoice.totalMWh ? (
-                      <span className="font-medium text-slate-200">{invoice.totalMWh.toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
+                      <span className="font-medium text-slate-200">{(invoice.totalMWh * 1000).toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
                     ) : '-'}
                   </td>
                   <td className="px-6 py-4 text-right font-medium text-emerald-400">

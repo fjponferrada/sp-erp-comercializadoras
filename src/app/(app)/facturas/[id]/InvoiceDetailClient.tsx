@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { formatDateUTC } from '@/lib/utils/date';
 import Topbar from '@/components/Topbar';
 import { ChevronLeft, FileText, Zap, Building, Calendar, Euro, FileDown, Download, Activity, BarChart3, Calculator, BatteryCharging } from 'lucide-react';
 
@@ -9,8 +10,7 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
   const isAdmin = userRole === 'SUPERADMIN' || userRole === 'COMPANYADMIN' || userRole === 'BACKOFFICE';
 
   const formatDate = (iso: Date | string | null) => {
-    if (!iso) return '-';
-    return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return formatDateUTC(iso);
   };
 
   const formatCurrency = (val: number | null | undefined, decimals = 2) => {
@@ -118,7 +118,7 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
           <DataItem highlight label="CUPS" value={<span className="font-mono tracking-widest">{initialInvoice.supplyPoint?.cups || initialInvoice.cupsCode || '-'}</span>} />
           <DataItem label="Tarifa ATR" value={<span className="font-mono">{initialInvoice.supplyPoint?.tariff || initialInvoice.tarifaATR || '-'}</span>} />
           
-          <DataItem label="Contrato ATR / Cód. Contrato" value={<span className="font-mono">{initialInvoice.contract?.contractCode || initialInvoice.contractId || '-'}</span>} />
+          <DataItem label="Contrato ATR / Cód. Contrato" value={<span className="font-mono">{initialInvoice.contract?.contractCode || initialInvoice.codigoContrato || initialInvoice.contractId || '-'}</span>} />
           <DataItem label="Distribuidora" value={initialInvoice.supplyPoint?.dISTRIBUIDORA || initialInvoice.invoiceData?.DISTRIBUIDORA || '-'} />
           <DataItem label="Tipo Autoconsumo" value={initialInvoice.tipoAutoconsumoDistribuidora || initialInvoice.tipoAutoconsumo || 'Sin Autoconsumo'} />
           <DataItem label="Sistema Eléctrico" value={initialInvoice.sistemaElectrico || 'Península'} />
