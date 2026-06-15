@@ -84,22 +84,57 @@ export async function importInvoicesAction(invoicesData: any[]) {
       const rawDateDesde = row['Fecha Desde'] || row['Desde'] || row['desde'] || row['Fecha Cobro'] || new Date().toISOString();
       const fechaDesdeFactura = new Date(rawDateDesde);
 
-      // Lógica de Desempate Temporal (Estilo Airtable Script V2):
-      // Si el contrato terminó ANTES de que empezara esta factura, no es el correcto.
-      // Si no tiene fecha de baja (vacío) o es >= que el inicio de la factura, es el ganador.
-      let contract = await prisma.contract.findFirst({
+      // Cargar todos los contratos candidatos para este CUPS
+      const candidateContracts = await prisma.contract.findMany({
         where: { 
           supplyPointId: supplyPoint.id,
-          status: { in: ['ACTIVO', 'Activo', 'Finalizado', 'FINALIZADO'] },
-          OR: [
-            { terminationDate: null },
-            { terminationDate: { gte: fechaDesdeFactura } }
-          ]
+          status: { in: ['ACTIVO', 'Activo', 'Finalizado', 'FINALIZADO'] }
         },
         orderBy: { activationDate: 'desc' }
       });
 
-      // Fallback: Si no encaja por fechas exactas, cogemos el último Activo o el más reciente
+      const inputPotencias = [
+        parseFloat(row['P1C'] || '0'),
+        parseFloat(row['P2C'] || '0'),
+        parseFloat(row['P3C'] || '0'),
+        parseFloat(row['P4C'] || '0'),
+        parseFloat(row['P5C'] || '0'),
+        parseFloat(row['P6C'] || '0')
+      ];
+
+      let contract = null;
+
+      // 3. FILTRO DE PRECISIÓN + LÓGICA TEMPORAL (Estilo Airtable Script V2)
+      for (const record of candidateContracts) {
+        // C) Potencias
+        const comparar = (val1: any, val2: any) => {
+            const n1 = parseFloat(val1) || 0;
+            const n2 = parseFloat(val2) || 0;
+            return Math.abs(n1 - n2) < 0.01; 
+        };
+        
+        const potenciasOk = 
+            comparar(record.p1c, inputPotencias[0]) &&
+            comparar(record.p2c, inputPotencias[1]) &&
+            comparar(record.p3c, inputPotencias[2]) &&
+            comparar(record.p4c, inputPotencias[3]) &&
+            comparar(record.p5c, inputPotencias[4]) &&
+            comparar(record.p6c, inputPotencias[5]);
+        
+        if (!potenciasOk) continue;
+
+        // D) LÓGICA DE DESEMPATE TEMPORAL
+        if (record.terminationDate) {
+            // Si el contrato terminó ANTES de que empezara esta factura, no es el correcto
+            if (record.terminationDate < fechaDesdeFactura) continue;
+        }
+        
+        // Match encontrado!
+        contract = record;
+        break;
+      }
+
+      // Fallback: Si no encaja por potencias exactas, cogemos el último Activo o el más reciente
       if (!contract) {
         contract = await prisma.contract.findFirst({
           where: { supplyPointId: supplyPoint.id },
