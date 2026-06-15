@@ -90,6 +90,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
       let contract = await prisma.contract.findFirst({
         where: { 
           supplyPointId: supplyPoint.id,
+          status: { in: ['ACTIVO', 'Activo', 'Finalizado', 'FINALIZADO'] },
           OR: [
             { terminationDate: null },
             { terminationDate: { gte: fechaDesdeFactura } }
