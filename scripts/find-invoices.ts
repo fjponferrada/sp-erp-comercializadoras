@@ -10,14 +10,10 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function run() {
-  const invs = await prisma.invoice.findMany({ 
-    where: { issueDate: { lt: new Date('2000-01-01') } }
+  await prisma.invoice.deleteMany({ 
+    where: { invoiceNumber: 'A260614455' }
   });
-  console.log(`Found ${invs.length} invoices from 1970`);
-  for (const inv of invs) {
-    await prisma.invoice.delete({ where: { id: inv.id } });
-  }
-  console.log('Deleted them so they can be reimported');
+  console.log('Deleted A260614455');
 }
 
 run().finally(() => prisma.$disconnect());

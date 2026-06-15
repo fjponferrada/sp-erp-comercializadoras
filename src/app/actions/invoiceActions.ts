@@ -159,16 +159,23 @@ export async function importInvoicesAction(invoicesData: any[]) {
         });
       }
 
+      const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : 0;
+
       // Extraer importes
-      const totalAmount = parseFloat(row['Total'] || row['TOTAL'] || '0');
-      const subtotal1 = parseFloat(row['Subtotal 1'] || '0');
-      const taxAmount = parseFloat(row['Importe Impuesto CORR'] || row['Importe Impuesto'] || '0');
-      const taxPercentage = parseFloat(row['Impuesto (%)'] || '5.11');
-      const cantidadEnergia = parseFloat(row['Cantidad Energía Total Consumida CORR'] || row['Energía Total Consumida'] || '0');
+      const totalAmount = parseNum(row['Total'] || row['TOTAL']);
+      const subtotal1 = parseNum(row['Subtotal 1']);
+      const taxAmount = parseNum(row['Importe Impuesto CORR'] || row['Importe Impuesto']);
+      const taxPercentage = parseNum(row['Impuesto (%)'] || '5.11');
+      const cantidadEnergia = parseNum(row['Cantidad Energía Total Consumida CORR'] || row['Energía Total Consumida']);
       const totalMWh = cantidadEnergia / 1000;
 
+      // Fechas de periodo facturado
+      const billingStartRaw = row['Desde(EA)'] || row['Desde(P)'] || row['Desde'] || row['Fecha Desde'];
+      const billingEndRaw = row['Hasta(EA)'] || row['Hasta(P)'] || row['Hasta'] || row['Fecha Hasta'];
+      const billingStart = billingStartRaw ? parseExcelDate(billingStartRaw) : null;
+      const billingEnd = billingEndRaw ? parseExcelDate(billingEndRaw) : null;
+
       // Cálculo de Margen
-      const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : 0;
       let margenEnergia = parseNum(row['Margen Energia']);
       let margenFactura = parseNum(row['Margen Factura']);
       let margenPotencia = parseNum(row['Margen Potencia']);
@@ -228,6 +235,8 @@ export async function importInvoicesAction(invoicesData: any[]) {
           contractId: contract?.id,
           supplyPointId: supplyPoint.id,
           issueDate,
+          billingStart,
+          billingEnd,
           totalAmount,
           subtotal1,
           taxAmount,

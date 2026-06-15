@@ -47,7 +47,8 @@ export default function InvoiceUploader() {
         try {
           const data = e.target?.result;
           // Leemos el workbook (soporta CSV y XLSX)
-          const workbook = xlsx.read(data, { type: 'binary' });
+          // Usamos raw: true para que si es un CSV, no intente parsear las fechas/números con locale US
+          const workbook = xlsx.read(data, { type: 'binary', raw: true });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
           
