@@ -76,13 +76,30 @@ export async function importInvoicesAction(invoicesData: any[]) {
         });
       }
 
+      // Helper para parsear fechas de Excel (serial) o strings (DD/MM/YYYY)
+      const parseExcelDate = (val: any): Date => {
+        if (!val) return new Date();
+        if (typeof val === 'number') {
+          return new Date((val - 25569) * 86400 * 1000);
+        }
+        if (typeof val === 'string' && val.includes('/')) {
+            const parts = val.split('/');
+            if (parts.length === 3) {
+               return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+            }
+        }
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return new Date();
+        return d;
+      };
+
       // 4. Fechas
-      const rawDate = row['Fecha Cobro'] || new Date().toISOString();
-      const issueDate = new Date(rawDate);
+      const rawDate = row['Fecha Factura'] || row['FECHA FACTURA'] || row['Fecha factura'] || row['Fecha Cobro'] || new Date().toISOString();
+      const issueDate = parseExcelDate(rawDate);
 
       // 3. Buscar Contrato correcto para ese CUPS en esa fecha
       const rawDateDesde = row['Fecha Desde'] || row['Desde'] || row['desde'] || row['Fecha Cobro'] || new Date().toISOString();
-      const fechaDesdeFactura = new Date(rawDateDesde);
+      const fechaDesdeFactura = parseExcelDate(rawDateDesde);
 
       // Cargar todos los contratos candidatos para este CUPS
       const candidateContracts = await prisma.contract.findMany({
