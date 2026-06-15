@@ -10,10 +10,11 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function run() {
-  await prisma.invoice.deleteMany({ 
-    where: { invoiceNumber: 'A260614455' }
+  const invs = await prisma.invoice.findMany({ 
+    where: { invoiceNumber: { in: ['A260614455', 'A260614780', 'R260600114'] } },
+    include: { contract: true }
   });
-  console.log('Deleted A260614455');
+  console.log(JSON.stringify(invs, null, 2));
 }
 
 run().finally(() => prisma.$disconnect());

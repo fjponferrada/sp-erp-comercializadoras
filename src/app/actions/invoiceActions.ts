@@ -172,7 +172,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
       const taxAmount = parseNum(row['Importe Impuesto CORR'] || row['Importe Impuesto']);
       const taxPercentage = parseNum(row['Impuesto (%)'] || '5.11');
       const cantidadEnergia = parseNum(row['Cantidad Energía Total Consumida CORR'] || row['Energía Total Consumida']);
-      const totalMWh = cantidadEnergia / 1000;
+      const totalMWh = cantidadEnergia;
 
       // Fechas de periodo facturado
       const billingStartRaw = row['Desde(EA)'] || row['Desde(P)'] || row['Desde'] || row['Fecha Desde'];
@@ -249,17 +249,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
           totalMWh,
           pdfUrl: row['PATH'] || null,
           rectifiedInvoiceId,
-          margenEnergia,
-          margenPotencia,
-          margenFactura,
-          fijoIndex,
-          fee,
-          baseImponibleIva,
-          baseImponibleF1,
           margin,
-          codigoContrato: row['Codigo Contrato'] || row['Contrato'] || null,
-          procedenciaDesde: row['Procedencia Desde'] || null,
-          procedenciaHasta: row['Procedencia Hasta'] || null,
           invoiceData: row as any,
         }
       });
@@ -565,7 +555,7 @@ export async function getPaginatedInvoicesAction(
     ]);
 
     const invoices = invoicesRaw.map(inv => {
-      let proc = inv.procedenciaHasta || inv.origin;
+      let proc = inv.origin;
       if (!proc && inv.invoiceData && typeof inv.invoiceData === 'object') {
         const d = inv.invoiceData as any;
         if (d['Procedencia Hasta']) proc = d['Procedencia Hasta'];

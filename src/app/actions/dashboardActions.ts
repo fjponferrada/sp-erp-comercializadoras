@@ -128,7 +128,7 @@ export async function getDashboardMetricsAction() {
       },
       select: {
         issueDate: true,
-        baseImponibleIva: true,
+        subtotal1: true,
         invoiceType: true,
         margin: true,
       }
@@ -149,7 +149,7 @@ export async function getDashboardMetricsAction() {
       if (!inv.issueDate) return;
       const key = `${monthNames[inv.issueDate.getMonth()]} ${inv.issueDate.getFullYear()}`;
       if (monthlyStats[key]) {
-        let revenue = inv.baseImponibleIva || 0;
+        let revenue = inv.subtotal1 || 0;
         if (inv.invoiceType === 'Abono' && revenue > 0) {
             revenue = -revenue;
         }

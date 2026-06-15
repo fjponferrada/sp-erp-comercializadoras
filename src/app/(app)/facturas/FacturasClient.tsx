@@ -231,7 +231,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                   </td>
                   <td className="px-6 py-4 text-xs">
                     {invoice.totalMWh ? (
-                      <span className="font-medium text-slate-200">{(invoice.totalMWh * 1000).toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
+                      <span className="font-medium text-slate-200">{invoice.totalMWh.toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
                     ) : '-'}
                   </td>
                   <td className="px-6 py-4 text-right font-medium text-emerald-400">

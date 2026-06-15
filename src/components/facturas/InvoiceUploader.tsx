@@ -52,8 +52,9 @@ export default function InvoiceUploader() {
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
           
-          // Convertimos a JSON usando la primera fila como cabecera
-          const jsonData = xlsx.utils.sheet_to_json(worksheet, { defval: null });
+          // Convertimos a JSON usando la primera fila como cabecera y forzamos a plain object
+          const rawData = xlsx.utils.sheet_to_json(worksheet, { defval: null });
+          const jsonData = JSON.parse(JSON.stringify(rawData));
           
           if (!jsonData || jsonData.length === 0) {
             throw new Error("El archivo está vacío o no se pudo parsear correctamente.");

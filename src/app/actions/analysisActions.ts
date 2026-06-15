@@ -14,7 +14,7 @@ export async function getEconomicAnalysis() {
       },
       select: {
         issueDate: true,
-        baseImponibleIva: true,
+        subtotal1: true,
         invoiceType: true,
         totalMWh: true,
         margin: true
@@ -27,7 +27,7 @@ export async function getEconomicAnalysis() {
       const m = `${inv.issueDate.getFullYear()}-${String(inv.issueDate.getMonth() + 1).padStart(2, '0')}`;
       if (!invoicesData[m]) invoicesData[m] = { total_eur: 0, total_mwh: 0, margin: 0 };
       
-      let amount = inv.baseImponibleIva || 0;
+      let amount = inv.subtotal1 || 0;
       if (inv.invoiceType === 'Abono' && amount > 0) {
         amount = -amount;
       }

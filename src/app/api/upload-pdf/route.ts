@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
     const isXml = extension.toLowerCase() === '.xml';
 
     if (isXml) {
-      if (invoice.xML && !invoice.xML.includes('airtable')) {
+      const currentXml = (invoice.invoiceData as any)?.xmlUrl || (invoice.invoiceData as any)?.xML;
+      if (currentXml && !currentXml.includes('airtable')) {
         return NextResponse.json({
           error: `La factura ${invoiceNumber} ya tiene un documento XML adjunto definitivo. No se ha sobreescrito para evitar duplicados.`
         }, { status: 400 });
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
     // Actualizar BD con la URL pública devuelta por R2
     await prisma.invoice.update({
       where: { id: invoice.id },
-      data: isXml ? { xML: url } : { pdfUrl: url }
+      data: isXml 
+        ? { invoiceData: { ...(invoice.invoiceData as any || {}), xmlUrl: url } } 
+        : { pdfUrl: url }
     });
 
     return NextResponse.json({ 

@@ -9,6 +9,26 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
   const router = useRouter();
   const isAdmin = userRole === 'SUPERADMIN' || userRole === 'COMPANYADMIN' || userRole === 'BACKOFFICE';
 
+  // Helpers for extracting missing values from raw JSON
+  const rawData = (initialInvoice.invoiceData as any) || {};
+  const getRawNum = (...keys: string[]): number | null => {
+    for (const k of keys) {
+      if (rawData[k] !== undefined && rawData[k] !== null && rawData[k] !== '') {
+        let s = rawData[k].toString().trim();
+        if (s.includes(',') && s.includes('.')) {
+          s = s.replace(/\./g, '').replace(',', '.');
+        } else if (s.includes(',')) {
+          s = s.replace(',', '.');
+        }
+        const val = parseFloat(s);
+        if (!isNaN(val)) return val;
+      }
+    }
+    return null;
+  };
+
+  const formatString = (v: any) => v || '-';
+
   const formatDate = (iso: Date | string | null) => {
     return formatDateUTC(iso);
   };
@@ -115,17 +135,33 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         <SectionCard title="2. Datos del Suministro y Periodo" icon={Building} delay={200}>
           <DataItem label="Cliente" value={initialInvoice.client?.businessName || initialInvoice.client?.firstName || '-'} />
           <DataItem label="NIF Cliente" value={initialInvoice.client?.vatNumber || initialInvoice.codigoFiscal || '-'} />
+          <DataItem label="Código Fiscal F1" value={rawData['Codigo Fiscal'] || initialInvoice.codigoFiscal || '-'} />
           <DataItem highlight label="CUPS" value={<span className="font-mono tracking-widest">{initialInvoice.supplyPoint?.cups || initialInvoice.cupsCode || '-'}</span>} />
           <DataItem label="Tarifa ATR" value={<span className="font-mono">{initialInvoice.supplyPoint?.tariff || initialInvoice.tarifaATR || '-'}</span>} />
           
-          <DataItem label="Contrato ATR / Cód. Contrato" value={<span className="font-mono">{initialInvoice.contract?.contractCode || initialInvoice.codigoContrato || initialInvoice.contractId || '-'}</span>} />
+          <DataItem label="Contrato ATR / Cód. Contrato" value={<span className="font-mono">{initialInvoice.contract?.contractCode || rawData['Codigo Contrato'] || initialInvoice.codigoContrato || initialInvoice.contractId || '-'}</span>} />
           <DataItem label="Distribuidora" value={initialInvoice.supplyPoint?.dISTRIBUIDORA || initialInvoice.invoiceData?.DISTRIBUIDORA || '-'} />
           <DataItem label="Tipo Autoconsumo" value={initialInvoice.tipoAutoconsumoDistribuidora || initialInvoice.tipoAutoconsumo || 'Sin Autoconsumo'} />
           <DataItem label="Sistema Eléctrico" value={initialInvoice.sistemaElectrico || 'Península'} />
 
           <DataItem label="Fecha Inicio (Ciclo)" value={formatDate(initialInvoice.billingStart || initialInvoice.desde)} />
           <DataItem label="Fecha Fin (Ciclo)" value={formatDate(initialInvoice.billingEnd || initialInvoice.hasta)} />
-          <DataItem label="Días Facturados" value={initialInvoice.duracion ? `${initialInvoice.duracion} días` : '-'} />
+          <DataItem 
+            label="Días Facturados" 
+            value={(() => {
+              if (initialInvoice.duracion) return `${initialInvoice.duracion} días`;
+              if (initialInvoice.desde && initialInvoice.hasta) {
+                const d1 = new Date(initialInvoice.desde);
+                const d2 = new Date(initialInvoice.hasta);
+                if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+                  const diffTime = Math.abs(d2.getTime() - d1.getTime());
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                  return `${diffDays} días`;
+                }
+              }
+              return '-';
+            })()} 
+          />
           <DataItem label="Procedencia (Desde - Hasta)" value={`${initialInvoice.procedenciaDesde || 'N/A'} - ${initialInvoice.procedenciaHasta || initialInvoice.origin || 'N/A'}`} />
         </SectionCard>
 
@@ -143,36 +179,45 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
                 <div className="text-right">P6</div>
               </div>
               <PeriodRow label="Energía Activa (kWh)" 
-                p1={initialInvoice.p1EnergiaActivaConsumida} p2={initialInvoice.p2EnergiaActivaConsumida} p3={initialInvoice.p3EnergiaActivaConsumida}
-                p4={initialInvoice.p4EnergiaActivaConsumida} p5={initialInvoice.p5EnergiaActivaConsumida} p6={initialInvoice.p6EnergiaActivaConsumida}
+                p1={initialInvoice.p1EnergiaActivaConsumida ?? getRawNum('P1 Energia Activa Consumida')} p2={initialInvoice.p2EnergiaActivaConsumida ?? getRawNum('P2 Energia Activa Consumida')} p3={initialInvoice.p3EnergiaActivaConsumida ?? getRawNum('P3 Energia Activa Consumida')}
+                p4={initialInvoice.p4EnergiaActivaConsumida ?? getRawNum('P4 Energia Activa Consumida')} p5={initialInvoice.p5EnergiaActivaConsumida ?? getRawNum('P5 Energia Activa Consumida')} p6={initialInvoice.p6EnergiaActivaConsumida ?? getRawNum('P6 Energia Activa Consumida')}
                 formatter={(v: number) => formatNumber(v, 2)} />
               
               <PeriodRow label="Pot. Contratada (kW)" 
-                p1={initialInvoice.p1PotenciaContratada} p2={initialInvoice.p2PotenciaContratada} p3={initialInvoice.p3PotenciaContratada}
-                p4={initialInvoice.p4PotenciaContratada} p5={initialInvoice.p5PotenciaContratada} p6={initialInvoice.p6PotenciaContratada}
+                p1={initialInvoice.p1PotenciaContratada ?? getRawNum('P1 Potencia Contratada')} p2={initialInvoice.p2PotenciaContratada ?? getRawNum('P2 Potencia Contratada')} p3={initialInvoice.p3PotenciaContratada ?? getRawNum('P3 Potencia Contratada')}
+                p4={initialInvoice.p4PotenciaContratada ?? getRawNum('P4 Potencia Contratada')} p5={initialInvoice.p5PotenciaContratada ?? getRawNum('P5 Potencia Contratada')} p6={initialInvoice.p6PotenciaContratada ?? getRawNum('P6 Potencia Contratada')}
                 formatter={(v: number) => formatNumber(v, 3)} />
 
               <PeriodRow label="Maxímetro (kW)" 
-                p1={initialInvoice.p1PotenciaMaxDemanda} p2={initialInvoice.p2PotenciaMaxDemanda} p3={initialInvoice.p3PotenciaMaxDemanda}
-                p4={initialInvoice.p4PotenciaMaxDemanda} p5={initialInvoice.p5PotenciaMaxDemanda} p6={initialInvoice.p6PotenciaMaxDemanda}
+                p1={initialInvoice.p1PotenciaMaxDemanda ?? getRawNum('P1 Potencia Max Demanda')} p2={initialInvoice.p2PotenciaMaxDemanda ?? getRawNum('P2 Potencia Max Demanda')} p3={initialInvoice.p3PotenciaMaxDemanda ?? getRawNum('P3 Potencia Max Demanda')}
+                p4={initialInvoice.p4PotenciaMaxDemanda ?? getRawNum('P4 Potencia Max Demanda')} p5={initialInvoice.p5PotenciaMaxDemanda ?? getRawNum('P5 Potencia Max Demanda')} p6={initialInvoice.p6PotenciaMaxDemanda ?? getRawNum('P6 Potencia Max Demanda')}
                 formatter={(v: number) => formatNumber(v, 2)} />
 
               <PeriodRow label="Energía Reactiva (kVArh)" 
-                p1={initialInvoice.p1EnergiaReactivaConsumida} p2={initialInvoice.p2EnergiaReactivaConsumida} p3={initialInvoice.p3EnergiaReactivaConsumida}
-                p4={initialInvoice.p4EnergiaReactivaConsumida} p5={initialInvoice.p5EnergiaReactivaConsumida} p6={initialInvoice.p6EnergiaReactivaConsumida}
+                p1={initialInvoice.p1EnergiaReactivaConsumida ?? getRawNum('P1 Energia Reactiva Consumida')} p2={initialInvoice.p2EnergiaReactivaConsumida ?? getRawNum('P2 Energia Reactiva Consumida')} p3={initialInvoice.p3EnergiaReactivaConsumida ?? getRawNum('P3 Energia Reactiva Consumida')}
+                p4={initialInvoice.p4EnergiaReactivaConsumida ?? getRawNum('P4 Energia Reactiva Consumida')} p5={initialInvoice.p5EnergiaReactivaConsumida ?? getRawNum('P5 Energia Reactiva Consumida')} p6={initialInvoice.p6EnergiaReactivaConsumida ?? getRawNum('P6 Energia Reactiva Consumida')}
                 formatter={(v: number) => formatNumber(v, 2)} />
 
               <PeriodRow label="Excedentes Auto (kWh)" 
-                p1={initialInvoice.excedentesP1Autoconsumo} p2={initialInvoice.excedentesP2Autoconsumo} p3={initialInvoice.excedentesP3Autoconsumo}
-                p4={initialInvoice.excedentesP4Autoconsumo} p5={initialInvoice.excedentesP5Autoconsumo} p6={initialInvoice.excedentesP6Autoconsumo}
+                p1={initialInvoice.excedentesP1Autoconsumo ?? getRawNum('Excedentes P1 Autoconsumo')} p2={initialInvoice.excedentesP2Autoconsumo ?? getRawNum('Excedentes P2 Autoconsumo')} p3={initialInvoice.excedentesP3Autoconsumo ?? getRawNum('Excedentes P3 Autoconsumo')}
+                p4={initialInvoice.excedentesP4Autoconsumo ?? getRawNum('Excedentes P4 Autoconsumo')} p5={initialInvoice.excedentesP5Autoconsumo ?? getRawNum('Excedentes P5 Autoconsumo')} p6={initialInvoice.excedentesP6Autoconsumo ?? getRawNum('Excedentes P6 Autoconsumo')}
                 formatter={(v: number) => formatNumber(v, 2)} />
+
+              <PeriodRow label="Lecturas AE" 
+                p1={rawData['Lectura Desde AE P1'] ? `${rawData['Lectura Desde AE P1']} - ${rawData['Lectura Hasta AE P1']}` : null}
+                p2={rawData['Lectura Desde AE P2'] ? `${rawData['Lectura Desde AE P2']} - ${rawData['Lectura Hasta AE P2']}` : null}
+                p3={rawData['Lectura Desde AE P3'] ? `${rawData['Lectura Desde AE P3']} - ${rawData['Lectura Hasta AE P3']}` : null}
+                p4={rawData['Lectura Desde AE P4'] ? `${rawData['Lectura Desde AE P4']} - ${rawData['Lectura Hasta AE P4']}` : null}
+                p5={rawData['Lectura Desde AE P5'] ? `${rawData['Lectura Desde AE P5']} - ${rawData['Lectura Hasta AE P5']}` : null}
+                p6={rawData['Lectura Desde AE P6'] ? `${rawData['Lectura Desde AE P6']} - ${rawData['Lectura Hasta AE P6']}` : null}
+                formatter={formatString} />
             </div>
           </div>
           
-          <DataItem label="Energía Total Consumida" value={formatNumber(initialInvoice.totalMWh ? initialInvoice.totalMWh * 1000 : null, 2, 'kWh')} />
-          <DataItem label="Energía Reactiva Total" value={formatNumber(initialInvoice.energiaReactivaTotalConsumida, 2, 'kVArh')} />
-          <DataItem label="Excedentes Totales (Físicos)" value={formatNumber(initialInvoice.excedentesAutoconsumoAFacturar, 2, 'kWh')} />
-          <DataItem label="Pérdidas (%)" value={formatNumber(initialInvoice.porcentajePerdidas, 4, '%')} />
+          <DataItem label="Energía Total Consumida" value={formatNumber(initialInvoice.totalMWh ?? getRawNum('Energía Total Consumida', 'Consumo'), 2, 'kWh')} />
+          <DataItem label="Energía Reactiva Total" value={formatNumber(initialInvoice.energiaReactivaTotalConsumida ?? ((getRawNum('P1 Energia Reactiva Consumida') || 0) + (getRawNum('P2 Energia Reactiva Consumida') || 0) + (getRawNum('P3 Energia Reactiva Consumida') || 0) + (getRawNum('P4 Energia Reactiva Consumida') || 0) + (getRawNum('P5 Energia Reactiva Consumida') || 0) + (getRawNum('P6 Energia Reactiva Consumida') || 0) || null), 2, 'kVArh')} />
+          <DataItem label="Excedentes Totales (Físicos)" value={formatNumber(initialInvoice.excedentesAutoconsumoAFacturar ?? getRawNum('Excedentes Autoconsumo a facturar', 'Energia Neta Total Generada'), 2, 'kWh')} />
+          <DataItem label="Pérdidas (%)" value={formatNumber(initialInvoice.porcentajePerdidas ?? getRawNum('Porcentaje Perdidas'), 4, '%')} />
         </SectionCard>
 
         {/* 4. TÉRMINO DE POTENCIA (ECONÓMICO) */}
@@ -189,26 +234,31 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
                 <div className="text-right">P6</div>
               </div>
               <PeriodRow label="Pot. a Facturar (kW)" 
-                p1={initialInvoice.potenciaAFacturarP1} p2={initialInvoice.potenciaAFacturarP2} p3={initialInvoice.potenciaAFacturarP3}
-                p4={initialInvoice.potenciaAFacturarP4} p5={initialInvoice.potenciaAFacturarP5} p6={initialInvoice.potenciaAFacturarP6}
+                p1={initialInvoice.potenciaAFacturarP1 ?? getRawNum('Potencia a Facturar P1')} p2={initialInvoice.potenciaAFacturarP2 ?? getRawNum('Potencia a Facturar P2')} p3={initialInvoice.potenciaAFacturarP3 ?? getRawNum('Potencia a Facturar P3')}
+                p4={initialInvoice.potenciaAFacturarP4 ?? getRawNum('Potencia a Facturar P4')} p5={initialInvoice.potenciaAFacturarP5 ?? getRawNum('Potencia a Facturar P5')} p6={initialInvoice.potenciaAFacturarP6 ?? getRawNum('Potencia a Facturar P6')}
                 formatter={(v: number) => formatNumber(v, 2)} />
+
+              <PeriodRow label="Precio Pot. (€/kW)" 
+                p1={getRawNum('P1P')} p2={getRawNum('P2P')} p3={getRawNum('P3P')}
+                p4={getRawNum('P4P')} p5={getRawNum('P5P')} p6={getRawNum('P6P')}
+                formatter={(v: number) => formatNumber(v, 6)} />
               
               <PeriodRow label="Importe Peajes ATR (€)" 
-                p1={initialInvoice.importePmP1} p2={initialInvoice.importePmP2} p3={initialInvoice.importePmP3}
-                p4={initialInvoice.importePmP4} p5={initialInvoice.importePmP5} p6={initialInvoice.importePmP6}
+                p1={initialInvoice.importePmP1 ?? getRawNum('Importe PM P1', 'Importe Ponderado Peajes Potencia P1')} p2={initialInvoice.importePmP2 ?? getRawNum('Importe PM P2', 'Importe Ponderado Peajes Potencia P2')} p3={initialInvoice.importePmP3 ?? getRawNum('Importe PM P3', 'Importe Ponderado Peajes Potencia P3')}
+                p4={initialInvoice.importePmP4 ?? getRawNum('Importe PM P4', 'Importe Ponderado Peajes Potencia P4')} p5={initialInvoice.importePmP5 ?? getRawNum('Importe PM P5', 'Importe Ponderado Peajes Potencia P5')} p6={initialInvoice.importePmP6 ?? getRawNum('Importe PM P6', 'Importe Ponderado Peajes Potencia P6')}
                 formatter={(v: number) => formatCurrency(v, 2)} />
 
               <PeriodRow label="Importe Excesos ATR (€)" 
-                p1={initialInvoice.importeExcesoPmP1} p2={initialInvoice.importeExcesoPmP2} p3={initialInvoice.importeExcesoPmP3}
-                p4={initialInvoice.importeExcesoPmP4} p5={initialInvoice.importeExcesoPmP5} p6={initialInvoice.importeExcesoPmP6}
+                p1={initialInvoice.importeExcesoPmP1 ?? getRawNum('Importe Exceso PM P1')} p2={initialInvoice.importeExcesoPmP2 ?? getRawNum('Importe Exceso PM P2')} p3={initialInvoice.importeExcesoPmP3 ?? getRawNum('Importe Exceso PM P3')}
+                p4={initialInvoice.importeExcesoPmP4 ?? getRawNum('Importe Exceso PM P4')} p5={initialInvoice.importeExcesoPmP5 ?? getRawNum('Importe Exceso PM P5')} p6={initialInvoice.importeExcesoPmP6 ?? getRawNum('Importe Exceso PM P6')}
                 formatter={(v: number) => formatCurrency(v, 2)} />
             </div>
           </div>
 
-          <DataItem label="Importe Total Peajes Potencia" value={formatCurrency(initialInvoice.importeTotalPmAtr)} />
-          <DataItem label="Importe Total Excesos Potencia" value={formatCurrency(initialInvoice.importeTotalExcesosAtr)} />
-          <DataItem label="Importe Cargos Potencia" value={formatCurrency(initialInvoice.importeCargoPotenciaTotal)} />
-          <DataItem highlight label="Total Término Potencia" value={<span className="font-bold text-[var(--lime)]">{formatCurrency(initialInvoice.importePotenciaFactura)}</span>} />
+          <DataItem label="Importe Total Peajes Potencia" value={formatCurrency(initialInvoice.importeTotalPmAtr ?? getRawNum('Importe Ponderado Peajes Potencia', 'Importe Peajes PM'))} />
+          <DataItem label="Importe Total Excesos Potencia" value={formatCurrency(initialInvoice.importeTotalExcesosAtr ?? getRawNum('Importe Total Excesos ATR F1', 'Importe Total Excesos ATR'))} />
+          <DataItem label="Importe Cargos Potencia" value={formatCurrency(initialInvoice.importeCargoPotenciaTotal ?? getRawNum('Importe Ponderado Cargos Potencia', 'Importe Cargo Potencia Total'))} />
+          <DataItem highlight label="Total Término Potencia" value={<span className="font-bold text-[var(--lime)]">{formatCurrency(initialInvoice.importePotenciaFactura ?? getRawNum('Importe Potencia Factura', 'Importe Potencia ATR'))}</span>} />
         </SectionCard>
 
         {/* 5. TÉRMINO DE ENERGÍA (ECONÓMICO) */}
@@ -224,47 +274,47 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
                 <div className="text-right">P5</div>
                 <div className="text-right">P6</div>
               </div>
-              <PeriodRow label="Precio Venta (€/kWh)" 
-                p1={initialInvoice.p1E || initialInvoice.p1c} p2={initialInvoice.p2E || initialInvoice.p2c} p3={initialInvoice.p3E || initialInvoice.p3c}
-                p4={initialInvoice.p4E || initialInvoice.p4c} p5={initialInvoice.p5E || initialInvoice.p5c} p6={initialInvoice.p6E || initialInvoice.p6c}
+              <PeriodRow label="Precio Ene. (€/kWh)" 
+                p1={(initialInvoice.p1E || initialInvoice.p1c) ?? getRawNum('P1E')} p2={(initialInvoice.p2E || initialInvoice.p2c) ?? getRawNum('P2E')} p3={(initialInvoice.p3E || initialInvoice.p3c) ?? getRawNum('P3E')}
+                p4={(initialInvoice.p4E || initialInvoice.p4c) ?? getRawNum('P4E')} p5={(initialInvoice.p5E || initialInvoice.p5c) ?? getRawNum('P5E')} p6={(initialInvoice.p6E || initialInvoice.p6c) ?? getRawNum('P6E')}
                 formatter={(v: number) => formatNumber(v, 6)} />
               
               <PeriodRow label="Importe Ene. Activa (€)" 
-                p1={initialInvoice.importeAeP1} p2={initialInvoice.importeAeP2} p3={initialInvoice.importeAeP3}
-                p4={initialInvoice.importeAeP4} p5={initialInvoice.importeAeP5} p6={initialInvoice.importeAeP6}
+                p1={initialInvoice.importeAeP1 ?? getRawNum('Importe AE P1')} p2={initialInvoice.importeAeP2 ?? getRawNum('Importe AE P2')} p3={initialInvoice.importeAeP3 ?? getRawNum('Importe AE P3')}
+                p4={initialInvoice.importeAeP4 ?? getRawNum('Importe AE P4')} p5={initialInvoice.importeAeP5 ?? getRawNum('Importe AE P5')} p6={initialInvoice.importeAeP6 ?? getRawNum('Importe AE P6')}
                 formatter={(v: number) => formatCurrency(v, 2)} />
 
               <PeriodRow label="Precio Reactiva (€/kVArh)" 
-                p1={initialInvoice.p1PrecioEnergiaReactiva} p2={initialInvoice.p2PrecioEnergiaReactiva} p3={initialInvoice.p3PrecioEnergiaReactiva}
-                p4={initialInvoice.p4PrecioEnergiaReactiva} p5={initialInvoice.p5PrecioEnergiaReactiva} p6={initialInvoice.p6PrecioEnergiaReactiva}
+                p1={initialInvoice.p1PrecioEnergiaReactiva ?? getRawNum('P1 Precio Energia Reactiva')} p2={initialInvoice.p2PrecioEnergiaReactiva ?? getRawNum('P2 Precio Energia Reactiva')} p3={initialInvoice.p3PrecioEnergiaReactiva ?? getRawNum('P3 Precio Energia Reactiva')}
+                p4={initialInvoice.p4PrecioEnergiaReactiva ?? getRawNum('P4 Precio Energia Reactiva')} p5={initialInvoice.p5PrecioEnergiaReactiva ?? getRawNum('P5 Precio Energia Reactiva')} p6={initialInvoice.p6PrecioEnergiaReactiva ?? getRawNum('P6 Precio Energia Reactiva')}
                 formatter={(v: number) => formatNumber(v, 6)} />
 
               <PeriodRow label="Importe Reactiva (€)" 
-                p1={initialInvoice.importeR1P1} p2={initialInvoice.importeR1P2} p3={initialInvoice.importeR1P3}
-                p4={initialInvoice.importeR1P4} p5={initialInvoice.importeR1P5} p6={initialInvoice.importeR1P6}
+                p1={initialInvoice.importeR1P1 ?? getRawNum('Importe R1 P1')} p2={initialInvoice.importeR1P2 ?? getRawNum('Importe R1 P2')} p3={initialInvoice.importeR1P3 ?? getRawNum('Importe R1 P3')}
+                p4={initialInvoice.importeR1P4 ?? getRawNum('Importe R1 P4')} p5={initialInvoice.importeR1P5 ?? getRawNum('Importe R1 P5')} p6={initialInvoice.importeR1P6 ?? getRawNum('Importe R1 P6')}
                 formatter={(v: number) => formatCurrency(v, 2)} />
             </div>
           </div>
 
-          <DataItem label="Importe Total Energía Activa" value={formatCurrency(initialInvoice.importeTotalAeAtr)} />
-          <DataItem label="Importe Cargos Energía" value={formatCurrency(initialInvoice.importeCargoEnergiaTotal)} />
-          <DataItem label="Importe Total Reactiva" value={formatCurrency(initialInvoice.importeTotalRAtr)} />
-          <DataItem label="Ajuste / Tope del Gas" value={formatCurrency(initialInvoice.importeAjusteGas)} />
+          <DataItem label="Importe Total Energía Activa" value={formatCurrency(initialInvoice.importeTotalAeAtr ?? getRawNum('Importe Cargo Energia Total', 'Importe Energia Factura'))} />
+          <DataItem label="Importe Cargos Energía" value={formatCurrency(initialInvoice.importeCargoEnergiaTotal ?? getRawNum('Importe Ponderado Cargos Energia'))} />
+          <DataItem label="Importe Total Reactiva" value={formatCurrency(initialInvoice.importeTotalRAtr ?? getRawNum('Importe Total R ATR'))} />
+          <DataItem label="Ajuste / Tope del Gas" value={formatCurrency(initialInvoice.importeAjusteGas ?? getRawNum('Importe Ajuste Gas'))} />
           
-          <DataItem label="Coste Desvíos (DSV)" value={formatCurrency(initialInvoice.dsv)} />
-          <DataItem label="FEE Operativo" value={formatCurrency(initialInvoice.fee)} />
+          <DataItem label="Coste Desvíos (DSV)" value={formatCurrency(initialInvoice.dsv ?? getRawNum('DSVM', 'DSV'))} />
+          <DataItem label="FEE Operativo" value={formatCurrency(initialInvoice.fee ?? getRawNum('FEEM', 'FEE'))} />
           
-          <DataItem highlight label="Compensación Excedentes" value={<span className="font-bold text-red-400">{formatCurrency(initialInvoice.importeAplicableCompensacionExcedentes ? -Math.abs(initialInvoice.importeAplicableCompensacionExcedentes) : null)}</span>} />
-          <DataItem highlight label="Total Término Energía" value={<span className="font-bold text-[var(--lime)]">{formatCurrency(initialInvoice.importeEnergiaFactura)}</span>} />
+          <DataItem highlight label="Compensación Excedentes" value={<span className="font-bold text-red-400">{formatCurrency((initialInvoice.importeAplicableCompensacionExcedentes ?? getRawNum('Importe Excedentes Autoconsumo Aplicado', 'Importe Aplicable Compensacion Excedentes')) ? -Math.abs((initialInvoice.importeAplicableCompensacionExcedentes ?? getRawNum('Importe Excedentes Autoconsumo Aplicado', 'Importe Aplicable Compensacion Excedentes'))!) : null)}</span>} />
+          <DataItem highlight label="Total Término Energía" value={<span className="font-bold text-[var(--lime)]">{formatCurrency(initialInvoice.importeEnergiaFactura ?? getRawNum('Importe Energia Factura'))}</span>} />
         </SectionCard>
 
         {/* 6. CONCEPTOS ADICIONALES Y SVA */}
         <SectionCard title="6. Conceptos Adicionales y SVA" icon={BarChart3} delay={600}>
-          <DataItem label="Costes de Gestión" value={formatCurrency(initialInvoice.costesDeGestion)} />
-          <DataItem label="Suplemento Territorial" value={formatCurrency(initialInvoice.suplementoTerritorial)} />
-          <DataItem label="Tasa Municipal / Base" value={`${formatCurrency(initialInvoice.tasaMunicipal)} / ${formatCurrency(initialInvoice.baseImponibleTasaMunicipal)}`} />
-          <DataItem label="Penalización No ICP" value={formatCurrency(initialInvoice.penalizacionNoIcp)} />
-          <DataItem label="Alquiler Equipo Medida" value={`${formatCurrency(initialInvoice.alquilerEquipoDeMedida)} (${initialInvoice.numeroDiasAlquiler1 || 0} días)`} />
+          <DataItem label="Costes de Gestión" value={formatCurrency(initialInvoice.costesDeGestion ?? getRawNum('Costes de Gestión'))} />
+          <DataItem label="Suplemento Territorial" value={formatCurrency(initialInvoice.suplementoTerritorial ?? getRawNum('Suplemento Territorial'))} />
+          <DataItem label="Tasa Municipal / Base" value={`${formatCurrency(initialInvoice.tasaMunicipal ?? getRawNum('Tasa Municipal'))} / ${formatCurrency(initialInvoice.baseImponibleTasaMunicipal ?? getRawNum('Base Imponible Tasa Municipal'))}`} />
+          <DataItem label="Penalización No ICP" value={formatCurrency(initialInvoice.penalizacionNoIcp ?? getRawNum('Penalizacion No ICP'))} />
+          <DataItem label="Alquiler Equipo Medida" value={`${formatCurrency(initialInvoice.alquilerEquipoDeMedida ?? getRawNum('Alquiler Equipo de Medida'))} (${initialInvoice.numeroDiasAlquiler1 ?? getRawNum('Numero Dias Alquiler 1') ?? 0} días)`} />
           
           {initialInvoice.importeBonoSocial && <DataItem label="Bono Social Eléctrico" value={formatCurrency(initialInvoice.importeBonoSocial)} />}
           {initialInvoice.conceptoSva && <DataItem label="Servicio Valor Añadido (SVA)" value={`${initialInvoice.conceptoSva} : ${formatCurrency(initialInvoice.totalSVA)}`} />}
@@ -288,15 +338,15 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
 
         {/* 7. DESGLOSE DE BASE IMPONIBLE E IMPUESTOS */}
         <SectionCard title="7. Desglose Impuestos y Totales" icon={Calculator} delay={700}>
-          <DataItem label="Subtotal 1 (Sin Descuentos/SVA)" value={formatCurrency(initialInvoice.subtotal1)} />
-          <DataItem label="Subtotal 2 (Base Imponible Previa)" value={formatCurrency(initialInvoice.subtotal2)} />
-          <DataItem label="Subtotal Otros Conceptos" value={formatCurrency(initialInvoice.subtotalOtrosConcepto)} />
+          <DataItem label="Subtotal 1 (Sin Descuentos/SVA)" value={formatCurrency(initialInvoice.subtotal1 ?? getRawNum('Subtotal 1', 'Total sin Descuento'))} />
+          <DataItem label="Subtotal 2 (Base Imponible Previa)" value={formatCurrency(initialInvoice.subtotal2 ?? getRawNum('Subtotal 2'))} />
+          <DataItem label="Subtotal Otros Conceptos" value={formatCurrency(initialInvoice.subtotalOtrosConcepto ?? getRawNum('Subtotal Otros Concepto'))} />
           
-          <DataItem label="Impuesto Eléctrico (Cuota)" value={formatCurrency(initialInvoice.ieOdoo)} />
+          <DataItem label="Impuesto Eléctrico (Cuota)" value={formatCurrency(initialInvoice.ieOdoo ?? getRawNum('Importe Impuesto'))} />
           
           <div className="col-span-full border-t border-[var(--border-strong)] my-2"></div>
           
-          <DataItem label="Base Imponible IVA General" value={formatCurrency(initialInvoice.baseImponibleIva)} />
+          <DataItem label="Base Imponible IVA General" value={formatCurrency(initialInvoice.baseImponibleIva ?? getRawNum('Base Imponible IVA'))} />
           
           {initialInvoice.baseImponible5 && <DataItem label="Base Imponible IVA 5%" value={formatCurrency(initialInvoice.baseImponible5)} />}
           {initialInvoice.importeIva5 && <DataItem label="Cuota IVA 5%" value={formatCurrency(initialInvoice.importeIva5)} />}
@@ -307,30 +357,25 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
           {initialInvoice.baseImponible21 && <DataItem label="Base Imponible IVA 21%" value={formatCurrency(initialInvoice.baseImponible21)} />}
           {initialInvoice.importeIva21 && <DataItem label="Cuota IVA 21%" value={formatCurrency(initialInvoice.importeIva21)} />}
           
-          <DataItem label="Total Impuestos" value={formatCurrency(initialInvoice.taxAmount || initialInvoice.importeIva)} />
+          <DataItem label="Total IVA" value={formatCurrency((initialInvoice.taxAmount || initialInvoice.importeIva) ?? getRawNum('Importe IVA'))} />
           
           <div className="col-span-full mt-2">
-            <DataItem highlight label="Total Importe Factura" value={<span className="text-2xl font-bold font-mono text-[var(--lime)]">{formatCurrency(initialInvoice.totalAmount || initialInvoice.total)}</span>} />
+            <DataItem highlight label="Total Importe Factura" value={<span className="text-2xl font-bold font-mono text-[var(--lime)]">{formatCurrency((initialInvoice.totalAmount || initialInvoice.total) ?? getRawNum('Total'))}</span>} />
           </div>
         </SectionCard>
 
         {/* 8. ANÁLISIS DE RENTABILIDAD (ADMIN ONLY) */}
         {isAdmin && (
           <SectionCard title="8. Rentabilidad Comercial interna" icon={BarChart3} delay={800}>
-            <DataItem label="Importe Energía Sin Margen" value={formatCurrency(initialInvoice.importeEnergiaSinMargen)} />
-            <DataItem label="Margen Potencia" value={formatCurrency(initialInvoice.margenPotencia)} />
-            <DataItem label="Margen Energía" value={formatCurrency(initialInvoice.margenEnergia)} />
-            <DataItem label="Margen Excesos" value={formatCurrency(initialInvoice.margenExcesos)} />
-            
-            <DataItem label="Comisión Precio Energía" value={formatCurrency(initialInvoice.comisionPrecioEnergia)} />
-            <DataItem label="Comisión Volumen Energía" value={formatCurrency(initialInvoice.comisionVolumenEnergia)} />
-            <DataItem label="Comisión Potencia Canal" value={formatCurrency(initialInvoice.comisionPotenciaCanal)} />
-            <DataItem label="Comisión Costes de Gestión" value={formatCurrency(initialInvoice.comisionCostesDeGestion)} />
+            <DataItem label="Importe Energía Sin Margen" value={formatCurrency(initialInvoice.importeEnergiaSinMargen ?? getRawNum('Importe Energia sin Margen'))} />
+            <DataItem label="Margen Potencia" value={formatCurrency(initialInvoice.margenPotencia ?? getRawNum('Margen Potencia'))} />
+            <DataItem label="Margen Energía" value={formatCurrency(initialInvoice.margenEnergia ?? getRawNum('Margen Energia'))} />
+            <DataItem label="Margen Excesos" value={formatCurrency(initialInvoice.margenExcesos ?? getRawNum('Margen Excesos'))} />
             
             <div className="col-span-full border-t border-[var(--border-strong)] my-2"></div>
             
-            <DataItem highlight label="Margen Factura Total" value={<span className="font-bold font-mono text-[var(--lime)] text-xl">{formatCurrency(initialInvoice.margenFactura || initialInvoice.margin)}</span>} />
-            <DataItem highlight label="Comisión Generada Total" value={<span className="font-bold font-mono text-[var(--text-primary)] text-xl">{formatCurrency(initialInvoice.comisionTotal)}</span>} />
+            <DataItem highlight label="Margen Factura Total" value={<span className="font-bold font-mono text-[var(--lime)] text-xl">{formatCurrency((initialInvoice.margenFactura || initialInvoice.margin) ?? getRawNum('Margen Factura Total', 'Margen Factura'))}</span>} />
+            <DataItem highlight label="Comisión Generada Total" value={<span className="font-bold font-mono text-[var(--text-primary)] text-xl">{formatCurrency(initialInvoice.comisionTotal ?? getRawNum('Comision Total', 'Comision Generada Total'))}</span>} />
           </SectionCard>
         )}
 
