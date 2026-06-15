@@ -25,7 +25,8 @@ export async function importInvoicesAction(invoicesData: any[]) {
     for (const row of invoicesData) {
       // Mapeo defensivo de columnas (puede venir de CSV o Excel)
       const invoiceNumber = row['Numero Factura'] || row['Número Factura'] || row['NUMERO FACTURA'];
-      const cups = row['CUPS'];
+      const cupsRaw = row['CUPS'];
+      const cups = cupsRaw ? String(cupsRaw).trim().substring(0, 20) : null;
       const vatNumber = row['CIF'] || row['NIF'] || row['DNI'];
       
       if (!invoiceNumber || !cups) {
