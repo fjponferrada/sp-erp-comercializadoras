@@ -1,0 +1,59 @@
+Created At: 2026-06-13T19:17:50Z
+Completed At: 2026-06-13T19:17:50Z
+File Path: `file:///C:/Users/Administrator/sp-erp-comercializadoras/src/app/%28app%29/leads/NewLeadModal.tsx`
+Total Lines: 1045
+Total Bytes: 60861
+Showing lines 200 to 250
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+200:     verificacionAed: false
+201:   });
+202: 
+203:   useEffect(() => {
+204:     if (isOpen) {
+205:       setStep(1);
+206:       setError('');
+207:       setSipsData(null);
+208:       
+209:       if (leadToEdit) {
+210:         const cd = (leadToEdit.contractData as any) || {};
+211:         const ad = (leadToEdit.airtableData as any) || {};
+212:         
+213:         const vat = leadToEdit.vatNumber || cd.vatNumber || ad['CIF'] || ad['NIF'] || ad['Copia de CIF link'] || ad['NIF Contacto'] || '';
+214:         const esJuridica = vat ? /^[ABJUV]/i.test(vat.trim()) : false;
+215: 
+216:         const getScalar = (val: any) => Array.isArray(val) ? val[0] : val;
+217:         let rawBusinessName = cd.nombre || getScalar(ad['NOMBRE/RAZON SOCIAL']) || getScalar(ad['NOMBRERAZON SOCIAL']) || '';
+218:         let pAp = leadToEdit.firstName || cd.primerApellido || ad['Primer Apellido'] || '';
+219:         let sAp = leadToEdit.lastName || cd.segundoApellido || ad['Segundo Apellido'] || '';
+220:         
+221:         // Si es persona física y no tenemos el nombre exacto, intentamos la chapuza de quitar los apellidos del "businessName"
+222:         if (!esJuridica && !rawBusinessName) {
+223:           rawBusinessName = leadToEdit.businessName || cd.businessName || ad['NOMBRE Y APELLIDOS'] || ad['Nombre completo Titular'] || '';
+224:           const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+225:           if (pAp) rawBusinessName = rawBusinessName.replace(new RegExp(`\\b${escapeRegExp(pAp)}\\b`, 'i'), '');
+226:           if (sAp) rawBusinessName = rawBusinessName.replace(new RegExp(`\\b${escapeRegExp(sAp)}\\b`, 'i'), '');
+227:           rawBusinessName = rawBusinessName.replace('(Copia)', '').trim();
+228:           // Remove trailing/leading commas or spaces left over
+229:           rawBusinessName = rawBusinessName.replace(/^,\s*|\s*,\s*$/g, '').trim();
+230:         } else if (esJuridica && !rawBusinessName) {
+231:           rawBusinessName = leadToEdit.businessName || cd.businessName || ad['NOMBRE Y APELLIDOS'] || ad['Nombre completo Titular'] || '';
+232:         }
+233: 
+234: 
+235:         const normNum = (val: any) => {
+236:           const upper = String(val || '').toUpperCase().trim();
+237:           if (upper.includes('NÚM') || upper.includes('NUM')) return 'NÚMERO';
+238:           if (upper.includes('KM')) return 'KM';
+239:           if (upper.includes('S/N') || upper.includes('SN')) return 'S/N';
+240:           return 'NÚMERO';
+241:         };
+242: 
+243:         const normProdType = (val: any) => {
+244:           const upper = String(val || '').toUpperCase().trim();
+245:           if (upper === 'FIJO' || upper === 'INDEXADO' || upper === 'FIJO_PERS' || upper === 'INDEXADO_PERS') return upper;
+246:           if (upper.includes('INDEX')) return 'INDEXADO';
+247:           return 'FIJO';
+248:         };
+249: 
+250:         let rawTipoProducto = normProdType(leadToEdit.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']));
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

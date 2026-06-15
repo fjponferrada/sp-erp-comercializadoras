@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": false,
+  "Description": "Clean address variables before setting state in NewLeadModal",
+  "EndLine": 251,
+  "Instruction": "Extract and clean the variables before the object literal",
+  "ReplacementContent": "        let rawTipoProducto = normProdType(leadToEdit.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']));\n\n        let sCpRaw = cd.sCp || getScalar(ad['Código Postal Instalación']) || getScalar(ad['CP_CONT']) || '';\n        let sPoblacionRaw = cd.sPoblacion || getScalar(ad['Población Instalación']) || getScalar(ad['POBLACION_CONT']) || '';\n        let sProvinciaRaw = cd.sProvincia || getScalar(ad['Provincia Instalación']) || getScalar(ad['PROVINCIA_CONT']) || '';\n        let sNombreViaRaw = cd.sNombreVia || getScalar(ad['Calle Instalación']) || getScalar(ad['DOMICILIO PS COMPLETO']) || getScalar(ad['DOMICILIO PS']) || '';\n        \n        if (sProvinciaRaw) sNombreViaRaw = sNombreViaRaw.replace(new RegExp(`[,\\\\s]*${sProvinciaRaw}$`, 'i'), '').trim();\n        if (sPoblacionRaw) sNombreViaRaw = sNombreViaRaw.replace(new RegExp(`[,\\\\s]*${sPoblacionRaw}$`, 'i'), '').trim();\n        if (sCpRaw) sNombreViaRaw = sNombreViaRaw.replace(new RegExp(`[,\\\\s]*${sCpRaw}$`, 'i'), '').trim();\n\n        setData({\n          ...data,",
+  "StartLine": 250,
+  "TargetContent": "        let rawTipoProducto = normProdType(leadToEdit.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']));\n\n        setData({\n          ...data,",
+  "TargetFile": "C:\\Users\\Administrator\\sp-erp-comercializadoras\\src\\app\\(app)\\leads\\NewLeadModal.tsx",
+  "toolAction": "Fixing address variables in NewLeadModal",
+  "toolSummary": "Fix address variables"
+}
