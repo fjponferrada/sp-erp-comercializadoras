@@ -42,17 +42,7 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
         continue;
       }
 
-      // Comprobar si ya tiene ese archivo subido
-      if (fileType === 'pdf' && invoice.pdfUrl && !invoice.pdfUrl.includes('airtable')) {
-        console.log(`[SALTADO] Ya tiene PDF asignado.`);
-        skipCount++;
-        continue;
-      }
-      if (fileType === 'xml' && invoice.xML && !invoice.xML.includes('airtable')) {
-        console.log(`[SALTADO] Ya tiene XML asignado.`);
-        skipCount++;
-        continue;
-      }
+
 
       // Leer el archivo localmente
       const buffer = fs.readFileSync(filePath);
@@ -64,7 +54,9 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
       // Actualizar la base de datos
       await prisma.invoice.update({
         where: { id: invoice.id },
-        data: fileType === 'xml' ? { xML: r2Url } : { pdfUrl: r2Url }
+        data: fileType === 'xml' 
+          ? { invoiceData: { ...(invoice.invoiceData as any || {}), xmlUrl: r2Url } } 
+          : { pdfUrl: r2Url }
       });
 
       console.log(`[OK] Subido y enlazado.`);
@@ -84,8 +76,8 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
 async function run() {
   console.log('--- INICIANDO IMPORTACIÓN LOCAL DE FACTURAS HACIA CLOUDFLARE R2 ---');
 
-  const pdfDir = "W:\\Contabilidad\\Facturas_Clientes\\PDF\\2026_1";
-  const xmlDir = "W:\\Contabilidad\\Facturas_Clientes\\E Facturas\\2026_1";
+  const pdfDir = "W:\\Contabilidad\\Facturas_Clientes\\PDF\\2025_3";
+  const xmlDir = "W:\\Contabilidad\\Facturas_Clientes\\E Facturas\\2025_3";
 
   console.log('\n>>> FASE 1: Subiendo PDFs');
   await uploadInvoicesFromDirectory(pdfDir, 'pdf');

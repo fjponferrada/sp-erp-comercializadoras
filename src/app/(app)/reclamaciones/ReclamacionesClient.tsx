@@ -9,22 +9,34 @@ import toast from 'react-hot-toast';
 
 interface ReclamacionesClientProps {
   initialClaims: ClaimSummary[];
+  initialTotalCount: number;
   userRole: string;
 }
 
 export default function ReclamacionesClient({
   initialClaims,
+  initialTotalCount,
   userRole
 }: ReclamacionesClientProps) {
   const [claims, setClaims] = useState(initialClaims);
+  const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
 
-  const fetchClaims = async () => {
+  const fetchClaims = async (resetPage = false, newSearchTerm = searchTerm) => {
     setLoading(true);
-    const result = await getClaimsAction();
+    const currentPage = resetPage ? 1 : page + 1;
+    const result = await getClaimsAction(undefined, currentPage, 50, newSearchTerm);
     if (result.success) {
-      setClaims(result.data);
+      if (resetPage) {
+        setClaims(result.data);
+        setPage(1);
+      } else {
+        setClaims([...claims, ...result.data]);
+        setPage(currentPage);
+      }
+      if ('totalCount' in result) setTotalCount(result.totalCount);
     } else {
       toast.error('Error recargando reclamaciones');
     }
@@ -40,15 +52,10 @@ export default function ReclamacionesClient({
     }
   };
 
-  const filteredClaims = claims.filter(c => 
-    c.codigoSolicitud?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.cups?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.codigoReclamacion?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
+  
   return (
     <div className="min-h-screen relative outline-none" style={{ background: 'var(--bg-base)' }}>
-      <div className="p-6 max-w-[1600px] mx-auto space-y-6">
+      <div className="p-6 w-full mx-auto space-y-6">
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -57,7 +64,7 @@ export default function ReclamacionesClient({
               Reclamaciones
             </h1>
             <p className="text-gray-400 text-sm mt-1">
-              Listado general de procesos de reclamación (R1). Total: {filteredClaims.length}
+              Listado general de procesos de reclamación (R1). Total: {totalCount}
             </p>
           </div>
           
@@ -68,13 +75,13 @@ export default function ReclamacionesClient({
                 placeholder="Buscar CUPS, código..."
                 className="w-full pl-9 pr-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg focus:ring-1 focus:ring-[var(--lime)] focus:border-[var(--lime)] text-sm text-gray-200 placeholder-gray-500"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); fetchClaims(true, e.target.value); }}
               />
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
             </div>
             
             <button
-              onClick={fetchClaims}
+              onClick={() => fetchClaims(true)}
               disabled={loading}
               className="flex items-center justify-center p-2 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] text-gray-400 transition-colors"
               title="Recargar"
@@ -93,7 +100,7 @@ export default function ReclamacionesClient({
 
         {/* TABLE */}
         <div className="bg-[var(--bg-elevated)] rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">
-          <div className="overflow-x-auto no-scrollbar">
+          <div className="overflow-x-auto pb-4">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-[rgba(255,255,255,0.02)] border-b border-[var(--border)] text-xs text-gray-400 font-semibold uppercase tracking-wider">
                 <tr>
@@ -108,14 +115,14 @@ export default function ReclamacionesClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)] text-gray-300">
-                {filteredClaims.length === 0 ? (
+                {claims.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-gray-500">
+                    <td colSpan={6} className="px-5 py-8 text-center text-gray-500">
                       No se encontraron reclamaciones.
                     </td>
                   </tr>
-                ) : (
-                  filteredClaims.map((claim) => (
+                )}
+                {claims.map((claim) => (
                     <tr key={claim.codigoSolicitud} className="hover:bg-[rgba(255,255,255,0.01)] transition-colors">
                       <td className="px-5 py-4 font-mono text-gray-400">
                         <div className="flex items-center gap-2">
@@ -145,9 +152,9 @@ export default function ReclamacionesClient({
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-4 max-w-xs truncate" title={claim.paso03?.comentario || ''}>
-                        <div className="flex items-center gap-2">
-                          <span className="truncate">{claim.paso03?.comentario || '-'}</span>
+                      <td className="px-5 py-4 whitespace-normal break-words min-w-[200px] lg:min-w-[300px]">
+                        <div className="flex items-start gap-2">
+                          <span className="leading-relaxed">{claim.paso03?.comentario || '-'}</span>
                           {claim.paso03?.xmlUrl && (
                             <a href={claim.paso03.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 03" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
                               <Download className="h-4 w-4" />
@@ -155,9 +162,9 @@ export default function ReclamacionesClient({
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-4 max-w-xs truncate" title={claim.paso05?.comentario || ''}>
-                        <div className="flex items-center gap-2">
-                          <span className="truncate">{claim.paso05?.comentario || '-'}</span>
+                      <td className="px-5 py-4 whitespace-normal break-words min-w-[200px] lg:min-w-[300px]">
+                        <div className="flex items-start gap-2">
+                          <span className="leading-relaxed">{claim.paso05?.comentario || '-'}</span>
                           {claim.paso05?.xmlUrl && (
                             <a href={claim.paso05.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 05" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
                               <Download className="h-4 w-4" />
@@ -166,8 +173,7 @@ export default function ReclamacionesClient({
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
+                  ))}
               </tbody>
             </table>
           </div>

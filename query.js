@@ -1,10 +1,18 @@
+require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-async function main() {
-  const events = await prisma.switchingEvent.findMany();
-  console.log("EVENTS LENGTH:", events.length);
-  if (events.length > 0) {
-    console.log("FIRST EVENT PROCESO BASE:", events[0].procesoBase);
-  }
+const { Pool } = require('pg');
+const { PrismaPg } = require('@prisma/adapter-pg');
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
+
+async function run() {
+  const inv = await prisma.invoice.findFirst({
+    where: { invoiceNumber: 'A260511138' }
+  });
+  console.log('pdfUrl:', inv.pdfUrl);
+  console.log('xmlUrl:', inv.invoiceData?.xmlUrl || inv.invoiceData?.xML);
 }
-main();
+
+run().finally(() => prisma.$disconnect());

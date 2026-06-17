@@ -26,7 +26,7 @@ export interface ClaimSummary {
   } | null;
 }
 
-export async function getClaimsAction(contractId?: string): Promise<{ success: true; data: ClaimSummary[] } | { success: false; error: string }> {
+export async function getClaimsAction(contractId?: string, page: number = 1, limit: number = 50, searchTerm: string = ""): Promise<{ success: true; data: ClaimSummary[], totalCount: number } | { success: false; error: string }> {
   try {
     const session = await auth();
     if (!session?.user) {
@@ -119,7 +119,7 @@ export async function getClaimsAction(contractId?: string): Promise<{ success: t
       return dateB.getTime() - dateA.getTime();
     });
 
-    return { success: true, data: claims };
+    const totalCount = claims.length; const paginatedClaims = claims.slice((page - 1) * limit, page * limit); return { success: true, data: paginatedClaims, totalCount };
 
   } catch (error: any) {
     console.error('Error fetching claims:', error);

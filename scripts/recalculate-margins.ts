@@ -77,14 +77,6 @@ async function run() {
       await prisma.invoice.update({
           where: { id: invoice.id },
           data: {
-              margenEnergia,
-              margenPotencia,
-              margenFactura, // raw
-              fijoIndex,
-              fee,
-              baseImponibleIva,
-              importeIva: importeImpuesto, // Mapping
-              baseImponibleF1,
               margin: finalMargin
           }
       });

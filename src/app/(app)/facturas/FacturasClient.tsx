@@ -109,7 +109,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
             type="text" 
-            placeholder="Buscar por Nº Factura o Nombre del Cliente..." 
+            placeholder="Buscar por Nº Factura, Nombre, CIF o CUPS..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
@@ -231,11 +231,11 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                   </td>
                   <td className="px-6 py-4 text-xs">
                     {invoice.totalMWh ? (
-                      <span className="font-medium text-slate-200">{invoice.totalMWh.toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
+                      <span className="font-medium text-slate-200">{(invoice.invoiceType === 'Abono' ? -Math.abs(invoice.totalMWh) : invoice.totalMWh).toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
                     ) : '-'}
                   </td>
-                  <td className="px-6 py-4 text-right font-medium text-emerald-400">
-                    {invoice.totalAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                  <td className={`px-6 py-4 text-right font-medium ${invoice.invoiceType === 'Abono' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {(invoice.invoiceType === 'Abono' ? -Math.abs(invoice.totalAmount) : invoice.totalAmount).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 flex-wrap">

@@ -13,13 +13,15 @@ export default async function ReclamacionesPage() {
     redirect('/');
   }
 
-  const result = await getClaimsAction();
+  const result = await getClaimsAction(undefined, 1, 50, "");
 
   const initialClaims = result.success ? result.data : [];
+  const initialTotalCount = result.success && "totalCount" in result ? result.totalCount : 0;
 
   return (
     <ReclamacionesClient 
       initialClaims={initialClaims as any} 
+      initialTotalCount={initialTotalCount}
       userRole={userRole} 
     />
   );
