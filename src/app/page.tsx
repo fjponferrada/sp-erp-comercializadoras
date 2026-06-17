@@ -85,7 +85,7 @@ export default function DashboardPage() {
     },
     {
       label: 'MWh Activos (Anual)',
-      value: kpis.mwh.toLocaleString('es-ES', { minimumFractionDigits: 1 }),
+      value: Math.round(kpis.mwh).toLocaleString('es-ES'),
       icon: Zap,
       color: 'var(--lime)',
     },
