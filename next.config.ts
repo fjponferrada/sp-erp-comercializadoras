@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Configuración por defecto
+  serverExternalPackages: ['pizzip'],
+  serverActions: {
+    bodySizeLimit: '50mb',
+  },
 };
 
 export default nextConfig;
+// force reload
