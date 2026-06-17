@@ -74,13 +74,13 @@ export async function fetchPendingSwitchingContracts() {
         return {
           id: c.id,
           cups: c.supplyPoint.cups,
-          direccion: `${c.supplyPoint.address} ${c.supplyPoint.postalCode} ${c.supplyPoint.municipality}`,
+          direccion: `${c.supplyPoint.address} ${c.supplyPoint.postalCode} ${c.supplyPoint.city}`,
           nif: c.client.vatNumber,
           nombre: c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim(),
           proceso: c.tipo || getTramitationCodes(c.tramitationType).tipo || 'C1',
           tipoC2: c.tipoC2 || getTramitationCodes(c.tramitationType).tipoC2,
           contrato: c.contractCode || c.id,
-          codDistribuidora: c.supplyPoint.distributorId || c.supplyPoint.cups?.substring(2, 6),
+          codDistribuidora: c.supplyPoint.distributor || c.supplyPoint.cups?.substring(2, 6),
           codComercializadora: c.brand?.company?.codigoRee || '0000',
           tipoTramitacion: c.tramitationType,
           estado: c.status,
@@ -118,7 +118,7 @@ export async function generateSwitchingXmls(contractIds: string[]) {
       const tipoC2 = c.tipoC2 || getTramitationCodes(c.tramitationType).tipoC2 || cAirtableFallback['Tipo_c2'] || 'C2_A';
 
       const codEmisora = c.brand?.company?.codigoRee || '1713';
-      const codDestino = c.supplyPoint.distributorReeCode || c.supplyPoint.distributorId || cAirtableFallback['CODIGO REE DISTRIBUIDORA'] || c.supplyPoint.cups?.substring(2, 6) || '0021';
+      const codDestino = c.supplyPoint.distributorReeCode || c.supplyPoint.distributor || cAirtableFallback['CODIGO REE DISTRIBUIDORA'] || c.supplyPoint.cups?.substring(2, 6) || '0021';
       
       const rawTariff = (cAirtableFallback['Código Tarifa'] && cAirtableFallback['Código Tarifa'][0]) || cAirtableFallback['Tarifa'] || c.supplyPoint.tariff || '';
       const mappedTarifa = getTarifaAtrCode(rawTariff);

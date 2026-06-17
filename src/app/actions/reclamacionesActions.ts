@@ -262,7 +262,7 @@ ${xmlNombre}
 <CodPostal>${zip}</CodPostal>
 <Via>
 <TipoVia>${normTipoVia}</TipoVia>
-<Calle>${removeAccents(street)}</Calle>
+<Calle>${removeAccents(street || '')}</Calle>
 <NumeroFinca>${number}</NumeroFinca>
 </Via>
 </Direccion>
