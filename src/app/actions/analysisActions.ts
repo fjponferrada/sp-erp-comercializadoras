@@ -17,7 +17,8 @@ export async function getEconomicAnalysis() {
         subtotal1: true,
         invoiceType: true,
         totalMWh: true,
-        margin: true
+        margin: true,
+        invoiceData: true
       }
     });
 
@@ -26,8 +27,16 @@ export async function getEconomicAnalysis() {
       if (!inv.issueDate) return;
       const m = `${inv.issueDate.getFullYear()}-${String(inv.issueDate.getMonth() + 1).padStart(2, '0')}`;
       if (!invoicesData[m]) invoicesData[m] = { total_eur: 0, total_mwh: 0, margin: 0 };
+      const data = inv.invoiceData as any;
+      let baseImponibleIva = 0;
+      if (data) {
+        let val = data['Base Imponible IVA CORR'] || data['Base Imponible IVA'];
+        if (val) {
+          baseImponibleIva = parseFloat(val.toString().replace(',', '.'));
+        }
+      }
       
-      let amount = inv.subtotal1 || 0;
+      let amount = baseImponibleIva || inv.subtotal1 || 0;
       if (inv.invoiceType === 'Abono' && amount > 0) {
         amount = -amount;
       }
