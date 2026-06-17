@@ -175,7 +175,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
                     {row.facturacionEur.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
                   <td className="px-6 py-4 text-right text-slate-400">
-                    {row.facturacionMwh.toLocaleString('es-ES', { maximumFractionDigits: 1 })} MWh
+                    {(row.facturacionMwh / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} MWh
                   </td>
                   <td className="px-6 py-4 text-right font-medium text-slate-200">
                     {(row.eurPerMwh * 1000).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
