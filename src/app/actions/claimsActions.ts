@@ -51,10 +51,20 @@ export async function getClaimsAction(contractId?: string): Promise<{ success: t
     for (const event of events) {
       const codigo = event.codigoSolicitud || 'SIN_CODIGO';
       
+      let cupsFallback = event.supplyPoint?.cups || '';
+      if (!cupsFallback && event.uniqueProcess) {
+        const match = event.uniqueProcess.match(/ES[a-zA-Z0-9]{18,22}/);
+        if (match) cupsFallback = match[0];
+      }
+      if (!cupsFallback && event.xmlUrl) {
+        const match = event.xmlUrl.match(/ES[a-zA-Z0-9]{18,22}/);
+        if (match) cupsFallback = match[0];
+      }
+      
       if (!claimsMap.has(codigo)) {
         claimsMap.set(codigo, {
           codigoSolicitud: codigo,
-          cups: event.supplyPoint?.cups || '',
+          cups: cupsFallback,
           codigoReclamacion: null,
           diasAbierta: null,
           paso01: null,
