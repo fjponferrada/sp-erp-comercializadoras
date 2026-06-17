@@ -283,7 +283,7 @@ async function run() {
         supply = await prisma.supplyPoint.findUnique({ where: { airtableId: supplyRecordId } });
     }
     if (!supply) {
-        supply = await prisma.supplyPoint.findFirst({ where: { cups } });
+        supply = await prisma.supplyPoint.findFirst({ where: { cups, clientId: client.id } });
     }
 
     if (!supply) {
@@ -373,6 +373,7 @@ async function run() {
             clientId: client.id,
             supplyPointId: supply.id,
             contractId: contract.id,
+            companyId: brand.companyId,
             issueDate: parseDateSafe(invf['Fecha Factura'] || invf['Fecha']) || new Date(),
             billingStart: parseDateSafe(invf['Desde'] || invf['Desde(P)']),
             billingEnd: parseDateSafe(invf['Hasta'] || invf['Hasta(P)']),

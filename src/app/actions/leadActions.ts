@@ -468,7 +468,7 @@ export async function updateLeadCupsAction(leadId: string, newCups: string) {
       if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
       // Upsert SupplyPoint con el nuevo CUPS
-      let sp = await prisma.supplyPoint.findFirst({ where: { cups: newCups, client: { brandId: lead.user.brandId } } });
+      let sp = await prisma.supplyPoint.findFirst({ where: { cups: newCups, clientId: 'TEMPORAL' } });
       // ELIMINADO: No sobrescribimos la información base del SupplyPoint existente al actualizar un Lead.
       if (!sp) {
         await prisma.supplyPoint.create({
@@ -534,7 +534,7 @@ export async function forceRefreshSipsAction(leadId: string) {
     let autoConsumo = data.autoconsumo || data.Autoconsumo || data['Cod Autoconsumo SIPS'];
     if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
-    let sp = await prisma.supplyPoint.findFirst({ where: { cups: effectiveCups, client: { brandId: lead.user.brandId } } });
+    let sp = await prisma.supplyPoint.findFirst({ where: { cups: effectiveCups, clientId: 'TEMPORAL' } });
     if (!sp) {
       await prisma.supplyPoint.create({
         data: {

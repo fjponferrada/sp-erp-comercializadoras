@@ -469,7 +469,7 @@ export default function ContractsClient({
                                         <Download size={14} /> Descargar doc. firmado
                                       </a>
                                       {c.annexUrl && (
-                                        <a href={c.annexUrl} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
+                                        <a href={`/api/documents/smart-download?url=${encodeURIComponent(c.annexUrl)}`} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
                                           <Download size={14} /> Descargar Anexo firmado
                                         </a>
                                       )}

@@ -17,15 +17,28 @@ export async function updateClient(clientId: string, data: any) {
       throw new Error("Cliente no encontrado");
     }
 
+    let updateData: any = {
+      vatNumber: data.vatNumber !== undefined ? data.vatNumber : oldClient.vatNumber,
+      contactEmail: data.contactEmail !== undefined ? data.contactEmail : oldClient.contactEmail,
+      contactPhone: data.contactPhone !== undefined ? data.contactPhone : oldClient.contactPhone,
+      billingAddress: data.billingAddress !== undefined ? data.billingAddress : oldClient.billingAddress,
+    };
+
+    if (oldClient.clientType === 'Persona física') {
+      const firstName = data.firstName !== undefined ? data.firstName : oldClient.firstName;
+      const lastName = data.lastName !== undefined ? data.lastName : oldClient.lastName;
+      const lastName2 = data.lastName2 !== undefined ? data.lastName2 : oldClient.lastName2;
+      updateData.firstName = firstName;
+      updateData.lastName = lastName;
+      updateData.lastName2 = lastName2;
+      updateData.businessName = `${firstName || ''} ${lastName || ''} ${lastName2 || ''}`.replace(/\s+/g, ' ').trim();
+    } else {
+      updateData.businessName = data.businessName !== undefined ? data.businessName : oldClient.businessName;
+    }
+
     const updatedClient = await prisma.client.update({
       where: { id: clientId },
-      data: {
-        businessName: data.businessName !== undefined ? data.businessName : oldClient.businessName,
-        vatNumber: data.vatNumber !== undefined ? data.vatNumber : oldClient.vatNumber,
-        contactEmail: data.contactEmail !== undefined ? data.contactEmail : oldClient.contactEmail,
-        contactPhone: data.contactPhone !== undefined ? data.contactPhone : oldClient.contactPhone,
-        billingAddress: data.billingAddress !== undefined ? data.billingAddress : oldClient.billingAddress,
-      }
+      data: updateData
     });
 
     revalidatePath(`/clientes/${clientId}`);

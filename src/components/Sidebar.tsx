@@ -61,8 +61,26 @@ const baseNavGroups = [
     items: [
       { href: '/importar-switching', icon: UploadCloud, label: 'Importar Switching' },
       { href: '/switching-warnings', icon: AlertCircle, label: 'Eventos Switchings' },
+      { href: '/eventos-switching/generar', icon: FileText, label: 'Generar Switching' },
+      { href: '/eventos-switching/anulaciones', icon: FileWarning, label: 'Generar Anulación' },
       { href: '/reclamaciones', icon: FileWarning, label: 'Reclamaciones' },
       { href: '/ficheros-f1', icon: FileText, label: 'Ficheros F1' },
+    ],
+  },
+  {
+    label: 'REGULACIÓN',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/regulacion/cnmc', icon: FileText, label: 'CNMC' },
+      { href: '/regulacion/miteco', icon: FileText, label: 'MITECO' },
+    ],
+  },
+  {
+    label: 'IMPUESTOS',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/impuestos/electrico', icon: Receipt, label: 'Impuesto Eléctrico' },
+      { href: '/impuestos/municipal', icon: Building2, label: 'Tasa Municipal' },
     ],
   },
   {

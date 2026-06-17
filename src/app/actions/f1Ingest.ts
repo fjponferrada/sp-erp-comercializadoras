@@ -74,7 +74,9 @@ export async function ingestF1XmlAction(formData: FormData) {
     let procesadas = 0;
     for (const f of facturasAtrArray) {
       const dGen = f.DatosGeneralesFacturaATR || {};
-      const cups = dGen.DireccionSuministro?.CUPS;
+      let cups = dGen.DireccionSuministro?.CUPS || f.Medidas?.CodPM || f.CodPM || mensaje.Cabecera?.CUPS;
+      if (cups) cups = String(cups).trim();
+
       const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
       const fechaEmiStr = dGen.DatosGeneralesFactura?.FechaFactura;
       
@@ -82,9 +84,9 @@ export async function ingestF1XmlAction(formData: FormData) {
       const rawImporteTotal = dGen.DatosGeneralesFactura?.ImporteTotalFactura;
       const saldo = parseFloat(rawSaldo !== undefined ? rawSaldo : (rawImporteTotal !== undefined ? rawImporteTotal : '0'));
       
-      const dFact = f.DatosFacturaATR || {};
-      const fechaIniStr = dFact.FechaInicioPeriodo;
-      const fechaFinStr = dFact.FechaFinPeriodo;
+      const dFact = dGen.DatosFacturaATR || f.DatosFacturaATR || {};
+      const fechaIniStr = dFact.Periodo?.FechaDesdeFactura || dFact.FechaInicioPeriodo;
+      const fechaFinStr = dFact.Periodo?.FechaHastaFactura || dFact.FechaFinPeriodo;
       
       const rawTotalPeajes = dFact.ImportesFactura?.ImporteTotalPeajes;
       const totalPeajes = parseFloat(rawTotalPeajes !== undefined ? rawTotalPeajes : '0');
@@ -100,9 +102,17 @@ export async function ingestF1XmlAction(formData: FormData) {
       let contractId = undefined;
 
       if (cups) {
-        const sp = await prisma.supplyPoint.findFirst({ where: { cups: cups }});
+        const baseCups = cups.substring(0, 20);
+        const sp = await prisma.supplyPoint.findFirst({ 
+          where: { cups: { startsWith: baseCups, mode: 'insensitive' } },
+          include: { contracts: { orderBy: { createdAt: 'desc' } } }
+        });
         if (sp) {
           supplyPointId = sp.id;
+          const activeContract = sp.contracts.find(c => c.status !== 'DRAFT' && c.status !== 'Borrador');
+          if (activeContract) {
+            contractId = activeContract.id;
+          }
         }
       }
 

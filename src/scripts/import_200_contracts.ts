@@ -274,8 +274,9 @@ async function run() {
     const cups = (sf['CUPS'] || f['CUPS'] || `CUPS_${record.id}`).toString().trim();
     let supply = null;
     if (supplyRecordId) supply = await prisma.supplyPoint.findUnique({ where: { airtableId: supplyRecordId } });
-    if (!supply) supply = await prisma.supplyPoint.findFirst({ where: { cups } });
-
+    if (!supply) {
+        supply = await prisma.supplyPoint.findFirst({ where: { cups, clientId: client.id } });
+    }
     if (!supply) {
       const extraFields = autoMapFields(sf, supplyNewFields);
       supply = await prisma.supplyPoint.create({

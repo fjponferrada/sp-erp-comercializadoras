@@ -17,9 +17,17 @@ export async function importInvoicesAction(invoicesData: any[]) {
     const cookieStore = await cookies();
     const cookieBrandId = cookieStore.get('active-brand')?.value;
     let activeBrandId = cookieBrandId || (session?.user as any)?.brandId;
-    if (!activeBrandId) {
+    let activeCompanyId: string | null = null;
+    
+    if (activeBrandId) {
+      const b = await prisma.brand.findUnique({ where: { id: activeBrandId } });
+      if (b) activeCompanyId = b.companyId;
+    }
+
+    if (!activeBrandId || !activeCompanyId) {
       const b = await prisma.brand.findFirst();
       activeBrandId = b?.id || '';
+      activeCompanyId = b?.companyId || null;
     }
 
     for (const row of invoicesData) {
@@ -58,7 +66,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
 
       // 2. Buscar SupplyPoint por CUPS
       let supplyPoint = await prisma.supplyPoint.findFirst({
-        where: { cups, client: { brandId: activeBrandId } }
+        where: { cups, clientId: client!.id }
       });
 
       if (!supplyPoint) {
@@ -237,6 +245,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
           invoiceNumber,
           invoiceType: tipoFactura,
           clientId: client?.id || supplyPoint.id,
+          companyId: activeCompanyId,
           contractId: contract?.id,
           supplyPointId: supplyPoint.id,
           issueDate,
@@ -366,6 +375,7 @@ export async function createPenalizationInvoiceAction(data: {
         invoiceNumber: data.invoiceNumber,
         invoiceType: 'Penalización',
         clientId: contract.clientId,
+        companyId: contract.client.brand?.companyId,
         contractId: contract.id,
         supplyPointId: contract.supplyPointId,
         issueDate: new Date(),

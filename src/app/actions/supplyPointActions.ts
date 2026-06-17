@@ -164,3 +164,46 @@ export async function updateSupplyPointAction(id: string, data: any) {
     return { success: false, error: error.message };
   }
 }
+
+export async function updateSupplyPointSipsAction(id: string) {
+  const session = await auth();
+  if (!session?.user) {
+    return { success: false, error: 'No autorizado' };
+  }
+
+  try {
+    const supplyPoint = await prisma.supplyPoint.findUnique({
+      where: { id },
+      select: { cups: true }
+    });
+
+    if (!supplyPoint || !supplyPoint.cups) {
+      return { success: false, error: 'Punto de suministro no encontrado o sin CUPS' };
+    }
+
+    const { getSipsData } = await import('@/lib/sips');
+    const sipsData = await getSipsData(supplyPoint.cups);
+
+    if (!sipsData || sipsData.result === 'ERROR') {
+      return { 
+        success: false, 
+        error: sipsData?.message || 'Error al consultar INGEBAU (SIPS)' 
+      };
+    }
+
+    // Actualizamos el JSON
+    const updated = await prisma.supplyPoint.update({
+      where: { id },
+      data: {
+        sipsRawData: sipsData as any
+      }
+    });
+
+    revalidatePath(`/puntos-suministro/${id}`);
+    
+    return { success: true, sipsData: updated.sipsRawData };
+  } catch (error: any) {
+    console.error('Error in updateSupplyPointSipsAction:', error);
+    return { success: false, error: error.message };
+  }
+}

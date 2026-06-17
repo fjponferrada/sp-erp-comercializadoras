@@ -230,7 +230,7 @@ export async function convertLeadToContractAction(leadId: string) {
     // 3. Necesitamos un SupplyPoint. Buscamos por CUPS.
     const targetCups = lead.cups || `CUPS-PENDING-${lead.id}`;
     let supplyPoint = await prisma.supplyPoint.findFirst({
-      where: { cups: targetCups, client: { brandId: brandIdToUse } },
+      where: { cups: targetCups, clientId: client.id },
       include: { contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }
     });
 
@@ -1095,6 +1095,10 @@ export async function updateContractFull(formData: FormData) {
     const tariff = formData.get('tariff') as string;
 
     const file = formData.get('signedContractPdf') as File | null;
+    const anexoFile = formData.get('signedAnexoPdf') as File | null;
+
+    let filePdfSignedUrl: string | undefined = undefined;
+    let fileAnexoFirmadoUrl: string | undefined = undefined;
 
     // First fetch the existing contract to get client and supply point IDs
     const existing = await prisma.contract.findUnique({
@@ -1110,6 +1114,7 @@ export async function updateContractFull(formData: FormData) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       const url = await uploadFileToR2(`contracts/${contractId}/${file.name}`, buffer, file.type || 'application/pdf');
+      filePdfSignedUrl = url;
 
       // Save it as a Document related to Contract
       await prisma.document.create({
@@ -1117,6 +1122,23 @@ export async function updateContractFull(formData: FormData) {
           type: 'Contrato',
           url: url,
           name: file.name,
+          contractId: contractId
+        }
+      });
+    }
+
+    if (anexoFile && anexoFile.size > 0) {
+      const { uploadFileToR2 } = await import('@/lib/r2');
+      const arrayBuffer = await anexoFile.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const url = await uploadFileToR2(`contracts/${contractId}/anexo_${anexoFile.name}`, buffer, anexoFile.type || 'application/pdf');
+      fileAnexoFirmadoUrl = url;
+
+      await prisma.document.create({
+        data: {
+          type: 'Anexo',
+          url: url,
+          name: anexoFile.name,
           contractId: contractId
         }
       });
@@ -1155,6 +1177,8 @@ export async function updateContractFull(formData: FormData) {
         p1e, p2e, p3e, p4e, p5e, p6e,
         p1p, p2p, p3p, p4p, p5p, p6p,
         p1c, p2c, p3c, p4c, p5c, p6c,
+        filePdfSigned: filePdfSignedUrl || undefined,
+        fileAnexoFirmado: fileAnexoFirmadoUrl || undefined,
       }
     });
 
@@ -1354,11 +1378,10 @@ export async function getPaginatedContractsAction(
         draftUrl = airtableData['Borrador contrato'][0].url;
       }
 
-      let annexUrl = null;
-      if (airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
+      let annexUrl = c.fileAnexoFirmado || null;
+      if (!annexUrl && airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
         annexUrl = airtableData['PDF Anexo firmado'][0].url;
       }
-
       return {
         ...c,
         lead: c.Lead,

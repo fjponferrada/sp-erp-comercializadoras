@@ -13,6 +13,8 @@ export interface ParsedSwitchingData {
   fechaActivacionAlta?: Date;
   fechaActivacionBaja?: Date;
   observaciones?: string;
+  motivosRechazo?: any;
+  actuacionCampo?: boolean;
   codigoComercializadora?: string;
   codigoReclamacion?: string;
   // Campos F1
@@ -117,33 +119,54 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
 
   // 3. Lógica Específica por "Paso"
   if (paso === '02') {
-    // Aceptación
-    result.estadoAR = 'ACEPTADO';
-    const fechaAceptacion = findKeyRecursively(root, 'FechaAceptacion') || findKeyRecursively(root, 'FechaAR');
-    if (fechaAceptacion) {
-      result.fechaAR = new Date(fechaAceptacion);
+    // Puede ser Aceptación o Rechazo
+    const isRechazo = findKeyRecursively(root, 'Rechazo') || findKeyRecursively(root, 'MotivosRechazo');
+    if (isRechazo) {
+      result.estadoAR = 'RECHAZADO';
+      const fechaRechazo = findKeyRecursively(root, 'FechaRechazo') || findKeyRecursively(root, 'FechaAR');
+      if (fechaRechazo) result.fechaAR = new Date(fechaRechazo);
+      const motivosRechazo = findKeyRecursively(root, 'MotivosRechazo');
+      if (motivosRechazo) {
+        result.motivosRechazo = motivosRechazo;
+      }
+    } else {
+      result.estadoAR = 'ACEPTADO';
+      const fechaAceptacion = findKeyRecursively(root, 'FechaAceptacion') || findKeyRecursively(root, 'FechaAR');
+      if (fechaAceptacion) {
+        result.fechaAR = new Date(fechaAceptacion);
+      }
+      const fechaPrevista = findKeyRecursively(root, 'FechaPrevistaAccion') || findKeyRecursively(root, 'FechaActivacionPrevista');
+      if (fechaPrevista) {
+        result.fechaPrevActivacion = new Date(fechaPrevista);
+      }
     }
-    const fechaPrevista = findKeyRecursively(root, 'FechaPrevistaAccion') || findKeyRecursively(root, 'FechaActivacionPrevista');
-    if (fechaPrevista) {
-      result.fechaPrevActivacion = new Date(fechaPrevista);
+    
+    // Check for ActuacionCampo (C2 acceptance might inform if it really requires field work)
+    const actuacionCampo = findKeyRecursively(root, 'ActuacionCampo') || findKeyRecursively(root, 'ConActuacionCampo') || findKeyRecursively(root, 'RequiereActuacionCampo');
+    if (actuacionCampo !== undefined) {
+      const val = String(actuacionCampo).trim().toUpperCase();
+      if (val === 'S' || val === 'TRUE' || val === '1') {
+        result.actuacionCampo = true;
+      } else if (val === 'N' || val === 'FALSE' || val === '0') {
+        result.actuacionCampo = false;
+      }
     }
+
     const observaciones = findKeyRecursively(root, 'Comentarios');
     if (observaciones) {
       result.observaciones = String(observaciones);
     }
 
   } else if (paso === '04') {
-    // Rechazo
+    // Rechazo explícito
     result.estadoAR = 'RECHAZADO';
     const fechaRechazo = findKeyRecursively(root, 'FechaRechazo') || findKeyRecursively(root, 'FechaAR');
     if (fechaRechazo) {
       result.fechaAR = new Date(fechaRechazo);
     }
-    // El motivo de rechazo suele venir en <MotivosRechazo><Motivo><CodigoMotivo> y <Descripcion>
     const motivosRechazo = findKeyRecursively(root, 'MotivosRechazo');
     if (motivosRechazo) {
-      // Extraer un array de motivos o texto directo
-      result.observaciones = JSON.stringify(motivosRechazo);
+      result.motivosRechazo = motivosRechazo;
     }
 
   } else if (paso === '05') {

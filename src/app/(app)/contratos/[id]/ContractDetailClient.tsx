@@ -5,6 +5,7 @@ import Topbar from '@/components/Topbar';
 import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery } from 'lucide-react';
 import { useState } from 'react';
 import { updateContractDatesAction, sendContractToDocuSignAction, createContractModificationAction } from '@/app/actions/contractActions';
+import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
 
 export default function ContractDetailClient({ 
   initialContract, 
@@ -30,6 +31,7 @@ export default function ContractDetailClient({
   const [isSendingSignature, setIsSendingSignature] = useState(false);
   const [isRequestingMod, setIsRequestingMod] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
+  const [isGeneratingXml, setIsGeneratingXml] = useState(false);
 
   // Forms state
   const formatDateForInput = (isoDate: Date | string | null | undefined) => {
@@ -190,7 +192,7 @@ export default function ContractDetailClient({
     signedUrl = airtableData['Contrato .PDF'][0].url;
   }
 
-  let annexUrl = null;
+  let annexUrl = initialContract.fileAnexoFirmado || null;
   if (!annexUrl && airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
     annexUrl = airtableData['PDF Anexo firmado'][0].url;
   }
@@ -215,6 +217,43 @@ export default function ContractDetailClient({
               >
                 <Download size={16} /> Descargar Borrador
               </a>
+            )}
+            {isAdmin && !['ACTIVO', 'FINALIZADO', 'BAJA', 'RECHAZADO'].includes(initialContract.status) && !initialContract.activationDate && !['R', 'E1'].includes(initialContract.tipo) && (
+              <button
+                onClick={async () => {
+                  setIsGeneratingXml(true);
+                  try {
+                    const res = await generateSwitchingXmls([initialContract.id]);
+                    if (res.success && res.fileContent) {
+                      const link = document.createElement('a');
+                      link.href = `data:application/zip;base64,${res.fileContent}`;
+                      link.download = res.fileName || 'Switching_Generado.zip';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      
+                      if (res.validationErrors && res.validationErrors.length > 0) {
+                         alert("Aviso: " + res.validationErrors.map((v: any) => v.motivo).join(', '));
+                      }
+                    } else {
+                      alert(res.error || 'Error generando XML');
+                      if (res.validationErrors && res.validationErrors.length > 0) {
+                         alert("Aviso: " + res.validationErrors.map((v: any) => v.motivo).join(', '));
+                      }
+                    }
+                  } catch (err: any) {
+                    alert(err.message || 'Error desconocido');
+                  } finally {
+                    setIsGeneratingXml(false);
+                  }
+                }}
+                disabled={isGeneratingXml}
+                className="btn-secondary flex items-center gap-2 border-[var(--lime)] text-[var(--lime)] hover:bg-[var(--lime)] hover:text-black"
+                title="Generar paquete de Switching (XML + PDFs) para esta versión del contrato"
+              >
+                {isGeneratingXml ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />}
+                {isGeneratingXml ? 'Generando...' : 'Generar XML'}
+              </button>
             )}
             {initialContract.status === 'BORRADOR' && (
               <button 

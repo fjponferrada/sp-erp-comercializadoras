@@ -72,15 +72,40 @@ export default function SwitchingWarningsClient({
   const formatDate = (dateString: string | Date | null) => {
     if (!dateString) return '-';
     try {
-      return format(new Date(dateString), 'yyyy-MM-dd HH:mm:ss', { locale: es });
+      return format(new Date(dateString), 'dd/MM/yyyy', { locale: es });
     } catch (e) {
       return '-';
     }
   };
 
+  const getObservacionesText = (event: any) => {
+    const parts = [];
+    if (event.observaciones) {
+      parts.push(event.observaciones);
+    }
+    if (event.paso === '11' && event.fechaActivacionBaja) {
+      parts.push(`Fecha Prevista Baja: ${formatDate(event.fechaActivacionBaja)}`);
+    } else if (event.fechaPrevActivacion) {
+      parts.push(`Fecha Prev. Activación: ${formatDate(event.fechaPrevActivacion)}`);
+    }
+    
+    if (event.motivosRechazo) {
+      try {
+        const motivos = typeof event.motivosRechazo === 'string' ? JSON.parse(event.motivosRechazo) : event.motivosRechazo;
+        if (Array.isArray(motivos)) {
+           const texts = motivos.map((m: any) => m.descripcion || m.codigo || JSON.stringify(m));
+           if (texts.length > 0) parts.push(`Motivos: ${texts.join(', ')}`);
+        } else if (typeof motivos === 'object' && (motivos.descripcion || motivos.codigo)) {
+           parts.push(`Motivo: ${motivos.descripcion || motivos.codigo}`);
+        }
+      } catch(e) {}
+    }
+    return parts.join(' | ') || '-';
+  };
+
   return (
     <div className="min-h-screen relative outline-none" style={{ background: 'var(--bg-base)' }}>
-      <div className="p-6 max-w-[1600px] mx-auto space-y-6">
+      <div className="p-6 w-full max-w-[1920px] mx-auto space-y-6">
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -169,7 +194,7 @@ export default function SwitchingWarningsClient({
                   <th className="px-5 py-4">Proceso</th>
                   <th className="px-5 py-4 text-red-500">TipoError</th>
                   <th className="px-5 py-4 text-red-500">WARNING</th>
-                  <th className="px-5 py-4">Unique Process</th>
+                  <th className="px-5 py-4">Observaciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)] text-gray-300">
@@ -224,7 +249,9 @@ export default function SwitchingWarningsClient({
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-xs text-gray-600 font-mono">{event.uniqueProcess}</td>
+                      <td className="px-5 py-4 whitespace-normal min-w-[200px] text-xs text-gray-300">
+                        {getObservacionesText(event)}
+                      </td>
                     </tr>
                   ))
                 )}

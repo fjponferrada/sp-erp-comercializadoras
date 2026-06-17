@@ -28,6 +28,8 @@ const ESTADOS = [
 export default function EditContractModal({ isOpen, onClose, contract, onSuccess }: EditContractModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedAnexoFile, setSelectedAnexoFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState('general');
 
   // Parse initial dates to YYYY-MM-DD
@@ -142,8 +144,6 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
     cnae: supplyPoint.cnae || (client as any).cnae || lead.cnae || '',
   });
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
   if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -159,6 +159,12 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleAnexoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setSelectedAnexoFile(e.target.files[0]);
     }
   };
 
@@ -180,6 +186,9 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
 
       if (selectedFile) {
         formPayload.append('signedContractPdf', selectedFile);
+      }
+      if (selectedAnexoFile) {
+        formPayload.append('signedAnexoPdf', selectedAnexoFile);
       }
 
       const res = await updateContractFull(formPayload);
@@ -343,6 +352,31 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
                   </div>
                   {contract.signedUrl && !selectedFile && (
                     <p className="mt-2 text-xs text-lime-500/80">Ya existe un documento firmado subido.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">PDF Anexo Firmado</label>
+                  <div className="border border-dashed border-white/20 rounded-xl p-6 text-center hover:bg-white/[0.02] transition-colors group relative cursor-pointer">
+                    <input 
+                      type="file" 
+                      accept="application/pdf"
+                      onChange={handleAnexoFileChange}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-lime-500/20 group-hover:text-lime-400 transition-colors">
+                        <Upload size={18} />
+                      </div>
+                      {selectedAnexoFile ? (
+                        <span className="text-sm font-medium text-lime-400">{selectedAnexoFile.name}</span>
+                      ) : (
+                        <span className="text-sm font-medium text-white/60">Haz clic o arrastra el PDF del Anexo aquí</span>
+                      )}
+                    </div>
+                  </div>
+                  {contract.annexUrl && !selectedAnexoFile && (
+                    <p className="mt-2 text-xs text-lime-500/80">Ya existe un anexo firmado subido.</p>
                   )}
                 </div>
               </div>

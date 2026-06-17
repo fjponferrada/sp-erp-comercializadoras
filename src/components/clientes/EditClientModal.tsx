@@ -8,6 +8,9 @@ export default function EditClientModal({ client, onClose }: { client: any, onCl
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     businessName: client.businessName || '',
+    firstName: client.firstName || '',
+    lastName: client.lastName || '',
+    lastName2: client.lastName2 || '',
     vatNumber: client.vatNumber || '',
     contactEmail: client.contactEmail || '',
     contactPhone: client.contactPhone || '',
@@ -44,14 +47,40 @@ export default function EditClientModal({ client, onClose }: { client: any, onCl
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Razón Social</label>
-              <input 
-                type="text" name="businessName" value={formData.businessName} onChange={handleChange}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 outline-none"
-              />
-            </div>
-            <div>
+            {client.clientType === 'Persona física' ? (
+              <>
+                <div className="col-span-2">
+                  <label className="block text-sm text-slate-400 mb-1">Nombre</label>
+                  <input 
+                    type="text" name="firstName" value={formData.firstName} onChange={handleChange}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Primer Apellido</label>
+                  <input 
+                    type="text" name="lastName" value={formData.lastName} onChange={handleChange}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Segundo Apellido</label>
+                  <input 
+                    type="text" name="lastName2" value={formData.lastName2} onChange={handleChange}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 outline-none"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Razón Social</label>
+                <input 
+                  type="text" name="businessName" value={formData.businessName} onChange={handleChange}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 outline-none"
+                />
+              </div>
+            )}
+            <div className={client.clientType === 'Persona física' ? "col-span-2" : ""}>
               <label className="block text-sm text-slate-400 mb-1">CIF / NIF</label>
               <input 
                 type="text" name="vatNumber" value={formData.vatNumber} onChange={handleChange}

@@ -167,10 +167,8 @@ export default function SupplyPointsClient({
                           </div>
                         </div>
                       </td>
-                      <td className="p-4">
-                        <div className="text-sm font-medium text-white/80">
-                          {sp.annualConsumption ? `${sp.annualConsumption} MWh` : '-'}
-                        </div>
+                      <td className="p-4 text-sm text-white/70 font-medium">
+                        {sp.annualConsumption ? `${sp.annualConsumption} kWh` : '-'}
                       </td>
                       <td className="p-4">
                         {sp.contracts && sp.contracts.length > 0 ? (

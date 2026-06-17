@@ -1,0 +1,315 @@
+'use server';
+
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
+import { normalizeProvincia, normalizeMunicipio, normalizeTipoVia } from '@/lib/normalizeAddress';
+
+const removeAccents = (str: string) => {
+  if (!str) return str;
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+
+export async function searchCupsForClaim(cups: string) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return { success: false, error: 'No autorizado' };
+    }
+
+    const supplyPoint = await prisma.supplyPoint.findFirst({
+      where: { cups: { equals: cups, mode: 'insensitive' } },
+      include: {
+        client: true,
+        f1Invoices: {
+          orderBy: { fechaEmision: 'desc' },
+          // Limitamos a las facturas más recientes para no saturar
+          take: 20
+        }
+      }
+    });
+
+    if (!supplyPoint) {
+      return { success: false, error: 'CUPS no encontrado' };
+    }
+
+    return {
+      success: true,
+      data: {
+        supplyPointId: supplyPoint.id,
+        cups: supplyPoint.cups,
+        tariff: supplyPoint.tariff || (supplyPoint.client as any)?.airtableData?.TARIFA || '',
+        clientName: supplyPoint.client.businessName || `${supplyPoint.client.firstName || ''} ${supplyPoint.client.lastName || ''}`.trim(),
+        clientVat: supplyPoint.client.vatNumber,
+        f1Invoices: supplyPoint.f1Invoices.map(f1 => {
+          const jsonData: any = f1.jsonData || {};
+          const dGenFact = jsonData?.DatosGeneralesFacturaATR?.DatosGeneralesFactura || {};
+          
+          const getArray = (obj: any) => obj ? (Array.isArray(obj) ? obj : [obj]) : [];
+          const pEnergia = getArray(jsonData?.EnergiaActiva?.TerminoEnergiaActiva?.Periodo);
+          const pPotencia = getArray(jsonData?.Potencia?.TerminoPotencia?.Periodo);
+
+          const getE = (i: number, k1: string, k2: string) => pEnergia[i]?.ValorEnergiaActiva ?? (jsonData[k1] ?? (jsonData[k2] ?? '0'));
+          const getP = (i: number, k1: string, k2: string) => pPotencia[i]?.PotenciaAFacturar ?? (pPotencia[i]?.PotenciaContratada ?? (jsonData[k1] ?? (jsonData[k2] ?? '0')));
+
+          const dFacturaAtr = jsonData?.DatosGeneralesFacturaATR?.DatosFacturaATR || jsonData?.DatosFacturaATR || {};
+          return {
+            id: f1.id,
+            codigoFiscal: f1.numeroFactura || dGenFact.CodigoFiscalFactura || jsonData.codigoFiscal || jsonData['Codigo Fiscal'] || '',
+            fechaEmision: f1.fechaEmision,
+            fechaInicio: f1.fechaInicio || dFacturaAtr.Periodo?.FechaDesdeFactura || dFacturaAtr.FechaInicioPeriodo,
+            fechaFin: f1.fechaFin || dFacturaAtr.Periodo?.FechaHastaFactura || dFacturaAtr.FechaFinPeriodo,
+            tipoFactura: dGenFact.TipoFactura || jsonData.tipoFactura || 'Normal',
+            motivoFactura: dGenFact.MotivoFacturacion || jsonData.motivoFactura || 'De ciclo',
+            excedentes: jsonData.excedentes || '0',
+            energiaP1: getE(0, 'energiaP1', 'P1E'),
+            energiaP2: getE(1, 'energiaP2', 'P2E'),
+            energiaP3: getE(2, 'energiaP3', 'P3E'),
+            energiaP4: getE(3, 'energiaP4', 'P4E'),
+            energiaP5: getE(4, 'energiaP5', 'P5E'),
+            energiaP6: getE(5, 'energiaP6', 'P6E'),
+            potenciaP1: getP(0, 'potenciaP1', 'P1C'),
+            potenciaP2: getP(1, 'potenciaP2', 'P2C'),
+            potenciaP3: getP(2, 'potenciaP3', 'P3C'),
+            potenciaP4: getP(3, 'potenciaP4', 'P4C'),
+            potenciaP5: getP(4, 'potenciaP5', 'P5C'),
+            potenciaP6: getP(5, 'potenciaP6', 'P6C'),
+            jsonData: jsonData
+          };
+        })
+      }
+    };
+  } catch (error: any) {
+    console.error('Error in searchCupsForClaim:', error);
+    return { success: false, error: 'Error buscando CUPS' };
+  }
+}
+
+import PizZip from 'pizzip';
+
+export async function generateClaim(data: any) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return { success: false, error: 'No autorizado' };
+    }
+
+    const { mode, motivo, submotivo, cups, clientData, selectedF1Id, comentarios, csvContent, dynamicFields, fechaLectura, lecturas } = data;
+
+    const buildR1Xml = async (claimCups: string, claimMotivo: string, claimSubmotivo: string, f1Id?: string) => {
+      const now = new Date();
+      
+      // Convert to Europe/Madrid timezone string YYYY-MM-DDTHH:MM:SS
+      const tzOffset = now.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(now.getTime() - tzOffset)).toISOString().slice(0, -1);
+      const formattedDate = localISOTime.split('.')[0];
+      
+      const limitDateObj = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+      const limitLocalISO = (new Date(limitDateObj.getTime() - limitDateObj.getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
+      const limitDate = limitLocalISO.split('T')[0];
+      
+      const code = Math.random().toString().slice(2, 14); // 12 digits
+      
+      const tipo = claimMotivo ? claimMotivo.split('-')[0].trim() : '';
+      const subtipo = claimSubmotivo ? claimSubmotivo.split('-')[0].trim() : '';
+
+      // Try to fetch real data
+      const sp = await prisma.supplyPoint.findFirst({
+        where: { cups: { equals: claimCups, mode: 'insensitive' } },
+        include: { client: { include: { brand: { include: { company: true } } } } }
+      });
+
+      const emisora = sp?.client?.brand?.company?.codigoRee || '1713';
+      const destino = sp?.distributorReeCode || '0031'; // Fallback
+      
+      const vat = sp?.client?.vatNumber || '00000000T';
+      const isCif = /^[A-Z]/.test(vat);
+      const tipoIdentificador = isCif ? 'CI' : 'NI';
+      const tipoPersona = isCif ? 'J' : 'F';
+      
+      let xmlNombre = '';
+      if (tipoPersona === 'J') {
+        const razonSocial = sp?.client?.businessName || 'DESCONOCIDO';
+        xmlNombre = `<RazonSocial>${removeAccents(razonSocial)}</RazonSocial>`;
+      } else {
+        const nombrePila = sp?.client?.firstName || sp?.client?.businessName || 'DESCONOCIDO';
+        const primerApellido = sp?.client?.lastName || 'DESCONOCIDO';
+        const segundoApellido = sp?.client?.lastName2 || '';
+        xmlNombre = `<NombreDePila>${removeAccents(nombrePila)}</NombreDePila>\n<PrimerApellido>${removeAccents(primerApellido)}</PrimerApellido>\n<SegundoApellido>${removeAccents(segundoApellido)}</SegundoApellido>`;
+      }
+
+      const phone = sp?.client?.contactPhone || '000000000';
+      
+      // Titular Address Logic
+      // Try to get address from Client first, then Client's AirtableData, then SupplyPoint
+      let province = sp?.client?.billingProvince;
+      let city = sp?.client?.billingCity;
+      let zip = sp?.client?.billingPostalCode;
+      let streetType = 'CL';
+      let street = sp?.client?.billingAddress;
+      let number = '0';
+
+      const cAirtable: any = sp?.client?.airtableData || {};
+      
+      if (!zip || zip === '00000') {
+          zip = cAirtable['Código Postal Titular'] || cAirtable['Código Postal Instalación'] || sp?.postalCode || '00000';
+      }
+      if (!province || province === '00') {
+          province = cAirtable['PROVINCIA SOC'] || sp?.province || '00';
+      }
+      if (!city || city === '000000') {
+          city = cAirtable['POBLACION SOC'] || sp?.city || '000000';
+      }
+      if (!street || street === 'DESCONOCIDA') {
+          street = cAirtable['Calle Titular'] || cAirtable['DOMICILIO SOC'] || sp?.street || sp?.address || 'DESCONOCIDA';
+          streetType = cAirtable['Tipo de vía Titular'] || sp?.streetType || 'CL';
+          number = cAirtable['Número Titular'] !== undefined ? String(cAirtable['Número Titular']) : (sp?.streetNumber || '0');
+      }
+
+      const normProvincia = normalizeProvincia(zip || '');
+      // Construct exact 6-digit CNMC code combining province and municipality padding
+      const rawMuni = normalizeMunicipio(zip || '', city || '');
+      const normMunicipio = rawMuni === '000' ? '00000' : `${normProvincia}${rawMuni}`;
+      const normTipoVia = normalizeTipoVia(streetType);
+
+      const companyContact = sp?.client?.brand?.company?.contactPerson || sp?.client?.brand?.contactPerson || 'RESPONSABLE DE RECLAMACIONES';
+      const companyPhone = sp?.client?.brand?.company?.phone || sp?.client?.brand?.phone || '900000000';
+      const companyEmail = sp?.client?.brand?.company?.email || sp?.client?.brand?.email || 'reclamaciones@comercializadora.com';
+
+      let numFacturaAtrXml = '';
+      if (f1Id) {
+        const f1 = await prisma.f1Invoice.findUnique({ where: { id: f1Id } });
+        if (f1 && f1.numeroFactura) {
+          numFacturaAtrXml = `\n<NumFacturaATR>${f1.numeroFactura}</NumFacturaATR>`;
+        }
+      }
+      
+      let lecturasXml = '';
+      if (fechaLectura) {
+        lecturasXml += `\n<FechaLectura>${fechaLectura}</FechaLectura>`;
+      }
+      if (lecturas) {
+        const periodos = Object.keys(lecturas).filter(k => lecturas[k] !== '');
+        if (periodos.length > 0) {
+          lecturasXml += '\n<LecturasAportadas>';
+          for (const p of periodos) {
+            const pNum = p.replace('P', '');
+            lecturasXml += `\n<LecturaAportada>\n<Integrador>AE</Integrador>\n<CodigoPeriodoDH>${pNum}</CodigoPeriodoDH>\n<LecturaPropuesta>${lecturas[p]}</LecturaPropuesta>\n</LecturaAportada>`;
+          }
+          lecturasXml += '\n</LecturasAportadas>';
+        }
+      }
+      
+      let dynamicFieldsXml = '';
+      if (dynamicFields) {
+        for (const [key, value] of Object.entries(dynamicFields)) {
+          if (value && typeof value === 'string' && value.trim() !== '') {
+            // Remove accents and convert e.g., "CÓDIGO INCIDENCIA" to "CodigoIncidencia"
+            const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const xmlTag = normalizedKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+            dynamicFieldsXml += `\n<${xmlTag}>${value}</${xmlTag}>`;
+          }
+        }
+      }
+
+      return `<MensajeReclamacionPeticion xmlns="http://localhost/elegibilidad">
+<CabeceraReclamacion>
+<CodigoREEEmpresaEmisora>${emisora}</CodigoREEEmpresaEmisora>
+<CodigoREEEmpresaDestino>${destino}</CodigoREEEmpresaDestino>
+<CodigoDelProceso>R1</CodigoDelProceso>
+<CodigoDePaso>01</CodigoDePaso>
+<CodigoDeSolicitud>${code}</CodigoDeSolicitud>
+<SecuencialDeSolicitud>01</SecuencialDeSolicitud>
+<FechaSolicitud>${formattedDate}</FechaSolicitud>
+<CUPS>${claimCups || ''}</CUPS>
+</CabeceraReclamacion>
+<SolicitudReclamacion>
+<DatosSolicitud>
+<Tipo>${tipo}</Tipo>
+<Subtipo>${subtipo}</Subtipo>
+<FechaLimite>${limitDate}</FechaLimite>
+<Prioritario>S</Prioritario>
+</DatosSolicitud>
+<VariablesDetalleReclamacion>
+<VariableDetalleReclamacion>${dynamicFieldsXml}${numFacturaAtrXml}${lecturasXml}
+<Contacto>
+<PersonaDeContacto>${companyContact}</PersonaDeContacto>
+<Telefono>
+<PrefijoPais>34</PrefijoPais>
+<Numero>${companyPhone}</Numero>
+</Telefono>
+<CorreoElectronico>${companyEmail}</CorreoElectronico>
+</Contacto>
+</VariableDetalleReclamacion>
+</VariablesDetalleReclamacion>
+<Cliente>
+<IdCliente>
+<TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
+<Identificador>${vat}</Identificador>
+<TipoPersona>${tipoPersona}</TipoPersona>
+</IdCliente>
+<Nombre>
+${xmlNombre}
+</Nombre>
+<Telefono>
+<PrefijoPais>34</PrefijoPais>
+<Numero>${phone}</Numero>
+</Telefono>
+<IndicadorTipoDireccion>F</IndicadorTipoDireccion>
+<Direccion>
+<Pais>Espana</Pais>
+<Provincia>${normProvincia}</Provincia>
+<Municipio>${normMunicipio}</Municipio>
+<CodPostal>${zip}</CodPostal>
+<Via>
+<TipoVia>${normTipoVia}</TipoVia>
+<Calle>${removeAccents(street)}</Calle>
+<NumeroFinca>${number}</NumeroFinca>
+</Via>
+</Direccion>
+</Cliente>
+<TipoReclamante>06</TipoReclamante>
+<Comentarios>${comentarios || ''}</Comentarios>
+</SolicitudReclamacion>
+</MensajeReclamacionPeticion>`;
+    };
+
+    if (mode === 'Individual') {
+      const xml = await buildR1Xml(cups, motivo, submotivo, selectedF1Id);
+      const base64 = Buffer.from(xml).toString('base64');
+      return {
+        success: true,
+        isZip: false,
+        fileName: `Reclamacion_${cups}_${new Date().getTime()}.xml`,
+        fileContent: base64
+      };
+    } else if (mode === 'Masiva' && csvContent) {
+      const lines = csvContent.split('\n').map((l: string) => l.trim()).filter((l: string) => l);
+      // Skip header
+      const rows = lines.slice(1);
+      
+      const zip = new PizZip();
+      let count = 0;
+      
+      for (const row of rows) {
+        const [c, codigoFiscal, marca] = row.split(';');
+        if (!c) continue;
+        const xml = await buildR1Xml(c, motivo, submotivo, codigoFiscal);
+        zip.file(`Reclamacion_${c}_${count}.xml`, xml);
+        count++;
+      }
+      
+      const zipBase64 = zip.generate({ type: 'base64' });
+      return {
+        success: true,
+        isZip: true,
+        fileName: `Reclamaciones_Masivas_${new Date().getTime()}.zip`,
+        fileContent: zipBase64
+      };
+    }
+
+    return { success: false, error: 'Modo no soportado o falta CSV' };
+  } catch (error: any) {
+    console.error('Error in generateClaim:', error);
+    return { success: false, error: 'Error al generar la reclamación' };
+  }
+}

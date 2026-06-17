@@ -81,6 +81,13 @@ export default function ReclamacionesClient({
             >
               <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
+
+            <a
+              href="/reclamaciones/generar"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--lime)] text-[var(--bg-base)] font-semibold rounded-lg hover:bg-[#c9f07a] transition-colors"
+            >
+              Generar Reclamación
+            </a>
           </div>
         </div>
 

@@ -34,6 +34,7 @@ model Company {
   updatedAt              DateTime  @updatedAt
   brands                 Brand[]
   users                  User[]    @relation("UserCompanies")
+  invoices               Invoice[]
 }
 
 model Brand {
@@ -111,6 +112,7 @@ model Client {
   businessName              String
   firstName                 String?
   lastName                  String?
+  lastName2                 String?
   vatNumber                 String
   contactName               String?
   contactLastName           String?
@@ -200,6 +202,27 @@ model Lead {
   contract           Contract?  @relation(fields: [contractId], references: [id])
   user               User       @relation(fields: [userId], references: [id])
   airtableData       Json?
+}
+
+model Province {
+  id             String         @id @default(cuid())
+  code           String         @unique // e.g. "28"
+  name           String
+  municipalities Municipality[]
+}
+
+model Municipality {
+  id         String   @id @default(cuid())
+  code       String   @unique // e.g. "28079"
+  name       String
+  provinceId String
+  province   Province @relation(fields: [provinceId], references: [id])
+}
+
+model StreetType {
+  id   String @id @default(cuid())
+  code String @unique // e.g. "CL", "AV"
+  name String
 }
 
 model SupplyPoint {
@@ -314,6 +337,8 @@ model SupplyPoint {
   sipsRawData         Json?
   switchingEvents     SwitchingEvent[]
   f1Invoices          F1Invoice[]
+
+  @@unique([cups, clientId])
 }
 
 model Product {
@@ -449,6 +474,7 @@ model Contract {
   f1Invoices              F1Invoice[]
   pdfUrl                  String?
   filePdfSigned           String?
+  fileAnexoFirmado        String?
 
   @@unique([contractCode, version, brandId])
 }
@@ -458,6 +484,7 @@ model Invoice {
   invoiceNumber      String
   invoiceType        String?
   clientId           String
+  companyId          String?
   rectifiedInvoiceId String?
   contractId         String?
   supplyPointId      String?
@@ -477,10 +504,13 @@ model Invoice {
   invoiceData        Json?
   createdAt          DateTime     @default(now())
   client             Client       @relation(fields: [clientId], references: [id])
+  company            Company?     @relation(fields: [companyId], references: [id])
   contract           Contract?    @relation(fields: [contractId], references: [id])
   invoice            Invoice?     @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
   otherInvoices      Invoice[]    @relation("InvoiceToInvoice")
   supplyPoint        SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+
+  @@unique([invoiceNumber, companyId])
 }
 
 model AdditionalService {
@@ -658,6 +688,8 @@ model SwitchingEvent {
   fechaActivacionAlta DateTime?
   fechaActivacionBaja DateTime?
   observaciones       String?
+  motivosRechazo      Json?
+  actuacionCampo      Boolean?
   xmlUrl              String? // Ruta en R2: switching/recibidos/C2/...
   codigoReclamacion   String?
   isAnnulled          Boolean   @default(false)

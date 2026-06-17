@@ -184,6 +184,136 @@ export default function SupplyPointDetailClient({
 
         </div>
 
+        {/* Datos SIPS */}
+        <div className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden backdrop-blur-sm mt-8">
+          <div className="p-6 border-b border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <Activity size={18} className="text-blue-400" />
+              </div>
+              <h2 className="text-lg font-semibold text-white">Datos SIPS</h2>
+            </div>
+            
+            <button
+              onClick={async () => {
+                const toast = (await import('react-hot-toast')).default;
+                const { updateSupplyPointSipsAction } = await import('@/app/actions/supplyPointActions');
+                const loadingToast = toast.loading('Actualizando SIPS desde INGEBAU...');
+                try {
+                  const res = await updateSupplyPointSipsAction(supplyPoint.id);
+                  if (res.success) {
+                    toast.success('Datos SIPS actualizados correctamente', { id: loadingToast });
+                    setSupplyPoint((prev: any) => ({ ...prev, sipsRawData: res.sipsData }));
+                  } else {
+                    toast.error(res.error || 'Error al actualizar SIPS', { id: loadingToast });
+                  }
+                } catch (e: any) {
+                  toast.error('Error al actualizar SIPS', { id: loadingToast });
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Clock size={16} />
+              <span>Actualizar SIPS</span>
+            </button>
+          </div>
+          
+          <div className="p-6">
+            {supplyPoint.sipsRawData ? (
+              (() => {
+                const raw: any = supplyPoint.sipsRawData;
+                let psData: any = null;
+                if (raw.data && raw.data.ps && raw.data.ps.length > 0) psData = raw.data.ps[0];
+                else if (raw.ps && raw.ps.length > 0) psData = raw.ps[0];
+                else if (raw.CUPS || raw.CNAE) psData = raw;
+
+                if (!psData) {
+                  return (
+                    <div className="bg-black/50 p-4 rounded-xl border border-white/5 overflow-x-auto">
+                      <pre className="text-xs text-lime-400 font-mono">
+                        {JSON.stringify(supplyPoint.sipsRawData, null, 2)}
+                      </pre>
+                    </div>
+                  );
+                }
+
+                // Agrupar potencias y consumos (P1 a P6)
+                const periodos = [1, 2, 3, 4, 5, 6];
+                
+                // Resto de datos filtrados
+                const powerKeys = periodos.flatMap(p => [`ConsumoAnualP${p}kWh`, `PotenciaContratadaP${p}kW`]);
+                const generalData = Object.entries(psData).filter(([key, value]) => 
+                  typeof value !== 'object' && !powerKeys.includes(key)
+                );
+
+                return (
+                  <div className="space-y-6">
+                    {/* Tabla de Potencias y Consumos */}
+                    <div className="bg-white/[0.01] border border-white/5 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
+                        <h3 className="text-sm font-semibold text-white">Potencias y Consumos por Período</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[500px]">
+                          <thead>
+                            <tr className="bg-black/40 border-b border-white/5">
+                              <th className="p-3 text-xs font-semibold text-white/40 uppercase tracking-wider">Métrica</th>
+                              {periodos.map(p => (
+                                <th key={`th-${p}`} className="p-3 text-xs font-semibold text-white/40 uppercase tracking-wider text-center">P{p}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {/* Fila Potencia */}
+                            <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 text-sm text-white/70 font-medium">Potencia Contratada (kW)</td>
+                              {periodos.map(p => (
+                                <td key={`pot-${p}`} className="p-3 text-sm text-white font-medium text-center">
+                                  {psData[`PotenciaContratadaP${p}kW`] || '-'}
+                                </td>
+                              ))}
+                            </tr>
+                            {/* Fila Consumo */}
+                            <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 text-sm text-white/70 font-medium">Consumo Anual (kWh)</td>
+                              {periodos.map(p => (
+                                <td key={`cons-${p}`} className="p-3 text-sm text-white font-medium text-center">
+                                  {psData[`ConsumoAnualP${p}kWh`] || '-'}
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Resto de Datos SIPS */}
+                    <div className="bg-white/[0.01] border border-white/5 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
+                        <h3 className="text-sm font-semibold text-white">Otros Datos SIPS</h3>
+                      </div>
+                      <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {generalData.map(([key, value]) => (
+                          <div key={key} className="bg-white/[0.02] border border-white/5 rounded-lg p-3 hover:bg-white/[0.04] transition-colors">
+                            <p className="text-[10px] text-white/40 font-semibold mb-1 uppercase tracking-wider truncate" title={key}>{key}</p>
+                            <p className="text-sm text-white font-medium truncate" title={String(value)}>{String(value) || '-'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="text-center py-8 text-white/40">
+                <Activity size={32} className="mx-auto mb-3 opacity-20" />
+                <p>No hay datos SIPS descargados para este punto de suministro.</p>
+                <p className="text-sm mt-1">Haz clic en Actualizar SIPS para consultarlos en tiempo real.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Histórico de Contratos */}
         <div className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden backdrop-blur-sm mt-8">
           <div className="p-6 border-b border-white/5 flex items-center gap-3">

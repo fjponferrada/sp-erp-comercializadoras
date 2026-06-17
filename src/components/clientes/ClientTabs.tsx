@@ -66,7 +66,7 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices }
                   <Zap className="w-5 h-5 text-amber-400" />
                 </div>
                 <h3 className="text-3xl font-bold text-white">
-                  {totalMWh.toLocaleString('es-ES', { maximumFractionDigits: 1 })} MWh
+                  {(totalMWh / 1000).toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} MWh
                 </h3>
               </div>
               <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
