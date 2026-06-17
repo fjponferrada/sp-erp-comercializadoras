@@ -61,18 +61,28 @@ export default function InvoiceUploader() {
           }
 
           setStatus('uploading');
-          setMessage(`Importando ${jsonData.length} facturas al servidor...`);
-
-          const res = await importInvoicesAction(jsonData);
           
-          if (res.success) {
-            setStatus('success');
-            setResults(res.results);
-            setMessage(`¡Completado! Se han procesado ${res.results?.total || 0} facturas.`);
-          } else {
-            setStatus('error');
-            setMessage(`Error del servidor: ${res.error}`);
+          const CHUNK_SIZE = 50;
+          let totalImported = 0;
+          const allErrors: string[] = [];
+
+          for (let i = 0; i < jsonData.length; i += CHUNK_SIZE) {
+            const chunk = jsonData.slice(i, i + CHUNK_SIZE);
+            setMessage(`Importando facturas ${i + 1} a ${Math.min(i + CHUNK_SIZE, jsonData.length)} de ${jsonData.length}...`);
+            
+            const res = await importInvoicesAction(chunk);
+            if (!res.success) {
+              throw new Error(res.error || "Error desconocido en el servidor");
+            }
+            totalImported += res.results?.imported || 0;
+            if (res.results?.errors) {
+              allErrors.push(...res.results.errors);
+            }
           }
+          
+          setStatus('success');
+          setResults({ total: jsonData.length, imported: totalImported, errors: allErrors });
+          setMessage(`¡Completado! Se han procesado ${jsonData.length} facturas.`);
         } catch (err: any) {
           setStatus('error');
           setMessage(`Error procesando Excel: ${err.message}`);
