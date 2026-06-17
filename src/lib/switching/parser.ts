@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 
 export interface ParsedSwitchingData {
   codigoSolicitud?: string;
+  nifCliente?: string;
   fechaSolicitud?: Date;
   proceso: string;
   procesoBase: string;
@@ -104,7 +105,7 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
     codigoComercializadora = typeof destinatario === 'string' ? destinatario : String(destinatario);
   }
   
-  if (codigoComercializadora === 'undefined') codigoComercializadora = undefined;
+  const nifCliente = findKeyRecursively(root, 'NIF') || findKeyRecursively(root, 'CIF') || findKeyRecursively(root, 'Documento');
 
   const result: ParsedSwitchingData = {
     codigoSolicitud: finalCodigoSolicitud ? String(finalCodigoSolicitud) : undefined,
@@ -115,6 +116,7 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
     cups: cups ? String(cups) : undefined,
     codigoComercializadora,
     codigoReclamacion: codigoReclamacion ? String(codigoReclamacion) : undefined,
+    nifCliente: nifCliente ? String(nifCliente).toUpperCase().trim() : undefined,
   };
 
   // 3. Lógica Específica por "Paso"

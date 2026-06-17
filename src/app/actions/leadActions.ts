@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { getSipsData } from '@/lib/sips';
 
 export async function createLeadAction(formData: FormData) {
@@ -468,24 +469,16 @@ export async function updateLeadCupsAction(leadId: string, newCups: string) {
       if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
       // Upsert SupplyPoint con el nuevo CUPS
-      let sp = await prisma.supplyPoint.findFirst({ where: { cups: newCups, clientId: 'TEMPORAL' } });
-      // ELIMINADO: No sobrescribimos la información base del SupplyPoint existente al actualizar un Lead.
-      if (!sp) {
-        await prisma.supplyPoint.create({
-          data: {
-            cups: newCups,
-            tariff: String(t),
-            address: data.direccion || data.Direccion,
-            city: data.municipio || data.Municipio,
-            postalCode: data.cp || data.CP || data['CP SIPS'],
-            province: data.provincia || data.Provincia,
-            cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-            selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-            distributor: reeCode || undefined,
-            clientId: 'TEMPORAL' // Esto se corregirá cuando enlacemos con el clientId del Lead
-          }
-        });
-      }
+      let sp = await findOrUpdateSupplyPointByCups(prisma, newCups, 'TEMPORAL', {
+        tariff: String(t),
+        address: data.direccion || data.Direccion,
+        city: data.municipio || data.Municipio,
+        postalCode: data.cp || data.CP || data['CP SIPS'],
+        province: data.provincia || data.Provincia,
+        cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
+        selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
+        distributor: reeCode || undefined,
+      });
 
       const tarifaEsValida = lead.user.allowedAutoTariffs.includes(String(t));
       const consumoOk = Number(data.consumo) > 0 || (lead.estimatedMWh ?? 0) > 0;
@@ -534,23 +527,16 @@ export async function forceRefreshSipsAction(leadId: string) {
     let autoConsumo = data.autoconsumo || data.Autoconsumo || data['Cod Autoconsumo SIPS'];
     if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
-    let sp = await prisma.supplyPoint.findFirst({ where: { cups: effectiveCups, clientId: 'TEMPORAL' } });
-    if (!sp) {
-      await prisma.supplyPoint.create({
-        data: {
-          cups: effectiveCups,
-          tariff: String(t),
-          address: data.direccion || data.Direccion,
-          city: data.municipio || data.Municipio,
-          postalCode: data.cp || data.CP || data['CP SIPS'],
-          province: data.provincia || data.Provincia,
-          cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
-          selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
-          distributor: reeCode || undefined,
-          clientId: 'TEMPORAL'
-        }
-      });
-    }
+    let sp = await findOrUpdateSupplyPointByCups(prisma, effectiveCups, 'TEMPORAL', {
+      tariff: String(t),
+      address: data.direccion || data.Direccion,
+      city: data.municipio || data.Municipio,
+      postalCode: data.cp || data.CP || data['CP SIPS'],
+      province: data.provincia || data.Provincia,
+      cnae: data.cnae || data.CNAE || data['CNAE SIPS'],
+      selfConsumptionType: autoConsumo ? String(autoConsumo) : null,
+      distributor: reeCode || undefined,
+    });
 
     const tarifaEsValida = lead.user.allowedAutoTariffs.includes(String(t));
     const consumoOk = Number(data.consumo) > 0 || (lead.estimatedMWh ?? 0) > 0;

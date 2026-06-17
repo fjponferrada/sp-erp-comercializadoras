@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { cookies } from 'next/headers';
@@ -79,18 +80,16 @@ export async function importInvoicesAction(invoicesData: any[]) {
         let supplyPoint = supplyPointMap.get(cups);
 
         if (!supplyPoint && client) {
-          supplyPoint = await prisma.supplyPoint.create({
-            data: {
-              clientId: client.id,
-              cups,
-              address: row['DOMICILIO PS'] || '',
-              city: row['POBLACION PS'] || '',
-              postalCode: row['CP PS']?.toString() || '00000',
-              province: row['PROVINCIA PS'] || '',
-              tariff: row['Tarifa'] || '2.0TD',
-            }
+          supplyPoint = await findOrUpdateSupplyPointByCups(prisma, cups, client.id, {
+            address: row['DOMICILIO PS'] || '',
+            city: row['POBLACION PS'] || '',
+            postalCode: row['CP PS']?.toString() || '00000',
+            province: row['PROVINCIA PS'] || '',
+            tariff: row['Tarifa'] || '2.0TD',
           });
-          supplyPointMap.set(cups, supplyPoint);
+          if (supplyPoint) {
+            supplyPointMap.set(cups, supplyPoint as any);
+          }
         }
 
       // Helper para parsear fechas de Excel (serial) o strings (DD/MM/YYYY)

@@ -99,21 +99,27 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   let supplyPoint: any = foundContractBySolicitud?.supplyPoint || null;
 
   if (!supplyPoint && parsedData.cups) {
-    // Intentar coincidencia exacta primero
-    supplyPoint = await prisma.supplyPoint.findFirst({
-      where: { cups: parsedData.cups }
-    });
-  }
-
-  if (!supplyPoint && cupsBase) {
-    // Buscar todas las coincidencias y priorizar la que tenga contratos
+    const cupsBase = parsedData.cups.substring(0, 20);
+    // Find supply points starting with cupsBase. If multiple, prefer the ones with the exact NIF if we have it
     const matches = await prisma.supplyPoint.findMany({
       where: { cups: { startsWith: cupsBase } },
-      include: { _count: { select: { contracts: true } } }
+      include: { 
+        client: true,
+        _count: { select: { contracts: true } }
+      }
     });
+
     if (matches.length > 0) {
-      matches.sort((a, b) => b._count.contracts - a._count.contracts);
-      supplyPoint = matches[0] as any;
+      if (parsedData.nifCliente) {
+        // Try to find the supply point belonging to the client with this NIF
+        const nifMatch = matches.find(m => m.client?.vatNumber?.toUpperCase() === parsedData.nifCliente);
+        if (nifMatch) supplyPoint = nifMatch as any;
+      }
+
+      if (!supplyPoint) {
+        matches.sort((a, b) => b._count.contracts - a._count.contracts);
+        supplyPoint = matches[0] as any;
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
 import docusign from 'docusign-esign';
@@ -229,9 +230,12 @@ export async function convertLeadToContractAction(leadId: string) {
 
     // 3. Necesitamos un SupplyPoint. Buscamos por CUPS.
     const targetCups = lead.cups || `CUPS-PENDING-${lead.id}`;
-    let supplyPoint = await prisma.supplyPoint.findFirst({
-      where: { cups: targetCups, clientId: client.id },
-      include: { contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }
+    let supplyPoint = await findOrUpdateSupplyPointByCups(prisma, targetCups, client.id, {
+      address: getSupplyAddress(cData) || 'Pendiente',
+      city: cData.sPoblacion || cData.poblacion || cData['Población Instalación'] || 'Pendiente',
+      postalCode: cData.sCp || cData.cp || cData['Código Postal Instalación'] || '00000',
+      province: cData.sProvincia || cData.provincia || cData['Provincia Instalación'] || 'Pendiente',
+      tariff: lead.tariff || '2.0TD',
     });
 
     let previousContractId = null;
@@ -240,19 +244,6 @@ export async function convertLeadToContractAction(leadId: string) {
       if (supplyPoint.contracts && supplyPoint.contracts.length > 0) {
         previousContractId = supplyPoint.contracts[0].id;
       }
-    } else {
-      supplyPoint = await prisma.supplyPoint.create({
-        data: {
-          cups: targetCups,
-          address: getSupplyAddress(cData) || 'Pendiente',
-          city: cData.sPoblacion || cData.poblacion || cData['Población Instalación'] || 'Pendiente',
-          postalCode: cData.sCp || cData.cp || cData['Código Postal Instalación'] || '00000',
-          province: cData.sProvincia || cData.provincia || cData['Provincia Instalación'] || 'Pendiente',
-          tariff: lead.tariff || '2.0TD',
-          clientId: client.id,
-        },
-        include: { contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }
-      });
     }
 
     // 4. Necesitamos un Product. Buscamos uno o creamos genérico.
