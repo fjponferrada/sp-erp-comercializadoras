@@ -126,7 +126,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
       // Cargar todos los contratos candidatos para este CUPS
       const candidateContracts = await prisma.contract.findMany({
         where: { 
-          supplyPointId: supplyPoint.id,
+          supplyPointId: supplyPoint!.id,
           status: { in: ['ACTIVO', 'Activo', 'Finalizado', 'FINALIZADO'] }
         },
         orderBy: { activationDate: 'desc' }
@@ -176,7 +176,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
       // Fallback: Si no encaja por potencias exactas, cogemos el último Activo o el más reciente
       if (!contract) {
         contract = await prisma.contract.findFirst({
-          where: { supplyPointId: supplyPoint.id },
+          where: { supplyPointId: supplyPoint!.id },
           orderBy: { activationDate: 'desc' }
         });
       }
@@ -253,10 +253,10 @@ export async function importInvoicesAction(invoicesData: any[]) {
         data: {
           invoiceNumber,
           invoiceType: tipoFactura,
-          clientId: client?.id || supplyPoint.id,
+          clientId: client?.id || supplyPoint?.clientId || '',
           companyId: activeCompanyId,
           contractId: contract?.id,
-          supplyPointId: supplyPoint.id,
+          supplyPointId: supplyPoint?.id,
           issueDate,
           billingStart,
           billingEnd,
