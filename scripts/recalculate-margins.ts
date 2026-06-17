@@ -60,7 +60,10 @@ async function run() {
       if (fijoIndex === 'Indexado') {
           margenEstimado = margenPotencia + fee * (cantidadEnergia / 1000);
       } else {
-          margenEstimado = baseImponibleIva - importeImpuesto - baseImponibleF1 - 0.09 * cantidadEnergia;
+          margenEstimado = Math.abs(baseImponibleIva) - importeImpuesto - baseImponibleF1 - 0.09 * cantidadEnergia;
+      }
+      if (tipoFactura === 'Abono') {
+          margenEstimado = -Math.abs(margenEstimado);
       }
 
       // 4. Margen Final

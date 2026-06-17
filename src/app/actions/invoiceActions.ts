@@ -224,7 +224,10 @@ export async function importInvoicesAction(invoicesData: any[]) {
       if (fijoIndex === 'Indexado') {
         margenEstimado = margenPotencia + fee * (cantidadEnergia / 1000);
       } else {
-        margenEstimado = baseImponibleIva - taxAmount - baseImponibleF1 - 0.09 * cantidadEnergia;
+        margenEstimado = Math.abs(baseImponibleIva) - taxAmount - baseImponibleF1 - 0.09 * cantidadEnergia;
+      }
+      if (tipoFactura === 'Abono') {
+        margenEstimado = -Math.abs(margenEstimado);
       }
 
       let margin = 0;
