@@ -23,14 +23,15 @@ export async function getEconomicAnalysis() {
       for (let i = 0; i < validIds.length; i += CHUNK_SIZE) {
         const chunk = validIds.slice(i, i + CHUNK_SIZE);
         
-        // Agrupación SQL y extracción de JSON delegada a PostgreSQL para evitar sobrecarga de RAM
+        // Agrupación SQL y extracción de JSON delegada a PostgreSQL
+        // Importante: Reemplazar comas por puntos antes de castear a NUMERIC
         const results: any[] = await prisma.$queryRaw`
           SELECT 
             to_char("issueDate", 'YYYY-MM') as month,
             SUM(
               COALESCE(
-                CAST(NULLIF("invoiceData"->>'Base Imponible IVA', '') AS NUMERIC), 
-                CAST(NULLIF("invoiceData"->>'Base Imponible IVA CORR', '') AS NUMERIC), 
+                CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA', ''), ',', '.') AS NUMERIC), 
+                CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA CORR', ''), ',', '.') AS NUMERIC), 
                 subtotal1, 
                 0
               ) * CASE WHEN "invoiceType" = 'Abono' THEN -1 ELSE 1 END
