@@ -96,9 +96,26 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   }
 
   const cupsBase = parsedData.cups?.substring(0, 20);
-  let supplyPoint = foundContractBySolicitud?.supplyPoint || await prisma.supplyPoint.findFirst({
-    where: { cups: { startsWith: cupsBase } }
-  });
+  let supplyPoint = foundContractBySolicitud?.supplyPoint;
+
+  if (!supplyPoint && parsedData.cups) {
+    // Intentar coincidencia exacta primero
+    supplyPoint = await prisma.supplyPoint.findFirst({
+      where: { cups: parsedData.cups }
+    });
+  }
+
+  if (!supplyPoint && cupsBase) {
+    // Buscar todas las coincidencias y priorizar la que tenga contratos
+    const matches = await prisma.supplyPoint.findMany({
+      where: { cups: { startsWith: cupsBase } },
+      include: { _count: { select: { contracts: true } } }
+    });
+    if (matches.length > 0) {
+      matches.sort((a, b) => b._count.contracts - a._count.contracts);
+      supplyPoint = matches[0] as any;
+    }
+  }
 
   if (!supplyPoint) {
     // Buscar si existe en Lead
