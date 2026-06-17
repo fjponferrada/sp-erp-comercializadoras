@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function getEconomicAnalysis() {
   try {
@@ -8,45 +9,50 @@ export async function getEconomicAnalysis() {
     const filter = await getUserVisibilityFilter();
 
     // 1. Fetch Invoices and Group by Month
-    const invoices = await prisma.invoice.findMany({
-      where: {
-        contract: filter
-      },
-      select: {
-        issueDate: true,
-        subtotal1: true,
-        invoiceType: true,
-        totalMWh: true,
-        margin: true,
-        invoiceData: true
-      }
+    // Usamos findMany solo para obtener los IDs autorizados sin descargar los JSONs pesados
+    const validInvoices = await prisma.invoice.findMany({
+      where: { contract: filter },
+      select: { id: true }
     });
+    
+    const validIds = validInvoices.map(i => i.id);
+    const invoicesData: Record<string, { total_eur: number, total_mwh: number, margin: number }> = {};
 
-    const invoicesData: Record<string, any> = {};
-    invoices.forEach(inv => {
-      if (!inv.issueDate) return;
-      const m = `${inv.issueDate.getFullYear()}-${String(inv.issueDate.getMonth() + 1).padStart(2, '0')}`;
-      if (!invoicesData[m]) invoicesData[m] = { total_eur: 0, total_mwh: 0, margin: 0 };
-      const data = inv.invoiceData as any;
-      let baseImponibleIva = 0;
-      if (data) {
-        let val = data['Base Imponible IVA'] || data['Base Imponible IVA CORR'];
-        if (val) {
-          baseImponibleIva = parseFloat(val.toString().replace(',', '.'));
+    if (validIds.length > 0) {
+      const CHUNK_SIZE = 10000;
+      for (let i = 0; i < validIds.length; i += CHUNK_SIZE) {
+        const chunk = validIds.slice(i, i + CHUNK_SIZE);
+        
+        // Agrupación SQL y extracción de JSON delegada a PostgreSQL para evitar sobrecarga de RAM
+        const results: any[] = await prisma.$queryRaw`
+          SELECT 
+            to_char("issueDate", 'YYYY-MM') as month,
+            SUM(
+              COALESCE(
+                CAST(NULLIF("invoiceData"->>'Base Imponible IVA', '') AS NUMERIC), 
+                CAST(NULLIF("invoiceData"->>'Base Imponible IVA CORR', '') AS NUMERIC), 
+                subtotal1, 
+                0
+              ) * CASE WHEN "invoiceType" = 'Abono' THEN -1 ELSE 1 END
+            ) as total_eur,
+            SUM(
+              COALESCE("totalMWh", 0) * CASE WHEN "invoiceType" = 'Abono' THEN -1 ELSE 1 END
+            ) as total_mwh,
+            SUM(COALESCE("margin", 0)) as margin
+          FROM "Invoice"
+          WHERE id IN (${Prisma.join(chunk)}) AND "issueDate" IS NOT NULL
+          GROUP BY to_char("issueDate", 'YYYY-MM')
+        `;
+
+        for (const row of results) {
+          const m = row.month;
+          if (!invoicesData[m]) invoicesData[m] = { total_eur: 0, total_mwh: 0, margin: 0 };
+          invoicesData[m].total_eur += Number(row.total_eur) || 0;
+          invoicesData[m].total_mwh += Number(row.total_mwh) || 0;
+          invoicesData[m].margin += Number(row.margin) || 0;
         }
       }
-      
-      let amount = baseImponibleIva || inv.subtotal1 || 0;
-      let mwh = inv.totalMWh || 0;
-      if (inv.invoiceType === 'Abono') {
-        if (amount > 0) amount = -amount;
-        if (mwh > 0) mwh = -mwh;
-      }
-      
-      invoicesData[m].total_eur += amount;
-      invoicesData[m].total_mwh += mwh;
-      invoicesData[m].margin += (inv.margin || 0);
-    });
+    }
 
     // 2. Fetch Contracts and Group Altas/Bajas by Month
     const contracts = await prisma.contract.findMany({
