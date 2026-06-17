@@ -140,7 +140,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
                   formatter={(value: any) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value || 0)}
                 />
                 <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                <Area type="monotone" dataKey="facturacionEur" name="Facturación Bruta" fill="#f43f5e" stroke="#f43f5e" fillOpacity={0.2} strokeWidth={2} />
+                <Area type="monotone" dataKey="facturacionEur" name="Facturación Bruta" fill="#38bdf8" stroke="#38bdf8" fillOpacity={0.2} strokeWidth={2} />
                 <Bar dataKey="margenEur" name="Margen Comercial" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={30} />
               </ComposedChart>
             </ResponsiveContainer>
@@ -171,7 +171,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
               {[...data].reverse().map((row) => (
                 <tr key={row.month} className="hover:bg-slate-700/30 transition-colors">
                   <td className="px-6 py-4 font-medium text-white">{row.month}</td>
-                  <td className="px-6 py-4 text-right font-medium text-rose-400">
+                  <td className="px-6 py-4 text-right font-medium text-sky-400">
                     {row.facturacionEur.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
                   <td className="px-6 py-4 text-right text-slate-400">
