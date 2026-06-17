@@ -30,19 +30,21 @@ export async function getEconomicAnalysis() {
       const data = inv.invoiceData as any;
       let baseImponibleIva = 0;
       if (data) {
-        let val = data['Base Imponible IVA CORR'] || data['Base Imponible IVA'];
+        let val = data['Base Imponible IVA'] || data['Base Imponible IVA CORR'];
         if (val) {
           baseImponibleIva = parseFloat(val.toString().replace(',', '.'));
         }
       }
       
       let amount = baseImponibleIva || inv.subtotal1 || 0;
-      if (inv.invoiceType === 'Abono' && amount > 0) {
-        amount = -amount;
+      let mwh = inv.totalMWh || 0;
+      if (inv.invoiceType === 'Abono') {
+        if (amount > 0) amount = -amount;
+        if (mwh > 0) mwh = -mwh;
       }
       
       invoicesData[m].total_eur += amount;
-      invoicesData[m].total_mwh += (inv.totalMWh || 0);
+      invoicesData[m].total_mwh += mwh;
       invoicesData[m].margin += (inv.margin || 0);
     });
 
