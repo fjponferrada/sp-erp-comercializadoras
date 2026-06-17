@@ -96,7 +96,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   }
 
   const cupsBase = parsedData.cups?.substring(0, 20);
-  let supplyPoint = foundContractBySolicitud?.supplyPoint;
+  let supplyPoint: any = foundContractBySolicitud?.supplyPoint || null;
 
   if (!supplyPoint && parsedData.cups) {
     // Intentar coincidencia exacta primero
@@ -322,17 +322,17 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       data: {
         uniqueProcess, // Actualizar al nuevo formato por si acaso
         isResolved: !warning,
-        contractId: contractId || undefined,
-        supplyPointId: supplyPointId || undefined,
+        contract: contractId ? { connect: { id: contractId } } : undefined,
+        supplyPoint: supplyPointId ? { connect: { id: supplyPointId } } : undefined,
         tipoError: tipoError || null,
         warning: warning || null,
-        observaciones: parsedData.observaciones,
-        motivosRechazo: parsedData.motivosRechazo || null,
-        actuacionCampo: parsedData.actuacionCampo ?? undefined,
         fechaAR: parsedData.fechaAR,
         fechaPrevActivacion: parsedData.fechaPrevActivacion,
         fechaActivacionAlta: parsedData.fechaActivacionAlta,
         fechaActivacionBaja: parsedData.fechaActivacionBaja,
+        observaciones: parsedData.observaciones,
+        motivosRechazo: parsedData.motivosRechazo || null,
+        actuacionCampo: parsedData.actuacionCampo ?? undefined,
         codigoReclamacion: parsedData.codigoReclamacion,
       }
     });
