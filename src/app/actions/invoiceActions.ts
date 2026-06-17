@@ -30,59 +30,68 @@ export async function importInvoicesAction(invoicesData: any[]) {
       activeCompanyId = b?.companyId || null;
     }
 
-    for (const row of invoicesData) {
-      // Mapeo defensivo de columnas (puede venir de CSV o Excel)
-      const invoiceNumber = row['Numero Factura'] || row['Número Factura'] || row['NUMERO FACTURA'];
-      const cupsRaw = row['CUPS'];
-      const cups = cupsRaw ? String(cupsRaw).trim().substring(0, 20) : null;
-      const vatNumber = row['CIF'] || row['NIF'] || row['DNI'];
-      
-      if (!invoiceNumber || !cups) {
-        results.errors.push(`Fila sin Numero de Factura o CUPS (CIF: ${vatNumber})`);
-        continue;
-      }
+      const vatNumbers = invoicesData.map(r => r['CIF'] || r['NIF'] || r['DNI']).filter(Boolean);
+      const cupsRaw = invoicesData.map(r => r['CUPS']).filter(Boolean);
+      const cupsSet = Array.from(new Set(cupsRaw.map(c => String(c).trim().substring(0, 20))));
+      const vatSet = Array.from(new Set(vatNumbers));
 
-      // 1. Buscar Cliente por CIF
-      let client = null;
-      if (vatNumber) {
-        client = await prisma.client.findFirst({
-          where: { vatNumber, brandId: activeBrandId }
-        });
-      }
-
-      // Si no existe, lo creamos como "Importado desde Facturación"
-      if (!client && vatNumber) {
-        client = await prisma.client.create({
-          data: {
-            vatNumber: vatNumber,
-            businessName: row['NOMBRE/RAZON SOCIAL'] || 'Desconocido',
-            firstName: row['Primer Apellido'] || '',
-            lastName: row['Segundo Apellido'] || '',
-            contactEmail: row['Email Emisora'] || '', // Fallback
-            brandId: activeBrandId,
-          }
-        });
-      }
-
-      // 2. Buscar SupplyPoint por CUPS
-      let supplyPoint = await prisma.supplyPoint.findFirst({
-        where: { cups, clientId: client!.id }
+      const existingClients = await prisma.client.findMany({
+        where: { vatNumber: { in: vatSet }, brandId: activeBrandId }
       });
+      const clientMap = new Map(existingClients.map(c => [c.vatNumber, c]));
 
-      if (!supplyPoint) {
-        // Lo creamos vacío vinculado al cliente
-        supplyPoint = await prisma.supplyPoint.create({
-          data: {
-            clientId: client!.id,
-            cups,
-            address: row['DOMICILIO PS'] || '',
-            city: row['POBLACION PS'] || '',
-            postalCode: row['CP PS']?.toString() || '00000',
-            province: row['PROVINCIA PS'] || '',
-            tariff: row['Tarifa'] || '2.0TD',
-          }
-        });
-      }
+      const existingSupplyPoints = await prisma.supplyPoint.findMany({
+        where: { cups: { in: cupsSet } }
+      });
+      const supplyPointMap = new Map(existingSupplyPoints.map(sp => [sp.cups, sp]));
+
+      for (const row of invoicesData) {
+        // Mapeo defensivo de columnas
+        const invoiceNumber = row['Numero Factura'] || row['Número Factura'] || row['NUMERO FACTURA'];
+        const cupsRaw = row['CUPS'];
+        const cups = cupsRaw ? String(cupsRaw).trim().substring(0, 20) : null;
+        const vatNumber = row['CIF'] || row['NIF'] || row['DNI'];
+        
+        if (!invoiceNumber || !cups) {
+          results.errors.push(`Fila sin Numero de Factura o CUPS (CIF: ${vatNumber})`);
+          continue;
+        }
+
+        // 1. Buscar Cliente en el Map
+        let client = vatNumber ? clientMap.get(vatNumber) : null;
+
+        // Si no existe, lo creamos y lo guardamos en el Map
+        if (!client && vatNumber) {
+          client = await prisma.client.create({
+            data: {
+              vatNumber: vatNumber,
+              businessName: row['NOMBRE/RAZON SOCIAL'] || 'Desconocido',
+              firstName: row['Primer Apellido'] || '',
+              lastName: row['Segundo Apellido'] || '',
+              contactEmail: row['Email Emisora'] || '',
+              brandId: activeBrandId,
+            }
+          });
+          clientMap.set(vatNumber, client);
+        }
+
+        // 2. Buscar SupplyPoint en el Map
+        let supplyPoint = supplyPointMap.get(cups);
+
+        if (!supplyPoint && client) {
+          supplyPoint = await prisma.supplyPoint.create({
+            data: {
+              clientId: client.id,
+              cups,
+              address: row['DOMICILIO PS'] || '',
+              city: row['POBLACION PS'] || '',
+              postalCode: row['CP PS']?.toString() || '00000',
+              province: row['PROVINCIA PS'] || '',
+              tariff: row['Tarifa'] || '2.0TD',
+            }
+          });
+          supplyPointMap.set(cups, supplyPoint);
+        }
 
       // Helper para parsear fechas de Excel (serial) o strings (DD/MM/YYYY)
       const parseExcelDate = (val: any): Date => {
@@ -544,7 +553,11 @@ export async function getPaginatedInvoicesAction(
         { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
         { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
         { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
+        { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
+        { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
         { invoiceData: { path: ['NOMBRE/RAZON SOCIAL'], string_contains: searchTerm } },
+        { invoiceData: { path: ['NIF/CIF'], string_contains: searchTerm } },
+        { invoiceData: { path: ['CUPS'], string_contains: searchTerm } },
       ];
     }
 
