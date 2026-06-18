@@ -4,9 +4,10 @@ import { notFound } from 'next/navigation';
 import { Sun, MapPin, User, ArrowLeft, Zap, FileText, CheckCircle, Euro } from 'lucide-react';
 import Link from 'next/link';
 
-export default async function SolarQuoteDetailsPage({ params }: { params: { id: string } }) {
+export default async function SolarQuoteDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const quote = await prisma.solarQuote.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       client: true,
       supplyPoint: true

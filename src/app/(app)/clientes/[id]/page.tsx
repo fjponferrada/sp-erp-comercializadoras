@@ -11,9 +11,9 @@ import { ChevronLeft } from 'lucide-react';
 
 import { auth } from '@/auth';
 
-export default async function ClientPage({ params }: { params: { id: string } }) {
+export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
   // Await params carefully because of Next.js versions
-  const resolvedParams = await Promise.resolve(params);
+  const resolvedParams = await params;
   
   const session = await auth();
   const userRole = session?.user?.role || 'CANAL';
