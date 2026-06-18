@@ -38,71 +38,69 @@ export default function IncidenciasClient({ userBrands }: { userBrands: any[] })
   }, [selectedNivel, selectedEstado]);
 
   return (
-    <>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar title="Tickets / Incidencias" subtitle="Gestión de reclamaciones e incidencias" />
       
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         
         {/* Panel Superior: Filtros */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-slate-400 font-semibold mb-2 block uppercase tracking-wider">Nivel de Acceso</label>
+        <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
             <select 
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+              className="form-input"
               value={selectedNivel}
               onChange={e => setSelectedNivel(e.target.value)}
+              style={{ width: 'auto', fontSize: '0.8rem' }}
             >
               <option value="Nivel 1 - Comercializadora">Nivel 1 - Comercializadora</option>
               <option value="Nivel 2 - Administrador">Nivel 2 - Administrador</option>
             </select>
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-slate-400 font-semibold mb-2 block uppercase tracking-wider">Estado del Ticket</label>
             <select 
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+              className="form-input"
               value={selectedEstado}
               onChange={e => setSelectedEstado(e.target.value)}
+              style={{ width: 'auto', fontSize: '0.8rem' }}
             >
               <option value="Pendientes">Pendientes de resolución</option>
               <option value="Nuevas">Nuevas sin atender</option>
               <option value="Todas">Todas</option>
             </select>
+            
+            <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
+              <button 
+                onClick={loadTickets} 
+                className="btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              >
+                <Eye size={14} /> Consultar
+              </button>
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="btn-primary"
+                style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              >
+                <Plus size={14} /> Crear Ticket
+              </button>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-3 ml-auto w-full sm:w-auto mt-2 sm:mt-0">
-            <button 
-              onClick={loadTickets} 
-              className="flex-1 sm:flex-none bg-slate-700 hover:bg-slate-600 text-white font-medium px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
-            >
-              <Eye size={16} /> Consultar
-            </button>
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="flex-1 sm:flex-none bg-lime-400 hover:bg-lime-500 text-slate-900 font-bold px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
-            >
-              <Plus size={18} /> Crear Ticket
-            </button>
-          </div>
-        </div>
 
         {/* Listado de Tickets */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden flex flex-col">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap">
-              <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <th className="px-6 py-4">ID / Ref</th>
-                  <th className="px-6 py-4">Fecha</th>
-                  <th className="px-6 py-4">Últ. Actividad</th>
-                  <th className="px-6 py-4">CUPS</th>
-                  <th className="px-6 py-4">Motivo / Tipo</th>
-                  <th className="px-6 py-4">Abierto por</th>
-                  <th className="px-6 py-4 text-center">Respuestas</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Acciones</th>
+                  <th>ID / Ref</th>
+                  <th>Fecha</th>
+                  <th>Últ. Actividad</th>
+                  <th>CUPS</th>
+                  <th>Motivo / Tipo</th>
+                  <th>Abierto por</th>
+                  <th style={{ textAlign: 'center' }}>Respuestas</th>
+                  <th>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/50">
+              <tbody>
                 {loading ? (
                   <tr>
                     <td colSpan={9} className="text-center py-12 text-slate-400">
@@ -123,19 +121,19 @@ export default function IncidenciasClient({ userBrands }: { userBrands: any[] })
                   </tr>
                 ) : (
                   tickets.map(t => (
-                    <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
-                      <td className="px-6 py-4 font-mono text-rose-400 font-medium">#{t.id.slice(-6).toUpperCase()}</td>
-                      <td className="px-6 py-4">{new Date(t.createdAt).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 text-slate-400">{new Date(t.lastActivityAt).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 font-mono text-xs">{t.supplyPoint?.cups || '-'}</td>
-                      <td className="px-6 py-4 text-slate-200">{t.motivo}</td>
-                      <td className="px-6 py-4">{t.openedBy?.name}</td>
-                      <td className="px-6 py-4 text-center">
+                    <tr key={t.id}>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--danger)', fontWeight: 500 }}>#{t.id.slice(-6).toUpperCase()}</td>
+                      <td>{new Date(t.createdAt).toLocaleDateString()}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{new Date(t.lastActivityAt).toLocaleDateString()}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{t.supplyPoint?.cups || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{t.motivo}</td>
+                      <td>{t.openedBy?.name}</td>
+                      <td style={{ textAlign: 'center' }}>
                         <span className="bg-slate-900 text-slate-300 px-2 py-1 rounded border border-slate-700 text-xs">
                           {t.numRespuestas}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td>
                         {t.estado === 'NUEVA' ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-1 rounded">
                             NUEVA
@@ -150,7 +148,7 @@ export default function IncidenciasClient({ userBrands }: { userBrands: any[] })
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td style={{ textAlign: 'right' }}>
                         <button className="bg-slate-700 hover:bg-slate-600 text-white p-1.5 rounded transition-colors" title="Ver Ticket">
                           <Eye size={16} />
                         </button>
@@ -173,6 +171,6 @@ export default function IncidenciasClient({ userBrands }: { userBrands: any[] })
           loadTickets();
         }}
       />
-    </>
+    </div>
   );
 }
