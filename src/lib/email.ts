@@ -7,16 +7,25 @@ const resend = resendApiKey ? new Resend(resendApiKey) : null;
 // Usamos el dominio verificado
 const FROM_EMAIL = 'noreply@sp-energia.com'; 
 
+const getAppUrl = () => {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_ENV === 'production') return 'https://ultra.sp-energia.com';
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
+};
+
 export async function sendPasswordResetEmail(email: string, token: string) {
+  const appUrl = getAppUrl();
+
   if (!resend) {
     console.error('RESEND_API_KEY no está configurada en las variables de entorno.');
     // Fallback silencioso para desarrollo si no hay key
     console.log(`[Email de prueba generado para ${email}]:`);
-    console.log(`Enlace de reseteo: ${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`);
+    console.log(`Enlace de reseteo: ${appUrl}/reset-password?token=${token}`);
     return { success: false, error: 'Servicio de email no configurado' };
   }
 
-  const resetLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+  const resetLink = `${appUrl}/reset-password?token=${token}`;
 
   try {
     const { data, error } = await resend.emails.send({
