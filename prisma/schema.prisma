@@ -258,6 +258,7 @@ model SupplyPoint {
   hasSelfConsumption  Boolean          @default(false)
   selfConsumptionType String?
   cie                 String?
+  segment             String?
   cieSelfConsumption  String?
   cadastralReference  String?
   cadastreProvince    String?
@@ -739,22 +740,22 @@ model F1Invoice {
 }
 
 model Distributor {
-  id           String   @id @default(cuid())
-  reeCode      String   @unique
-  name         String
-  emailAtr     String?
-  phone        String?
-  portalUrl    String?
-  registroCnmc String?
-  ftpHost        String?
-  ftpPort        Int?      @default(21)
-  ftpUser        String?
-  ftpPassword    String?
-  ftpTargetPath  String?
-  ftpActive      Boolean   @default(false)
-  ftpLastSyncAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  reeCode       String    @unique
+  name          String
+  emailAtr      String?
+  phone         String?
+  portalUrl     String?
+  registroCnmc  String?
+  ftpHost       String?
+  ftpPort       Int?      @default(21)
+  ftpUser       String?
+  ftpPassword   String?
+  ftpTargetPath String?
+  ftpActive     Boolean   @default(false)
+  ftpLastSyncAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model PasswordResetToken {
@@ -785,11 +786,40 @@ model LoadCurve {
 }
 
 model WeatherHistory {
-  id            String   @id @default(cuid())
-  date          DateTime @db.Date
-  province      String
-  temperatures  Float[]
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  province     String
+  temperatures Float[]
 
   @@unique([date, province])
   @@index([date])
+}
+
+model AggregatedLoadCurve {
+  id               String   @id @default(cuid())
+  date             DateTime @db.Date
+  segment          String
+  province         String
+  totalConsumption Float[]
+  clientCount      Int
+  temperature      Float[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([date, segment, province])
+  @@index([date])
+}
+
+model DemandForecast {
+  id             String   @id @default(cuid())
+  targetDate     DateTime @db.Date
+  executionDate  DateTime @default(now())
+  forecastData   Json
+  vipOverride    Float?
+  totalPredicted Float
+  userId         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([targetDate])
 }

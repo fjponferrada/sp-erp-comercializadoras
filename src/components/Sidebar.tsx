@@ -61,6 +61,13 @@ const baseNavGroups = [
     ],
   },
   {
+    label: 'COMPRAS ENERGÍA',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' }
+    ]
+  },
+  {
     label: 'DISTRIBUIDORAS',
     roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
