@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import {
   Zap, TrendingUp, Users, Receipt, AlertTriangle,
@@ -66,13 +65,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex' }}>
-        <Sidebar />
-        <div className="main-content" style={{ flex: 1 }}>
-          <Topbar title="Dashboard" subtitle="Cargando métricas en tiempo real..." />
-          <div style={{ padding: '24px' }}>Cargando datos reales del sistema...</div>
-        </div>
-      </div>
+      <>
+        <Topbar title="Dashboard" subtitle="Cargando métricas en tiempo real..." />
+        <div style={{ padding: '24px' }}>Cargando datos reales del sistema...</div>
+      </>
     );
   }
 
@@ -114,9 +110,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div style={{ display: 'flex' }}>
-      <Sidebar />
-      <div className="main-content" style={{ flex: 1 }}>
+    <>
         <Topbar
           title="Dashboard"
           subtitle="Visión general de la comercializadora · Métricas en tiempo real"
@@ -295,7 +289,6 @@ export default function DashboardPage() {
             <AnalysisDashboard data={analysisData} />
           </div>
         </div>
-      </div>
-    </div>
+    </>
   );
 }
