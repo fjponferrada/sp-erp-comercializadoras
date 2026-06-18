@@ -53,9 +53,26 @@ import { sendPasswordResetEmail } from '@/lib/email';
 export async function requestPasswordResetAction(email: string) {
   try {
     const user = await prisma.user.findUnique({ where: { email } });
+    
     if (!user) {
-      // Devolvemos success incluso si no existe por seguridad (no enumeración de emails)
-      return { success: true };
+      // Comprobar si existe como cliente
+      const client = await prisma.client.findFirst({
+        where: {
+          OR: [
+            { contactEmail: email },
+            { contactEmail2: email },
+            { contactEmail3: email },
+            { representativeEmail: email },
+            { invoiceEmail: email }
+          ]
+        }
+      });
+
+      if (client) {
+        return { error: 'not_registered_client' };
+      } else {
+        return { error: 'not_found' };
+      }
     }
 
     // Generar token único válido por 1 hora

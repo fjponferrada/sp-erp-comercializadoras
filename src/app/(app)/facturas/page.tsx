@@ -4,6 +4,7 @@ import { Receipt } from 'lucide-react';
 import InvoiceUploader from '@/components/facturas/InvoiceUploader';
 import PdfUploader from '@/components/facturas/PdfUploader';
 import FacturasClient from './FacturasClient';
+import Topbar from '@/components/Topbar';
 import { getInvoiceVisibilityFilter } from '@/lib/permissions';
 import { auth } from '@/auth';
 
@@ -34,16 +35,13 @@ export default async function InvoicesPage() {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Receipt className="text-rose-500" />
-            Facturación
-          </h1>
-          <p className="text-slate-400 mt-1">Gestión de recibos e importación de remesas del Switching</p>
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar 
+        title="Facturación" 
+        subtitle="Gestión de recibos e importación de remesas del Switching"
+        showSearch={false} 
+      />
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* DRAG AND DROP ZONES */}
       {showUploaders && (
@@ -54,6 +52,7 @@ export default async function InvoicesPage() {
       )}
 
       <FacturasClient initialInvoices={initialInvoices as any} pendingCount={pendingCount} initialTotalCount={totalCount as number} />
+      </div>
     </div>
   );
 }

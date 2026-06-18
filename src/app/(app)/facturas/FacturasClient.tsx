@@ -109,23 +109,33 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   return (
     <div className="space-y-6">
       {/* Filters & Actions */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+      <div
+        className="animate-fade-in-up delay-300"
+        style={{
+          display: 'flex',
+          gap: '12px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ position: 'relative', flex: '1', minWidth: '280px' }}>
+          <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <input 
             type="text" 
             placeholder="Buscar por Nº Factura, Nombre, CIF o CUPS..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+            className="form-input"
+            style={{ paddingLeft: '38px' }}
           />
         </div>
-        <div className="relative w-48">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <div style={{ position: 'relative', minWidth: '180px' }}>
+          <Filter size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1 }} />
           <select 
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-rose-500 appearance-none"
+            className="form-input"
+            style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
           >
             <option value="">Tipo: Todas</option>
             <option value="Normal">Normal</option>
@@ -139,133 +149,137 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-            className="bg-slate-900 border border-slate-700 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 cursor-pointer"
+            className="form-input"
             title="Fecha Desde"
           />
-          <span className="text-slate-500">-</span>
+          <span style={{ color: 'var(--text-muted)' }}>-</span>
           <input 
             type="date" 
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-            className="bg-slate-900 border border-slate-700 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 cursor-pointer"
+            className="form-input"
             title="Fecha Hasta"
           />
         </div>
+        
         {showPaymentButtons && <SendInvoicesButton pendingCount={pendingCount} />}
-        <button className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-          <Download size={18} />
+        <button className="btn-secondary">
+          <Download size={14} />
           Exportar
         </button>
       </div>
 
       {/* Table */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden flex flex-col">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap">
-            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+      <div className="card animate-fade-in-up delay-400" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="px-6 py-4">Nº Factura / Emisión</th>
-                <th className="px-6 py-4">Cliente</th>
-                <th className="px-6 py-4">Suministro (CUPS, Dir, Proc)</th>
-                <th className="px-6 py-4">Periodo Facturado</th>
-                <th className="px-6 py-4">Consumo</th>
-                <th className="px-6 py-4 text-right">Total €</th>
-                <th className="px-6 py-4">Acciones</th>
+                <th>Nº Factura / Emisión</th>
+                <th>Cliente</th>
+                <th>Suministro (CUPS, Dir, Proc)</th>
+                <th>Periodo Facturado</th>
+                <th>Consumo</th>
+                <th style={{ textAlign: 'right' }}>Total €</th>
+                <th>Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700/50">
+            <tbody>
               {invoices.map((invoice) => (
-                <tr key={invoice.id} className="hover:bg-slate-700/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-white">{invoice.invoiceNumber}</div>
-                    <div className="text-xs text-slate-400 mt-1">{formatDateUTC(invoice.issueDate)}</div>
-                    <div className="mt-1.5">
-                      <span className={`text-[10px] uppercase border px-2 py-0.5 rounded-full ${
-                        invoice.invoiceType === 'Normal' ? 'bg-slate-800/50 border-slate-700 text-slate-300' :
-                        invoice.invoiceType === 'Abono' ? 'bg-indigo-900/30 border-indigo-500/30 text-indigo-400' :
-                        invoice.invoiceType === 'Rectificativa' ? 'bg-rose-900/30 border-rose-500/30 text-rose-400' :
-                        'bg-slate-800/50 border-slate-700 text-slate-400'
-                      }`}>
+                <tr key={invoice.id}>
+                  <td>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{invoice.invoiceNumber}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>{formatDateUTC(invoice.issueDate)}</div>
+                    <div style={{ marginTop: '6px' }}>
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        textTransform: 'uppercase', 
+                        padding: '2px 8px', 
+                        borderRadius: '12px',
+                        background: invoice.invoiceType === 'Normal' ? 'rgba(255,255,255,0.05)' : invoice.invoiceType === 'Abono' ? 'rgba(59,130,246,0.1)' : 'rgba(244,63,94,0.1)',
+                        color: invoice.invoiceType === 'Normal' ? 'var(--text-muted)' : invoice.invoiceType === 'Abono' ? '#60a5fa' : '#fb7185',
+                        border: `1px solid ${invoice.invoiceType === 'Normal' ? 'var(--border)' : invoice.invoiceType === 'Abono' ? 'rgba(59,130,246,0.3)' : 'rgba(244,63,94,0.3)'}`
+                      }}>
                         {invoice.invoiceType || 'Normal'}
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-start justify-between gap-4">
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
                       <div>
-                        <Link href={`/clientes/${invoice.clientId}`} className="font-medium text-white hover:text-rose-400 transition-colors">
+                        <Link href={`/clientes/${invoice.clientId}`} style={{ fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
                           {invoice.client.businessName || `${invoice.client.firstName} ${invoice.client.lastName}`}
                         </Link>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col gap-1">
-                      <div className="text-sm font-mono text-lime-400 font-bold">{invoice.supplyPoint?.cups || '-'}</div>
+                  <td>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ fontSize: '0.85rem', fontFamily: 'monospace', color: 'var(--lime)', fontWeight: 700 }}>{invoice.supplyPoint?.cups || '-'}</div>
                       {invoice.supplyPoint && (
-                        <div className="text-xs text-slate-400 truncate max-w-[200px]" title={[invoice.supplyPoint.address, invoice.supplyPoint.postalCode, invoice.supplyPoint.city, invoice.supplyPoint.province].filter(Boolean).join(', ')}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }} title={[invoice.supplyPoint.address, invoice.supplyPoint.postalCode, invoice.supplyPoint.city, invoice.supplyPoint.province].filter(Boolean).join(', ')}>
                           {[invoice.supplyPoint.address, invoice.supplyPoint.postalCode, invoice.supplyPoint.city, invoice.supplyPoint.province].filter(Boolean).join(', ') || '-'}
                         </div>
                       )}
                       {invoice.origin ? (
-                        <div className="text-[10px] uppercase bg-slate-800 border border-slate-700 text-slate-300 px-2 py-0.5 rounded inline-block self-start mt-1">
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px', alignSelf: 'flex-start', marginTop: '4px' }}>
                           Proc: {invoice.origin}
                         </div>
                       ) : (
-                        <div className="text-[10px] uppercase bg-slate-800/50 border border-slate-700/50 text-slate-500 px-2 py-0.5 rounded inline-block self-start mt-1">
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px', alignSelf: 'flex-start', marginTop: '4px' }}>
                           Sin Procedencia
                         </div>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-xs">
+                  <td>
                     {(invoice as any).desde && (invoice as any).hasta ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Desde:</span> <span className="text-slate-300 font-medium">{formatDateUTC((invoice as any).desde)}</span></div>
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Hasta:</span> <span className="text-slate-300 font-medium">{formatDateUTC((invoice as any).hasta)}</span></div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px' }}><span style={{ color: 'var(--text-muted)' }}>Desde:</span> <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatDateUTC((invoice as any).desde)}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px' }}><span style={{ color: 'var(--text-muted)' }}>Hasta:</span> <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatDateUTC((invoice as any).hasta)}</span></div>
                       </div>
                     ) : invoice.billingStart && invoice.billingEnd ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Desde:</span> <span className="text-slate-300 font-medium">{formatDateUTC(invoice.billingStart)}</span></div>
-                        <div className="flex justify-between w-32"><span className="text-slate-500">Hasta:</span> <span className="text-slate-300 font-medium">{formatDateUTC(invoice.billingEnd)}</span></div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px' }}><span style={{ color: 'var(--text-muted)' }}>Desde:</span> <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatDateUTC(invoice.billingStart)}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px' }}><span style={{ color: 'var(--text-muted)' }}>Hasta:</span> <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatDateUTC(invoice.billingEnd)}</span></div>
                       </div>
                     ) : (
-                      <span className="text-slate-500 italic">No especificado</span>
+                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.8rem' }}>No especificado</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-xs">
+                  <td>
                     {invoice.totalMWh ? (
-                      <span className="font-medium text-slate-200">{(invoice.invoiceType === 'Abono' ? -Math.abs(invoice.totalMWh) : invoice.totalMWh).toLocaleString('es-ES')} <span className="text-slate-400 font-normal">kWh</span></span>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{(invoice.invoiceType === 'Abono' ? -Math.abs(invoice.totalMWh) : invoice.totalMWh).toLocaleString('es-ES')} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>kWh</span></span>
                     ) : '-'}
                   </td>
-                  <td className={`px-6 py-4 text-right font-medium ${invoice.invoiceType === 'Abono' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: invoice.invoiceType === 'Abono' ? '#fb7185' : '#34d399' }}>
                     {(invoice.invoiceType === 'Abono' ? -Math.abs(invoice.totalAmount) : invoice.totalAmount).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button onClick={() => window.location.href = `/facturas/${invoice.id}`} className="btn-ghost" style={{ padding: '6px' }} title="Ver Ficha">
-                        <Eye size={16} className="text-lime-400" />
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <button onClick={() => window.location.href = `/facturas/${invoice.id}`} className="action-icon" title="Ver Ficha">
+                        <Eye size={16} />
                       </button>
                       {invoice.pdfUrl && (
-                        <a href={invoice.pdfUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ padding: '6px' }} title="Descargar PDF">
-                          <Download size={16} className="text-indigo-400" />
+                        <a href={invoice.pdfUrl} target="_blank" rel="noopener noreferrer" className="action-icon" title="Descargar PDF">
+                          <Download size={16} />
                         </a>
                       )}
                       
                       {invoice.client.contactPhone && (
                         <>
-                          <div className="h-4 w-px bg-slate-700 mx-1"></div>
-                          <a href={`https://wa.me/34${invoice.client.contactPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ padding: '6px' }} title="Enviar WhatsApp">
-                            <MessageCircle size={16} className="text-green-500" />
+                          <div style={{ height: '16px', width: '1px', background: 'var(--border)', margin: '0 4px' }}></div>
+                          <a href={`https://wa.me/34${invoice.client.contactPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="action-icon" title="Enviar WhatsApp">
+                            <MessageCircle size={16} style={{ color: '#22c55e' }} />
                           </a>
-                          <a href={`tel:${invoice.client.contactPhone.replace(/\D/g, '')}`} className="btn-ghost" style={{ padding: '6px' }} title="Llamar">
-                            <Phone size={16} className="text-blue-400" />
+                          <a href={`tel:${invoice.client.contactPhone.replace(/\D/g, '')}`} className="action-icon" title="Llamar">
+                            <Phone size={16} style={{ color: '#60a5fa' }} />
                           </a>
                         </>
                       )}
 
-                      <div className="h-4 w-px bg-slate-700 mx-1"></div>
+                      <div style={{ height: '16px', width: '1px', background: 'var(--border)', margin: '0 4px' }}></div>
                       {showPaymentButtons && (
                         <>
                           <RequestPaymentButton invoiceId={invoice.id} type="transfer" />
@@ -273,14 +287,14 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                         </>
                       )}
                     </div>
-                    {!invoice.pdfUrl && <div className="text-slate-500 text-xs italic mt-1">Pendiente de PDF</div>}
+                    {!invoice.pdfUrl && <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', marginTop: '4px' }}>Pendiente de PDF</div>}
                   </td>
                 </tr>
               ))}
               
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                     {isLoading ? "Cargando facturas..." : "No se encontraron facturas."}
                   </td>
                 </tr>

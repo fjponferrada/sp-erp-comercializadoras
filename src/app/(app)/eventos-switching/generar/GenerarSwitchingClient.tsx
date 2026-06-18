@@ -288,5 +288,6 @@ export default function GenerarSwitchingClient() {
         </div>
       </div>
     </div>
+    </div>
   );
 }

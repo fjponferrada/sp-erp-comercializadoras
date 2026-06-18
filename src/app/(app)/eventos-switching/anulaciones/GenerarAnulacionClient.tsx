@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, AlertCircle, Loader2 } from 'lucide-react';
 import { generateAnulacionXml, fetchAnulacionContext } from '@/app/actions/anulacionesActions';
+import Topbar from '@/components/Topbar';
 
 export default function GenerarAnulacionClient() {
   const [formData, setFormData] = useState({
@@ -89,13 +90,10 @@ export default function GenerarAnulacionClient() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Generar Anulación</h1>
-          <p className="text-slate-400">Genera ficheros XML de anulación para procesos de Switching en curso.</p>
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar title="Generar Anulación" subtitle="Genera ficheros XML de anulación para procesos de Switching en curso." />
+
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl flex items-start gap-3">
@@ -104,7 +102,7 @@ export default function GenerarAnulacionClient() {
         </div>
       )}
 
-      <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+      <div className="card animate-fade-in-up" style={{ padding: '32px' }}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
@@ -114,7 +112,7 @@ export default function GenerarAnulacionClient() {
               type="text"
               value={formData.emisora}
               onChange={(e) => handleChange('emisora', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[var(--lime)]"
+              className="form-input"
               placeholder="Ej: 1713"
             />
           </div>
@@ -127,7 +125,7 @@ export default function GenerarAnulacionClient() {
               type="text"
               value={formData.destino}
               onChange={(e) => handleChange('destino', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[var(--lime)]"
+              className="form-input"
               placeholder="Ej: 0031"
             />
           </div>
@@ -139,7 +137,7 @@ export default function GenerarAnulacionClient() {
             <select
               value={formData.proceso}
               onChange={(e) => handleChange('proceso', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[var(--lime)]"
+              className="form-input"
             >
               <option value="C1">C1 - Cambio de Comercializador (Paso 08)</option>
               <option value="C2">C2 - Cambio de Comercializador con modificaciones (Paso 08)</option>
@@ -157,7 +155,7 @@ export default function GenerarAnulacionClient() {
               type="text"
               value={formData.codigoSolicitud}
               onChange={(e) => handleChange('codigoSolicitud', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[var(--lime)]"
+              className="form-input"
               placeholder="Ej: 249999413591"
             />
           </div>
@@ -170,7 +168,7 @@ export default function GenerarAnulacionClient() {
               type="text"
               value={formData.cups}
               onChange={(e) => handleChange('cups', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[var(--lime)] uppercase"
+              className="form-input uppercase"
               placeholder="ES..."
               maxLength={22}
             />
@@ -181,13 +179,15 @@ export default function GenerarAnulacionClient() {
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className="bg-[var(--lime)] hover:bg-[#b3ff3b] text-black font-semibold py-3 px-8 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary"
+            style={{ padding: '12px 24px' }}
           >
             <Download className="w-5 h-5" />
             {loading ? 'Generando...' : 'Generar y Descargar XML'}
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 }

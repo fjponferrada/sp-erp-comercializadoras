@@ -74,122 +74,126 @@ export default function SupplyPointsClient({
   };
 
   return (
-    <div className="flex-1 bg-black/40 h-[100vh] overflow-y-auto w-full relative">
-      <Topbar title="Puntos de Suministro" showSearch={false} />
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar 
+        title="Puntos de Suministro" 
+        subtitle="Gestión de CUPS y consumos"
+        showSearch={false} 
+      />
 
-      <div className="p-8 pb-32 max-w-[1600px] mx-auto w-full space-y-6">
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         
-        {/* Header and Search */}
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white/[0.02] border border-white/5 p-4 rounded-2xl backdrop-blur-xl">
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="bg-lime-500/10 p-3 rounded-xl border border-lime-500/20">
-              <Zap className="text-lime-400" size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">Suministros</h1>
-              <p className="text-sm text-white/50">{totalCount} registros encontrados</p>
-            </div>
+        {/* Search */}
+        <div
+          className="animate-fade-in-up delay-300"
+          style={{
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ position: 'relative', flex: '1', minWidth: '280px' }}>
+            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <input
+              className="form-input"
+              placeholder="Buscar por CUPS, Dirección o Titular..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              style={{ paddingLeft: '38px' }}
+            />
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="relative group flex-1 md:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-lime-400 transition-colors" size={18} />
-              <input
-                type="text"
-                placeholder="Buscar por CUPS, Dirección o Titular..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-lime-500/50 focus:ring-1 focus:ring-lime-500/50 transition-all placeholder:text-white/30"
-              />
-            </div>
+          <div style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{totalCount}</span> suministros encontrados
           </div>
         </div>
 
         {/* Table */}
-        <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden backdrop-blur-md">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+        <div className="card animate-fade-in-up delay-400" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
               <thead>
-                <tr className="bg-black/40 border-b border-white/5">
-                  <th className="p-4 text-xs font-semibold text-white/40 uppercase tracking-wider">CUPS / Tarifa</th>
-                  <th className="p-4 text-xs font-semibold text-white/40 uppercase tracking-wider">Titular</th>
-                  <th className="p-4 text-xs font-semibold text-white/40 uppercase tracking-wider">Dirección</th>
-                  <th className="p-4 text-xs font-semibold text-white/40 uppercase tracking-wider">Consumo</th>
-                  <th className="p-4 text-xs font-semibold text-white/40 uppercase tracking-wider">Estado Contrato</th>
-                  <th className="p-4 text-xs font-semibold text-white/40 uppercase tracking-wider text-right">Acciones</th>
+                <tr>
+                  <th>CUPS / Tarifa</th>
+                  <th>Titular</th>
+                  <th>Dirección</th>
+                  <th>Consumo</th>
+                  <th>Estado Contrato</th>
+                  <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody>
                 {loading && supplyPoints.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-white/50">Cargando puntos de suministro...</td>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Cargando puntos de suministro...</td>
                   </tr>
                 ) : supplyPoints.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-white/50">No se encontraron resultados</td>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No se encontraron resultados</td>
                   </tr>
                 ) : (
                   supplyPoints.map((sp) => (
-                    <tr key={sp.id} className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-white/5 p-2 rounded border border-white/10">
-                            <Zap size={14} className="text-lime-400" />
+                    <tr key={sp.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                            <Zap size={14} color="var(--lime)" />
                           </div>
                           <div>
-                            <Link href={`/puntos-suministro/${sp.id}`} className="font-mono text-sm font-semibold text-gray-200 tracking-wider hover:text-lime-400 hover:underline transition-colors">
+                            <Link href={`/puntos-suministro/${sp.id}`} style={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.05em', textDecoration: 'none' }}>
                               {sp.cups}
                             </Link>
-                            <span className="text-xs font-medium text-white/40 bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
+                            <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '12px', border: '1px solid var(--border)', marginLeft: '6px' }}>
                               {sp.tariff || 'S/D'}
                             </span>
                           </div>
                         </div>
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Building2 size={14} className="text-white/40" />
-                          <Link href={`/clientes/${sp.clientId}`} className="text-sm text-white/80 hover:text-lime-400 hover:underline font-medium transition-colors">
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Building2 size={14} color="var(--text-muted)" />
+                          <Link href={`/clientes/${sp.clientId}`} style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500, textDecoration: 'none' }}>
                             {sp.client?.businessName || 'Desconocido'}
                           </Link>
                         </div>
-                        <div className="text-xs text-white/40 font-mono mt-1 ml-6">{sp.client?.vatNumber}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: '4px', marginLeft: '20px' }}>{sp.client?.vatNumber}</div>
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-start gap-2">
-                          <MapPin size={14} className="text-white/40 mt-0.5 flex-shrink-0" />
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                          <MapPin size={14} color="var(--text-muted)" style={{ marginTop: '2px', flexShrink: 0 }} />
                           <div>
-                            <p className="text-sm text-white/70 line-clamp-1">{sp.address}</p>
-                            <p className="text-xs text-white/40 mt-0.5">{sp.postalCode} - {sp.city} ({sp.province})</p>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{sp.address}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>{sp.postalCode} - {sp.city} ({sp.province})</div>
                           </div>
                         </div>
                       </td>
-                      <td className="p-4 text-sm text-white/70 font-medium">
+                      <td style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
                         {sp.annualConsumption ? `${sp.annualConsumption} kWh` : '-'}
                       </td>
-                      <td className="p-4">
+                      <td>
                         {sp.contracts && sp.contracts.length > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-2 w-2 relative">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ position: 'relative', display: 'flex', width: '8px', height: '8px' }}>
+                              <span style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite', position: 'absolute', display: 'inline-flex', height: '100%', width: '100%', borderRadius: '50%', backgroundColor: 'var(--lime)', opacity: 0.75 }}></span>
+                              <span style={{ position: 'relative', display: 'inline-flex', borderRadius: '50%', height: '8px', width: '8px', backgroundColor: 'var(--lime)' }}></span>
                             </span>
-                            <span className="text-xs font-medium text-lime-400 bg-lime-400/10 px-2.5 py-1 rounded-full border border-lime-400/20">
+                            <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--lime)', background: 'rgba(222,255,154,0.1)', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(222,255,154,0.2)' }}>
                               Activo
                             </span>
                           </div>
                         ) : (
-                          <span className="text-xs font-medium text-white/40">Sin Contrato Activo</span>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)' }}>Sin Contrato Activo</span>
                         )}
                       </td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                           <Link
                             href={`/puntos-suministro/${sp.id}`}
-                            className="p-2 bg-white/5 hover:bg-lime-500/20 text-white/60 hover:text-lime-400 rounded-lg border border-white/5 hover:border-lime-500/30 transition-all"
+                            className="action-icon"
                             title="Ver Detalle"
                           >
                             <Eye size={16} />
@@ -197,7 +201,7 @@ export default function SupplyPointsClient({
                           {['BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole) && (
                             <button
                               onClick={() => handleEdit(sp)}
-                              className="p-2 bg-white/5 hover:bg-lime-500/20 text-white/60 hover:text-lime-400 rounded-lg border border-white/5 hover:border-lime-500/30 transition-all"
+                              className="action-icon"
                               title="Editar Suministro"
                             >
                               <Edit size={16} />
