@@ -4,7 +4,7 @@ import { PROVINCES_GEO } from '@/lib/services/ProvinceService';
 import { getDay, getMonth, isWeekend, subDays } from 'date-fns';
 import { DecisionTreeRegression } from 'ml-cart';
 
-const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'VE <15 MWh', 'VIP'];
+const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'PYME >50 MWh', 'VE <15 MWh', 'VE >15 MWh', 'VIP'];
 const PROVINCES = Object.values(PROVINCES_GEO).map(p => p.name);
 
 export async function GET(req: Request) {

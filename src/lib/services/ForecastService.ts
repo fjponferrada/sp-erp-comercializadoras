@@ -3,7 +3,7 @@ import { getProvinceGeo, PROVINCES_GEO } from './ProvinceService';
 import { addDays, getDay, getMonth, format, subDays, startOfDay, isWeekend } from 'date-fns';
 import { DecisionTreeRegression } from 'ml-cart';
 
-const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'VE <15 MWh', 'VIP'];
+const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'PYME >50 MWh', 'VE <15 MWh', 'VE >15 MWh', 'VIP'];
 const PROVINCES = Object.values(PROVINCES_GEO).map(p => p.name);
 
 // We fetch tomorrow's weather from Open-Meteo
