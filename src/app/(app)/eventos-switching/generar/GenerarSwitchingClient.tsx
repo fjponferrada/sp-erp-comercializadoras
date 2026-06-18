@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { fetchPendingSwitchingContracts, generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
 import { Loader2, Download, CheckSquare, Square, Eye, AlertCircle } from 'lucide-react';
+import Topbar from '@/components/Topbar';
 import Link from 'next/link';
 
 interface ContractRow {
