@@ -123,15 +123,15 @@ export default function Sidebar() {
   // Estado para el Acordeón
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  // Inicializar grupo activo al cargar
+  // Inicializar grupo activo al cargar (solo cuando cambia la URL)
   useEffect(() => {
-    const activeGroup = navGroups.find(g => 
+    const activeGroup = baseNavGroups.find(g => 
       g.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))
     );
     if (activeGroup) {
       setOpenGroup(activeGroup.label);
     }
-  }, [pathname, navGroups]);
+  }, [pathname]);
 
   return (
     <>
