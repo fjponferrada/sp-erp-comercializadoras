@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { Zap, Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
 
 import { registerClientUserAction } from '@/app/actions/authActions';
 
@@ -158,9 +159,9 @@ export default function LoginPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <label className="form-label" style={{ margin: 0 }}>Contraseña</label>
-              <a href="#" style={{ fontSize: '0.75rem', color: 'var(--lime)', textDecoration: 'none', fontWeight: 500 }}>
+              <Link href="/forgot-password" style={{ fontSize: '0.75rem', color: 'var(--lime)', textDecoration: 'none', fontWeight: 500 }}>
                 ¿Olvidaste tu contraseña?
-              </a>
+              </Link>
             </div>
             <div style={{ position: 'relative' }}>
               <input
