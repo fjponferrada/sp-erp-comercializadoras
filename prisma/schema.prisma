@@ -823,3 +823,11 @@ model DemandForecast {
 
   @@index([targetDate])
 }
+
+model ForecastModelCache {
+  id        String   @id @default(cuid())
+  modelData Json
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
