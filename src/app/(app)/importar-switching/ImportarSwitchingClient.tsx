@@ -7,6 +7,7 @@ import { retryUnresolvedSwitchingEventsAction } from '@/app/actions/switchingAct
 import toast from 'react-hot-toast';
 import { useDropzone } from 'react-dropzone';
 import Link from 'next/link';
+import Topbar from '@/components/Topbar';
 
 interface ImportarSwitchingClientProps {
   userRole: string;
@@ -99,18 +100,13 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
   });
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-8">
-      {/* HEADER */}
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-3 text-[var(--lime)]">
-          <UploadCloud className="h-8 w-8" />
-          Importar XML SCTD
-        </h1>
-        <p className="text-gray-400 mt-2 text-lg">
-          Arrastra o selecciona los archivos XML de distribuidora (Procesos C1, M1, A3, R1, etc.). 
-          El sistema los parseará, subirá a Cloudflare R2 y creará los eventos asociados.
-        </p>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar 
+        title="Importar XML SCTD" 
+        subtitle="Arrastra o selecciona los archivos XML de distribuidora (Procesos C1, M1, A3, R1, etc.). El sistema los parseará, subirá a Cloudflare R2 y creará los eventos asociados." 
+      />
+
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* DROPZONE */}
       {!uploading && !finished && (
@@ -203,6 +199,7 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
           </ul>
         </div>
       )}
+      </div>
     </div>
   );
 }
