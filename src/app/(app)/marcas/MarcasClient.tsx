@@ -47,68 +47,65 @@ export default function MarcasClient({ initialBrands }: { initialBrands: any[] }
   };
 
   return (
-    <>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar title="Marcas" subtitle="Gestión de marcas comerciales y configuración" />
       
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-wrap gap-4">
-          <div className="relative flex-1 min-w-[300px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div className="card animate-fade-in-up delay-200" style={{ padding: '16px 20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: '1 1 300px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text" 
               placeholder="Buscar marca..." 
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+              className="form-input"
+              style={{ paddingLeft: '32px', fontSize: '0.8rem' }}
             />
           </div>
         </div>
 
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden flex flex-col">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap">
-              <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+        <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <th className="px-6 py-4">Código Marca</th>
-                  <th className="px-6 py-4">Nombre Marca</th>
-                  <th className="px-6 py-4">Empresa Matriz</th>
-                  <th className="px-6 py-4">Dirección</th>
-                  <th className="px-6 py-4">Email</th>
-                  <th className="px-6 py-4">Contacto</th>
-                  <th className="px-6 py-4">Teléfono</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Acciones</th>
+                  <th>Código Marca</th>
+                  <th>Nombre Marca</th>
+                  <th>Empresa Matriz</th>
+                  <th>Dirección</th>
+                  <th>Email</th>
+                  <th>Contacto</th>
+                  <th>Teléfono</th>
+                  <th>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/50">
+              <tbody>
                 {brands.map(b => (
                   <React.Fragment key={b.id}>
-                    <tr className="hover:bg-slate-700/30 transition-colors" style={{ background: editingId === b.id ? 'rgba(51, 65, 85, 0.5)' : 'transparent' }}>
-                      <td className="px-6 py-4 font-mono text-slate-300">{b.codigoMarca || b.slug}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-white flex items-center gap-2">
+                    <tr style={{ background: editingId === b.id ? 'var(--bg-elevated)' : 'transparent' }}>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{b.codigoMarca || b.slug}</td>
+                      <td>
+                        <div style={{ fontWeight: 500, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: b.accentColor || 'var(--lime)' }} />
                           {b.name}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium">{b.company?.name}</div>
-                        <div className="text-xs text-slate-400 mt-1">{b.company?.cif}</div>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{b.company?.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{b.company?.cif}</div>
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-400 max-w-[200px] truncate" title={b.address || ''}>{b.address || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{b.email || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{b.contactPerson || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{b.phone || '-'}</td>
-                      <td className="px-6 py-4">
+                      <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.address || ''}>{b.address || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{b.email || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{b.contactPerson || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{b.phone || '-'}</td>
+                      <td>
                         {b.marcaVisible ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
-                            <Check size={12}/> Visible
-                          </span>
+                          <span className="badge badge-active inline-flex"><Check size={10}/> Visible</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700 px-2 py-1 rounded">
-                            Oculta
-                          </span>
+                          <span className="badge badge-draft inline-flex">Oculta</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td style={{ textAlign: 'right' }}>
                         {editingId === b.id ? (
                           <div className="flex justify-end gap-2">
                             <button className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition-colors" onClick={cancelEdit}><X size={18} /></button>
@@ -269,6 +266,6 @@ export default function MarcasClient({ initialBrands }: { initialBrands: any[] }
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
