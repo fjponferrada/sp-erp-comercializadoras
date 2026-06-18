@@ -778,6 +778,11 @@ model LoadCurve {
 }
 
 model WeatherHistory {
-  date          DateTime   @id @db.Date
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  province      String
   temperatures  Float[]
+
+  @@unique([date, province])
+  @@index([date])
 }
