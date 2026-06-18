@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { Zap, Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useBrandTheme } from '@/context/BrandThemeContext';
 
 import { registerClientUserAction } from '@/app/actions/authActions';
 
 export default function LoginPage() {
+  const brand = useBrandTheme();
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
@@ -118,16 +120,20 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            width: '52px', height: '52px', background: 'var(--lime)',
-            borderRadius: '12px', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', margin: '0 auto 14px',
-            boxShadow: '0 0 24px rgba(222,255,154,0.3)',
-          }}>
-            <Zap size={26} color="var(--bg-base)" strokeWidth={2.5} />
-          </div>
+          {brand.logoUrl ? (
+            <img src={brand.logoUrl} alt={brand.name} style={{ height: '52px', margin: '0 auto 14px', objectFit: 'contain' }} />
+          ) : (
+            <div style={{
+              width: '52px', height: '52px', background: 'var(--lime)',
+              borderRadius: '12px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', margin: '0 auto 14px',
+              boxShadow: '0 0 24px rgba(222,255,154,0.3)',
+            }}>
+              <Zap size={26} color="var(--bg-base)" strokeWidth={2.5} />
+            </div>
+          )}
           <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            SP Energía
+            {brand.name}
           </h1>
         </div>
 

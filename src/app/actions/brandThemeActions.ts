@@ -26,6 +26,7 @@ export async function updateBrandThemeAction(brandId: string, themeData: Partial
       borderColor: themeData.borderColor,
       logoUrl: themeData.logoUrl,
       faviconUrl: themeData.faviconUrl,
+      domain: (themeData as any).domain,
     }
   });
 

@@ -22,6 +22,7 @@ export default function AjustesPage() {
 
   // Estado local del formulario de marca
   const [brandName, setBrandName]       = useState(brand.name);
+  const [domain, setDomain]             = useState((brand as any).domain || '');
   const [logoUrl, setLogoUrl]           = useState<string | null>(brand.logoUrl || null);
   const [accentColor, setAccentColor]   = useState(brand.accentColor);
   const [bgColor, setBgColor]           = useState(brand.bgColor);
@@ -70,6 +71,7 @@ export default function AjustesPage() {
         bgColor,
         surfaceColor,
         borderColor,
+        domain: domain || null,
       };
 
       document.documentElement.style.setProperty('--lime', accentColor);
@@ -147,6 +149,11 @@ export default function AjustesPage() {
                     <label className="form-label">Nombre de la Marca</label>
                     <input className="form-input" value={brandName} onChange={e => setBrandName(e.target.value)} placeholder="ej. AED Energía" />
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>Aparece en el menú lateral y en los emails enviados.</p>
+                  </div>
+                  <div>
+                    <label className="form-label">Dominio Personalizado</label>
+                    <input className="form-input" value={domain} onChange={e => setDomain(e.target.value)} placeholder="ej. clientes.aed-energia.com" />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>Sin http:// ni barras finales. Aplica el tema al login.</p>
                   </div>
                   <div>
                     <label className="form-label">Logotipo</label>
