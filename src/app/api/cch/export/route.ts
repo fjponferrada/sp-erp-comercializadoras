@@ -57,7 +57,9 @@ export async function GET(req: Request) {
       const minutesPerInterval = isHourly ? 60 : 15;
 
       for (let i = 0; i < intervals; i++) {
-        const intervalTime = addMinutes(localMidnight, i * minutesPerInterval);
+        // En España el estándar (y REE) suele usar "Hour-Ending" (Fin de hora)
+        // Por tanto, la hora 1 (00:00 - 01:00) se etiqueta como 01:00.
+        const intervalTime = addMinutes(localMidnight, (i + 1) * minutesPerInterval);
         const localTime = toZonedTime(intervalTime, 'Europe/Madrid');
         const dateStr = format(localTime, 'yyyy-MM-dd HH:mm:ss');
         
