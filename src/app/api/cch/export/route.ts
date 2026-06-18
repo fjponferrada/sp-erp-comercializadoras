@@ -22,12 +22,13 @@ export async function GET(req: Request) {
 
     const startDate = new Date(startStr);
     const endDate = new Date(endStr);
-    // Include the whole end day
-    endDate.setUTCHours(23, 59, 59, 999);
+    // Igual que el script en python, recortamos a 20 caracteres por si acaso 
+    // y buscamos con startsWith ya que el histórico del PKL venía sin los dígitos de control
+    const searchCups = cups.substring(0, 20);
 
     const loadCurves = await prisma.loadCurve.findMany({
       where: {
-        cups: cups,
+        cups: { startsWith: searchCups },
         date: {
           gte: startDate,
           lte: endDate
