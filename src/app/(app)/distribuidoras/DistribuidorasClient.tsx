@@ -8,6 +8,7 @@ export default function DistribuidorasClient() {
   const [distributors, setDistributors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,26 +31,38 @@ export default function DistribuidorasClient() {
 
   const startEdit = (distributor: any) => {
     setEditingId(distributor.id);
+    setIsCreating(false);
     setEditForm({ ...distributor });
+  };
+
+  const startCreate = () => {
+    setEditingId(null);
+    setIsCreating(true);
+    setEditForm({ name: '', reeCode: '', ftpPort: 21, ftpActive: false });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
+    setIsCreating(false);
     setEditForm({});
   };
 
   const handleSave = async () => {
-    if (!editingId) return;
+    if (!editingId && !isCreating) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/distributors/${editingId}`, {
-        method: 'PUT',
+      const url = isCreating ? '/api/distributors' : `/api/distributors/${editingId}`;
+      const method = isCreating ? 'POST' : 'PUT';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
       if (res.ok) {
         await fetchDistributors();
         setEditingId(null);
+        setIsCreating(false);
       } else {
         alert('Error al guardar');
       }
@@ -75,7 +88,7 @@ export default function DistribuidorasClient() {
           </div>
         </div>
 
-        <div className="mb-6 animate-fade-in">
+        <div className="mb-6 flex flex-col sm:flex-row justify-between items-center gap-4 animate-fade-in">
           <input 
             type="text" 
             placeholder="Buscar por nombre o código REE..." 
@@ -83,12 +96,73 @@ export default function DistribuidorasClient() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="form-input w-full max-w-md"
           />
+          <button onClick={startCreate} className="btn-primary px-4 py-2 flex-shrink-0">
+            + Añadir Concentradora / Distribuidora
+          </button>
         </div>
 
         {loading ? (
           <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {isCreating && (
+              <div className="card p-6 animate-fade-in-up border border-primary-500/50">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-700/50 pb-4 mb-4">
+                    <div className="flex items-center space-x-3">
+                      <Building2 className="text-primary-400 w-5 h-5" />
+                      <h3 className="font-semibold text-white">Nueva Concentradora</h3>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Nombre (ej: CIDE)</label>
+                      <input type="text" className="form-input w-full" value={editForm.name || ''} onChange={e => setEditForm({...editForm, name: e.target.value})} placeholder="CIDE Concentradora" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Código REE (o inventado)</label>
+                      <input type="text" className="form-input w-full" value={editForm.reeCode || ''} onChange={e => setEditForm({...editForm, reeCode: e.target.value})} placeholder="CIDE-001" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Host FTP / SFTP</label>
+                      <input type="text" className="form-input w-full" value={editForm.ftpHost || ''} onChange={e => setEditForm({...editForm, ftpHost: e.target.value})} placeholder="ftp.ejemplo.com" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Puerto</label>
+                      <input type="number" className="form-input w-full" value={editForm.ftpPort || 21} onChange={e => setEditForm({...editForm, ftpPort: e.target.value})} placeholder="21" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Usuario</label>
+                      <input type="text" className="form-input w-full" value={editForm.ftpUser || ''} onChange={e => setEditForm({...editForm, ftpUser: e.target.value})} placeholder="user123" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
+                      <input type="password" className="form-input w-full" value={editForm.ftpPassword || ''} onChange={e => setEditForm({...editForm, ftpPassword: e.target.value})} placeholder="••••••••" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-slate-400 mb-1">Ruta Remota (Carpeta)</label>
+                      <input type="text" className="form-input w-full" value={editForm.ftpTargetPath || ''} onChange={e => setEditForm({...editForm, ftpTargetPath: e.target.value})} placeholder="/public/cch/" />
+                    </div>
+                    <div className="col-span-2 flex items-center mt-2">
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" className="form-checkbox bg-[#16272E] border-slate-600 text-primary-500 rounded focus:ring-primary-500 focus:ring-offset-[#16272E]" checked={editForm.ftpActive || false} onChange={e => setEditForm({...editForm, ftpActive: e.target.checked})} />
+                        <span className="text-sm font-medium text-slate-300">Activar sincronización nocturna para esta distribuidora</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-4">
+                    <button onClick={cancelEdit} className="btn-secondary px-4 py-2 flex items-center"><X className="w-4 h-4 mr-2"/> Cancelar</button>
+                    <button onClick={handleSave} disabled={saving} className="btn-primary px-4 py-2 flex items-center">
+                      {saving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div> : <Save className="w-4 h-4 mr-2"/>}
+                      Crear
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {distributors.filter(dist => 
               dist.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
               (dist.reeCode && dist.reeCode.toLowerCase().includes(searchTerm.toLowerCase()))
