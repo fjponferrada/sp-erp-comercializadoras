@@ -21,7 +21,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
       {/* KPIs Superiores */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* KPI 1 */}
-        <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl relative overflow-hidden">
+        <div className="card relative overflow-hidden" style={{ padding: '24px' }}>
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl"></div>
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -39,7 +39,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
         </div>
 
         {/* KPI 2 */}
-        <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl relative overflow-hidden">
+        <div className="card relative overflow-hidden" style={{ padding: '24px' }}>
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl"></div>
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -58,7 +58,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
         </div>
 
         {/* KPI 3 */}
-        <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl relative overflow-hidden">
+        <div className="card relative overflow-hidden" style={{ padding: '24px' }}>
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -82,7 +82,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
         </div>
 
         {/* KPI 4 */}
-        <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl relative overflow-hidden">
+        <div className="card relative overflow-hidden" style={{ padding: '24px' }}>
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -104,7 +104,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
       {/* Gráficos Principales */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Gráfico 1: Evolución de Cartera */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
+        <div className="card" style={{ padding: '24px' }}>
           <h3 className="text-lg font-bold text-white mb-6">Evolución de Cartera (MWh)</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -127,7 +127,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
         </div>
 
         {/* Gráfico 2: Facturación vs Margen */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
+        <div className="card" style={{ padding: '24px' }}>
           <h3 className="text-lg font-bold text-white mb-6">Facturación Mensual (€)</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -149,50 +149,50 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
       </div>
 
       {/* Tabla Detallada */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden mt-8">
-        <div className="px-6 py-5 border-b border-slate-700">
+        <div className="card mt-8" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
           <h3 className="text-lg font-bold text-white">Rendimiento Histórico Mensual</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="px-6 py-4">Mes</th>
-                <th className="px-6 py-4 text-right">Facturación €</th>
-                <th className="px-6 py-4 text-right">Facturación MWh</th>
-                <th className="px-6 py-4 text-right">€/MWh</th>
-                <th className="px-6 py-4 text-right">Margen €</th>
-                <th className="px-6 py-4 text-center">Altas / Bajas</th>
-                <th className="px-6 py-4 text-right">Activos Totales (MWh)</th>
-                <th className="px-6 py-4 text-right">Crecimiento %</th>
+                <th style={{ padding: '16px 24px' }}>Mes</th>
+                <th style={{ padding: '16px 24px', textAlign: 'right' }}>Facturación €</th>
+                <th style={{ padding: '16px 24px', textAlign: 'right' }}>Facturación MWh</th>
+                <th style={{ padding: '16px 24px', textAlign: 'right' }}>€/MWh</th>
+                <th style={{ padding: '16px 24px', textAlign: 'right' }}>Margen €</th>
+                <th style={{ padding: '16px 24px', textAlign: 'center' }}>Altas / Bajas</th>
+                <th style={{ padding: '16px 24px', textAlign: 'right' }}>Activos Totales (MWh)</th>
+                <th style={{ padding: '16px 24px', textAlign: 'right' }}>Crecimiento %</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700/50">
+            <tbody>
               {[...data].reverse().map((row) => (
-                <tr key={row.month} className="hover:bg-slate-700/30 transition-colors">
-                  <td className="px-6 py-4 font-medium text-white">{row.month}</td>
-                  <td className="px-6 py-4 text-right font-medium text-sky-400">
+                <tr key={row.month}>
+                  <td style={{ padding: '16px 24px', fontWeight: 500, color: '#fff' }}>{row.month}</td>
+                  <td style={{ padding: '16px 24px', textAlign: 'right', fontWeight: 500, color: 'var(--info)' }}>
                     {row.facturacionEur.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
-                  <td className="px-6 py-4 text-right text-slate-400">
+                  <td style={{ padding: '16px 24px', textAlign: 'right', color: 'var(--text-muted)' }}>
                     {(row.facturacionMwh / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} MWh
                   </td>
-                  <td className="px-6 py-4 text-right font-medium text-slate-200">
+                  <td style={{ padding: '16px 24px', textAlign: 'right', fontWeight: 500, color: '#e2e8f0' }}>
                     {(row.eurPerMwh * 1000).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
-                  <td className="px-6 py-4 text-right font-medium text-amber-400">
+                  <td style={{ padding: '16px 24px', textAlign: 'right', fontWeight: 500, color: 'var(--warning)' }}>
                     {row.margenEur.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="text-emerald-400 font-medium">+{row.altas}</span>
-                    <span className="text-slate-500 mx-1">/</span>
-                    <span className="text-rose-400 font-medium">-{row.bajas}</span>
+                  <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                    <span style={{ color: 'var(--success)', fontWeight: 500 }}>+{row.altas}</span>
+                    <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
+                    <span style={{ color: 'var(--danger)', fontWeight: 500 }}>-{row.bajas}</span>
                   </td>
-                  <td className="px-6 py-4 text-right font-medium text-indigo-400">
+                  <td style={{ padding: '16px 24px', textAlign: 'right', fontWeight: 500, color: '#818cf8' }}>
                     {row.mwhActivos.toLocaleString('es-ES', { maximumFractionDigits: 1 })} MWh
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={`px-2 py-1 rounded-md text-xs font-semibold ${row.crecimientoMes >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                  <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+                    <span className={row.crecimientoMes >= 0 ? 'badge badge-active' : 'badge badge-draft'} style={row.crecimientoMes >= 0 ? { color: 'var(--success)', borderColor: 'var(--success)' } : { color: 'var(--danger)', borderColor: 'var(--danger)' }}>
                       {row.crecimientoMes >= 0 ? '+' : ''}{(row.crecimientoMes * 100).toFixed(2)}%
                     </span>
                   </td>
@@ -200,7 +200,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
               ))}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={8} style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No hay datos suficientes para generar el análisis económico. Sube facturas o activa contratos.
                   </td>
                 </tr>
