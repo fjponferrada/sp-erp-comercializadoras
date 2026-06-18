@@ -54,34 +54,59 @@ export async function processCchCsv(
   let skipped = 0;
   let errors = 0;
 
+  const is5D = filename.toUpperCase().includes('5D');
+
   for (const row of parsed.data as string[][]) {
     if (row.length < 3) {
       skipped++;
       continue;
     }
 
+    // Lógica del entrenador de Python V22:
+    // Si es 5D, cols=[0,1,3], si no, cols=[0,2,4]
+    const idxDate = is5D ? 1 : 2;
+    const idxConsumo = is5D ? 3 : 4;
+
     const cups = row[0]?.trim()?.substring(0, 20);
-    const dateStr = row[1]?.trim();
-    const consumoStr = row[2]?.trim()?.replace(',', '.');
+    const dateStr = row[idxDate]?.trim();
+    const consumoStr = row[idxConsumo]?.trim()?.replace(',', '.');
 
     if (!cups || !dateStr || !consumoStr) {
       skipped++;
       continue;
     }
 
-    const consumo = parseFloat(consumoStr);
-    if (isNaN(consumo) || consumo > UMBRAL_MAX) {
+    let consumo = parseFloat(consumoStr);
+    if (isNaN(consumo) || consumo < 0) {
       skipped++;
       continue;
     }
 
+    // --- LÓGICA DE UNIDADES V22 ---
+    if (is5D) {
+      consumo = consumo / 1000.0;
+    } else {
+      // Simplificación del umbral seguro
+      const currentUmbral = UMBRAL_MAX; // Asumimos 2000 para no fallar
+      if (consumo > currentUmbral) {
+        consumo = consumo / 1000.0;
+      }
+    }
+
+    // --- PARSEO Y AJUSTE DE FECHA (UTC -1h) ---
+    // Intentamos parsear. Python: %Y/%m/%d %H:%M o %Y/%m/%d %H:%M:%S
     let dateObj = new Date(dateStr);
     if (isNaN(dateObj.getTime())) {
       const parts = dateStr.split(' ');
       if (parts.length >= 2) {
         const dParts = parts[0].split('/');
         if (dParts.length === 3) {
-          dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1]}`);
+          // Asumimos formato europeo DD/MM/YYYY si el primero > 12, sino dejamos Date que lo intente
+          if (parseInt(dParts[0]) > 12) {
+            dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1]}Z`);
+          } else {
+            dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1]}Z`);
+          }
         }
       }
     }
@@ -90,6 +115,9 @@ export async function processCchCsv(
       errors++;
       continue;
     }
+
+    // Restar 1 hora según la lógica V22 del Python (el dato viene marcado al final del periodo)
+    dateObj.setHours(dateObj.getHours() - 1);
 
     const dayKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
     const mapKey = `${cups}_${dayKey}`;
