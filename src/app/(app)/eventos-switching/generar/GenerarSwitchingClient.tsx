@@ -270,7 +270,7 @@ export default function GenerarSwitchingClient() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span>{row.contrato}</span>
                           {row.proceso.startsWith('M1') && row.estado?.toUpperCase() === 'ACEPTADO' && !row.hasAnexo && (
-                            <AlertCircle size={14} style={{ color: 'var(--danger)' }} title="Falta Anexo Firmado" />
+                            <AlertCircle size={14} style={{ color: 'var(--danger)' }} />
                           )}
                         </div>
                       </td>

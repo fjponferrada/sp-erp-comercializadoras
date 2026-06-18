@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Package, Plus, Search, Filter, Info } from 'lucide-react';
 import PaginationFooter from '@/components/PaginationFooter';
 import ProductModal from './ProductModal';
+import Topbar from '@/components/Topbar';
 
 export default function ProductosClient({ initialProducts }: { initialProducts: any[] }) {
   const [search, setSearch] = useState('');
@@ -38,102 +39,101 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
   const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Package className="text-indigo-500" />
-            Catálogo de Productos
-          </h1>
-          <p className="text-slate-400 mt-1">Gestiona las tarifas y diccionarios de precios</p>
-        </div>
-        <button 
-          onClick={handleNew}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors font-medium"
-        >
-          <Plus size={18} />
-          Nuevo Producto
-        </button>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar title="Catálogo de Productos" subtitle="Gestiona las tarifas y diccionarios de precios" />
 
-      {/* Filters */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="Buscar por nombre..." 
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
-        
-        <div className="flex gap-4 w-full md:w-auto">
-          <select 
-            value={filterType}
-            onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
-            className="bg-slate-900 border border-slate-700 rounded-lg py-2 px-4 text-slate-200 focus:outline-none focus:border-indigo-500 appearance-none min-w-[150px]"
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '120px' }}>
+      
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button 
+            onClick={handleNew}
+            className="btn-primary"
+            style={{ padding: '8px 16px', fontSize: '0.875rem', gap: '8px' }}
           >
-            <option value="">Tipo de Producto</option>
-            <option value="Fijo">Fijo</option>
-            <option value="Indexado">Indexado</option>
-          </select>
-
-          <select 
-            value={filterTariff}
-            className="bg-slate-900 border border-slate-700 rounded-lg py-2 px-4 text-slate-200 focus:outline-none focus:border-indigo-500 appearance-none min-w-[120px]"
-            onChange={(e) => {
-              setFilterTariff(e.target.value); setPage(1);
-            }}
-          >
-            <option value="">Tarifa</option>
-            <option value="2.0TD">2.0TD</option>
-            <option value="3.0TD">3.0TD</option>
-            <option value="3.0TDVE">3.0TDVE</option>
-            <option value="6.1TD">6.1TD</option>
-          </select>
+            <Plus size={18} />
+            Nuevo Producto
+          </button>
         </div>
-      </div>
 
-      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-900/50 border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wider">
-                <th className="px-6 py-4 font-semibold">Producto</th>
-                <th className="px-6 py-4 font-semibold">Tarifa</th>
-                <th className="px-6 py-4 font-semibold">Tipo</th>
-                <th className="px-6 py-4 font-semibold text-center">Precios / Fee</th>
-                <th className="px-6 py-4 font-semibold text-center">Comisión Base</th>
-                <th className="px-6 py-4 font-semibold text-right">Estado</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-700/50">
+        {/* Filters */}
+        <div className="card animate-fade-in-up" style={{ padding: '16px 20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Buscar por nombre..." 
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="form-input"
+              style={{ paddingLeft: '36px' }}
+            />
+          </div>
+          
+          <div className="flex gap-4 w-full md:w-auto">
+            <select 
+              value={filterType}
+              onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+              className="form-input min-w-[150px]"
+            >
+              <option value="">Tipo de Producto</option>
+              <option value="Fijo">Fijo</option>
+              <option value="Indexado">Indexado</option>
+            </select>
+
+            <select 
+              value={filterTariff}
+              className="form-input min-w-[120px]"
+              onChange={(e) => {
+                setFilterTariff(e.target.value); setPage(1);
+              }}
+            >
+              <option value="">Tarifa</option>
+              <option value="2.0TD">2.0TD</option>
+              <option value="3.0TD">3.0TD</option>
+              <option value="3.0TDVE">3.0TDVE</option>
+              <option value="6.1TD">6.1TD</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Tarifa</th>
+                  <th>Tipo</th>
+                  <th style={{ textAlign: 'center' }}>Precios / Fee</th>
+                  <th style={{ textAlign: 'center' }}>Comisión Base</th>
+                  <th style={{ textAlign: 'right' }}>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
               {paginated.map((product) => (
                 <tr 
                   key={product.id}
                   onClick={() => handleEdit(product)}
                   className="hover:bg-slate-700/20 transition-colors cursor-pointer group"
                 >
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">
+                  <td style={{ fontWeight: 500, color: '#fff' }}>
+                    <div style={{ transition: 'color 0.2s', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--lime)'} onMouseLeave={(e) => e.currentTarget.style.color = '#fff'}>
                       {product.name}
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <td>
+                    <span className="badge badge-draft" style={{ color: 'var(--info)', borderColor: 'var(--info)' }}>
                       {product.tariff || 'Sin Tarifa'}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                      product.type === 'Indexado' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    }`}>
+                  <td>
+                    <span className={`badge ${
+                      product.type === 'Indexado' ? 'badge-draft' : 'badge-active'
+                    }`} style={product.type === 'Indexado' ? { color: 'var(--warning)', borderColor: 'var(--warning)' } : {}}>
                       {product.type === 'Indexado' ? 'Indexado' : 'Fijo'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td style={{ textAlign: 'center' }}>
                     <div 
                       className="inline-flex items-center justify-center p-2 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition-colors relative group/tooltip"
                       title={product.type === 'Indexado' 
@@ -144,18 +144,18 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
                       <Info size={18} />
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={`text-xs font-semibold px-2 py-1 rounded ${product.commissionType === 'MARGIN_PERCENTAGE' ? 'bg-purple-500/10 text-purple-400' : 'bg-orange-500/10 text-orange-400'}`}>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className="badge badge-draft" style={product.commissionType === 'MARGIN_PERCENTAGE' ? { color: '#a855f7', borderColor: '#a855f7' } : { color: '#f97316', borderColor: '#f97316' }}>
                       {product.commissionType === 'MARGIN_PERCENTAGE' ? '% sobre Margen' : 'Por Tramos (Potencia)'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td style={{ textAlign: 'right' }}>
                     {product.isAvailableCrm ? (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <span className="badge badge-active">
                         Activo
                       </span>
                     ) : (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                      <span className="badge badge-draft">
                         Oculto
                       </span>
                     )}
@@ -167,15 +167,15 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
         </div>
       </div>
         {paginated.length === 0 && (
-          <div className="py-12 text-center bg-slate-800/20 rounded-2xl border border-slate-800 border-dashed mt-6">
+          <div className="card animate-fade-in-up" style={{ padding: '48px', textAlign: 'center' }}>
             <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-400">No hay productos en el catálogo.</p>
-            <button className="mt-4 text-indigo-400 hover:text-indigo-300 font-medium text-sm" onClick={handleNew}>
+            <button className="mt-4 font-medium text-sm" style={{ color: 'var(--lime)' }} onClick={handleNew}>
               Crear tu primer producto
             </button>
           </div>
         )}
-      <div className="mt-6 rounded-xl overflow-hidden border border-slate-700">
+      <div className="card animate-fade-in-up delay-300" style={{ padding: '16px 24px', display: 'flex', justifyContent: 'center' }}>
         <PaginationFooter
           currentPage={currentPage}
           itemsPerPage={itemsPerPage}
@@ -196,6 +196,7 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
           }}
         />
       )}
+      </div>
     </div>
   );
 }
