@@ -10,6 +10,7 @@ export default function DistribuidorasClient() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchDistributors();
@@ -74,11 +75,24 @@ export default function DistribuidorasClient() {
           </div>
         </div>
 
+        <div className="mb-6 animate-fade-in">
+          <input 
+            type="text" 
+            placeholder="Buscar por nombre o código REE..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="form-input w-full max-w-md"
+          />
+        </div>
+
         {loading ? (
           <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {distributors.map(dist => (
+            {distributors.filter(dist => 
+              dist.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+              (dist.reeCode && dist.reeCode.toLowerCase().includes(searchTerm.toLowerCase()))
+            ).map(dist => (
               <div key={dist.id} className="card p-6 animate-fade-in-up">
                 {editingId === dist.id ? (
                   <div className="space-y-4">
