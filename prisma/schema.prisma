@@ -746,6 +746,13 @@ model Distributor {
   phone        String?
   portalUrl    String?
   registroCnmc String?
+  ftpHost        String?
+  ftpPort        Int?      @default(21)
+  ftpUser        String?
+  ftpPassword    String?
+  ftpTargetPath  String?
+  ftpActive      Boolean   @default(false)
+  ftpLastSyncAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

@@ -93,15 +93,15 @@ export default function MitecoClient() {
             </div>
 
               {reportType === 'DAFNE' && dafneResult && (
-                <div className="flex items-center ml-4 mt-8 space-x-2 animate-fade-in">
-                  <div className="bg-[#FF4D4F] text-white px-4 py-2 font-medium rounded-l text-sm">
+                <div className="flex items-center ml-4 animate-fade-in shadow-sm rounded">
+                  <div className="bg-[#F85F56] text-white px-4 h-[42px] flex items-center justify-center font-medium rounded-l text-sm border border-[#F85F56]">
                     Total(kWh)
                   </div>
                   <input 
                     type="text" 
                     readOnly 
                     value={dafneResult} 
-                    className="border border-slate-300 px-4 py-2 bg-white text-gray-800 rounded-r min-w-[200px]"
+                    className="h-[42px] border-y border-r border-slate-300 px-4 bg-white text-gray-800 rounded-r min-w-[200px] outline-none font-medium"
                   />
                 </div>
               )}
