@@ -124,45 +124,54 @@ export default function GenerarSwitchingClient() {
   if (!uniqueStatuses.includes('ACEPTADO')) uniqueStatuses.unshift('ACEPTADO'); // Ensure it exists in the list
 
   return (
-    <div className="p-6 w-full max-w-[1800px] mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
-      {/* Top Banner Widget */}
-      <div className="relative group overflow-hidden bg-slate-900/50 backdrop-blur-xl border border-[var(--border)] rounded-2xl p-8 text-center shadow-2xl transition-all hover:border-[var(--lime)]/50 hover:shadow-[0_0_30px_rgba(205,255,100,0.1)]">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[var(--lime)]/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-        <h2 className="text-[var(--lime)] text-sm font-bold mb-2 tracking-[0.2em] uppercase">Pendientes Iniciar</h2>
-        <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-500 tracking-tighter drop-shadow-sm">
-          {filteredData.length}
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar title="Generar Switching" subtitle="Emisión masiva de archivos XML" />
 
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-8 bg-[var(--lime)] rounded-full shadow-[0_0_10px_var(--lime)]" />
-          <h1 className="text-3xl font-black text-white tracking-tight">GENERAR SWITCHING</h1>
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        
+        {/* Top Banner Widget */}
+        <div className="card animate-fade-in-up" style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+          <h2 style={{ color: 'var(--lime)', fontSize: '0.875rem', fontWeight: 700, marginBottom: '8px', letterSpacing: '0.2em', textTransform: 'uppercase' }}>Pendientes Iniciar</h2>
+          <div style={{ fontSize: '3rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.05em' }}>
+            {filteredData.length}
+          </div>
         </div>
-        <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+
+        <div className="card animate-fade-in-up delay-200" style={{ padding: '16px 20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--lime)] focus:ring-1 focus:ring-[var(--lime)] transition-all shadow-inner w-full md:w-auto appearance-none cursor-pointer"
+            className="form-input"
+            style={{ width: 'auto', fontSize: '0.8rem' }}
           >
             <option value="ALL">Todos los estados</option>
             {uniqueStatuses.map(st => (
               <option key={st} value={st}>{st}</option>
             ))}
           </select>
-          <div className="relative w-full md:w-80 group">
+          <div style={{ position: 'relative', flex: '1 1 300px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text"
               placeholder="Buscar por CUPS, NIF, Nombre..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-900/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--lime)] focus:ring-1 focus:ring-[var(--lime)] transition-all placeholder:text-slate-500 shadow-inner"
+              className="form-input"
+              style={{ paddingLeft: '32px', fontSize: '0.8rem' }}
             />
-            <svg className="absolute left-3 top-3.5 w-4 h-4 text-slate-500 group-focus-within:text-[var(--lime)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={handleGenerate}
+              disabled={generating || selectedIds.size === 0}
+              className="btn-primary"
+              style={{ fontSize: '0.8rem', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {generating ? 'Generando...' : `Generar ZIP (${selectedIds.size})`}
+            </button>
           </div>
         </div>
-      </div>
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl flex items-center gap-3">
@@ -186,37 +195,37 @@ export default function GenerarSwitchingClient() {
         </div>
       )}
 
-      <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent pb-2">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="text-[10px] uppercase tracking-wider bg-slate-900/90 text-slate-400 border-b border-slate-700/50 sticky top-0 z-10">
+      <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="p-4 text-center w-14">
+                <th style={{ textAlign: 'center', width: '50px' }}>
                   <button onClick={toggleSelectAll} className="hover:text-gray-200">
-                    {selectedIds.size > 0 && selectedIds.size === filteredData.length ? <CheckSquare className="w-5 h-5 mx-auto" /> : <Square className="w-5 h-5 mx-auto" />}
+                    {selectedIds.size > 0 && selectedIds.size === filteredData.length ? <CheckSquare className="w-4 h-4 mx-auto" /> : <Square className="w-4 h-4 mx-auto" />}
                   </button>
                 </th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">Cups</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">Dirección</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">NIF</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">Nombre</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">Proceso</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">Estado</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors whitespace-nowrap">Contrato</th>
-                <th className="p-4 font-bold cursor-pointer hover:text-white transition-colors text-center whitespace-nowrap">Cod Distribuidora</th>
-                <th className="p-4 font-bold text-center w-16 whitespace-nowrap">Ver</th>
+                <th>Cups</th>
+                <th>Dirección</th>
+                <th>NIF</th>
+                <th>Nombre</th>
+                <th>Proceso</th>
+                <th>Estado</th>
+                <th>Contrato</th>
+                <th style={{ textAlign: 'center' }}>Cod Dist</th>
+                <th style={{ textAlign: 'center', width: '60px' }}>Ver</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center">
-                    <Loader2 className="w-8 h-8 text-[var(--lime)] animate-spin mx-auto" />
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '32px' }}>
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--lime)]" />
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
                     No hay contratos pendientes
                   </td>
                 </tr>
@@ -227,50 +236,47 @@ export default function GenerarSwitchingClient() {
                   return (
                     <tr 
                       key={row.id} 
-                      className={`border-b border-slate-800/50 hover:bg-slate-800/80 transition-all duration-200 group ${isSelected ? 'bg-[var(--lime)]/10 hover:bg-[var(--lime)]/15 border-l-2 border-l-[var(--lime)]' : 'border-l-2 border-l-transparent'} ${isMissingData ? 'bg-red-900/10 hover:bg-red-900/20 border-l-red-500' : ''}`}
+                      style={{ 
+                        background: isSelected ? 'var(--bg-elevated)' : 'transparent',
+                        borderLeft: isSelected ? '2px solid var(--lime)' : isMissingData ? '2px solid var(--danger)' : '2px solid transparent'
+                      }}
                     >
-                      <td className="p-4 text-center">
-                        <button onClick={() => toggleSelect(row.id)} className="text-slate-500 hover:text-[var(--lime)] transition-colors transform hover:scale-110 active:scale-95">
-                          {isSelected ? <CheckSquare className="w-5 h-5 mx-auto text-[var(--lime)]" /> : <Square className="w-5 h-5 mx-auto" />}
+                      <td style={{ textAlign: 'center' }}>
+                        <button onClick={() => toggleSelect(row.id)} style={{ color: isSelected ? 'var(--lime)' : 'var(--text-muted)' }}>
+                          {isSelected ? <CheckSquare className="w-4 h-4 mx-auto" /> : <Square className="w-4 h-4 mx-auto" />}
                         </button>
                       </td>
-                      <td className="p-4 font-mono text-[13px] font-medium tracking-tight text-slate-200">{row.cups || <span className="text-red-400 text-xs px-2 py-0.5 rounded-full bg-red-400/10 border border-red-400/20">Falta CUPS</span>}</td>
-                      <td className="p-4 truncate max-w-[250px] text-[13px]" title={row.direccion}>{row.direccion}</td>
-                      <td className="p-4 text-[13px] font-medium">{row.nif || <span className="text-red-400 text-xs px-2 py-0.5 rounded-full bg-red-400/10 border border-red-400/20">Falta NIF</span>}</td>
-                      <td className="p-4 truncate max-w-[200px] text-[13px] font-medium text-slate-200" title={row.nombre}>{row.nombre}</td>
-                      <td className="p-4">
-                        <span className="bg-slate-800 border border-slate-600 text-slate-300 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider shadow-sm">
+                      <td style={{ fontFamily: 'monospace', fontWeight: 500, color: 'var(--text-secondary)' }}>{row.cups || <span className="badge badge-draft">Falta CUPS</span>}</td>
+                      <td style={{ maxWidth: '250px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={row.direccion}>{row.direccion}</td>
+                      <td style={{ fontWeight: 500 }}>{row.nif || <span className="badge badge-draft">Falta NIF</span>}</td>
+                      <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500, color: '#fff' }} title={row.nombre}>{row.nombre}</td>
+                      <td>
+                        <span className="badge badge-draft">
                           {row.proceso}{row.tipoC2 ? `-${row.tipoC2}` : ''}
                         </span>
                       </td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider border shadow-sm whitespace-nowrap ${
-                          row.estado === 'PDTE_TRAMITAR' ? 'bg-orange-500/10 text-orange-400 border-orange-500/30' :
-                          row.estado === 'EN_PROCESO' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
-                          row.estado === 'RECHAZADO' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
-                          row.estado === 'RECHAZO_DISTRIBUIDORA' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' :
-                          'bg-slate-800 text-slate-400 border-slate-600'
-                        }`}>
+                      <td>
+                        <span className={`badge ${
+                          row.estado === 'PDTE_TRAMITAR' ? 'badge-draft' :
+                          row.estado === 'EN_PROCESO' ? 'badge-active' :
+                          row.estado === 'RECHAZADO' || row.estado === 'RECHAZO_DISTRIBUIDORA' ? 'badge-draft' :
+                          'badge-draft'
+                        }`} style={row.estado === 'RECHAZADO' || row.estado === 'RECHAZO_DISTRIBUIDORA' ? { color: 'var(--danger)', borderColor: 'var(--danger)' } : {}}>
                           {row.estado?.replace(/_/g, ' ') || 'SIN ESTADO'}
                         </span>
                       </td>
-                      <td className="p-4 font-mono text-[13px] text-blue-400 transition-colors cursor-pointer group-hover:underline underline-offset-4 decoration-blue-500/30">
-                        <div className="flex items-center gap-2">
-                          <span className="hover:text-blue-300">{row.contrato}</span>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span>{row.contrato}</span>
                           {row.proceso.startsWith('M1') && row.estado?.toUpperCase() === 'ACEPTADO' && !row.hasAnexo && (
-                            <div className="group/alert relative flex items-center">
-                              <AlertCircle className="w-4 h-4 text-red-500 animate-pulse" />
-                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-max px-3 py-1.5 bg-red-950 border border-red-500 text-red-200 text-[10px] uppercase font-bold tracking-wider rounded opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50">
-                                Falta Anexo Firmado
-                              </div>
-                            </div>
+                            <AlertCircle size={14} style={{ color: 'var(--danger)' }} title="Falta Anexo Firmado" />
                           )}
                         </div>
                       </td>
-                      <td className="p-4 text-center font-mono text-[13px]">{row.codDistribuidora || <span className="text-red-400 text-xs px-2 py-0.5 rounded-full bg-red-400/10 border border-red-400/20">Falta</span>}</td>
-                      <td className="p-4 text-center">
-                        <Link href={`/contratos/${row.id}`} className="inline-flex items-center justify-center p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-[var(--lime)] transition-all hover:scale-105 active:scale-95 shadow-sm border border-slate-700/50">
-                           <Eye className="w-4 h-4" />
+                      <td style={{ textAlign: 'center', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{row.codDistribuidora || <span className="badge badge-draft">Falta</span>}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <Link href={`/contratos/${row.id}`} style={{ color: 'var(--text-muted)' }}>
+                           <Eye size={16} />
                         </Link>
                       </td>
                     </tr>
@@ -280,17 +286,6 @@ export default function GenerarSwitchingClient() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="flex justify-end pt-4">
-        <button
-          onClick={handleGenerate}
-          disabled={generating || selectedIds.size === 0}
-          className="bg-[var(--lime)] hover:bg-[#b3ff3b] text-black font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(205,255,100,0.2)] hover:shadow-[0_0_30px_rgba(205,255,100,0.4)] hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed"
-        >
-          {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-          {generating ? 'Generando ZIP...' : `Generar (${selectedIds.size})`}
-        </button>
       </div>
     </div>
   );
