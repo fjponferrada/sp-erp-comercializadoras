@@ -22,35 +22,18 @@ export async function GET(req: Request) {
     // In ESCILA_AED_2025.xml, <ANIO>2025</ANIO> is used. But usually you report year X in year X+1. Let's just use the year passed by the UI to filter the data. If they want data of 2024 they'll pick 2024. If they pick 2025, we filter 2025. Wait, the ESCILA example name is ESCILA_AED_2025.xml, meaning they generated it in 2025 (or for 2025?). Actually, we will just use the `year` selected to filter `billingEnd` between Jan 1st and Dec 31st of that year.
 
     const targetYear = parseInt(yearStr, 10);
-    // If the user selected 2025, and it means "Report in 2025 (data of 2024)", maybe we should subtract 1?
-    // Let's assume the user selects the year they want the data for. E.g. they select 2024 to get data for 2024.
-    const dataYear = targetYear; 
+    const startDate = new Date(`${targetYear}-01-01T00:00:00.000Z`);
+    const endDate = new Date(`${targetYear}-12-31T23:59:59.999Z`);
 
-    const startDate = new Date(`${dataYear}-01-01T00:00:00.000Z`);
-    const endDate = new Date(`${dataYear}-12-31T23:59:59.999Z`);
+    // Sumar todos los valores de los arrays de curvas de carga para el año seleccionado
+    // Convertimos a Number porque el raw query puede devolver tipos BigInt o Float de Postgres
+    const result: any = await prisma.$queryRaw`
+      SELECT SUM(val) as total
+      FROM "LoadCurve", unnest(readings) as val
+      WHERE date >= ${startDate} AND date <= ${endDate}
+    `;
 
-    const invoices = await prisma.invoice.findMany({
-      where: {
-        client: {
-          brandId: session.user.brandId
-        },
-        billingEnd: {
-          gte: startDate,
-          lte: endDate,
-        }
-      },
-      select: {
-        totalMWh: true,
-      }
-    });
-
-    let totalMWh = 0;
-    invoices.forEach(inv => {
-      totalMWh += (inv.totalMWh || 0);
-    });
-
-    // We convert MWh to kWh
-    const totalKwh = totalMWh * 1000;
+    const totalKwh = result[0]?.total ? Number(result[0].total) : 0;
 
     return NextResponse.json({ totalKwh });
   } catch (error: any) {

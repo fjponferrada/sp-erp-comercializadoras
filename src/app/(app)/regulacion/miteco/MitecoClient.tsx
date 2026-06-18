@@ -12,7 +12,24 @@ export default function MitecoClient() {
 
   const handleGenerate = async () => {
     if (reportType === 'DAFNE') {
-      // DAFNE is pending development
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/miteco/dafne?year=${year}`);
+        if (!response.ok) throw new Error('Error al obtener datos DAFNE');
+        const data = await response.json();
+        
+        // Formatear el numero estilo 19.542.909,00
+        const formatted = new Intl.NumberFormat('es-ES', { 
+          minimumFractionDigits: 2, 
+          maximumFractionDigits: 2 
+        }).format(data.totalKwh);
+        
+        setDafneResult(formatted);
+      } catch (error: any) {
+        alert(error.message || 'Error al obtener datos DAFNE');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -75,11 +92,17 @@ export default function MitecoClient() {
               </select>
             </div>
 
-              {reportType === 'DAFNE' && (
-                <div className="flex items-center ml-4">
-                  <span className="badge badge-draft text-xs px-2 py-1">
-                    Pendiente de desarrollo (Requiere curvas de carga)
-                  </span>
+              {reportType === 'DAFNE' && dafneResult && (
+                <div className="flex items-center ml-4 mt-8 space-x-2 animate-fade-in">
+                  <div className="bg-[#FF4D4F] text-white px-4 py-2 font-medium rounded-l text-sm">
+                    Total(kWh)
+                  </div>
+                  <input 
+                    type="text" 
+                    readOnly 
+                    value={dafneResult} 
+                    className="border border-slate-300 px-4 py-2 bg-white text-gray-800 rounded-r min-w-[200px]"
+                  />
                 </div>
               )}
           </div>
@@ -87,7 +110,7 @@ export default function MitecoClient() {
             <div className="pt-4 border-t border-slate-700/50 flex justify-end">
               <button 
                 onClick={handleGenerate} 
-                disabled={loading || reportType === 'DAFNE'}
+                disabled={loading}
                 className="btn-primary"
                 style={{ padding: '12px 24px' }}
               >

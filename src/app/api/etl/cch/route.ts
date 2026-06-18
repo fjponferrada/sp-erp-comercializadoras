@@ -21,29 +21,37 @@ export async function POST(req: NextRequest) {
 
     let results = { success: 0, skipped: 0, errors: 0 };
 
+    const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
+
     if (file.name.toLowerCase().endsWith('.zip')) {
       const zip = await JSZip.loadAsync(arrayBuffer);
       const fileNames = Object.keys(zip.files);
       
       for (const filename of fileNames) {
-        if (!zip.files[filename].dir && (filename.toLowerCase().endsWith('.csv') || filename.toLowerCase().endsWith('.txt'))) {
-          const content = await zip.files[filename].async('string');
-          const fileResult = await processCchCsv(content, filename, 'UPLOAD_ZIP');
-          results.success += fileResult.success;
-          results.skipped += fileResult.skipped;
-          results.errors += fileResult.errors;
+        if (!zip.files[filename].dir) {
+          const innerUpper = filename.toUpperCase();
+          if (PRIORIDAD_MAP.some(pat => innerUpper.includes(pat))) {
+            const content = await zip.files[filename].async('string');
+            const fileResult = await processCchCsv(content, filename, 'UPLOAD_ZIP');
+            results.success += fileResult.success;
+            results.skipped += fileResult.skipped;
+            results.errors += fileResult.errors;
+          }
         }
       }
-    } else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt')) {
-      // Decode the array buffer to a string. Assuming utf-8 or similar
-      const decoder = new TextDecoder('utf-8');
-      const content = decoder.decode(arrayBuffer);
-      const fileResult = await processCchCsv(content, file.name, 'UPLOAD_CSV');
-      results.success += fileResult.success;
-      results.skipped += fileResult.skipped;
-      results.errors += fileResult.errors;
     } else {
-      return NextResponse.json({ error: 'Formato no soportado. Sube CSV, TXT o ZIP' }, { status: 400 });
+      const filenameUpper = file.name.toUpperCase();
+      if (PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt')) {
+        // Decode the array buffer to a string. Assuming utf-8 or similar
+        const decoder = new TextDecoder('utf-8');
+        const content = decoder.decode(arrayBuffer);
+        const fileResult = await processCchCsv(content, file.name, 'UPLOAD_CSV');
+        results.success += fileResult.success;
+        results.skipped += fileResult.skipped;
+        results.errors += fileResult.errors;
+      } else {
+        return NextResponse.json({ error: 'Fichero no reconocido. Debe contener patrones como F1, F5D, P1D...' }, { status: 400 });
+      }
     }
 
     return NextResponse.json({ message: 'Procesamiento completado', results });

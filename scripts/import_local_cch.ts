@@ -30,27 +30,35 @@ async function main() {
 
     const lower = p.toLowerCase();
     
-    // Ignoramos ficheros .gz o excel por ahora (el script original los trataba, 
-    // pero usualmente los de la distribuidora son zip o csv)
-    if (lower.endsWith('.zip')) {
+    const isZip = lower.endsWith('.zip');
+    
+    // Comprobar si el fichero coincide con los patrones de curvas
+    const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
+    const filenameUpper = path.basename(p).toUpperCase();
+    const isValid = PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat));
+
+    if (isZip) {
       console.log(`📦 Procesando ZIP: ${p}`);
       try {
         const buffer = await fs.promises.readFile(p);
         const zip = await JSZip.loadAsync(buffer);
         for (const filename of Object.keys(zip.files)) {
-          if (!zip.files[filename].dir && (filename.toLowerCase().endsWith('.csv') || filename.toLowerCase().endsWith('.txt'))) {
-            const content = await zip.files[filename].async('string');
-            const res = await processCchCsv(content, filename, 'LOCAL_SCAN');
-            totalSuccess += res.success;
-            totalSkipped += res.skipped;
+          if (!zip.files[filename].dir) {
+            const innerUpper = filename.toUpperCase();
+            if (PRIORIDAD_MAP.some(pat => innerUpper.includes(pat))) {
+              const content = await zip.files[filename].async('string');
+              const res = await processCchCsv(content, filename, 'LOCAL_SCAN');
+              totalSuccess += res.success;
+              totalSkipped += res.skipped;
+            }
           }
         }
         processedFiles++;
       } catch (e) {
         console.error(`❌ Error en ZIP ${p}:`, e);
       }
-    } else if (lower.endsWith('.csv') || lower.endsWith('.txt')) {
-      console.log(`📄 Procesando CSV: ${p}`);
+    } else if (isValid) {
+      console.log(`📄 Procesando fichero de curvas: ${p}`);
       try {
         const content = await fs.promises.readFile(p, 'utf8');
         const res = await processCchCsv(content, path.basename(p), 'LOCAL_SCAN');
@@ -58,7 +66,7 @@ async function main() {
         totalSkipped += res.skipped;
         processedFiles++;
       } catch (e) {
-        console.error(`❌ Error en CSV ${p}:`, e);
+        console.error(`❌ Error en fichero ${p}:`, e);
       }
     }
   }
