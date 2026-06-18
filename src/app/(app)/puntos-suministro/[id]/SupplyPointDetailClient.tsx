@@ -42,7 +42,7 @@ export default function SupplyPointDetailClient({
 
   return (
     <div className="flex-1 bg-black/40 h-[100vh] overflow-y-auto w-full relative">
-      <Topbar title="Detalle Punto de Suministro" />
+      <Topbar title="Detalle Punto de Suministro" showSearch={false} />
 
       <div className="p-8 pb-32 max-w-[1600px] mx-auto w-full space-y-6">
         
@@ -72,7 +72,7 @@ export default function SupplyPointDetailClient({
           </div>
 
           <div className="flex items-center gap-3">
-            {!['COMERCIAL', 'CANAL'].includes(userRole) && (
+            {['BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole) && (
               <button
                 onClick={() => setIsEditModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-sm font-medium transition-colors"

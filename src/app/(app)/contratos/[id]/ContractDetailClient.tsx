@@ -2,10 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import Topbar from '@/components/Topbar';
-import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery } from 'lucide-react';
+import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery, BarChart2 } from 'lucide-react';
 import { useState } from 'react';
-import { updateContractDatesAction, sendContractToDocuSignAction, createContractModificationAction } from '@/app/actions/contractActions';
+import { updateContractDatesAction, sendContractToDocuSignAction } from '@/app/actions/contractActions';
+import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
+import ModificationModal from './ModificationModal';
+import EditLeadModal from './EditLeadModal';
+import HistoricalChart from './HistoricalChart';
 
 export default function ContractDetailClient({ 
   initialContract, 
@@ -22,7 +26,7 @@ export default function ContractDetailClient({
   
   // Tabs State
   const [activeTab, setActiveTab] = useState('Datos');
-  const [activeSubTab, setActiveSubTab] = useState('Datos Administrativos');
+  const [activeSubTab, setActiveSubTab] = useState('Resumen Histórico');
 
   // Modal states
   const [isDownloading, setIsDownloading] = useState(false);
@@ -48,6 +52,8 @@ export default function ContractDetailClient({
   const [modType, setModType] = useState('M1N');
 
   const isAdmin = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const isAdvancedUser = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+  const showSips = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole);
   const isWithinRenewalPeriod = () => {
     if (!initialContract.expectedEndDate) return false;
     const end = new Date(initialContract.expectedEndDate).getTime();
@@ -161,15 +167,18 @@ export default function ContractDetailClient({
 
   const tabs = [
     { id: 'Datos', icon: FileText },
-    { id: 'Sips', icon: Search },
-    { id: 'Switching', icon: RefreshCw },
+    ...(showSips ? [{ id: 'Sips', icon: Search }] : []),
+    ...(isAdvancedUser ? [{ id: 'Switching', icon: RefreshCw }] : []),
     { id: 'Reclamaciones', icon: AlertTriangle },
     { id: 'Facturación', icon: Banknote },
-    { id: 'Consumos', icon: Zap },
-    { id: 'F1s', icon: FileSpreadsheet },
+    ...(isAdvancedUser ? [
+      { id: 'Consumos', icon: Zap },
+      { id: 'F1s', icon: FileSpreadsheet }
+    ] : [])
   ];
 
   const subTabs = [
+    { id: 'Resumen Histórico', icon: BarChart2 },
     { id: 'Datos Administrativos', icon: User },
     { id: 'Datos Contrato', icon: FileText },
     { id: 'Datos Técnicos CUPS', icon: Zap },
@@ -202,22 +211,13 @@ export default function ContractDetailClient({
       <Topbar
         title={`Contrato: ${client.businessName || lead.businessName || 'Sin Cliente'}`}
         subtitle={`CUPS: ${supplyPoint.cups || lead.cups || 'Sin CUPS'}`}
+        showSearch={false}
         customActions={
           <div className="flex gap-3 items-center">
             <button onClick={() => router.push('/contratos')} className="btn-ghost">
               <ChevronLeft size={16} /> Volver
             </button>
             <div className="h-8 border-l border-[var(--border)] mx-2"></div>
-            {draftUrl && (
-              <a 
-                href={draftUrl} 
-                target="_blank" 
-                rel="noreferrer"
-                className="btn-secondary flex items-center gap-2"
-              >
-                <Download size={16} /> Descargar Borrador
-              </a>
-            )}
             {isAdmin && !['ACTIVO', 'FINALIZADO', 'BAJA', 'RECHAZADO'].includes(initialContract.status) && !initialContract.activationDate && !['R', 'E1'].includes(initialContract.tipo) && (
               <button
                 onClick={async () => {
@@ -253,6 +253,15 @@ export default function ContractDetailClient({
               >
                 {isGeneratingXml ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />}
                 {isGeneratingXml ? 'Generando...' : 'Generar XML'}
+              </button>
+            )}
+            {isAdmin && initialContract.status === 'ACTIVO' && (
+              <button 
+                onClick={() => setShowModModal(true)}
+                className="btn-secondary flex items-center gap-2"
+                title="Modificar Contrato (Subrogación o Cambio Técnico)"
+              >
+                <Settings size={16} /> Modificar Contrato
               </button>
             )}
             {initialContract.status === 'BORRADOR' && (
@@ -313,6 +322,19 @@ export default function ContractDetailClient({
           ))}
         </div>
 
+        {/* MODALES */}
+      {showModModal && (
+        <ModificationModal 
+          contractId={initialContract.id}
+          initialContract={initialContract}
+          onClose={() => setShowModModal(false)}
+          onSuccess={(newId) => {
+            setShowModModal(false);
+            router.push(`/contratos/${newId}`);
+          }}
+          submitAction={createContractModificationAction}
+        />
+      )}
         {/* TAB CONTENT */}
         {activeTab === 'Datos' && (
           <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -337,6 +359,11 @@ export default function ContractDetailClient({
             {/* VERTICAL TAB CONTENT */}
             <div className="flex-1 w-full flex flex-col gap-6">
               
+              {activeSubTab === 'Resumen Histórico' && (
+                <div className="animate-fade-in-up">
+                  <HistoricalChart invoices={initialContract.historicalInvoices || []} />
+                </div>
+              )}
               {activeSubTab === 'Datos Administrativos' && (
                 <SectionCard title="Datos Administrativos" icon={User} delay={0}>
                   <DataItem label="Tipo de Cliente" value={client.clientType || lead.clientType || 'Empresa'} />
@@ -544,10 +571,10 @@ export default function ContractDetailClient({
                         <td className="py-3 px-4 font-mono text-sm text-gray-300">{inv.invoiceNumber}</td>
                         <td className="py-3 px-4 text-sm text-gray-300">{new Date(inv.issueDate).toLocaleDateString('es-ES')}</td>
                         <td className="py-3 px-4 text-sm text-gray-400">
-                          {inv.desde ? new Date(inv.desde).toLocaleDateString('es-ES') : '-'} al {inv.hasta ? new Date(inv.hasta).toLocaleDateString('es-ES') : '-'}
+                          {inv.invoiceData?.Desde || inv.desde ? new Date(inv.invoiceData?.Desde || inv.desde).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? new Date(inv.invoiceData?.Hasta || inv.hasta).toLocaleDateString('es-ES') : '-'}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-500">
-                          {inv.desdeEA ? new Date(inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.hastaEA ? new Date(inv.hastaEA).toLocaleDateString('es-ES') : '-'}
+                          {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? new Date(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? new Date(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA).toLocaleDateString('es-ES') : '-'}
                         </td>
                         <td className="py-3 px-4 text-sm font-bold text-[var(--lime)]">€ {inv.totalAmount.toFixed(2)}</td>
                         <td className="py-3 px-4">

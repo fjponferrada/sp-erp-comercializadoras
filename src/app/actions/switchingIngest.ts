@@ -56,6 +56,21 @@ export async function ingestSwitchingXmlAction(formData: FormData) {
     // Ruta en R2: switching/recibidos/C1/archivo.xml
     const r2Key = `switching/${folderType}/${parsedData.procesoBase}/${standardizedName}`;
 
+    // 5. Check if already processed successfully to prevent duplicate warnings
+    const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
+    const uniqueProcess = `${parsedData.codigoSolicitud}_${codCom}${parsedData.cups}_${parsedData.proceso}_${parsedData.paso}`;
+    const existingEventId = await checkDuplicateWarning(uniqueProcess);
+
+    if (existingEventId) {
+      const existingEvent = await prisma.switchingEvent.findUnique({ where: { id: existingEventId } });
+      if (existingEvent && existingEvent.isResolved) {
+        console.log(`[SALTADO] El fichero XML ${originalName} ya fue procesado con éxito anteriormente.`);
+        return { success: true, message: 'Fichero previamente procesado con éxito.' };
+      }
+    }
+
+    // Si no fue procesado o dio error, continuamos:
+    
     // 4. Subir a Cloudflare R2
     await r2.send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME || 'aed-energia',
@@ -319,9 +334,6 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   }
 
   // 6. Guardar SwitchingEvent
-  const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
-  const uniqueProcess = `${parsedData.codigoSolicitud}_${codCom}${parsedData.cups}_${parsedData.proceso}_${parsedData.paso}`;
-
   if (existingEventId) {
     await prisma.switchingEvent.update({
       where: { id: existingEventId },

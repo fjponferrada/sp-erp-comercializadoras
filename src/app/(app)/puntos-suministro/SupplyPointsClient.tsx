@@ -75,7 +75,7 @@ export default function SupplyPointsClient({
 
   return (
     <div className="flex-1 bg-black/40 h-[100vh] overflow-y-auto w-full relative">
-      <Topbar title="Puntos de Suministro" />
+      <Topbar title="Puntos de Suministro" showSearch={false} />
 
       <div className="p-8 pb-32 max-w-[1600px] mx-auto w-full space-y-6">
         
@@ -194,7 +194,7 @@ export default function SupplyPointsClient({
                           >
                             <Eye size={16} />
                           </Link>
-                          {!['COMERCIAL', 'CANAL'].includes(userRole) && (
+                          {['BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole) && (
                             <button
                               onClick={() => handleEdit(sp)}
                               className="p-2 bg-white/5 hover:bg-lime-500/20 text-white/60 hover:text-lime-400 rounded-lg border border-white/5 hover:border-lime-500/30 transition-all"

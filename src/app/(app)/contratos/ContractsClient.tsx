@@ -43,7 +43,7 @@ const ESTADO_CONFIG: Record<string, { label: string; badge: string }> = {
 
 function truncateCups(cups: string | null) {
   if (!cups) return '—';
-  return cups.length > 16 ? cups.slice(0, 8) + '…' + cups.slice(-6) : cups;
+  return cups;
 }
 
 function formatDate(iso: Date | string | null) {
@@ -112,6 +112,7 @@ export default function ContractsClient({
   const canalesDropdown = useMemo(() => ['Todos', ...initialChannels], [initialChannels]);
 
   const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const showStats = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole as string);
 
   const handleEditContract = async (contractId: string) => {
     const loadingToast = toast.loading('Cargando datos del contrato...');
@@ -217,28 +218,30 @@ export default function ContractsClient({
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Topbar title="Contratos" subtitle="Gestión de contratos de suministro eléctrico" />
+      <Topbar title="Contratos" subtitle="Gestión de contratos de suministro eléctrico" showSearch={false} />
 
       <div style={{ padding: '28px 28px 48px' }}>
         
         {/* STAT CARDS */}
-        <div className="animate-fade-in-up grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-          {STATS.map((s, i) => {
-            const Icon = s.icon;
-            return (
-              <div key={s.label} className={`card-stat animate-fade-in-up delay-${(i + 1) * 100}`}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
-                  <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: s.glow, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${s.glow}` }}>
-                    <Icon size={16} color={s.color} />
+        {showStats && (
+          <div className="animate-fade-in-up grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+            {STATS.map((s, i) => {
+              const Icon = s.icon;
+              return (
+                <div key={s.label} className={`card-stat animate-fade-in-up delay-${(i + 1) * 100}`}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: s.glow, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${s.glow}` }}>
+                      <Icon size={16} color={s.color} />
+                    </div>
                   </div>
+                  <div style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{s.value}</div>
+                  <div style={{ marginTop: '8px', fontSize: '0.74rem', color: s.positive === true ? 'var(--success)' : s.positive === false ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 500 }}>{s.delta}</div>
                 </div>
-                <div style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{s.value}</div>
-                <div style={{ marginTop: '8px', fontSize: '0.74rem', color: s.positive === true ? 'var(--success)' : s.positive === false ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 500 }}>{s.delta}</div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* TABLE CARD */}
         <div className="card animate-fade-in-up delay-200" style={{ padding: 0 }}>
@@ -250,26 +253,30 @@ export default function ContractsClient({
               <input className="form-input" placeholder="Buscar CUPS, cliente, contrato, producto…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '36px' }} />
             </div>
 
-            <div style={{ position: 'relative', minWidth: '160px' }}>
-              <select className="form-input" value={estadoFilter} onChange={e => { setEstado(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                {ESTADOS_FILTER.map(e => <option key={e} value={e}>{e === 'Todos' ? 'Estado: Todos' : ESTADO_CONFIG[e]?.label ?? e}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-            </div>
+            {showStats && (
+              <>
+                <div style={{ position: 'relative', minWidth: '160px' }}>
+                  <select className="form-input" value={estadoFilter} onChange={e => { setEstado(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
+                    {ESTADOS_FILTER.map(e => <option key={e} value={e}>{e === 'Todos' ? 'Estado: Todos' : ESTADO_CONFIG[e]?.label ?? e}</option>)}
+                  </select>
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                </div>
 
-            <div style={{ position: 'relative', minWidth: '140px' }}>
-              <select className="form-input" value={tarifaFilter} onChange={e => { setTarifa(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                {TARIFAS.map(t => <option key={t} value={t}>{t === 'Todas' ? 'Tarifa: Todas' : t}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-            </div>
+                <div style={{ position: 'relative', minWidth: '140px' }}>
+                  <select className="form-input" value={tarifaFilter} onChange={e => { setTarifa(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
+                    {TARIFAS.map(t => <option key={t} value={t}>{t === 'Todas' ? 'Tarifa: Todas' : t}</option>)}
+                  </select>
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                </div>
 
-            <div style={{ position: 'relative', minWidth: '140px' }}>
-              <select className="form-input" value={canalFilter} onChange={e => { setCanal(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                {canalesDropdown.map(c => <option key={c} value={c}>{c === 'Todos' ? 'Canal: Todos' : c}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-            </div>
+                <div style={{ position: 'relative', minWidth: '140px' }}>
+                  <select className="form-input" value={canalFilter} onChange={e => { setCanal(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
+                    {canalesDropdown.map(c => <option key={c} value={c}>{c === 'Todos' ? 'Canal: Todos' : c}</option>)}
+                  </select>
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                </div>
+              </>
+            )}
 
             <div style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
               Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{totalCount}</span> resultados
@@ -480,10 +487,12 @@ export default function ContractsClient({
                                         <Upload size={14} /> 
                                         {c.tramitacion === 'M1' || c.tramitacion === 'M1N' ? 'Subir Anexo firmado' : 'Subir contrato firmado'}
                                       </button>
-                                      <a href={c.draftUrl || '#'} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
-                                        <Download size={14} /> Descargar Borrador
-                                      </a>
                                     </>
+                                  )}
+                                  {c.draftUrl && (
+                                    <a href={c.draftUrl} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
+                                      <Download size={14} /> Descargar Borrador
+                                    </a>
                                   )}
                                 </div>
                               </>

@@ -13,8 +13,9 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   const sessionUser = session?.user;
   
   let maxRenewalDays = 45; // Default
+  let dbUser = null;
   if (sessionUser?.email) {
-    const dbUser = await prisma.user.findUnique({
+    dbUser = await prisma.user.findUnique({
       where: { email: sessionUser.email },
       include: { channel: true }
     });
@@ -86,6 +87,34 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     });
   }
 
+  // Fetch Historical Invoices for this CUPS across all contracts with permissions
+  let historicalInvoices: any[] = [];
+  if (contract.supplyPointId) {
+    const role = sessionUser?.role || 'CLIENT';
+    let invoicesWhere: any = { supplyPointId: contract.supplyPointId };
+
+    if (role === 'SUPERADMIN') {
+      // No extra filters, can see all history for the CUPS
+    } else if (role === 'BACKOFFICE' || role === 'COMPANYADMIN') {
+      // Only history within the same company
+      invoicesWhere.companyId = contract.companyId;
+    } else if (role === 'CANAL') {
+      // Only invoices tied to contracts belonging to their channel
+      invoicesWhere.contract = { user: { channelId: dbUser?.channelId } };
+    } else if (role === 'COMERCIAL') {
+      // Only invoices tied to contracts belonging to them
+      invoicesWhere.contract = { userId: dbUser?.id };
+    } else {
+      // CLIENT or fallback: only their own client's invoices
+      invoicesWhere.clientId = contract.clientId;
+    }
+
+    historicalInvoices = await prisma.invoice.findMany({
+      where: invoicesWhere,
+      orderBy: { issueDate: 'asc' }
+    });
+  }
+
   let finalDistributorName = contract.supplyPoint?.distributorName;
   if (!finalDistributorName || /^\d{4}$/.test(contract.supplyPoint?.distributor || '')) {
      const cups = contract.supplyPoint?.cups || contract.Lead?.cups || '';
@@ -112,7 +141,8 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     invoices: contract.invoices,
     f1Invoices,
     switchingEvents,
-    claims
+    claims,
+    historicalInvoices
   };
 
   return (

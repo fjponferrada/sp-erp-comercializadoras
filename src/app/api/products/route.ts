@@ -82,11 +82,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
+    const whereClause: any = {
+      brandId: user.brandId,
+      isAvailableCrm: true
+    };
+
+    if (['CANAL', 'COMERCIAL'].includes(user.role) && user.channelId) {
+      whereClause.channels = {
+        some: { id: user.channelId }
+      };
+    }
+
     const products = await prisma.product.findMany({
-      where: {
-        brandId: user.brandId,
-        isAvailableCrm: true
-      },
+      where: whereClause,
       orderBy: { name: 'asc' }
     });
 

@@ -85,13 +85,20 @@ export async function POST(req: Request) {
 
       // Actualizar Contrato
       const sigDate = completedDateTime ? new Date(completedDateTime) : new Date();
+      const updateData: any = {
+        status: 'ACEPTADO',
+        signatureDate: sigDate
+      };
+      
+      if (contract.previousContractId && contract.tipo === 'M1') {
+        updateData.fileAnexoFirmado = r2Url;
+      } else {
+        updateData.filePdfSigned = r2Url;
+      }
+
       await prisma.contract.update({
         where: { id: contract.id },
-        data: {
-          status: 'ACEPTADO',
-          filePdfSigned: r2Url,
-          signatureDate: sigDate
-        }
+        data: updateData
       });
 
       console.log(`[DOCUSIGN WEBHOOK] Contrato ${contract.contractCode} firmado y procesado con éxito.`);

@@ -4,29 +4,56 @@ import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { Zap, Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 
+import { registerClientUserAction } from '@/app/actions/authActions';
+
 export default function LoginPage() {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccessMsg('');
     
-    const res = await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-    });
-    
-    if (res?.error) {
-      setError('Credenciales incorrectas. Inténtalo de nuevo.');
-      setLoading(false);
+    if (isRegistering) {
+      if (password !== confirmPassword) {
+        setError('Las contraseñas no coinciden.');
+        setLoading(false);
+        return;
+      }
+      
+      const res = await registerClientUserAction(name, email, password);
+      if (res.error) {
+        setError(res.error);
+        setLoading(false);
+      } else {
+        setSuccessMsg('¡Registro completado con éxito! Ya puedes iniciar sesión.');
+        setIsRegistering(false);
+        setPassword('');
+        setConfirmPassword('');
+        setLoading(false);
+      }
     } else {
-      window.location.href = '/';
+      const res = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
+      
+      if (res?.error) {
+        setError('Credenciales incorrectas. Inténtalo de nuevo.');
+        setLoading(false);
+      } else {
+        window.location.href = '/';
+      }
     }
   };
 
@@ -99,6 +126,21 @@ export default function LoginPage() {
 
         {/* Formulario */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {isRegistering && (
+            <div>
+              <label className="form-label">Nombre completo</label>
+              <input
+                id="name"
+                type="text"
+                className="form-input"
+                placeholder="Juan Pérez"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required={isRegistering}
+              />
+            </div>
+          )}
+
           <div>
             <label className="form-label">Correo electrónico</label>
             <input
@@ -129,7 +171,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                autoComplete="current-password"
+                autoComplete={isRegistering ? "new-password" : "current-password"}
                 style={{ paddingRight: '42px' }}
               />
               <button
@@ -146,7 +188,26 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Error */}
+          {isRegistering && (
+            <div>
+              <label className="form-label" style={{ margin: 0 }}>Confirmar Contraseña</label>
+              <div style={{ position: 'relative', marginTop: '6px' }}>
+                <input
+                  id="confirmPassword"
+                  type={showPass ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  required={isRegistering}
+                  autoComplete="new-password"
+                  style={{ paddingRight: '42px' }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
           {error && (
             <div style={{
               padding: '10px 14px', borderRadius: '8px',
@@ -154,6 +215,15 @@ export default function LoginPage() {
               color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 500,
             }}>
               {error}
+            </div>
+          )}
+          {successMsg && (
+            <div style={{
+              padding: '10px 14px', borderRadius: '8px',
+              background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+              color: 'var(--lime)', fontSize: '0.8rem', fontWeight: 500,
+            }}>
+              {successMsg}
             </div>
           )}
 
@@ -177,13 +247,29 @@ export default function LoginPage() {
                   borderTopColor: 'transparent', borderRadius: '50%',
                   animation: 'spin 0.8s linear infinite',
                 }} />
-                Accediendo...
+                {isRegistering ? 'Registrando...' : 'Accediendo...'}
               </>
             ) : (
-              <><LogIn size={16} /> Acceder al ERP</>
+              isRegistering ? <><ShieldCheck size={16} /> Crear cuenta</> : <><LogIn size={16} /> Acceder al ERP</>
             )}
           </button>
         </form>
+
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
+          <button 
+            onClick={() => {
+              setIsRegistering(!isRegistering);
+              setError('');
+              setSuccessMsg('');
+            }}
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline',
+            }}
+          >
+            {isRegistering ? '¿Ya tienes cuenta? Iniciar sesión' : '¿Eres cliente y no tienes cuenta? Regístrate'}
+          </button>
+        </div>
 
         {/* Footer */}
         <div style={{

@@ -6,7 +6,7 @@ import EditClientModal from './EditClientModal';
 export default function ClientHeaderActions({ client, userRole }: { client: any, userRole?: string }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  const canEdit = !['COMERCIAL', 'CANAL'].includes(userRole || '');
+  const canEdit = ['BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole || '');
 
   return (
     <>

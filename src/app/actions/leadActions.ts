@@ -772,8 +772,8 @@ export async function getLeadStatsAction(filters: any) {
   const session = await auth();
   if (!session?.user?.email) throw new Error('No autorizado');
 
-  const { getUserVisibilityFilter } = await import('@/lib/permissions');
-  const visibilityFilter = await getUserVisibilityFilter();
+  const { getLeadVisibilityFilter } = await import('@/lib/permissions');
+  const visibilityFilter = await getLeadVisibilityFilter();
 
   const where: any = { AND: [visibilityFilter] };
 
@@ -791,30 +791,43 @@ export async function getLeadStatsAction(filters: any) {
   }
 
   if (filters.status && filters.status !== 'Todos') {
-    where.AND.push({ status: filters.status });
+    if (filters.status === 'FIRMADO') {
+      where.AND.push({
+        OR: [
+          { status: 'FIRMADO' },
+          { contract: { signatureDate: { not: null } } }
+        ]
+      });
+    } else if (filters.status === 'ENVIADO A FIRMA') {
+      where.AND.push({
+        status: filters.status,
+        contract: { signatureDate: null }
+      });
+    } else {
+      where.AND.push({ status: filters.status });
+    }
   }
   if (filters.type && filters.type !== 'Todos') {
     where.AND.push({ type: filters.type });
   }
 
-  const totalLeads = await prisma.lead.count({ where });
-  
-  const statusGroup = await prisma.lead.groupBy({
-    by: ['status'],
+  // To get accurate FIRMADO counts, we need to fetch all statuses and adjust
+  const allForStats = await prisma.lead.findMany({
     where,
-    _count: { status: true }
+    select: { status: true, contract: { select: { signatureDate: true } }, estimatedMWh: true }
   });
-  
+
   const statusCounts: Record<string, number> = {};
-  statusGroup.forEach(g => {
-    statusCounts[g.status] = g._count.status;
-  });
+  let totalMWh = 0;
   
-  const estimatedMWhResult = await prisma.lead.aggregate({
-    where,
-    _sum: { estimatedMWh: true }
+  allForStats.forEach(l => {
+    let s = l.status;
+    if (l.contract?.signatureDate) s = 'FIRMADO';
+    statusCounts[s] = (statusCounts[s] || 0) + 1;
+    totalMWh += (l.estimatedMWh || 0);
   });
-  const totalMWh = estimatedMWhResult._sum.estimatedMWh || 0;
+
+  const totalLeads = allForStats.length;
 
   return { totalLeads, statusCounts, totalMWh };
 }
@@ -823,8 +836,8 @@ export async function getPaginatedLeadsAction(filters: any, page: number = 1, pa
   const session = await auth();
   if (!session?.user?.email) throw new Error('No autorizado');
 
-  const { getUserVisibilityFilter } = await import('@/lib/permissions');
-  const visibilityFilter = await getUserVisibilityFilter();
+  const { getLeadVisibilityFilter } = await import('@/lib/permissions');
+  const visibilityFilter = await getLeadVisibilityFilter();
 
   const where: any = { AND: [visibilityFilter] };
 
@@ -842,7 +855,21 @@ export async function getPaginatedLeadsAction(filters: any, page: number = 1, pa
   }
 
   if (filters.status && filters.status !== 'Todos') {
-    where.AND.push({ status: filters.status });
+    if (filters.status === 'FIRMADO') {
+      where.AND.push({
+        OR: [
+          { status: 'FIRMADO' },
+          { contract: { signatureDate: { not: null } } }
+        ]
+      });
+    } else if (filters.status === 'ENVIADO A FIRMA') {
+      where.AND.push({
+        status: filters.status,
+        contract: { signatureDate: null }
+      });
+    } else {
+      where.AND.push({ status: filters.status });
+    }
   }
   if (filters.type && filters.type !== 'Todos') {
     where.AND.push({ type: filters.type });
@@ -911,6 +938,11 @@ export async function getPaginatedLeadsAction(filters: any, page: number = 1, pa
       if (canalName !== 'Directo' && !airtableData['Comercial']) {
           comercialName = canalName;
       }
+    }
+
+    let finalStatus = l.status;
+    if (l.contract?.signatureDate) {
+      finalStatus = 'FIRMADO';
     }
 
     return {

@@ -7,7 +7,7 @@ export const authConfig = {
   },
   providers: [], // Los providers con Prisma se inyectan en auth.ts para evitar romper el Edge Runtime
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.role        = (user as any).role;
         token.brandId     = (user as any).brandId;
@@ -21,6 +21,28 @@ export const authConfig = {
         token.borderColor = (user as any).borderColor;
         token.logoUrl     = (user as any).logoUrl;
       }
+      
+      if (trigger === 'update' && session?.trigger === 'updateBrandTheme') {
+        const updatedBrands = (token.allowedBrands as any[]).map((b: any) => {
+          if (b.id === session.brandId) {
+            return { ...b, ...session.themeData };
+          }
+          return b;
+        });
+        token.allowedBrands = updatedBrands;
+
+        if (token.brandId === session.brandId) {
+          token.accentColor = session.themeData.accentColor || token.accentColor;
+          token.bgColor = session.themeData.bgColor || token.bgColor;
+          token.surfaceColor = session.themeData.surfaceColor || token.surfaceColor;
+          token.borderColor = session.themeData.borderColor || token.borderColor;
+          token.logoUrl = session.themeData.logoUrl || token.logoUrl;
+          if (session.themeData.name) {
+            token.brandName = session.themeData.name;
+          }
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {

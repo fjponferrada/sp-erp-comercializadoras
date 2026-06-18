@@ -10,12 +10,30 @@ interface WinbackOfferModalProps {
 
 export default function WinbackOfferModal({ baja, products, onClose }: WinbackOfferModalProps) {
   const [selectedProduct, setSelectedProduct] = useState('');
+  const [productTypeFilter, setProductTypeFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   if (!baja) return null;
 
-  const validProducts = products.filter(p => p.type === baja.tarifa || !p.type); // Simplification, could be enhanced
+  const availableProductTypes = Array.from(new Set(products.map(p => p.type).filter(Boolean)));
+
+  const validProducts = products.filter(p => {
+    const rTarifaClean = baja.tarifa ? baja.tarifa.replace(/\s/g, '').toUpperCase() : '';
+    const pTariffClean = p.tariff ? p.tariff.replace(/\s/g, '').toUpperCase() : '';
+    
+    if (pTariffClean) {
+      if (pTariffClean !== rTarifaClean) return false;
+    } else {
+      if (rTarifaClean && !p.name.replace(/\s/g, '').toUpperCase().includes(rTarifaClean)) return false;
+    }
+    
+    if (!baja.hasSelfConsumption && p.hasSelfConsumption) return false;
+
+    if (productTypeFilter && (!p.type || p.type.toLowerCase() !== productTypeFilter.toLowerCase())) return false;
+
+    return true;
+  });
 
   const generatePDF = async (action: 'download' | 'send') => {
     if (!selectedProduct) {
@@ -85,12 +103,35 @@ export default function WinbackOfferModal({ baja, products, onClose }: WinbackOf
             <h3 className="text-sm font-semibold text-indigo-400 uppercase tracking-wider mb-2">Datos Extraídos del Sistema</h3>
             <div className="space-y-1 text-sm text-gray-300">
               <p><strong>Cliente:</strong> {baja.cliente}</p>
-              <p><strong>Tarifa de Acceso:</strong> {baja.tarifa}</p>
+              <p>
+                <strong>Suministro:</strong> {baja.tarifa}
+                {baja.hasSelfConsumption && <span className="text-amber-400 text-xs font-bold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 ml-2">AUTOCONSUMO</span>}
+              </p>
               <p><strong>Consumo Anual:</strong> {baja.mwh} MWh</p>
             </div>
             <p className="text-xs text-indigo-300/70 mt-3 italic">
               No necesitas rellenar datos, usaremos el historial del cliente.
             </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+              Tipo de Producto (Opcional)
+            </label>
+            <select
+              className="form-input w-full"
+              value={productTypeFilter}
+              onChange={e => {
+                setProductTypeFilter(e.target.value);
+                setSelectedProduct('');
+              }}
+              disabled={loading}
+            >
+              <option value="">Cualquier tipo</option>
+              {availableProductTypes.map((type: any) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -104,7 +145,7 @@ export default function WinbackOfferModal({ baja, products, onClose }: WinbackOf
               disabled={loading}
             >
               <option value="">Selecciona un producto...</option>
-              {products.map(p => (
+              {validProducts.map(p => (
                 <option key={p.id} value={p.id}>{p.name} - {p.type || 'General'}</option>
               ))}
             </select>

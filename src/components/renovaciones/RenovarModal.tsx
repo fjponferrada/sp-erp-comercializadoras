@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { renewContractAction } from '@/app/actions/renovacionesActions';
+import { useRouter } from 'next/navigation';
 
 export default function RenovarModal({
   isOpen,
@@ -19,12 +21,14 @@ export default function RenovarModal({
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     productId: '',
-    servicioAdicional: '',
-    firma: false
+    servicioAdicional: ''
   });
   const [productTypeFilter, setProductTypeFilter] = useState('');
+  const router = useRouter();
 
   if (!isOpen || !renovacion) return null;
+  console.log('PRODUCTS:', products.map(p => ({id: p.id, type: p.type, feeExcedentes: p.feeExcedentes, pexc: p.pexc})));
+  console.log('RENOVACION:', {tarifa: renovacion.tarifa, hasSelfConsumption: renovacion.hasSelfConsumption});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,35 +36,42 @@ export default function RenovarModal({
       alert('Debes seleccionar un Producto');
       return;
     }
-    if (!formData.firma) {
-      alert('Debes marcar la Firma Manuscrita');
-      return;
-    }
 
     setLoading(true);
-    // Simular llamada a API para renovar
-    await new Promise(resolve => setTimeout(resolve, 800));
+    const res = await renewContractAction(renovacion.contractId, formData.productId, false, formData.servicioAdicional);
     setLoading(false);
 
-    onRenovado(renovacion.contractId);
-    onClose();
+    if (res.error) {
+      alert(res.error);
+    } else if (res.contractId) {
+      onRenovado(renovacion.contractId);
+      onClose();
+      router.push(`/contratos/${res.contractId}`);
+    }
   };
 
-  // Filtrado de productos basado en CUPS y filtro manual
+  // Filtrar tipos de producto disponibles para el desplegable (únicos)
+  const availableProductTypes = Array.from(new Set(products.map(p => p.type).filter(Boolean)));
+
   const filteredProducts = products.filter(p => {
     // 1. Filtrado obligatorio por tarifa de acceso
-    if (p.type && p.type !== renovacion.tarifa) return false;
+    // Si p.tariff es null, no debería colarse por defecto si esperamos que el producto sea específico de una tarifa.
+    // Asumiremos que debe coincidir, o si es null, comprobamos si el nombre del producto incluye la tarifa.
+    const rTarifaClean = renovacion.tarifa ? renovacion.tarifa.replace(/\s/g, '').toUpperCase() : '';
+    const pTariffClean = p.tariff ? p.tariff.replace(/\s/g, '').toUpperCase() : '';
     
-    // 2. Filtrado obligatorio por autoconsumo (si el suministro NO tiene, y el producto ES de excedentes -> false)
-    // Asumiremos que si p.feeExcedentes o p.pexc está definido, es un producto para autoconsumo.
-    // Esto es heurístico, idealmente el modelo Product tendría isForSelfConsumption.
-    const isProductForSelfConsumption = (p.feeExcedentes !== null || p.pexc !== null);
-    if (!renovacion.hasSelfConsumption && isProductForSelfConsumption) return false;
+    if (pTariffClean) {
+      if (pTariffClean !== rTarifaClean) return false;
+    } else {
+      // Si el producto no tiene tariff en la BD, intentamos adivinar por el nombre
+      if (rTarifaClean && !p.name.replace(/\s/g, '').toUpperCase().includes(rTarifaClean)) return false;
+    }
+    
+    // 2. Filtrado obligatorio por autoconsumo
+    if (!renovacion.hasSelfConsumption && p.hasSelfConsumption) return false;
 
-    // 3. Filtrado opcional por tipo de producto (Fijo, Indexado, etc)
-    // No hay un campo exacto "productCategory" en Product, podríamos usar p.name o si tuviéramos un campo en BD.
-    // Para el demo usaremos un string matching en el nombre si el comercial decide filtrar.
-    if (productTypeFilter && !p.name.toLowerCase().includes(productTypeFilter.toLowerCase())) return false;
+    // 3. Filtrado por tipo de producto exacto
+    if (productTypeFilter && (!p.type || p.type.toLowerCase() !== productTypeFilter.toLowerCase())) return false;
 
     return true;
   });
@@ -91,8 +102,9 @@ export default function RenovarModal({
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white outline-none focus:border-amber-500 appearance-none"
             >
               <option value="">Cualquier tipo</option>
-              <option value="fijo">Precio Fijo</option>
-              <option value="indexado">Indexado</option>
+              {availableProductTypes.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
             </select>
           </div>
 
@@ -112,6 +124,7 @@ export default function RenovarModal({
             {filteredProducts.length === 0 && <p className="text-xs text-red-400 mt-1">No hay productos disponibles para este tipo de CUPS.</p>}
           </div>
 
+          {/* TODO: Pendiente de implementar
           <div>
             <label className="block text-sm text-slate-400 mb-1">Servicio adicional</label>
             <select
@@ -124,20 +137,7 @@ export default function RenovarModal({
               <option value="Urgencias">Cobertura de Urgencias</option>
             </select>
           </div>
-
-          <div>
-            <label className="block text-sm text-slate-400 mb-2">Firma Manuscrita</label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                required
-                checked={formData.firma}
-                onChange={e => setFormData({ ...formData, firma: e.target.checked })}
-                className="w-5 h-5 rounded border-slate-600 text-amber-500 focus:ring-amber-500 bg-slate-900"
-              />
-              <span className="text-slate-300">Please check this box</span>
-            </label>
-          </div>
+          */}
 
           <div className="pt-4 flex justify-end gap-3 border-t border-slate-700">
             <button type="button" onClick={onClose} className="px-6 py-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors">

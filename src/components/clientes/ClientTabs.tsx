@@ -6,7 +6,7 @@ import RenewContractModal from './RenewContractModal';
 import PenalizationModal from './PenalizationModal';
 import RequestPaymentButton from '@/components/facturas/RequestPaymentButton';
 
-export default function ClientTabs({ client, supplyPoints, contracts, invoices }: any) {
+export default function ClientTabs({ client, supplyPoints, contracts, invoices, userRole }: any) {
   const [activeTab, setActiveTab] = useState('resumen');
   const [contractToRenew, setContractToRenew] = useState<any>(null);
   const [contractToPenalize, setContractToPenalize] = useState<any>(null);
@@ -200,7 +200,7 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices }
                         <button className="text-indigo-400 hover:text-indigo-300 text-xs flex items-center gap-1 transition-colors">
                           <FileText size={14} /> Ver Doc
                         </button>
-                        {(c.status === 'ACTIVO' || c.status === 'RENOVACION_TRAMITADA') && (
+                        {(c.status === 'ACTIVO' || c.status === 'RENOVACION_TRAMITADA') && userRole !== 'CLIENT' && (
                           <button 
                             onClick={() => setContractToRenew(c)}
                             className="text-emerald-400 hover:text-emerald-300 text-xs flex items-center gap-1 transition-colors bg-emerald-500/10 px-2 py-1 rounded"

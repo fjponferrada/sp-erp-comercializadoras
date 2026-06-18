@@ -1,33 +1,97 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import Topbar from '@/components/Topbar';
 import { useBrandTheme } from '@/context/BrandThemeContext';
-import { Save, Upload, Building2, Palette, Shield, Bell, Database, CheckCircle2 } from 'lucide-react';
+import { Save, Upload, Building2, Palette, Shield, Bell, Database, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { updateBrandThemeAction } from '@/app/actions/brandThemeActions';
 
 const ajustesSections = ['Marca & Identidad', 'Seguridad', 'Notificaciones', 'Integraciones'];
 
 export default function AjustesPage() {
   const brand = useBrandTheme();
+  const { data: session, update } = useSession();
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState('Marca & Identidad');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estado local del formulario de marca
   const [brandName, setBrandName]       = useState(brand.name);
+  const [logoUrl, setLogoUrl]           = useState<string | null>(brand.logoUrl || null);
   const [accentColor, setAccentColor]   = useState(brand.accentColor);
   const [bgColor, setBgColor]           = useState(brand.bgColor);
   const [surfaceColor, setSurfaceColor] = useState(brand.surfaceColor);
   const [borderColor, setBorderColor]   = useState(brand.borderColor);
+  const [uploading, setUploading]       = useState(false);
+  const [uploadError, setUploadError]   = useState<string | null>(null);
 
-  const handleSave = () => {
-    // Aquí se llamará a la API para guardar en la BD y recargar el contexto
-    // Por ahora, aplicamos en tiempo real inyectando las variables CSS
-    document.documentElement.style.setProperty('--lime', accentColor);
-    document.documentElement.style.setProperty('--bg-base', bgColor);
-    document.documentElement.style.setProperty('--bg-surface', surfaceColor);
-    document.documentElement.style.setProperty('--border', borderColor);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 512 * 1024) {
+      setUploadError('El archivo supera el máximo de 512 KB.');
+      return;
+    }
+    if (!['image/png', 'image/svg+xml', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setUploadError('Formato no válido. Usa PNG, SVG, JPG o WEBP.');
+      return;
+    }
+    try {
+      setUploading(true);
+      setUploadError(null);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'logos');
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error subiendo el archivo');
+      setLogoUrl(data.url);
+    } catch (err: any) {
+      setUploadError(err.message || 'Error inesperado al subir el logo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      
+      const themeData = {
+        name: brandName,
+        logoUrl: logoUrl || undefined,
+        accentColor,
+        bgColor,
+        surfaceColor,
+        borderColor,
+      };
+
+      document.documentElement.style.setProperty('--lime', accentColor);
+      document.documentElement.style.setProperty('--bg-base', bgColor);
+      document.documentElement.style.setProperty('--bg-surface', surfaceColor);
+      document.documentElement.style.setProperty('--border', borderColor);
+
+      const activeBrandId = (document.cookie.split('; ').find(row => row.startsWith('active-brand='))?.split('=')[1]) || (session?.user as any)?.brandId;
+      
+      await updateBrandThemeAction(activeBrandId, themeData);
+      await update({ trigger: 'updateBrandTheme', brandId: activeBrandId, themeData });
+
+      setSaved(true);
+      // Forzar re-render del Server Component layout para que el sidebar muestre el nuevo logo/nombre
+      router.refresh();
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      console.error('Error saving brand theme:', error);
+      alert('Error guardando la configuración de la marca');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const presets = [
@@ -86,15 +150,45 @@ export default function AjustesPage() {
                   </div>
                   <div>
                     <label className="form-label">Logotipo</label>
-                    <div style={{
-                      border: '2px dashed var(--border-strong)', borderRadius: '8px', padding: '20px',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
-                      cursor: 'pointer', transition: 'border-color 0.2s',
-                    }}>
-                      <Upload size={20} color="var(--text-muted)" />
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>PNG, SVG · máx. 512 KB</span>
-                      <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '5px 12px' }}>Subir logo</button>
-                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/svg+xml,image/jpeg,image/webp"
+                      style={{ display: 'none' }}
+                      onChange={handleLogoUpload}
+                    />
+                    {logoUrl ? (
+                      <div style={{
+                        border: '2px solid var(--border-strong)', borderRadius: '8px', padding: '12px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
+                        position: 'relative',
+                      }}>
+                        <img src={logoUrl} alt="Logo" style={{ maxHeight: '80px', maxWidth: '100%', objectFit: 'contain' }} />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '5px 12px' }} onClick={() => fileInputRef.current?.click()}>
+                            <Upload size={12} /> Cambiar
+                          </button>
+                          <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '5px 12px', color: 'var(--danger)' }} onClick={() => setLogoUrl(null)}>
+                            <X size={12} /> Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => !uploading && fileInputRef.current?.click()}
+                        style={{
+                          border: '2px dashed var(--border-strong)', borderRadius: '8px', padding: '20px',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+                          cursor: uploading ? 'wait' : 'pointer', transition: 'border-color 0.2s',
+                          opacity: uploading ? 0.7 : 1,
+                        }}
+                      >
+                        {uploading ? <Loader2 size={20} color="var(--lime)" style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={20} color="var(--text-muted)" />}
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{uploading ? 'Subiendo...' : 'PNG, SVG · máx. 512 KB'}</span>
+                        {!uploading && <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '5px 12px' }} onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>Subir logo</button>}
+                      </div>
+                    )}
+                    {uploadError && <p style={{ fontSize: '0.72rem', color: 'var(--danger)', marginTop: '4px' }}>{uploadError}</p>}
                   </div>
                 </div>
               </div>
@@ -171,8 +265,8 @@ export default function AjustesPage() {
                     <CheckCircle2 size={16} /> Cambios guardados
                   </div>
                 )}
-                <button className="btn-primary" onClick={handleSave}>
-                  <Save size={14} /> Guardar cambios
+                <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ opacity: saving ? 0.7 : 1 }}>
+                  <Save size={14} /> {saving ? 'Guardando...' : 'Guardar cambios'}
                 </button>
               </div>
             </div>

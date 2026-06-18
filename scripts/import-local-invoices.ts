@@ -6,6 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import { uploadFileToR2 } from '../src/lib/r2';
 
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
@@ -16,7 +19,8 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
     return;
   }
 
-  const files = fs.readdirSync(dirPath).filter(f => f.toLowerCase().endsWith(`.${fileType}`));
+  const fileNames = fs.readdirSync(dirPath).filter(f => f.toLowerCase().endsWith(`.${fileType}`));
+  const files = fileNames.map(f => path.join(dirPath, f));
   console.log(`Encontrados ${files.length} archivos .${fileType} en ${dirPath}`);
 
   let successCount = 0;
@@ -24,9 +28,9 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
   let errorCount = 0;
 
   for (let i = 0; i < files.length; i++) {
-    const filename = files[i];
+    const filePath = files[i];
+    const filename = path.basename(filePath);
     const invoiceNumber = path.basename(filename, `.${fileType}`);
-    const filePath = path.join(dirPath, filename);
 
     process.stdout.write(`[${i + 1}/${files.length}] Procesando ${filename}... `);
 
@@ -37,7 +41,17 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
       });
 
       if (!invoice) {
-        console.log(`[SALTADO] Factura no encontrada en la base de datos.`);
+        // console.log(`[SALTADO] Factura no encontrada en la base de datos.`);
+        skipCount++;
+        continue;
+      }
+
+      if (fileType === 'pdf' && invoice.pdfUrl) {
+        skipCount++;
+        continue;
+      }
+
+      if (fileType === 'xml' && (invoice.invoiceData as any)?.xmlUrl) {
         skipCount++;
         continue;
       }
@@ -65,6 +79,9 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
       console.log(`[ERROR] Fallo al subir: ${err.message}`);
       errorCount++;
     }
+
+    // Pequeña pausa para no saturar Prisma Accelerate / DB Pool en ráfagas rápidas
+    await new Promise(r => setTimeout(r, 10));
   }
 
   console.log(`\nResumen para .${fileType}:`);

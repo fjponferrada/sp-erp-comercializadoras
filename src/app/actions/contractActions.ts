@@ -883,25 +883,82 @@ export async function updateContractDatesAction(
       const cData = contract.airtableData as any || {};
       const newTariff = contract.product?.tariff || contract.supplyPoint.tariff;
 
-      await prisma.supplyPoint.update({
-        where: { id: contract.supplyPointId },
-        data: {
-          clientId: contract.clientId,
-          address: cData.direccion || contract.supplyPoint.address,
-          city: cData.poblacion || contract.supplyPoint.city,
-          postalCode: cData.cp || contract.supplyPoint.postalCode,
-          province: cData.provincia || contract.supplyPoint.province,
-          tariff: newTariff,
-          cnae: cData.cnae || contract.supplyPoint.cnae,
-          iban: contract.iban || cData.iban || contract.supplyPoint.iban,
-          p1c: contract.p1c ?? contract.supplyPoint.p1c,
-          p2c: contract.p2c ?? contract.supplyPoint.p2c,
-          p3c: contract.p3c ?? contract.supplyPoint.p3c,
-          p4c: contract.p4c ?? contract.supplyPoint.p4c,
-          p5c: contract.p5c ?? contract.supplyPoint.p5c,
-          p6c: contract.p6c ?? contract.supplyPoint.p6c,
+      if (contract.supplyPoint.clientId === contract.clientId) {
+        await prisma.supplyPoint.update({
+          where: { id: contract.supplyPointId },
+          data: {
+            address: cData.direccion || contract.supplyPoint.address,
+            city: cData.poblacion || contract.supplyPoint.city,
+            postalCode: cData.cp || contract.supplyPoint.postalCode,
+            province: cData.provincia || contract.supplyPoint.province,
+            tariff: newTariff,
+            cnae: cData.cnae || contract.supplyPoint.cnae,
+            iban: contract.iban || cData.iban || contract.supplyPoint.iban,
+            p1c: contract.p1c ?? contract.supplyPoint.p1c,
+            p2c: contract.p2c ?? contract.supplyPoint.p2c,
+            p3c: contract.p3c ?? contract.supplyPoint.p3c,
+            p4c: contract.p4c ?? contract.supplyPoint.p4c,
+            p5c: contract.p5c ?? contract.supplyPoint.p5c,
+            p6c: contract.p6c ?? contract.supplyPoint.p6c,
+          }
+        });
+      } else {
+        // Clonar y crear un nuevo Supply Point para evitar fuga de datos
+        const existingSp = await prisma.supplyPoint.findFirst({
+          where: { cups: contract.supplyPoint.cups, clientId: contract.clientId }
+        });
+
+        let newSupplyPointId = contract.supplyPointId;
+        if (existingSp) {
+          await prisma.supplyPoint.update({
+            where: { id: existingSp.id },
+            data: {
+              address: cData.direccion || contract.supplyPoint.address,
+              city: cData.poblacion || contract.supplyPoint.city,
+              postalCode: cData.cp || contract.supplyPoint.postalCode,
+              province: cData.provincia || contract.supplyPoint.province,
+              tariff: newTariff,
+              cnae: cData.cnae || contract.supplyPoint.cnae,
+              iban: contract.iban || cData.iban || contract.supplyPoint.iban,
+              p1c: contract.p1c ?? contract.supplyPoint.p1c,
+              p2c: contract.p2c ?? contract.supplyPoint.p2c,
+              p3c: contract.p3c ?? contract.supplyPoint.p3c,
+              p4c: contract.p4c ?? contract.supplyPoint.p4c,
+              p5c: contract.p5c ?? contract.supplyPoint.p5c,
+              p6c: contract.p6c ?? contract.supplyPoint.p6c,
+            }
+          });
+          newSupplyPointId = existingSp.id;
+        } else {
+          const newSp = await prisma.supplyPoint.create({
+            data: {
+              cups: contract.supplyPoint.cups,
+              clientId: contract.clientId,
+              address: cData.direccion || contract.supplyPoint.address,
+              city: cData.poblacion || contract.supplyPoint.city,
+              postalCode: cData.cp || contract.supplyPoint.postalCode,
+              province: cData.provincia || contract.supplyPoint.province,
+              tariff: newTariff,
+              cnae: cData.cnae || contract.supplyPoint.cnae,
+              iban: contract.iban || cData.iban || contract.supplyPoint.iban,
+              p1c: contract.p1c ?? contract.supplyPoint.p1c,
+              p2c: contract.p2c ?? contract.supplyPoint.p2c,
+              p3c: contract.p3c ?? contract.supplyPoint.p3c,
+              p4c: contract.p4c ?? contract.supplyPoint.p4c,
+              p5c: contract.p5c ?? contract.supplyPoint.p5c,
+              p6c: contract.p6c ?? contract.supplyPoint.p6c,
+              distributor: contract.supplyPoint.distributor,
+              annualConsumption: contract.supplyPoint.annualConsumption,
+            }
+          });
+          newSupplyPointId = newSp.id;
         }
-      });
+
+        await prisma.contract.update({
+          where: { id: contract.id },
+          data: { supplyPointId: newSupplyPointId }
+        });
+      }
     }
 
     // Si el contrato pasa a ACTIVO por primera vez y hay un anterior, le damos de BAJA

@@ -5,8 +5,13 @@ import InvoiceUploader from '@/components/facturas/InvoiceUploader';
 import PdfUploader from '@/components/facturas/PdfUploader';
 import FacturasClient from './FacturasClient';
 import { getInvoiceVisibilityFilter } from '@/lib/permissions';
+import { auth } from '@/auth';
 
 export default async function InvoicesPage() {
+  const session = await auth();
+  const userRole = (session?.user as any)?.role || 'user';
+  const showUploaders = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+
   const visibilityFilter = await getInvoiceVisibilityFilter();
 
   // Obtenemos solo la primera página de facturas para la carga inicial
@@ -41,10 +46,12 @@ export default async function InvoicesPage() {
       </div>
 
       {/* DRAG AND DROP ZONES */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <InvoiceUploader />
-        <PdfUploader />
-      </div>
+      {showUploaders && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <InvoiceUploader />
+          <PdfUploader />
+        </div>
+      )}
 
       <FacturasClient initialInvoices={initialInvoices as any} pendingCount={pendingCount} initialTotalCount={totalCount as number} />
     </div>

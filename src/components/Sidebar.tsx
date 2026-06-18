@@ -46,13 +46,13 @@ const baseNavGroups = [
   {
     label: 'CRM Ventas',
     items: [
-      { href: '/leads', icon: Users, label: 'Leads' },
+      { href: '/leads', icon: Users, label: 'Leads', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/contratos', icon: FileText, label: 'Contratos' },
       { href: '/clientes', icon: Building2, label: 'Clientes' },
       { href: '/puntos-suministro', icon: Zap, label: 'Puntos de Suministro' },
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
-      { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones' },
-      { href: '/bajas', icon: TrendingDown, label: 'Bajas' },
+      { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
+      { href: '/bajas', icon: TrendingDown, label: 'Bajas', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
     ],
   },
   {
@@ -85,6 +85,7 @@ const baseNavGroups = [
   },
   {
     label: 'Autoconsumo',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
       { href: '/autoconsumo', icon: Sun, label: 'Autoconsumo' },
     ],
@@ -124,7 +125,7 @@ export default function Sidebar() {
               src={brand.logoUrl}
               alt={brand.name}
               width={36} height={36}
-              style={{ borderRadius: '8px', objectFit: 'contain' }}
+              style={{ borderRadius: '8px', objectFit: 'contain', width: '36px', height: '36px' }}
             />
           ) : (
             <div style={{
@@ -139,9 +140,6 @@ export default function Sidebar() {
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>
               {brand.name}
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-              ERP Comercializadoras
             </div>
           </div>
         </div>

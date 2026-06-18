@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import * as dotenv from 'dotenv';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { getTramitationCodes } from '../src/lib/tramitationMapper';
 
 // Load .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -106,8 +107,10 @@ async function run() {
     const p = prodRec.fields;
     const name = p['Nombre Producto'];
     if (!name) continue;
+    const rawType = p['Tipo de producto'];
+    if (!rawType || !rawType.toString().trim()) continue;
+    const type = rawType.toString().trim();
     const tariff = p['Tarifa'];
-    const type = p['Tipo de producto'] || 'FIX';
     
     const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : null;
     const p1e = parseNum(p['P1E']); const p2e = parseNum(p['P2E']); const p3e = parseNum(p['P3E']);
@@ -122,7 +125,8 @@ async function run() {
     const permanenceMonths = p['Meses permanencia'] ? parseInt(p['Meses permanencia'].toString()) : null;
     
     const cgBolsilloSolar = parseNum(p['CG Bolsillo Solar']);
-    const hasSelfConsumption = p['¿Autoconsumo?'] === true || p['¿Autoconsumo?'] === 'true' || p['¿Autoconsumo?'] === 'Sí';
+    let hasSelfConsumption = p['¿Autoconsumo?'] === true || p['¿Autoconsumo?'] === 'true' || p['¿Autoconsumo?'] === 'Sí';
+    if (name && name.toString().toLowerCase().includes('solar')) hasSelfConsumption = true;
     const selfConsumptionType = p['Modalidad Autoconsumo'] ? p['Modalidad Autoconsumo'].toString().trim() : null;
 
     const safeTariff = tariff ? String(tariff).trim() : '';
@@ -302,8 +306,6 @@ async function run() {
           contactPhone: phone, 
           contactPhone2: getVal('TLF_2') ? getVal('TLF_2').toString().trim() : null,
           contactPhone3: getVal('TLF_3') ? getVal('TLF_3').toString().trim() : null,
-          cnae, 
-          iban, 
           billingStreetType: getVal('Tipo de vía Titular') ? getVal('Tipo de vía Titular').toString().trim() : null,
           billingStreet: getVal('Calle Titular') ? getVal('Calle Titular').toString().trim() : null,
           billingAddressAddition: getVal('Adicional Titular') ? getVal('Adicional Titular').toString().trim() : null,
@@ -368,7 +370,7 @@ async function run() {
           supplyPoint = await prisma.supplyPoint.create({ 
             data: { 
               cups, address: supplyAddress, postalCode, city, province, streetType, street, streetNumber, floor, door, addressAddition,
-              tariff, annualConsumption, cnae, p1c, p2c, p3c, p4c, p5c, p6c, distributor,
+              tariff, annualConsumption, cnae, iban, p1c, p2c, p3c, p4c, p5c, p6c, distributor,
               clientId: client!.id, airtableData: f as any 
             } 
           });
@@ -516,7 +518,7 @@ async function run() {
         const invFields = inv.fields;
         const invoiceNumber = invFields['Numero Factura'] || invFields['N Factura'] || `INV_MOCK_${inv.id}`;
         
-        let existingInvoice = await prisma.invoice.findFirst({ where: { invoiceNumber, contractId: contract.id } });
+        let existingInvoice = await prisma.invoice.findFirst({ where: { invoiceNumber, companyId: brand.companyId } });
         if (!existingInvoice) {
           const issueDate = invFields['Fecha Factura'] ? new Date(invFields['Fecha Factura']) : new Date();
           const totalAmount = parseFloat(invFields['Total']) || 0;
@@ -538,6 +540,7 @@ async function run() {
               invoiceNumber,
               invoiceType: invFields['Tipo Factura'] || 'Normal',
               clientId: client!.id,
+              companyId: brand.companyId,
               contractId: contract.id,
               supplyPointId: supplyPoint!.id,
               issueDate,
@@ -546,10 +549,6 @@ async function run() {
               totalMWh,
               billingStart,
               billingEnd,
-              desde: invFields['Desde'] ? String(invFields['Desde']) : null,
-              hasta: invFields['Hasta'] ? String(invFields['Hasta']) : null,
-              desdeEA: invFields['Desde(EA)'] ? String(invFields['Desde(EA)']) : null,
-              hastaEA: invFields['Hasta(EA)'] ? String(invFields['Hasta(EA)']) : null,
               origin,
               pdfUrl,
               invoiceData: invFields as any

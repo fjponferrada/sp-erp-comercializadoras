@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Topbar from '@/components/Topbar';
 import { Search, RefreshCcw, Calendar, Zap, CheckCircle2, XCircle, AlertTriangle, MapPin, Phone, Mail, MoreHorizontal } from 'lucide-react';
 import PaginationFooter from '@/components/PaginationFooter';
@@ -8,6 +8,7 @@ import Link from 'next/link';
 import RenovarModal from '@/components/renovaciones/RenovarModal';
 import { useEffect } from 'react';
 import { getPaginatedRenovacionesAction } from '@/app/actions/renovacionesActions';
+import { useSession } from 'next-auth/react';
 
 export interface RenovacionData {
   id: string;
@@ -31,15 +32,21 @@ export interface RenovacionData {
 }
 
 const estadoBadge = (estado: string, dias: number) => {
+  if (estado === 'VENCIDO')  return <span className="badge badge-danger" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}><XCircle size={10} /> Vencido ({Math.abs(dias)}d)</span>;
   if (estado === 'URGENTE')  return <span className="badge badge-danger"><AlertTriangle size={10} /> {dias} días</span>;
   if (estado === 'PROXIMO')  return <span className="badge badge-warning"><Calendar size={10} /> {dias} días</span>;
   return <span className="badge badge-draft">{dias} días</span>;
 };
 
-export default function RenovacionesClient({ initialRenovaciones, initialTotalCount, initialStats, products = [] }: { initialRenovaciones: RenovacionData[], initialTotalCount: number, initialStats: any, products?: any[] }) {
+export default function RenovacionesClient({ initialRenovaciones, initialTotalCount, initialStats, products = [], canales = [] }: { initialRenovaciones: RenovacionData[], initialTotalCount: number, initialStats: any, products?: any[], canales?: any[] }) {
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'user';
+  const showCanalFilter = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+
   const [search, setSearch] = useState('');
-  const [estadoFilter, setEstadoFilter] = useState('TODOS');
+  const [estadoFilter, setEstadoFilter] = useState('URGENTE');
   const [tarifaFilter, setTarifaFilter] = useState('TODAS');
+  const [canalFilter, setCanalFilter] = useState('TODOS');
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
   const [renovados, setRenovados] = useState<string[]>([]);
@@ -55,13 +62,18 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
   // Las tarifas en el selector se pueden mantener hardcodeadas o cargarlas del catálogo
   const tarifasUnicas = ['2.0TD', '3.0TD', '3.0TDVE', '6.1TD', '6.2TD'];
 
+  const isFirstRender = React.useRef(true);
+
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'TODOS' && tarifaFilter === 'TODAS') return;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
 
     const fetchRenovaciones = async () => {
       setIsLoading(true);
       try {
-        const result = await getPaginatedRenovacionesAction(page, itemsPerPage, search, tarifaFilter, estadoFilter);
+        const result = await getPaginatedRenovacionesAction(page, itemsPerPage, search, tarifaFilter, estadoFilter, canalFilter);
         if (result.success && result.renovaciones) {
           setRenovaciones(result.renovaciones as RenovacionData[]);
           setTotalCount(result.totalCount || 0);
@@ -78,11 +90,11 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
     }, 300);
 
     return () => clearTimeout(debounceId);
-  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter]);
+  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, estadoFilter, tarifaFilter]);
+  }, [search, estadoFilter, tarifaFilter, canalFilter]);
 
   // Aplicar ocultación local
   const displayedRenovaciones = renovaciones.filter(r => !ocultos.includes(r.id));
@@ -96,11 +108,12 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
         {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '24px' }}>
           {[
-            { label: 'Renovaciones Urgentes', value: String(initialStats?.urgentes || 0),  sub: '< 20 días',     color: 'var(--danger)',  icon: AlertTriangle },
-            { label: 'Próximas (20–40 días)', value: String(initialStats?.proximos || 0),  sub: 'Planificar ya',  color: 'var(--warning)', icon: Calendar },
-            { label: 'Total en Cola',         value: String(initialStats?.totalEnCola || 0), sub: 'pendientes', color: 'var(--lime)', icon: RefreshCcw },
+            showCanalFilter ? { label: 'Contratos Vencidos', value: String(initialStats?.vencidos || 0), sub: '< 0 días', color: '#ef4444', icon: XCircle } : null,
+            { label: 'Renovaciones Urgentes', value: String(initialStats?.urgentes || 0),  sub: '0–20 días',     color: 'var(--danger)',  icon: AlertTriangle },
+            { label: 'Próximas (21–40 días)', value: String(initialStats?.proximos || 0),  sub: 'Planificar ya',  color: 'var(--warning)', icon: Calendar },
+            { label: 'Total en Cola',         value: String(showCanalFilter ? (initialStats?.totalEnCola || 0) : ((initialStats?.totalEnCola || 0) - (initialStats?.vencidos || 0))), sub: 'pendientes', color: 'var(--lime)', icon: RefreshCcw },
             { label: 'MWh en Riesgo',         value: `${(initialStats?.totalMwhRenovar || 0).toFixed(0)}`, sub: 'MWh/año',    color: 'var(--info)',    icon: Zap },
-          ].map((k, i) => {
+          ].filter(Boolean).map((k: any, i) => {
             const Icon = k.icon;
             return (
               <div key={k.label} className={`card-stat animate-fade-in-up delay-${(i + 1) * 100}`}>
@@ -130,10 +143,16 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
               {tarifasUnicas.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
 
+            {showCanalFilter && (
+              <select className="form-input" value={canalFilter} onChange={e => { setCanalFilter(e.target.value); setPage(1); }} style={{ width: 'auto', fontSize: '0.8rem' }}>
+                <option value="TODOS">Todos los canales</option>
+                {canales?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+
             <select className="form-input" value={estadoFilter} onChange={e => { setEstadoFilter(e.target.value); setPage(1); }} style={{ width: 'auto', fontSize: '0.8rem' }}>
-              <option value="TODOS">Todos los estados</option>
-              <option value="URGENTE">Urgente (&lt;20 días)</option>
-              <option value="PROXIMO">Próximo (20–40d)</option>
+              <option value="URGENTE">Urgente (0–20 días)</option>
+              <option value="PROXIMO">Próximo (21–40d)</option>
               <option value="PENDIENTE">Pendiente (+40d)</option>
             </select>
             
@@ -214,16 +233,10 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                         {renovado ? (
                           <span className="badge badge-active inline-flex mt-2"><CheckCircle2 size={10} /> Renovado</span>
                         ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <button className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm" onClick={() => { setSelectedRenovacion(r); setRenovarModalOpen(true); }}>
+                          <div className="flex items-center justify-end">
+                            <button className="bg-[var(--lime)] hover:bg-[#b0f03a] text-black font-bold px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm" onClick={() => { setSelectedRenovacion(r); setRenovarModalOpen(true); }}>
                               Renovar
                             </button>
-                            <button className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm" onClick={() => setOcultos(p => [...p, r.id])}>
-                              Borrar
-                            </button>
-                            <Link href={`/contratos/${r.contractId}`} className="btn-ghost" style={{ padding: '6px' }} title="Ficha Contrato">
-                              <MoreHorizontal size={16} />
-                            </Link>
                           </div>
                         )}
                       </td>

@@ -1,11 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['pizzip'],
+  serverExternalPackages: ['pizzip', 'docusign-esign'],
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
     },
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.r2.dev',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.cloudflarestorage.com',
+      },
+    ],
   },
 };
 

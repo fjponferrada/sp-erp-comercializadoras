@@ -75,7 +75,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           uniqueBrandsMap.set(b.id, {
             id: b.id,
             name: b.name,
-            companyName: b.company?.name || 'Empresa'
+            companyName: b.company?.name || 'Empresa',
+            logoUrl: b.logoUrl,
+            faviconUrl: b.faviconUrl,
+            accentColor: b.accentColor,
+            bgColor: b.bgColor,
+            surfaceColor: b.surfaceColor,
+            borderColor: b.borderColor,
           });
         });
         const allowedBrands = Array.from(uniqueBrandsMap.values());

@@ -31,6 +31,76 @@ export async function getUserVisibilityFilter() {
     }));
     const companyIds = prismaUser?.companies.map(c => c.id) || [];
     return {
+      client: {
+        brand: { companyId: { in: companyIds } }
+      }
+    };
+  }
+
+  if (role === 'BACKOFFICE') {
+    return {
+      client: {
+        brandId: activeBrandId
+      }
+    };
+  }
+
+  if (role === 'CANAL' && channelId) {
+    return {
+      client: {
+        brandId: activeBrandId,
+        OR: [
+          { contracts: { some: { user: { channelId: channelId } } } },
+          { contracts: { some: { userId: safeUserId } } }
+        ]
+      }
+    };
+  }
+
+  if (role === 'CLIENT') {
+    return {
+      client: {
+        OR: [
+          { contactEmail: session.user.email },
+          { invoiceEmail: session.user.email },
+          { contactEmail2: session.user.email },
+          { contactEmail3: session.user.email },
+          { representativeEmail: session.user.email }
+        ]
+      }
+    };
+  }
+
+  // Default for COMERCIAL or other roles
+  return { 
+    client: {
+      brandId: activeBrandId,
+      OR: [
+        { contracts: { some: { userId: safeUserId } } }
+      ]
+    }
+  };
+}
+
+export async function getLeadVisibilityFilter() {
+  const session = await auth();
+  if (!session?.user) return { id: 'not_logged_in' };
+
+  const { id: userId, role, channelId } = session.user as any;
+  const activeBrandId = await getActiveBrand(session.user);
+  const safeUserId = userId || 'missing_user_id';
+
+  if (role === 'SUPERADMIN') {
+    return {}; // No filter, full visibility
+  }
+
+  if (role === 'COMPANYADMIN') {
+    const prismaUser = await import('@/lib/prisma').then(m => m.prisma.user.findUnique({
+      where: { id: safeUserId },
+      include: { companies: true }
+    }));
+    const companyIds = prismaUser?.companies.map(c => c.id) || [];
+    return {
       user: {
         brand: { companyId: { in: companyIds } }
       }
@@ -45,31 +115,21 @@ export async function getUserVisibilityFilter() {
     };
   }
 
-  if (role === 'CANAL') {
-    if (channelId) {
-      return {
-        AND: [
-          {
-            OR: [
-              { userId: safeUserId },
-              { user: { channelId: channelId } }
-            ]
-          },
-          { user: { brandId: activeBrandId } }
+  if (role === 'CANAL' && channelId) {
+    return {
+      user: {
+        brandId: activeBrandId,
+        OR: [
+          { channelId: channelId },
+          { id: safeUserId }
         ]
-      };
-    } else {
-      return { 
-        userId: safeUserId,
-        user: { brandId: activeBrandId } 
-      };
-    }
+      }
+    };
   }
 
   // Default for COMERCIAL or other roles
   return { 
-    userId: safeUserId,
-    user: { brandId: activeBrandId }
+    userId: safeUserId
   };
 }
 
@@ -108,6 +168,18 @@ export async function getClientVisibilityFilter() {
       OR: [
         { contracts: { some: { user: { channelId: channelId } } } },
         { contracts: { some: { userId: safeUserId } } }
+      ]
+    };
+  }
+
+  if (role === 'CLIENT') {
+    return {
+      OR: [
+        { contactEmail: session.user.email },
+        { invoiceEmail: session.user.email },
+        { contactEmail2: session.user.email },
+        { contactEmail3: session.user.email },
+        { representativeEmail: session.user.email }
       ]
     };
   }
@@ -156,18 +228,38 @@ export async function getInvoiceVisibilityFilter() {
 
   if (role === 'CANAL' && channelId) {
     return {
-      client: { brandId: activeBrandId },
-      OR: [
-        { contract: { user: { channelId: channelId } } },
-        { contract: { userId: safeUserId } }
-      ]
+      client: { 
+        brandId: activeBrandId,
+        OR: [
+          { contracts: { some: { user: { channelId: channelId } } } },
+          { contracts: { some: { userId: safeUserId } } }
+        ]
+      }
+    };
+  }
+
+  if (role === 'CLIENT') {
+    return {
+      client: {
+        OR: [
+          { contactEmail: session.user.email },
+          { invoiceEmail: session.user.email },
+          { contactEmail2: session.user.email },
+          { contactEmail3: session.user.email },
+          { representativeEmail: session.user.email }
+        ]
+      }
     };
   }
 
   // Default for COMERCIAL
   return {
-    client: { brandId: activeBrandId },
-    contract: { userId: safeUserId }
+    client: { 
+      brandId: activeBrandId,
+      OR: [
+        { contracts: { some: { userId: safeUserId } } }
+      ]
+    }
   };
 }
 
@@ -240,6 +332,20 @@ export async function getSupplyPointVisibilityFilter() {
         { contracts: { some: { user: { channelId: channelId } } } },
         { contracts: { some: { userId: safeUserId } } }
       ]
+    };
+  }
+
+  if (role === 'CLIENT') {
+    return {
+      client: {
+        OR: [
+          { contactEmail: session.user.email },
+          { invoiceEmail: session.user.email },
+          { contactEmail2: session.user.email },
+          { contactEmail3: session.user.email },
+          { representativeEmail: session.user.email }
+        ]
+      }
     };
   }
 

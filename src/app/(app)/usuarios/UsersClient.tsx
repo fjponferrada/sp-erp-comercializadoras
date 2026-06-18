@@ -129,7 +129,7 @@ export default function UsersClient({ initialUsers, brands, companies, channels 
                     <td>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--bg-elevated)', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                         <Shield size={12} color="var(--lime)" />
-                        {user.role}
+                        {user.role === 'CLIENT' ? 'CLIENTE' : user.role}
                       </div>
                     </td>
                     <td>

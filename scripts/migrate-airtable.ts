@@ -104,8 +104,10 @@ async function run() {
     const p = prodRec.fields;
     const name = p['Nombre Producto'];
     if (!name) continue;
+    const rawType = p['Tipo de producto'];
+    if (!rawType || !rawType.toString().trim()) continue;
+    const type = rawType.toString().trim();
     const tariff = p['Tarifa'];
-    const type = p['Tipo de producto'] || 'FIX';
     
     const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : null;
     const p1e = parseNum(p['P1E']); const p2e = parseNum(p['P2E']); const p3e = parseNum(p['P3E']);
@@ -120,7 +122,8 @@ async function run() {
     const permanenceMonths = p['Meses permanencia'] ? parseInt(p['Meses permanencia'].toString()) : null;
     
     const cgBolsilloSolar = parseNum(p['CG Bolsillo Solar']);
-    const hasSelfConsumption = p['¿Autoconsumo?'] === true || p['¿Autoconsumo?'] === 'true' || p['¿Autoconsumo?'] === 'Sí';
+    let hasSelfConsumption = p['¿Autoconsumo?'] === true || p['¿Autoconsumo?'] === 'true' || p['¿Autoconsumo?'] === 'Sí';
+    if (name && name.toString().toLowerCase().includes('solar')) hasSelfConsumption = true;
     const selfConsumptionType = p['Modalidad Autoconsumo'] ? p['Modalidad Autoconsumo'].toString().trim() : null;
 
     const safeTariff = tariff ? String(tariff).trim() : '';

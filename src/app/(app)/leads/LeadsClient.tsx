@@ -124,6 +124,8 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
   const [isNewSolarModalOpen, setIsNewSolarModalOpen] = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'user';
+  const showEstudioFV = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -150,7 +152,6 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
     return () => clearTimeout(debounceId);
   }, [loadData]);
 
-  const userRole = (session?.user as any)?.role || 'user';
   const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
 
   const toggleExpand = (id: string) => {
@@ -222,12 +223,15 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
       <Topbar 
         title="Oportunidades y Leads" 
         subtitle="Gestión comercial de suministros y proyectos"
+        showSearch={false}
         customActions={
           <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => setIsNewSolarModalOpen(true)} style={{ borderColor: '#FCD34D', color: '#FCD34D' }}>
-              <Sun size={14} strokeWidth={2.5} />
-              Estudio FV
-            </button>
+            {showEstudioFV && (
+              <button className="btn-secondary" onClick={() => setIsNewSolarModalOpen(true)} style={{ borderColor: '#FCD34D', color: '#FCD34D' }}>
+                <Sun size={14} strokeWidth={2.5} />
+                Estudio FV
+              </button>
+            )}
             <button className="btn-secondary" onClick={() => { setModalMode('opportunity'); setIsNewLeadModalOpen(true); }} style={{ borderColor: '#F97316', color: '#F97316' }}>
               <FileText size={14} strokeWidth={2.5} />
               Crear Oferta

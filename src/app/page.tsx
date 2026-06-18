@@ -39,6 +39,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (status === 'loading') return;
     const userRole = (session?.user as any)?.role || 'CANAL';
+    if (userRole === 'CLIENT') {
+      router.push('/contratos');
+      return;
+    }
     if (['COMERCIAL', 'CANAL'].includes(userRole)) {
       router.push('/clientes');
       return;

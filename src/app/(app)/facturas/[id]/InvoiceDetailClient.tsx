@@ -90,6 +90,7 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
       <Topbar
         title={`Factura: ${initialInvoice.invoiceNumber}`}
         subtitle={`Cliente: ${initialInvoice.client?.businessName || initialInvoice.client?.firstName || 'Desconocido'}`}
+        showSearch={false}
         customActions={
           <div className="flex gap-3 items-center">
             <button onClick={() => router.push('/facturas')} className="btn-ghost">

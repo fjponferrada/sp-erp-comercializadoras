@@ -7,9 +7,14 @@ import { ChevronLeft, FileText, CheckCircle, Zap, AlertTriangle, Building, Searc
 import { convertLeadToContractAction, remakeContractAction } from '@/app/actions/contractActions';
 import ProductModal from '@/app/(app)/productos/ProductModal';
 import SupplyPointModal from '@/components/SupplyPointModal';
+import { useSession } from 'next-auth/react';
 
 export default function LeadDetailClient({ initialLead }: { initialLead: any }) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'user';
+  const showActionButtons = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+  
   const [isConverting, setIsConverting] = useState(false);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[] | null>(null);
@@ -214,6 +219,7 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
       <Topbar
         title={`Lead: ${initialLead.businessName || 'Sin Nombre'}`}
         subtitle={`ID: ${initialLead.id.toUpperCase()}`}
+        showSearch={false}
         customActions={
           <div className="flex gap-3 items-center">
             {(initialLead.isMultipoint || initialLead.businessName?.toUpperCase().includes('ERANOVUM')) && (
@@ -232,15 +238,17 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
               {isDownloading === 'suministro' ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />} 
               Oferta Suministro
             </button>
-            <button 
-              className="btn-ghost text-gray-300 hover:text-white"
-              disabled={!!isDownloading}
-              onClick={() => downloadOffer('autoconsumo')}
-            >
-              {isDownloading === 'autoconsumo' ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />} 
-              Oferta Autoconsumo
-            </button>
-            {initialLead.status !== 'CONTRATADO' && !initialLead.contractId && (
+            {showActionButtons && (
+              <button 
+                className="btn-ghost text-gray-300 hover:text-white"
+                disabled={!!isDownloading}
+                onClick={() => downloadOffer('autoconsumo')}
+              >
+                {isDownloading === 'autoconsumo' ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />} 
+                Oferta Autoconsumo
+              </button>
+            )}
+            {showActionButtons && initialLead.status !== 'CONTRATADO' && !initialLead.contractId && (
               <button 
                 className="btn-primary" 
                 disabled={isConverting}
@@ -266,28 +274,30 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
             
             {initialLead.contractId && (
               <>
-                <button 
-                  className="btn-ghost text-gray-300 hover:text-white hover:bg-[var(--bg-elevated)]"
-                  disabled={isConverting}
-                  onClick={async () => {
-                    if(!confirm('¿Estás seguro de que quieres rehacer este contrato? Se actualizarán los datos del contrato con la información actual del Lead.')) return;
-                    setIsConverting(true);
-                    setValidationErrors(null);
-                    const res = await remakeContractAction(initialLead.id);
-                    if (res.error === 'VALIDATION_FAILED' && res.validationErrors) {
-                      setValidationErrors(res.validationErrors);
-                      setIsConverting(false);
-                    } else if (res.error) {
-                      alert(res.error);
-                      setIsConverting(false);
-                    } else {
-                      router.push(`/contratos/${res.contractId}`);
-                    }
-                  }}
-                >
-                  {isConverting ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />} 
-                  {isConverting ? 'Rehaciendo...' : 'Rehacer Contrato'}
-                </button>
+                {showActionButtons && (
+                  <button 
+                    className="btn-ghost text-gray-300 hover:text-white hover:bg-[var(--bg-elevated)]"
+                    disabled={isConverting}
+                    onClick={async () => {
+                      if(!confirm('¿Estás seguro de que quieres rehacer este contrato? Se actualizarán los datos del contrato con la información actual del Lead.')) return;
+                      setIsConverting(true);
+                      setValidationErrors(null);
+                      const res = await remakeContractAction(initialLead.id);
+                      if (res.error === 'VALIDATION_FAILED' && res.validationErrors) {
+                        setValidationErrors(res.validationErrors);
+                        setIsConverting(false);
+                      } else if (res.error) {
+                        alert(res.error);
+                        setIsConverting(false);
+                      } else {
+                        router.push(`/contratos/${res.contractId}`);
+                      }
+                    }}
+                  >
+                    {isConverting ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />} 
+                    {isConverting ? 'Rehaciendo...' : 'Rehacer Contrato'}
+                  </button>
+                )}
                 <button 
                   onClick={() => router.push(`/contratos/${initialLead.contractId}`)} 
                   className="btn-primary"

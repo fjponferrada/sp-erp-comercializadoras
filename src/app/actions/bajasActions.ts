@@ -78,7 +78,8 @@ export async function getPaginatedBajasAction(
         motivo: 'Fin de permanencia', // Airtable no tiene este campo exacto
         canal: b.user?.channel?.name || b.Lead?.source || 'Directo',
         producto: b.product?.name || 'Desconocido',
-        diasVida: diffDays
+        diasVida: diffDays,
+        hasSelfConsumption: b.supplyPoint?.hasSelfConsumption || false
       };
     });
 

@@ -23,7 +23,8 @@ export default async function ClientPage({ params }: { params: { id: string } })
     include: {
       supplyPoints: true,
       contracts: {
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        include: { supplyPoint: true }
       },
       invoices: {
         include: { supplyPoint: true },
@@ -43,6 +44,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
       <Topbar
         title="Ficha de Cliente"
         subtitle={client.businessName || `${client.firstName} ${client.lastName}`}
+        showSearch={false}
         customActions={
           <Link href="/clientes" className="btn-ghost flex items-center gap-2">
             <ChevronLeft size={16} /> Volver a Clientes
@@ -101,9 +103,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
       {/* PESTAÑAS Y CONTENIDO (Componente Cliente) */}
       <ClientTabs 
         client={client} 
-        supplyPoints={client.supplyPoints} 
+        supplyPoints={Array.from(new Map([...client.supplyPoints, ...client.contracts.map(c => c.supplyPoint).filter(Boolean)].map(sp => [sp?.id, sp])).values()) as any} 
         contracts={client.contracts} 
         invoices={client.invoices} 
+        userRole={userRole}
       />
       </div>
     </div>

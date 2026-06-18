@@ -105,6 +105,7 @@ export default function UserModal({ user, brands, companies, channels, onClose, 
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Rol de Sistema</label>
               <select name="role" value={formData.role} onChange={handleChange} className="form-input" style={{ width: '100%' }}>
+                <option value="CLIENT">Cliente</option>
                 <option value="COMERCIAL">Comercial</option>
                 <option value="CANAL">Jefe de Canal</option>
                 <option value="BACKOFFICE">Backoffice</option>

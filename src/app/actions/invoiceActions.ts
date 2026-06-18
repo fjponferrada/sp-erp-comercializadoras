@@ -172,12 +172,23 @@ export async function importInvoicesAction(invoicesData: any[]) {
         break;
       }
 
-      // Fallback: Si no encaja por potencias exactas, cogemos el último Activo o el más reciente
+      // Fallback 1: Buscar el contrato que coincida temporalmente con las fechas de la factura
       if (!contract) {
-        contract = await prisma.contract.findFirst({
-          where: { supplyPointId: supplyPoint!.id },
-          orderBy: { activationDate: 'desc' }
-        });
+        for (const record of candidateContracts) {
+          const actDate = record.activationDate || record.signatureDate;
+          const termDate = record.terminationDate;
+          
+          if (actDate && fechaDesdeFactura < actDate) continue; 
+          if (termDate && fechaDesdeFactura > termDate) continue;
+          
+          contract = record;
+          break;
+        }
+      }
+
+      // Fallback 2: Si aún no hay contrato, cogemos el último Activo o el más reciente
+      if (!contract) {
+        contract = candidateContracts[0] || null;
       }
 
       const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : 0;
@@ -255,7 +266,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
         data: {
           invoiceNumber,
           invoiceType: tipoFactura,
-          clientId: client?.id || supplyPoint?.clientId || '',
+          clientId: contract?.clientId || client?.id || supplyPoint?.clientId || '',
           companyId: activeCompanyId,
           contractId: contract?.id,
           supplyPointId: supplyPoint?.id,

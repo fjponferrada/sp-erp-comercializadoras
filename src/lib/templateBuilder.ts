@@ -129,3 +129,93 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     numcontrato: contract.contractCode || contract.id || '',
   };
 }
+
+export function buildTemplateDataFromContract(contract: any, cData: any, product: any, isB2B: boolean) {
+  const dirTitObj = extractAddrObj(cData.direccion || contract.client?.billingAddress);
+  const dirPSObj = extractAddrObj(cData.direccionSuministro || contract.supplyPoint?.address);
+
+  // Separar nombre y apellidos
+  let nombreTitular = formatField(contract.client?.businessName || cData.nombre || cData.businessName) || '';
+  let apellido1 = formatField(contract.client?.lastName || cData.primerApellido) || '';
+  let apellido2 = formatField(contract.client?.lastName2 || cData.segundoApellido) || '';
+
+  if (!apellido1 && contract.client?.firstName) {
+    nombreTitular = formatField(contract.client.firstName);
+  }
+
+  if (!apellido1 && nombreTitular && !contract.client?.firstName && contract.client?.clientType === 'FÍSICA') {
+    const tokens = nombreTitular.split(/\s+/);
+    if (tokens.length >= 3) {
+      apellido2 = tokens.pop() || '';
+      apellido1 = tokens.pop() || '';
+      nombreTitular = tokens.join(' ');
+    } else if (tokens.length === 2) {
+      apellido1 = tokens.pop() || '';
+      nombreTitular = tokens[0];
+    }
+  }
+
+  if (nombreTitular && apellido1) {
+    nombreTitular = nombreTitular.replace(new RegExp(apellido1, 'ig'), '').trim();
+  }
+  if (nombreTitular && apellido2) {
+    nombreTitular = nombreTitular.replace(new RegExp(apellido2, 'ig'), '').trim();
+  }
+  nombreTitular = nombreTitular.replace(/\s+/g, ' ').trim();
+
+  const sp = contract.supplyPoint || {};
+  const cl = contract.client || {};
+
+  return {
+    nombretit: nombreTitular,
+    '1apetit': apellido1,
+    '2apetit': apellido2,
+    nif: formatField(cl.vatNumber || cData.nif || cData.cif) || '',
+    cnae: formatField(cData.cnae || sp.sipsCnae) || '',
+    direcciontitular: formatField(getTitularAddress(cData)) || formatField(cl.billingAddress) || '',
+    cptit: formatField(cData.cp) || dirTitObj.cp || formatField(cl.billingPostalCode) || '',
+    loctit: formatField(cData.poblacion) || dirTitObj.poblacion || formatField(cl.billingCity) || '',
+    provtit: formatField(cData.provincia) || dirTitObj.provincia || formatField(cl.billingProvince) || '',
+    mailtitular: formatField(cl.contactEmail || cData.email) || '',
+    tlftitular: formatField(cl.contactPhone || cData.telefono) || '',
+    mvtitular: formatField(cl.contactPhone || cData.telefono) || '',
+    nombrerep: formatField(cl.representativeName || cData.contactoNombre) || '',
+    nifrep: formatField(cl.representativeVat || cData.contactoNif) || '',
+    iban: formatField(sp.iban || cData.iban) || '',
+    cups: formatField(sp.cups || cData.cups) || '',
+    direccionPS: formatField(getSupplyAddress(cData)) || formatField(sp.address) || '',
+    cpPS: formatField(cData.sCp || cData['Código Postal Instalación']) || dirPSObj.cp || formatField(sp.postalCode) || '',
+    localidadPS: formatField(cData.sPoblacion || cData['Población Instalación']) || dirPSObj.poblacion || formatField(sp.city) || '',
+    provPS: formatField(cData.sProvincia || cData['Provincia Instalación']) || dirPSObj.provincia || formatField(sp.province) || '',
+    tarifa: formatField(contract.tarifa || contract.supplyPoint?.tariff || cData.tarifa || sp.sipsTariff) || '',
+    p1c: formatField(contract.p1c || cData.p1c || cData.p1) || '',
+    p2c: formatField(contract.p2c || cData.p2c || cData.p2) || '',
+    p3c: formatField(contract.p3c || cData.p3c || cData.p3) || '',
+    p4c: formatField(contract.p4c || cData.p4c || cData.p4) || '',
+    p5c: formatField(contract.p5c || cData.p5c || cData.p5) || '',
+    p6c: formatField(contract.p6c || cData.p6c || cData.p6) || '',
+    producto: formatField(product?.name || cData.producto) || '',
+    p1p: formatField(product?.p1 || contract.p1p || cData.p1p) || '',
+    p2p: formatField(product?.p2 || contract.p2p || cData.p2p) || '',
+    p3p: formatField(product?.p3 || contract.p3p || cData.p3p) || '',
+    p4p: formatField(product?.p4 || contract.p4p || cData.p4p) || '',
+    p5p: formatField(product?.p5 || contract.p5p || cData.p5p) || '',
+    p6p: formatField(product?.p6 || contract.p6p || cData.p6p) || '',
+    p1e: formatField(product?.e1 || contract.p1e || cData.p1e) || '',
+    p2e: formatField(product?.e2 || contract.p2e || cData.p2e) || '',
+    p3e: formatField(product?.e3 || contract.p3e || cData.p3e) || '',
+    p4e: formatField(product?.e4 || contract.p4e || cData.p4e) || '',
+    p5e: formatField(product?.e5 || contract.p5e || cData.p5e) || '',
+    p6e: formatField(product?.e6 || contract.p6e || cData.p6e) || '',
+    fee: formatField(contract.fee || product?.fee || cData.fee) || '',
+    feee: formatField(contract.svaConcept || product?.svaConcept || cData.feee) || '',
+    conpexc: formatField(product?.feeExcedentes || contract.commissionBase || cData.conpexc) || '',
+    pexc: formatField(product?.pexc || cData.pexc) || '',
+    f1: formatField(product?.f1 || cData.f1) || '',
+    f2: formatField(product?.f2 || cData.f2) || '',
+    f3: formatField(product?.f3 || cData.f3) || '',
+    f4: formatField(product?.f4 || cData.f4) || '',
+    f5: formatField(product?.f5 || cData.f5) || '',
+    f6: formatField(product?.f6 || cData.f6) || '',
+  };
+}

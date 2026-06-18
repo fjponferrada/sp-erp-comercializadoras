@@ -104,6 +104,7 @@ export default function ClientesClient({
 }) {
   const router = useRouter();
   const canCreate = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const showStats = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole as string);
   
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState<'Todos' | TipoPersona>('Todos');
@@ -162,30 +163,32 @@ export default function ClientesClient({
 
       <main style={{ padding: '28px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          <StatCard
-            icon={Users}
-            label="Total Clientes"
-            value={stats.totalClientes}
-            sub="Registros activos en el sistema"
-            delay="delay-100"
-          />
-          <StatCard
-            icon={FileCheck2}
-            label="Con Contrato Activo"
-            value={stats.conContratoActivo}
-            sub={`${stats.totalClientes ? Math.round((stats.conContratoActivo / stats.totalClientes) * 100) : 0}% de la cartera`}
-            accent
-            delay="delay-200"
-          />
-          <StatCard
-            icon={UserPlus}
-            label="Nuevos Este Mes"
-            value={stats.nuevosEsteMes}
-            sub="Alta reciente"
-            delay="delay-300"
-          />
-        </div>
+        {showStats && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            <StatCard
+              icon={Users}
+              label="Total Clientes"
+              value={stats.totalClientes}
+              sub="Registros activos en el sistema"
+              delay="delay-100"
+            />
+            <StatCard
+              icon={FileCheck2}
+              label="Con Contrato Activo"
+              value={stats.conContratoActivo}
+              sub={`${stats.totalClientes ? Math.round((stats.conContratoActivo / stats.totalClientes) * 100) : 0}% de la cartera`}
+              accent
+              delay="delay-200"
+            />
+            <StatCard
+              icon={UserPlus}
+              label="Nuevos Este Mes"
+              value={stats.nuevosEsteMes}
+              sub="Alta reciente"
+              delay="delay-300"
+            />
+          </div>
+        )}
 
         <div className="card animate-fade-in-up delay-400" style={{ padding: 0, overflow: 'hidden' }}>
 
@@ -244,17 +247,18 @@ export default function ClientesClient({
                   onChange={(e) => handleSearch(e.target.value)}
                 />
               </div>
-
-              <select
-                className="form-input"
-                style={{ width: 170, fontSize: '0.85rem', cursor: 'pointer' }}
-                value={tipoFilter}
-                onChange={(e) => handleTipo(e.target.value as 'Todos' | TipoPersona)}
-              >
-                <option value="Todos">Todos los tipos</option>
-                <option value="Empresa">Empresa</option>
-                <option value="Particular">Particular</option>
-              </select>
+              {showStats && (
+                <select
+                  className="form-input"
+                  style={{ width: 170, fontSize: '0.85rem', cursor: 'pointer' }}
+                  value={tipoFilter}
+                  onChange={(e) => handleTipo(e.target.value as 'Todos' | TipoPersona)}
+                >
+                  <option value="Todos">Todos los tipos</option>
+                  <option value="Empresa">Empresa</option>
+                  <option value="Particular">Particular</option>
+                </select>
+              )}
             </div>
           </div>
 

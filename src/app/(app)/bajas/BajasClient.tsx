@@ -22,6 +22,7 @@ export interface BajaData {
   canal: string;
   producto: string;
   diasVida: number;
+  hasSelfConsumption: boolean;
 }
 
 import WinbackOfferModal from '@/components/bajas/WinbackOfferModal';

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Filter, Download, Eye, MessageCircle, Phone } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import PaginationFooter from '@/components/PaginationFooter';
 import { formatDateUTC } from '@/lib/utils/date';
 import SendInvoicesButton from '@/components/facturas/SendInvoicesButton';
@@ -51,6 +52,10 @@ interface FacturasClientProps {
 }
 
 export default function FacturasClient({ initialInvoices, pendingCount, initialTotalCount }: FacturasClientProps) {
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'user';
+  const showPaymentButtons = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -147,7 +152,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
             title="Fecha Hasta"
           />
         </div>
-        <SendInvoicesButton pendingCount={pendingCount} />
+        {showPaymentButtons && <SendInvoicesButton pendingCount={pendingCount} />}
         <button className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
           <Download size={18} />
           Exportar
@@ -261,8 +266,12 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                       )}
 
                       <div className="h-4 w-px bg-slate-700 mx-1"></div>
-                      <RequestPaymentButton invoiceId={invoice.id} type="transfer" />
-                      <RequestPaymentButton invoiceId={invoice.id} type="overdue" />
+                      {showPaymentButtons && (
+                        <>
+                          <RequestPaymentButton invoiceId={invoice.id} type="transfer" />
+                          <RequestPaymentButton invoiceId={invoice.id} type="overdue" />
+                        </>
+                      )}
                     </div>
                     {!invoice.pdfUrl && <div className="text-slate-500 text-xs italic mt-1">Pendiente de PDF</div>}
                   </td>

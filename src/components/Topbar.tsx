@@ -8,9 +8,10 @@ interface TopbarProps {
   subtitle?: string;
   action?: { label: string; onClick: () => void };
   customActions?: React.ReactNode;
+  showSearch?: boolean;
 }
 
-export default function Topbar({ title, subtitle, action, customActions }: TopbarProps) {
+export default function Topbar({ title, subtitle, action, customActions, showSearch = false }: TopbarProps) {
   return (
     <header className="topbar">
       <div style={{ flex: 1 }}>
@@ -25,14 +26,16 @@ export default function Topbar({ title, subtitle, action, customActions }: Topba
       </div>
 
       {/* Search */}
-      <div style={{ position: 'relative', width: '240px' }}>
-        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-        <input
-          className="form-input"
-          placeholder="Buscar CUPS, cliente, contrato..."
-          style={{ paddingLeft: '32px', padding: '7px 12px 7px 32px', fontSize: '0.8rem' }}
-        />
-      </div>
+      {showSearch && (
+        <div style={{ position: 'relative', width: '240px' }}>
+          <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            className="form-input"
+            placeholder="Buscar CUPS, cliente, contrato..."
+            style={{ paddingLeft: '32px', padding: '7px 12px 7px 32px', fontSize: '0.8rem' }}
+          />
+        </div>
+      )}
 
       {/* Notifications */}
       <button style={{
