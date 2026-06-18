@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { useBrandTheme } from '@/context/BrandThemeContext';
+import { useMobileSidebar } from '@/context/MobileSidebarContext';
+import { useState, useEffect } from 'react';
 import BrandSelector from './BrandSelector';
 import {
   LayoutDashboard,
@@ -23,7 +25,10 @@ import {
   Tag,
   LogOut,
   FileWarning,
-  UploadCloud
+  UploadCloud,
+  ChevronDown,
+  ChevronRight,
+  X
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -106,6 +111,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const brand = useBrandTheme();
   const { data: session } = useSession();
+  const { isOpen, setIsOpen } = useMobileSidebar();
   
   const userRole = session?.user?.role || 'CANAL';
 
@@ -114,10 +120,30 @@ export default function Sidebar() {
     return group.roles.includes(userRole);
   });
 
+  // Estado para el Acordeón
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  // Inicializar grupo activo al cargar
+  useEffect(() => {
+    const activeGroup = navGroups.find(g => 
+      g.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))
+    );
+    if (activeGroup) {
+      setOpenGroup(activeGroup.label);
+    }
+  }, [pathname, navGroups]);
+
   return (
-    <aside className="sidebar">
-      {/* Logo / Marca */}
-      <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)' }}>
+    <>
+      {/* Overlay oscuro móvil */}
+      <div 
+        className={`mobile-overlay ${isOpen ? 'active' : ''}`}
+        onClick={() => setIsOpen(false)}
+      />
+
+      <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
+        {/* Logo / Marca y Botón Cerrar (Móvil) */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Logo dinámico: imagen si existe, icono ⚡ si no */}
           {brand.logoUrl ? (
@@ -143,31 +169,63 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
-      </div>
+          <button 
+            className="md:hidden" 
+            onClick={() => setIsOpen(false)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex' }}
+          >
+            <X size={20} />
+          </button>
+        </div>
 
       {/* Selector de Comercializadora / Marca */}
       <div style={{ padding: '12px 8px' }}>
         <BrandSelector />
       </div>
 
-      {/* Navegación */}
-      <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px' }}>
-        {navGroups.map((group) => (
-          <div key={group.label}>
-            <div className="nav-section-label">{group.label}</div>
-            {group.items.map((item: any) => {
-              if (item.roles && !item.roles.includes(userRole)) return null;
-              const Icon = item.icon;
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-              return (
-                <Link key={item.href} href={item.href} className={`nav-item ${isActive ? 'active' : ''}`}>
-                  <Icon size={16} strokeWidth={2} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+      <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px', paddingTop: '8px' }}>
+        {navGroups.map((group) => {
+          const isGroupOpen = openGroup === group.label;
+          const isActiveGroup = group.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'));
+
+          return (
+            <div key={group.label} style={{ marginBottom: '8px' }}>
+              <button 
+                onClick={() => setOpenGroup(isGroupOpen ? null : group.label)}
+                style={{ 
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 24px', background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: isActiveGroup ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em'
+                }}
+              >
+                {group.label}
+                {isGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+
+              {isGroupOpen && (
+                <div style={{ padding: '4px 8px' }} className="animate-fade-in-up">
+                  {group.items.map((item: any) => {
+                    if (item.roles && !item.roles.includes(userRole)) return null;
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                    return (
+                      <Link 
+                        key={item.href} 
+                        href={item.href} 
+                        className={`nav-item ${isActive ? 'active' : ''}`}
+                        onClick={() => setIsOpen(false)} // Cierra el menú al navegar (solo aplica en móvil)
+                      >
+                        <Icon size={16} strokeWidth={2} />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* Footer del Sidebar */}
@@ -214,5 +272,6 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }

@@ -2,6 +2,7 @@ import { auth } from '@/auth';
 import { cookies } from 'next/headers';
 import Sidebar from '@/components/Sidebar';
 import { BrandThemeProvider, defaultTheme, type BrandTheme } from '@/context/BrandThemeContext';
+import { MobileSidebarProvider } from '@/context/MobileSidebarContext';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -28,12 +29,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <BrandThemeProvider theme={activeBrand}>
-      <div style={{ display: 'flex' }}>
-        <Sidebar />
-        <div className="main-content" style={{ flex: 1 }}>
-          {children}
+      <MobileSidebarProvider>
+        <div style={{ display: 'flex' }}>
+          <Sidebar />
+          <div className="main-content" style={{ flex: 1 }}>
+            {children}
+          </div>
         </div>
-      </div>
+      </MobileSidebarProvider>
     </BrandThemeProvider>
   );
 }

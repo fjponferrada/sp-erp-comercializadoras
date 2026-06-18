@@ -1,7 +1,8 @@
 'use client';
 
-import { Bell, Search, Plus } from 'lucide-react';
+import { Bell, Search, Plus, Menu } from 'lucide-react';
 import BrandSelector from './BrandSelector';
+import { useMobileSidebar } from '@/context/MobileSidebarContext';
 
 interface TopbarProps {
   title: string;
@@ -12,10 +13,23 @@ interface TopbarProps {
 }
 
 export default function Topbar({ title, subtitle, action, customActions, showSearch = false }: TopbarProps) {
+  const { setIsOpen } = useMobileSidebar();
+
   return (
     <header className="topbar">
-      <div style={{ flex: 1 }}>
-        <h1 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+        <button 
+          className="md:hidden"
+          onClick={() => setIsOpen(true)}
+          style={{ 
+            background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px',
+            color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+        >
+          <Menu size={24} />
+        </button>
+        <div>
+          <h1 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.2 }}>
           {title}
         </h1>
         {subtitle && (
@@ -23,6 +37,7 @@ export default function Topbar({ title, subtitle, action, customActions, showSea
             {subtitle}
           </p>
         )}
+        </div>
       </div>
 
       {/* Search */}
