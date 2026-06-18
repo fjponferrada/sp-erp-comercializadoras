@@ -38,7 +38,7 @@ export function calculateSegment(
   cnaeRaw: string | null
 ): string {
   const t = (tariff || '').toUpperCase().trim();
-  const consumoMwh = cleanNumber(annualConsumptionKwh) / 1000.0; // Assume DB stores kWh
+  const consumoMwh = cleanNumber(annualConsumptionKwh); // DB already stores in MWh
   const p1 = cleanNumber(p1c);
   const cnae = cleanCnae(cnaeRaw);
 
