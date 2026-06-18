@@ -40,8 +40,8 @@ export default function ForgotPasswordPage() {
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background: `
-          radial-gradient(ellipse 80% 50% at 20% -10%, rgba(222,255,154,0.07) 0%, transparent 60%),
-          radial-gradient(ellipse 60% 40% at 80% 110%, rgba(59,130,246,0.06) 0%, transparent 55%)
+          radial-gradient(ellipse 80% 50% at 20% -10%, color-mix(in srgb, var(--lime) 7%, transparent) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 40% at 80% 110%, color-mix(in srgb, var(--lime) 6%, transparent) 0%, transparent 55%)
         `,
       }} />
 
@@ -130,9 +130,20 @@ export default function ForgotPasswordPage() {
               <div style={{
                 padding: '10px 14px', borderRadius: '8px',
                 background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 500,
+                color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 500, lineHeight: 1.5
               }}>
-                {error}
+                {error === 'not_found' ? (
+                  <>Esta cuenta no está registrada como usuario ni como cliente en nuestro sistema.</>
+                ) : error === 'not_registered_client' ? (
+                  <>
+                    Hemos detectado que eres cliente, pero no tienes un usuario registrado. Para acceder, primero debes crear tu cuenta.{' '}
+                    <Link href="/login?register=true" style={{ color: 'var(--lime)', textDecoration: 'underline', fontWeight: 'bold' }}>
+                      Regístrate aquí
+                    </Link>
+                  </>
+                ) : (
+                  <>{error}</>
+                )}
               </div>
             )}
 

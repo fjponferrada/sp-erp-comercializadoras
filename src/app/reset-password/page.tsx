@@ -167,8 +167,8 @@ export default function ResetPasswordPage() {
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background: `
-          radial-gradient(ellipse 80% 50% at 20% -10%, rgba(222,255,154,0.07) 0%, transparent 60%),
-          radial-gradient(ellipse 60% 40% at 80% 110%, rgba(59,130,246,0.06) 0%, transparent 55%)
+          radial-gradient(ellipse 80% 50% at 20% -10%, color-mix(in srgb, var(--lime) 7%, transparent) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 40% at 80% 110%, color-mix(in srgb, var(--lime) 6%, transparent) 0%, transparent 55%)
         `,
       }} />
 

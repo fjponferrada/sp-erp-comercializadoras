@@ -125,7 +125,7 @@ export default function Sidebar() {
               src={brand.logoUrl}
               alt={brand.name}
               width={36} height={36}
-              style={{ borderRadius: '8px', objectFit: 'contain', width: '36px', height: '36px' }}
+              style={{ borderRadius: '8px', objectFit: 'cover', width: '36px', height: '36px' }}
             />
           ) : (
             <div style={{

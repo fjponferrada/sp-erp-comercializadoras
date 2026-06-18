@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { Zap, Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
@@ -17,6 +17,15 @@ export default function LoginPage() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('register') === 'true') {
+        setIsRegistering(true);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,8 +82,8 @@ export default function LoginPage() {
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background: `
-          radial-gradient(ellipse 80% 50% at 20% -10%, rgba(222,255,154,0.07) 0%, transparent 60%),
-          radial-gradient(ellipse 60% 40% at 80% 110%, rgba(59,130,246,0.06) 0%, transparent 55%)
+          radial-gradient(ellipse 80% 50% at 20% -10%, color-mix(in srgb, var(--lime) 7%, transparent) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 40% at 80% 110%, color-mix(in srgb, var(--lime) 6%, transparent) 0%, transparent 55%)
         `,
       }} />
 
@@ -118,11 +127,8 @@ export default function LoginPage() {
             <Zap size={26} color="var(--bg-base)" strokeWidth={2.5} />
           </div>
           <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            SP Energía <span style={{ color: 'var(--lime)' }}>ERP</span>
+            SP Energía
           </h1>
-          <p style={{ margin: '6px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Gestión integral de comercializadoras
-          </p>
         </div>
 
         {/* Formulario */}
