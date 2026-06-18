@@ -759,3 +759,25 @@ model PasswordResetToken {
   @@unique([email, token])
 }
 
+enum Resolution {
+  HOURLY
+  QUARTER_HOURLY
+}
+
+model LoadCurve {
+  id            String     @id @default(cuid())
+  cups          String
+  date          DateTime   @db.Date
+  readings      Float[]
+  resolution    Resolution
+  isProvisional Boolean
+  source        String
+
+  @@unique([cups, date])
+  @@index([date])
+}
+
+model WeatherHistory {
+  date          DateTime   @id @db.Date
+  temperatures  Float[]
+}
