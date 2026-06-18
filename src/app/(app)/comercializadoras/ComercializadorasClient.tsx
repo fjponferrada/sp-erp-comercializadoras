@@ -47,72 +47,69 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
   };
 
   return (
-    <>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar title="Comercializadoras" subtitle="Gestión de empresas y datos regulatorios" />
       
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-wrap gap-4">
-          <div className="relative flex-1 min-w-[300px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div className="card animate-fade-in-up delay-200" style={{ padding: '16px 20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: '1 1 300px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text" 
               placeholder="Buscar comercializadora..." 
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+              className="form-input"
+              style={{ paddingLeft: '32px', fontSize: '0.8rem' }}
             />
           </div>
         </div>
 
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden flex flex-col">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap">
-              <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+        <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <th className="px-6 py-4">Nombre Empresa</th>
-                  <th className="px-6 py-4">Código CRM</th>
-                  <th className="px-6 py-4">Dirección</th>
-                  <th className="px-6 py-4">Email</th>
-                  <th className="px-6 py-4">Contacto</th>
-                  <th className="px-6 py-4">Teléfono</th>
-                  <th className="px-6 py-4">CIF</th>
-                  <th className="px-6 py-4">Orden CNMC</th>
-                  <th className="px-6 py-4">Alta CNMC</th>
-                  <th className="px-6 py-4">Baja CNMC</th>
-                  <th className="px-6 py-4">Alta SP</th>
-                  <th className="px-6 py-4">Baja SP</th>
-                  <th className="px-6 py-4">Representado</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Editar</th>
+                  <th>Nombre Empresa</th>
+                  <th>Código CRM</th>
+                  <th>Dirección</th>
+                  <th>Email</th>
+                  <th>Contacto</th>
+                  <th>Teléfono</th>
+                  <th>CIF</th>
+                  <th>Orden CNMC</th>
+                  <th>Alta CNMC</th>
+                  <th>Baja CNMC</th>
+                  <th>Alta SP</th>
+                  <th>Baja SP</th>
+                  <th>Representado</th>
+                  <th>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Editar</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/50">
+              <tbody>
                 {companies.map(c => (
                   <React.Fragment key={c.id}>
-                    <tr className="hover:bg-slate-700/30 transition-colors" style={{ background: editingId === c.id ? 'rgba(51, 65, 85, 0.5)' : 'transparent' }}>
-                      <td className="px-6 py-4 font-medium text-white">{c.name}</td>
-                      <td className="px-6 py-4 font-mono text-amber-400 font-medium">{c.codigo || '-'}</td>
-                      <td className="px-6 py-4 text-xs text-slate-400 max-w-[200px] truncate" title={c.address || ''}>{c.address || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.email || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.contactPerson || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.phone || '-'}</td>
-                      <td className="px-6 py-4 font-mono text-slate-300">{c.cif}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.ordenCnmc || '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.fechaActivacionCnmc ? new Date(c.fechaActivacionCnmc).toLocaleDateString() : '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.fechaBajaCnmc ? new Date(c.fechaBajaCnmc).toLocaleDateString() : '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.fechaActivacionIsm ? new Date(c.fechaActivacionIsm).toLocaleDateString() : '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.fechaBajaIsm ? new Date(c.fechaBajaIsm).toLocaleDateString() : '-'}</td>
-                      <td className="px-6 py-4 text-slate-300">{c.representadoPor || '-'}</td>
-                      <td className="px-6 py-4">
+                    <tr style={{ background: editingId === c.id ? 'var(--bg-elevated)' : 'transparent' }}>
+                      <td style={{ fontWeight: 500, color: '#fff' }}>{c.name}</td>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--amber)', fontWeight: 500 }}>{c.codigo || '-'}</td>
+                      <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.address || ''}>{c.address || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.email || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.contactPerson || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.phone || '-'}</td>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{c.cif}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.ordenCnmc || '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.fechaActivacionCnmc ? new Date(c.fechaActivacionCnmc).toLocaleDateString() : '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.fechaBajaCnmc ? new Date(c.fechaBajaCnmc).toLocaleDateString() : '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.fechaActivacionIsm ? new Date(c.fechaActivacionIsm).toLocaleDateString() : '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.fechaBajaIsm ? new Date(c.fechaBajaIsm).toLocaleDateString() : '-'}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{c.representadoPor || '-'}</td>
+                      <td>
                         {c.empresaVisible ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
-                            <Check size={12}/> Activa
-                          </span>
+                          <span className="badge badge-active inline-flex"><Check size={10}/> Activa</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700 px-2 py-1 rounded">
-                            Inactiva
-                          </span>
+                          <span className="badge badge-draft inline-flex">Inactiva</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td style={{ textAlign: 'right' }}>
                         {editingId === c.id ? (
                           <div className="flex justify-end gap-2">
                             <button className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition-colors" onClick={cancelEdit}><X size={18} /></button>
@@ -263,6 +260,6 @@ export default function ComercializadorasClient({ initialCompanies }: { initialC
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
