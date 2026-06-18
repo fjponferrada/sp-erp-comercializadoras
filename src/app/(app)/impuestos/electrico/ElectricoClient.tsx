@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Calculator, Loader2 } from 'lucide-react';
+import Topbar from '@/components/Topbar';
 
 interface IEResult {
   zona: string;
@@ -46,16 +47,19 @@ export default function ElectricoClient() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Selector */}
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl">
-        <div className="flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-400 mb-2">Año</label>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar title="Impuesto Eléctrico" subtitle="Gestión y liquidación del Impuesto Especial sobre la Electricidad" />
+
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        
+        {/* Selector */}
+        <div className="card animate-fade-in-up" style={{ padding: '16px 20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 200px' }}>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Año</label>
             <select
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-rose-500/50"
+              className="form-input"
             >
               <option value="2026">2026</option>
               <option value="2025">2025</option>
@@ -63,12 +67,12 @@ export default function ElectricoClient() {
               <option value="2023">2023</option>
             </select>
           </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-400 mb-2">Trimestre</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 300px' }}>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Trimestre</label>
             <select
               value={quarter}
               onChange={(e) => setQuarter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-rose-500/50"
+              className="form-input"
             >
               <option value="1">Primer Trimestre (Ene - Mar)</option>
               <option value="2">Segundo Trimestre (Abr - Jun)</option>
@@ -76,16 +80,18 @@ export default function ElectricoClient() {
               <option value="4">Cuarto Trimestre (Oct - Dic)</option>
             </select>
           </div>
-          <button
-            onClick={handleCalculate}
-            disabled={loading}
-            className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Calculator className="w-5 h-5" />}
-            {loading ? 'Calculando...' : 'Calcular'}
-          </button>
+          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}>
+            <button
+              onClick={handleCalculate}
+              disabled={loading}
+              className="btn-primary"
+              style={{ padding: '8px 24px', height: '42px', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin text-black" /> : <Calculator className="w-5 h-5" />}
+              {loading ? 'Calculando...' : 'Calcular'}
+            </button>
+          </div>
         </div>
-      </div>
 
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg">
@@ -95,69 +101,69 @@ export default function ElectricoClient() {
 
       {/* Resultados */}
       {results && (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <div className="p-6 border-b border-slate-800">
+        <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
             <h3 className="text-lg font-medium text-white flex items-center gap-2">
-              <Calculator className="text-rose-500 w-5 h-5" />
+              <Calculator className="text-[var(--lime)] w-5 h-5" />
               Desglose Impuesto Eléctrico (T{quarter} {year})
             </h3>
           </div>
           
           {results.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
+            <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
               No se encontraron facturas para este periodo.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-slate-400 uppercase bg-slate-950/50 border-b border-slate-800">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <th className="px-6 py-4 font-medium">Zona (Agencia)</th>
-                    <th className="px-6 py-4 font-medium text-center">Límite Mínimo</th>
-                    <th className="px-6 py-4 font-medium text-right">Tipo Aplicado (%)</th>
-                    <th className="px-6 py-4 font-medium text-right">Base Sujeta (€)</th>
-                    <th className="px-6 py-4 font-medium text-right text-slate-500">Impuesto Base (€)</th>
-                    <th className="px-6 py-4 font-medium text-right border-l border-slate-800">Consumo Mínimo (MWh)</th>
-                    <th className="px-6 py-4 font-medium text-right text-slate-500">Impuesto Mínimo (€)</th>
-                    <th className="px-6 py-4 font-medium text-right text-rose-400 bg-rose-500/5">Total Impuesto (€)</th>
+                    <th>Zona (Agencia)</th>
+                    <th style={{ textAlign: 'center' }}>Límite Mínimo</th>
+                    <th style={{ textAlign: 'right' }}>Tipo Aplicado (%)</th>
+                    <th style={{ textAlign: 'right' }}>Base Sujeta (€)</th>
+                    <th style={{ textAlign: 'right', color: 'var(--text-muted)' }}>Impuesto Base (€)</th>
+                    <th style={{ textAlign: 'right', borderLeft: '1px solid var(--border)' }}>Consumo Mínimo (MWh)</th>
+                    <th style={{ textAlign: 'right', color: 'var(--text-muted)' }}>Impuesto Mínimo (€)</th>
+                    <th style={{ textAlign: 'right', color: 'var(--lime)' }}>Total Impuesto (€)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50">
+                <tbody>
                   {results.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/20 transition-colors">
-                      <td className="px-6 py-4 font-medium text-white">{row.zona}</td>
-                      <td className="px-6 py-4 text-center">
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 500, color: '#fff' }}>{row.zona}</td>
+                      <td style={{ textAlign: 'center' }}>
                         {row.isMinApplied ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">Sí</span>
+                          <span className="badge badge-draft" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>Sí</span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400">No</span>
+                          <span className="badge badge-active">No</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right text-slate-300">{row.isMinApplied ? '-' : `${formatNumber(row.tipo)}%`}</td>
-                      <td className="px-6 py-4 text-right text-slate-300">{row.isMinApplied ? '-' : formatCurrency(row.baseSujeta)}</td>
-                      <td className="px-6 py-4 text-right text-slate-500">{row.isMinApplied ? '-' : formatCurrency(row.impuestoBase)}</td>
-                      <td className="px-6 py-4 text-right text-slate-300 border-l border-slate-800">{!row.isMinApplied ? '-' : formatNumber(row.consumoMinimo) + ' MWh'}</td>
-                      <td className="px-6 py-4 text-right text-slate-500">{!row.isMinApplied ? '-' : formatCurrency(row.impuestoMinimo)}</td>
-                      <td className="px-6 py-4 text-right font-bold text-rose-400 bg-rose-500/5">{formatCurrency(row.total)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{row.isMinApplied ? '-' : `${formatNumber(row.tipo)}%`}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{row.isMinApplied ? '-' : formatCurrency(row.baseSujeta)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{row.isMinApplied ? '-' : formatCurrency(row.impuestoBase)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', borderLeft: '1px solid var(--border)' }}>{!row.isMinApplied ? '-' : formatNumber(row.consumoMinimo) + ' MWh'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{!row.isMinApplied ? '-' : formatCurrency(row.impuestoMinimo)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--lime)' }}>{formatCurrency(row.total)}</td>
                     </tr>
                   ))}
                   
                   {/* Totales Globales */}
-                  <tr className="bg-slate-950 font-bold border-t-2 border-slate-800">
-                    <td colSpan={3} className="px-6 py-4 text-white">TOTAL GENERAL</td>
-                    <td className="px-6 py-4 text-right text-white">
+                  <tr style={{ background: 'var(--bg-elevated)', borderTop: '2px solid var(--border)', fontWeight: 'bold' }}>
+                    <td colSpan={3}>TOTAL GENERAL</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                       {formatCurrency(results.reduce((acc, r) => acc + r.baseSujeta, 0))}
                     </td>
-                    <td className="px-6 py-4 text-right text-slate-400">
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                       {formatCurrency(results.reduce((acc, r) => acc + r.impuestoBase, 0))}
                     </td>
-                    <td className="px-6 py-4 text-right text-white border-l border-slate-800">
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', borderLeft: '1px solid var(--border)' }}>
                       {formatNumber(results.reduce((acc, r) => acc + r.consumoMinimo, 0))} MWh
                     </td>
-                    <td className="px-6 py-4 text-right text-slate-400">
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                       {formatCurrency(results.reduce((acc, r) => acc + r.impuestoMinimo, 0))}
                     </td>
-                    <td className="px-6 py-4 text-right text-rose-400 bg-rose-500/5">
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--lime)' }}>
                       {formatCurrency(results.reduce((acc, r) => acc + r.total, 0))}
                     </td>
                   </tr>
@@ -167,6 +173,7 @@ export default function ElectricoClient() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
