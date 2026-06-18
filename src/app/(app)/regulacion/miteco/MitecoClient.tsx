@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Download, Loader2, Building2 } from 'lucide-react';
+import Topbar from '@/components/Topbar';
 
 export default function MitecoClient() {
   const [loading, setLoading] = useState(false);
@@ -37,42 +38,36 @@ export default function MitecoClient() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Building2 className="text-rose-500" />
-            Reportes MITECO
-          </h1>
-          <p className="text-slate-400 mt-1">Generación de informes regulatorios para el Ministerio</p>
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar title="Reportes MITECO" subtitle="Generación de informes regulatorios para el Ministerio" />
+
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-6 max-w-4xl">
-        <div className="space-y-6">
-          
-          <div className="space-y-2 max-w-xl">
-            <label className="block text-sm font-medium text-slate-300">Seleccione el reporte a generar:</label>
-            <select 
+        <div className="card animate-fade-in-up" style={{ padding: '32px' }}>
+          <div className="space-y-6">
+            
+            <div className="space-y-2 max-w-xl">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Seleccione el reporte a generar:</label>
+              <select 
               value={reportType} 
               onChange={(e) => {
                 setReportType(e.target.value);
                 setDafneResult(null);
               }}
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-slate-900 border-slate-700 text-white focus:outline-none focus:ring-rose-500 focus:border-rose-500 sm:text-sm rounded-md"
+                className="form-input"
             >
               <option value="ESCILA">ESCILA (XML Sectores)</option>
               <option value="DAFNE">DAFNE</option>
             </select>
           </div>
 
-          <div className="flex items-end justify-between max-w-xl">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-300">Especifique el año de reporte:</label>
-              <select 
-                value={year} 
-                onChange={(e) => setYear(e.target.value)}
-                className="mt-1 block w-32 pl-3 pr-10 py-2 text-base bg-slate-900 border-slate-700 text-white focus:outline-none focus:ring-rose-500 focus:border-rose-500 sm:text-sm rounded-md"
+            <div className="flex items-end justify-between max-w-xl">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Especifique el año de reporte:</label>
+                <select 
+                  value={year} 
+                  onChange={(e) => setYear(e.target.value)}
+                  className="form-input"
               >
                 {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map((y) => (
                   <option key={y} value={y.toString()}>{y}</option>
@@ -80,28 +75,30 @@ export default function MitecoClient() {
               </select>
             </div>
 
-            {reportType === 'DAFNE' && (
-              <div className="flex items-center ml-4">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                  Pendiente de desarrollo (Requiere curvas de carga)
-                </span>
-              </div>
-            )}
+              {reportType === 'DAFNE' && (
+                <div className="flex items-center ml-4">
+                  <span className="badge badge-draft text-xs px-2 py-1">
+                    Pendiente de desarrollo (Requiere curvas de carga)
+                  </span>
+                </div>
+              )}
           </div>
 
-          <div className="pt-4 border-t border-slate-700/50 flex justify-end">
-            <button 
-              onClick={handleGenerate} 
-              disabled={loading || reportType === 'DAFNE'}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
+            <div className="pt-4 border-t border-slate-700/50 flex justify-end">
+              <button 
+                onClick={handleGenerate} 
+                disabled={loading || reportType === 'DAFNE'}
+                className="btn-primary"
+                style={{ padding: '12px 24px' }}
+              >
+                {loading ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-5 w-5" />
+                )}
               {reportType === 'ESCILA' ? 'Descargar XML' : 'Consultar Datos'}
-            </button>
+              </button>
+            </div>
           </div>
         </div>
       </div>
