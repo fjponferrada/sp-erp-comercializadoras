@@ -97,30 +97,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
           })}
         </div>
 
-        {/* Desglose por motivo */}
-        <div className="card animate-fade-in-up delay-200" style={{ marginBottom: '16px', padding: '16px 20px' }}>
-          <p style={{ margin: '0 0 12px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bajas por motivo</p>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {motivos.map(m => {
-              // Con SSR, lo ideal sería que `getBajasStatsAction` devuelva la agrupación por motivos, 
-              // pero como está hardcodeado a "Fin de permanencia", lo simplificamos:
-              const count = m === 'Fin de permanencia' ? initialStats?.totalBajas : 0;
-              if (!count) return null;
-              return (
-                <button key={m} onClick={() => setMotivoFilter(motivoFilter === m ? 'TODOS' : m)} style={{
-                  display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '99px',
-                  border: motivoFilter === m ? '1px solid var(--lime)' : '1px solid var(--border)',
-                  background: motivoFilter === m ? 'rgba(222,255,154,0.1)' : 'var(--bg-elevated)',
-                  color: motivoFilter === m ? 'var(--lime)' : 'var(--text-secondary)',
-                  fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s',
-                }}>
-                  <span>{m}</span>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+
 
         {/* Table */}
         <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
@@ -143,14 +120,13 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   <th>Tarifa</th>
                   <th>Producto</th>
                   <th>Fecha Baja</th>
-                  <th>Motivo</th>
                   <th style={{ textAlign: 'center' }}>Acciones de Recuperación</th>
                 </tr>
               </thead>
               <tbody>
                 {bajas.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
                       No se encontraron bajas con los filtros aplicados.
                     </td>
                   </tr>
@@ -166,11 +142,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                     <td><span className="badge badge-draft">{b.tarifa}</span></td>
                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{b.producto}</td>
                     <td className="mono-cell" style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{b.fechaBaja}</td>
-                    <td>
-                      <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
-                        {b.motivo}
-                      </span>
-                    </td>
+
                     <td>
                       <div className="flex items-center justify-center gap-2">
                         {b.telefono && (

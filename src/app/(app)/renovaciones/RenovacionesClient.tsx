@@ -100,12 +100,10 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
   const displayedRenovaciones = renovaciones.filter(r => !ocultos.includes(r.id));
 
   return (
-    <>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar title="Renovaciones" subtitle="Contratos próximos a vencimiento · Gestión de retención de cartera" />
 
-      <div style={{ padding: '24px' }}>
-
-        {/* KPIs */}
+      <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>        {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '24px' }}>
           {[
             showCanalFilter ? { label: 'Contratos Vencidos', value: String(initialStats?.vencidos || 0), sub: '< 0 días', color: '#ef4444', icon: XCircle } : null,
@@ -162,18 +160,18 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <th className="px-6 py-4">Cliente / Contacto</th>
-                  <th className="px-6 py-4">Suministro</th>
-                  <th className="px-6 py-4">Contrato</th>
-                  <th className="px-6 py-4">Canal</th>
-                  <th className="px-6 py-4 text-center">Estado</th>
-                  <th className="px-6 py-4 text-right">Acciones</th>
+                  <th>Cliente / Contacto</th>
+                  <th>Suministro</th>
+                  <th>Contrato</th>
+                  <th>Canal</th>
+                  <th style={{ textAlign: 'center' }}>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/50">
+              <tbody>
                 {displayedRenovaciones.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
@@ -183,10 +181,10 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                 ) : displayedRenovaciones.map((r) => {
                   const renovado = renovados.includes(r.id);
                   return (
-                    <tr key={r.id} style={{ opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }} className="hover:bg-slate-800/30">
+                    <tr key={r.id} style={{ opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }}>
                       
                       {/* CLIENTE */}
-                      <td className="px-6 py-4">
+                      <td>
                         <div className="font-bold text-white mb-2">{r.cliente}</div>
                         <div className="flex flex-col gap-1 text-xs text-slate-400">
                           <div className="flex items-center gap-2"><Phone size={12} className="text-slate-500"/> {r.telefonoContacto}</div>
@@ -195,7 +193,7 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                       </td>
 
                       {/* SUMINISTRO */}
-                      <td className="px-6 py-4">
+                      <td>
                         <div className="text-sm font-mono text-lime-400 font-bold mb-2">{r.cups}</div>
                         <div className="flex items-start gap-2 text-xs text-slate-400">
                           <MapPin size={12} className="text-slate-500 mt-0.5 flex-shrink-0" />
@@ -204,7 +202,7 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                       </td>
 
                       {/* CONTRATO */}
-                      <td className="px-6 py-4">
+                      <td>
                         <div className="flex flex-wrap gap-2 mb-2">
                           <span className="badge badge-process">{r.tarifa}</span>
                           <span className="text-xs font-mono bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-slate-300">{r.mwh.toFixed(1)} MWh</span>
@@ -217,19 +215,19 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                       </td>
 
                       {/* CANAL */}
-                      <td className="px-6 py-4 align-top">
+                      <td style={{ verticalAlign: 'top' }}>
                         <div className="mt-2 text-sm text-slate-300 font-medium">
                           {r.canal}
                         </div>
                       </td>
 
                       {/* ESTADO */}
-                      <td className="px-6 py-4 text-center align-top">
+                      <td style={{ textAlign: 'center', verticalAlign: 'top' }}>
                         <div className="mt-2">{estadoBadge(r.estado, r.diasRestantes)}</div>
                       </td>
 
                       {/* ACCIONES */}
-                      <td className="px-6 py-4 text-right align-top">
+                      <td style={{ textAlign: 'right', verticalAlign: 'top' }}>
                         {renovado ? (
                           <span className="badge badge-active inline-flex mt-2"><CheckCircle2 size={10} /> Renovado</span>
                         ) : (
@@ -265,6 +263,6 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
         products={products}
         onRenovado={(id) => setRenovados(p => [...p, id])}
       />
-    </>
+    </div>
   );
 }
