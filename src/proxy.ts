@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_ROUTES = ['/login'];
+const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password'];
 
 export default auth((req) => {
   const { nextUrl, auth: session } = req;
