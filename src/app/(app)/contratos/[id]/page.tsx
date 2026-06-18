@@ -97,7 +97,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       // No extra filters, can see all history for the CUPS
     } else if (role === 'BACKOFFICE' || role === 'COMPANYADMIN') {
       // Only history within the same company
-      invoicesWhere.companyId = contract.companyId;
+      invoicesWhere.companyId = (contract as any).companyId;
     } else if (role === 'CANAL') {
       // Only invoices tied to contracts belonging to their channel
       invoicesWhere.contract = { user: { channelId: dbUser?.channelId } };

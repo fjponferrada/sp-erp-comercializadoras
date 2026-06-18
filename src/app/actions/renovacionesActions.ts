@@ -188,7 +188,7 @@ export async function renewContractAction(oldContractId: string, newProductId: s
 
     const product = await prisma.product.findUnique({
       where: { id: newProductId }
-    });
+    }) as any;
 
     if (!product) return { error: 'Producto seleccionado no encontrado.' };
 
@@ -239,19 +239,19 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         p6c: oldContract.p6c,
         
         // Nuevos datos económicos (del nuevo producto)
-        p1e: product.e1,
-        p2e: product.e2,
-        p3e: product.e3,
-        p4e: product.e4,
-        p5e: product.e5,
-        p6e: product.e6,
+        p1e: product.p1e,
+        p2e: product.p2e,
+        p3e: product.p3e,
+        p4e: product.p4e,
+        p5e: product.p5e,
+        p6e: product.p6e,
         
-        p1p: product.p1,
-        p2p: product.p2,
-        p3p: product.p3,
-        p4p: product.p4,
-        p5p: product.p5,
-        p6p: product.p6,
+        p1p: product.p1p,
+        p2p: product.p2p,
+        p3p: product.p3p,
+        p4p: product.p4p,
+        p5p: product.p5p,
+        p6p: product.p6p,
         
         fee: product.fee,
         svaConcept: servicioAdicional || product.svaConcept,

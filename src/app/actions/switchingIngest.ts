@@ -59,14 +59,12 @@ export async function ingestSwitchingXmlAction(formData: FormData) {
     // 5. Check if already processed successfully to prevent duplicate warnings
     const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
     const uniqueProcess = `${parsedData.codigoSolicitud}_${codCom}${parsedData.cups}_${parsedData.proceso}_${parsedData.paso}`;
-    const existingEventId = await checkDuplicateWarning(uniqueProcess);
+    const existingEvent = await prisma.switchingEvent.findFirst({ where: { uniqueProcess } });
+    const existingEventId = existingEvent?.id || null;
 
-    if (existingEventId) {
-      const existingEvent = await prisma.switchingEvent.findUnique({ where: { id: existingEventId } });
-      if (existingEvent && existingEvent.isResolved) {
-        console.log(`[SALTADO] El fichero XML ${originalName} ya fue procesado con éxito anteriormente.`);
-        return { success: true, message: 'Fichero previamente procesado con éxito.' };
-      }
+    if (existingEvent && existingEvent.isResolved) {
+      console.log(`[SALTADO] El fichero XML ${originalName} ya fue procesado con éxito anteriormente.`);
+      return { success: true, message: 'Fichero previamente procesado con éxito.' };
     }
 
     // Si no fue procesado o dio error, continuamos:
@@ -100,6 +98,10 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   let supplyPointId: string | undefined = undefined;
   let tipoError: string | undefined = undefined;
   let warning: string | undefined = undefined;
+
+  // Calcular uniqueProcess en este scope para usarlo al guardar el evento
+  const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
+  const uniqueProcess = `${parsedData.codigoSolicitud}_${codCom}${parsedData.cups}_${parsedData.proceso}_${parsedData.paso}`;
 
   // Primero intentamos encontrar el contrato exacto por nSolicitud si viene en el XML
   let foundContractBySolicitud = null;
@@ -338,7 +340,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     await prisma.switchingEvent.update({
       where: { id: existingEventId },
       data: {
-        uniqueProcess, // Actualizar al nuevo formato por si acaso
+        uniqueProcess: uniqueProcess, // Actualizar al nuevo formato por si acaso
         isResolved: !warning,
         contract: contractId ? { connect: { id: contractId } } : undefined,
         supplyPoint: supplyPointId ? { connect: { id: supplyPointId } } : undefined,
@@ -356,7 +358,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     });
   } else {
     await prisma.switchingEvent.upsert({
-      where: { uniqueProcess },
+      where: { uniqueProcess: uniqueProcess },
       create: {
         uniqueProcess,
         fechaSolicitud: parsedData.fechaSolicitud,

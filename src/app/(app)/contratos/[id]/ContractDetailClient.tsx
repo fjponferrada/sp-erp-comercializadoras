@@ -8,7 +8,6 @@ import { updateContractDatesAction, sendContractToDocuSignAction } from '@/app/a
 import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
 import ModificationModal from './ModificationModal';
-import EditLeadModal from './EditLeadModal';
 import HistoricalChart from './HistoricalChart';
 
 export default function ContractDetailClient({ 
