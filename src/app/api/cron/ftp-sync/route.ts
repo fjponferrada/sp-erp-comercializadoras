@@ -7,7 +7,14 @@ import JSZip from 'jszip';
 export const maxDuration = 300; // Allow Vercel / Next up to 5 minutes to run this script
 
 export async function GET(req: Request) {
-  // To protect this endpoint, we check a secret param if needed, or leave open for internal ERP cron.
+  // Protección del endpoint
+  const url = new URL(req.url);
+  const secret = url.searchParams.get('secret');
+  
+  if (secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized: Invalid cron secret' }, { status: 401 });
+  }
+
   const configs = await prisma.distributor.findMany({
     where: { ftpActive: true }
   });
