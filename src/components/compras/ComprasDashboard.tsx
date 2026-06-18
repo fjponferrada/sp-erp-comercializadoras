@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Activity, Zap, Download, RefreshCw, BarChart2 } from 'lucide-react';
+import { Activity, Zap, Download, RefreshCw, BarChart2, Brain } from 'lucide-react';
 import { format } from 'date-fns';
 import Topbar from '@/components/Topbar';
 
 export default function ComprasDashboard({ initialForecasts, activeContracts }: any) {
   const [activeTab, setActiveTab] = useState('prediccion');
   const [loading, setLoading] = useState(false);
+  const [training, setTraining] = useState(false);
+  const [trainingProgress, setTrainingProgress] = useState(0);
   const [forecastResult, setForecastResult] = useState<any>(null);
 
   const generateForecast = async () => {
@@ -21,6 +23,30 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
       alert('Error: ' + error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const trainModel = async () => {
+    setTraining(true);
+    setTrainingProgress(0);
+    
+    const interval = setInterval(() => {
+      setTrainingProgress(prev => {
+        if (prev >= 95) return 95; 
+        return prev + 2; 
+      });
+    }, 1000);
+
+    try {
+      const res = await fetch('/api/cron/train-forecast', { method: 'GET' });
+      if (!res.ok) throw new Error('Error al entrenar el modelo');
+      setTrainingProgress(100);
+    } catch (error) {
+      alert('Error: ' + error);
+      setTrainingProgress(0);
+    } finally {
+      clearInterval(interval);
+      setTimeout(() => setTraining(false), 1000);
     }
   };
 
@@ -100,21 +126,52 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
 
             {activeTab === 'prediccion' && (
               <div className="space-y-8">
+                
+                <div style={{ background: 'var(--bg-elevated)', padding: '16px 20px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  <p><strong>Nota sobre el Entrenamiento:</strong> No es necesario entrenar el modelo más de una vez al día. La IA aprende de los históricos de demanda, por lo que incluso entrenándolo <strong>una vez por semana</strong> sería suficiente para mantener una alta precisión.</p>
+                </div>
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-elevated)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)' }}>
                   <div>
                     <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Generador de Predicción Diaria</h3>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Utiliza Random Forest provincial y perfiles VIP SDA (Similar Day Average)</p>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Utiliza Árboles de Decisión provinciales y perfiles VIP SDA (Similar Day Average)</p>
                   </div>
-                  <button 
-                    onClick={generateForecast}
-                    disabled={loading}
-                    className="btn btn-primary"
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    {loading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
-                    {loading ? 'Calculando IA...' : 'Generar Predicción Mañana'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button 
+                      onClick={trainModel}
+                      disabled={training || loading}
+                      className="btn btn-secondary"
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      {training ? <RefreshCw className="animate-spin" size={16} /> : <Brain size={16} />}
+                      {training ? 'Entrenando...' : 'Entrenar Modelo'}
+                    </button>
+                    <button 
+                      onClick={generateForecast}
+                      disabled={loading || training}
+                      className="btn btn-primary"
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      {loading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
+                      {loading ? 'Calculando IA...' : 'Generar Predicción Mañana'}
+                    </button>
+                  </div>
                 </div>
+
+                {training && (
+                  <div className="animate-fade-in-up" style={{ padding: '20px', background: 'var(--bg-elevated)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
+                      <span style={{ color: 'var(--text-primary)' }}>Entrenando Inteligencia Artificial...</span>
+                      <span style={{ color: 'var(--primary)' }}>{trainingProgress}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: '8px', background: 'var(--gray-alpha-100)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ width: `${trainingProgress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.5s ease-out' }} />
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center' }}>
+                      Procesando miles de registros históricos. Esto puede tardar alrededor de un minuto.
+                    </p>
+                  </div>
+                )}
 
                 {forecastResult && (
                   <div className="animate-fade-in-up space-y-6">
