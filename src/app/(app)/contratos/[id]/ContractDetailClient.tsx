@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { updateContractDatesAction, sendContractToDocuSignAction } from '@/app/actions/contractActions';
 import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
+import SwitchingAnnullationModal from './SwitchingAnnullationModal';
+import ConsumosTab from './ConsumosTab';
 import ModificationModal from './ModificationModal';
 import HistoricalChart from './HistoricalChart';
 
@@ -833,15 +835,7 @@ export default function ContractDetailClient({
         )}
 
         {['Consumos'].includes(activeTab) && (
-          <div className="flex flex-col items-center justify-center py-20 px-4 border border-dashed border-[var(--border-strong)] rounded-2xl bg-[var(--bg-elevated)] animate-fade-in-up">
-            <div className="w-16 h-16 bg-[var(--bg-base)] rounded-full flex items-center justify-center mb-4">
-              <RefreshCw size={24} className="text-gray-500 animate-spin-slow" />
-            </div>
-            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">Módulo Próximamente</h2>
-            <p className="text-gray-400 text-center max-w-md">
-              El módulo de <strong>{activeTab}</strong> se implementará próximamente en el ERP.
-            </p>
-          </div>
+          <ConsumosTab cups={supplyPoint?.cups} />
         )}
 
       </div>
