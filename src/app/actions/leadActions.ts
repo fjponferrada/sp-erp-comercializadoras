@@ -154,9 +154,16 @@ export async function createLeadAction(formData: FormData) {
     if (cups && type === 'LUZ') {
       const sp = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: user.brandId } } });
       if (!sp) {
+        const { calculateSegment } = await import('@/lib/services/SegmentService');
+        const newSegment = calculateSegment(
+          forceTariff || parsedSipsData?.tarifa || '2.0TD',
+          null, null, null
+        );
+
         await tx.supplyPoint.create({
           data: {
             cups,
+            segment: newSegment,
             address: parsedSipsData?.direccion || userAddress || 'Pendiente de SIPS',
             city: parsedSipsData?.poblacion || 'Pendiente',
             postalCode: parsedSipsData?.cp || '00000',
@@ -705,8 +712,15 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
       const user = await prisma.user.findUnique({ where: { email: session.user.email! }});
       const sp = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: user!.brandId } } });
       if (!sp) {
+        const { calculateSegment } = await import('@/lib/services/SegmentService');
+        const newSegment = calculateSegment(
+          forceTariff || parsedSipsData?.tarifa || '2.0TD',
+          null, null, null
+        );
+
         await tx.supplyPoint.create({
           data: {
+            segment: newSegment,
             cups,
             address: parsedSipsData?.direccion || userAddress || 'Pendiente de SIPS',
             city: parsedSipsData?.poblacion || 'Pendiente',
@@ -717,10 +731,20 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
           }
         });
       } else {
+        const newTariff = forceTariff || parsedSipsData?.tarifa || sp.tariff;
+        const { calculateSegment } = await import('@/lib/services/SegmentService');
+        const newSegment = calculateSegment(
+          newTariff,
+          sp.annualConsumption,
+          sp.p1c,
+          sp.cnae
+        );
+
         await tx.supplyPoint.update({
           where: { id: sp.id },
           data: {
-            tariff: forceTariff || parsedSipsData?.tarifa || sp.tariff,
+            segment: newSegment,
+            tariff: newTariff,
             address: parsedSipsData?.direccion || userAddress || sp.address,
             city: parsedSipsData?.poblacion || sp.city,
             postalCode: parsedSipsData?.cp || sp.postalCode,

@@ -126,9 +126,18 @@ export async function updateSupplyPointAction(id: string, data: any) {
     ].filter(Boolean);
     const computedAddress = addressParts.join(' ').trim();
 
+    const { calculateSegment } = await import('@/lib/services/SegmentService');
+    const newSegment = calculateSegment(
+      data.tariff || null,
+      data.annualConsumption ? parseFloat(data.annualConsumption) : null,
+      data.p1c ? parseFloat(data.p1c) : null,
+      data.cnae || null
+    );
+
     const updated = await prisma.supplyPoint.update({
       where: { id },
       data: {
+        segment: newSegment,
         address: computedAddress,
         streetType: data.streetType,
         street: data.street,

@@ -614,10 +614,19 @@ export async function remakeContractAction(leadId: string) {
       }
     });
 
+    const { calculateSegment } = await import('@/lib/services/SegmentService');
+    const newSegment = calculateSegment(
+      lead.tariff || '2.0TD',
+      lead.contract.supplyPoint.annualConsumption,
+      lead.contract.supplyPoint.p1c,
+      lead.contract.supplyPoint.cnae
+    );
+
     // Actualizar Punto de Suministro
     await prisma.supplyPoint.update({
       where: { id: lead.contract.supplyPointId },
       data: {
+        segment: newSegment,
         cups: lead.cups || `CUPS-PENDING-${lead.id}`,
         address: typeof cData.direccion === 'string' ? cData.direccion : (cData.direccion?.address || cData.direccion?.direccion || 'Pendiente'),
         city: cData.poblacion || 'Pendiente',
@@ -884,9 +893,18 @@ export async function updateContractDatesAction(
       const newTariff = contract.product?.tariff || contract.supplyPoint.tariff;
 
       if (contract.supplyPoint.clientId === contract.clientId) {
+        const { calculateSegment } = await import('@/lib/services/SegmentService');
+        const newSegment = calculateSegment(
+          newTariff,
+          contract.supplyPoint.annualConsumption,
+          contract.p1c ?? contract.supplyPoint.p1c,
+          cData.cnae || contract.supplyPoint.cnae
+        );
+
         await prisma.supplyPoint.update({
           where: { id: contract.supplyPointId },
           data: {
+            segment: newSegment,
             address: cData.direccion || contract.supplyPoint.address,
             city: cData.poblacion || contract.supplyPoint.city,
             postalCode: cData.cp || contract.supplyPoint.postalCode,
@@ -910,9 +928,18 @@ export async function updateContractDatesAction(
 
         let newSupplyPointId = contract.supplyPointId;
         if (existingSp) {
+          const { calculateSegment } = await import('@/lib/services/SegmentService');
+          const newSegment = calculateSegment(
+            newTariff,
+            existingSp.annualConsumption,
+            contract.p1c ?? contract.supplyPoint.p1c,
+            cData.cnae || contract.supplyPoint.cnae
+          );
+
           await prisma.supplyPoint.update({
             where: { id: existingSp.id },
             data: {
+              segment: newSegment,
               address: cData.direccion || contract.supplyPoint.address,
               city: cData.poblacion || contract.supplyPoint.city,
               postalCode: cData.cp || contract.supplyPoint.postalCode,
@@ -930,8 +957,17 @@ export async function updateContractDatesAction(
           });
           newSupplyPointId = existingSp.id;
         } else {
+          const { calculateSegment } = await import('@/lib/services/SegmentService');
+          const newSegment = calculateSegment(
+            newTariff,
+            contract.supplyPoint.annualConsumption,
+            contract.p1c ?? contract.supplyPoint.p1c,
+            cData.cnae || contract.supplyPoint.cnae
+          );
+
           const newSp = await prisma.supplyPoint.create({
             data: {
+              segment: newSegment,
               cups: contract.supplyPoint.cups,
               clientId: contract.clientId,
               address: cData.direccion || contract.supplyPoint.address,

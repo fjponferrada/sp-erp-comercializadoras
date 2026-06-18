@@ -27,9 +27,18 @@ export async function findOrUpdateSupplyPointByCups(prisma: any, targetCups: str
   }
 
   // Si no existe, lo creamos
+  const { calculateSegment } = await import('./services/SegmentService');
+  const newSegment = calculateSegment(
+    createData.tariff || null,
+    createData.annualConsumption || null,
+    createData.p1c || null,
+    createData.cnae || null
+  );
+
   supplyPoint = await prisma.supplyPoint.create({
     data: {
       ...createData,
+      segment: newSegment,
       cups: targetCups.toUpperCase(),
       clientId: clientId
     },
