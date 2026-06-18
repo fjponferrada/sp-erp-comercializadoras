@@ -47,28 +47,22 @@ export async function GET(req: Request) {
     let csvContent = 'fecha_hora;consumo_kwh;segmento\n';
 
     for (const lc of loadCurves) {
-      const baseDate = new Date(lc.date);
+      // lc.date is a UTC Date representing the day (e.g., 2025-04-12T00:00:00.000Z)
+      // We must treat this as "April 12th Local Time" to avoid DST shifts
+      const ymd = lc.date.toISOString().split('T')[0];
+      const localMidnight = fromZonedTime(ymd + ' 00:00:00', 'Europe/Madrid');
+      
       const isHourly = lc.resolution === 'HOURLY';
       const intervals = lc.readings.length;
       const minutesPerInterval = isHourly ? 60 : 15;
 
       for (let i = 0; i < intervals; i++) {
-        // En España el primer periodo suele ser la hora 1 (de 00:00 a 01:00)
-        // La etiqueta temporal suele marcar el inicio o el fin de la hora. El script en python lo dejaba como string.
-        // Vamos a calcular el momento exacto. Si el array tiene 24 items, i=0 es la primera hora.
-        // Asumiendo que el "fecha_hora" marca el INICIO del periodo:
-        const intervalTime = addMinutes(baseDate, i * minutesPerInterval);
-        
-        // Convert to local time string '%Y-%m-%d %H:%M:%S'
+        const intervalTime = addMinutes(localMidnight, i * minutesPerInterval);
         const localTime = toZonedTime(intervalTime, 'Europe/Madrid');
         const dateStr = format(localTime, 'yyyy-MM-dd HH:mm:ss');
         
         const consumo = lc.readings[i];
-        // Formato español: decimal con coma
         const consumoStr = consumo.toString().replace('.', ',');
-        
-        // El script de python tenia segmento, aquí lo dejamos vacío por ahora ya que no hay info de segmento
-        // O ponemos el source temporalmente
         const segmento = ''; 
         
         csvContent += `${dateStr};${consumoStr};${segmento}\n`;
