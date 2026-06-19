@@ -7,17 +7,32 @@ import io
 # Force UTF-8 stdout if needed, but safer to just not use emojis
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-pkl_path = r"Z:\AED\Prediccion\base_datos_detalle.pkl"
+import shutil
+import os
+
+pkl_path_network = r"Z:\AED\Prediccion\base_datos_detalle.pkl"
+pkl_path_local = r"C:\Users\Administrator\sp-erp-comercializadoras\base_datos_detalle_temp.pkl"
 csv_path = r"Z:\AED\Prediccion\export_daily.csv"
 
 print("Iniciando migracion de datos...")
-print("Cargando PKL (esto tardara 1-2 minutos)...")
-df = pd.read_pickle(pkl_path)
+print("Copiando PKL de red a disco local para evitar OSError 22...")
+shutil.copy2(pkl_path_network, pkl_path_local)
+
+print("Cargando PKL local (esto tardara 1-2 minutos)...")
+df = pd.read_pickle(pkl_path_local)
+
+print("Borrando PKL temporal...")
+os.remove(pkl_path_local)
 
 print(f"Cargado. Filas originales: {len(df):,}")
 
 print("Procesando fechas...")
 df['fecha_hora'] = pd.to_datetime(df['fecha_hora'], utc=True)
+
+# Solo migrar datos nuevos para no procesar años enteros
+min_date = pd.to_datetime('2026-02-01', utc=True)
+df = df[df['fecha_hora'] >= min_date].copy()
+
 df['fecha'] = df['fecha_hora'].dt.date
 df['hora'] = df['fecha_hora'].dt.hour
 

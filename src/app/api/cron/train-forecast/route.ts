@@ -4,6 +4,8 @@ import { PROVINCES_GEO } from '@/lib/services/ProvinceService';
 import { getDay, getMonth, isWeekend, subDays } from 'date-fns';
 import { DecisionTreeRegression } from 'ml-cart';
 
+import { AggregationService } from '@/lib/services/AggregationService';
+
 const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'PYME >50 MWh', 'VE <15 MWh', 'VE >15 MWh', 'VIP'];
 const PROVINCES = Object.values(PROVINCES_GEO).map(p => p.name);
 
@@ -11,6 +13,9 @@ export async function GET(req: Request) {
   // En producción, Vercel Cron llamará a este GET. 
   // Opcionalmente podemos protegerlo con un header secreto si Vercel lo envía.
   try {
+    console.log('Synchronizing history before training...');
+    await AggregationService.regenerateAggregates(30);
+
     console.log('Starting background model training...');
 
     const maxAgg = await prisma.aggregatedLoadCurve.aggregate({ _max: { date: true } });
@@ -29,7 +34,7 @@ export async function GET(req: Request) {
     let Y_global: number[] = [];
 
     for (const record of history) {
-      if (record.segment === 'VIP') continue; // VIP is handled via SDA dynamically
+      if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(record.segment)) continue; // VIP and VE are handled via SDA dynamically
       if (record.clientCount === 0) continue;
 
       const segmentId = SEGMENTS.indexOf(record.segment);

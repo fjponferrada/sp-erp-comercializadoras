@@ -47,11 +47,24 @@ export async function generateTomorrowForecast() {
   });
 
   const currentClients: Record<string, number> = {};
+  const vipVeContracts = [];
+
   for (const c of activeContracts) {
     if (!c.supplyPoint || !c.supplyPoint.segment) continue;
+    
+    const segment = c.supplyPoint.segment;
+    if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(segment)) {
+      vipVeContracts.push(c);
+      continue;
+    }
+
+    // Elevación a barras de central (Pérdidas)
+    const tariff = c.supplyPoint.tariff || '';
+    const lossFactor = tariff.includes('6.1TD') ? 1.08 : 1.17;
+
     const prov = getProvinceGeo(c.supplyPoint.postalCode).name;
-    const key = `${c.supplyPoint.segment}|${prov}`;
-    currentClients[key] = (currentClients[key] || 0) + 1;
+    const key = `${segment}|${prov}`;
+    currentClients[key] = (currentClients[key] || 0) + lossFactor;
   }
 
   // 1. Load Pre-trained AI Model from Database
@@ -71,28 +84,12 @@ export async function generateTomorrowForecast() {
   }
 
   const finalPrediction: number[] = new Array(24).fill(0);
-  const weatherCache: Record<string, number[]> = {};
   const vipPredictions: number[] = new Array(24).fill(0);
+  const weatherCache: Record<string, number[]> = {};
+  const segmentBreakdown: Record<string, number[]> = {};
+  for (const s of SEGMENTS) segmentBreakdown[s] = new Array(24).fill(0);
 
-  // VIP clusters still need recent historical data to calculate similar days.
-  // We only need the last 30 days for VIP calculations.
-  const history = await prisma.aggregatedLoadCurve.findMany({
-    where: {
-      segment: 'VIP',
-      date: {
-        gte: subDays(new Date(), 30)
-      }
-    }
-  });
-
-  const historyByCluster: Record<string, typeof history> = {};
-  for (const h of history) {
-    const key = `${h.segment}|${h.province}`;
-    if (!historyByCluster[key]) historyByCluster[key] = [];
-    historyByCluster[key].push(h);
-  }
-
-  // Fetch all required weather forecasts concurrently to avoid sequential timeouts
+  // Fetch all required weather forecasts concurrently
   const neededProvinces = Array.from(new Set(Object.keys(currentClients).map(k => k.split('|')[1])));
   await Promise.all(neededProvinces.map(async (province) => {
     const provName = Object.values(PROVINCES_GEO).find(p => p.name === province);
@@ -101,50 +98,91 @@ export async function generateTomorrowForecast() {
     weatherCache[province] = await fetchForecastWeather(lat, lon, tomorrowStr);
   }));
 
-  for (const [key, activeCount] of Object.entries(currentClients)) {
-    if (activeCount === 0) continue; 
+  // --- 2. CÁLCULO INDIVIDUAL SDA PARA VIP/VE ---
+  if (vipVeContracts.length > 0) {
+    const targetDayOfWeek = getDay(tomorrow);
     
-    const [segment, province] = key.split('|');
+    const cupsList = vipVeContracts.map(c => {
+      const cups = c.supplyPoint?.cups || '';
+      return cups.length >= 20 ? cups.substring(0, 20) : cups;
+    }).filter(Boolean);
 
-    if (segment === 'VIP') {
-      const records = historyByCluster[key] || [];
-      const targetDayOfWeek = getDay(tomorrow);
-      const similarDays = records.filter(r => getDay(r.date) === targetDayOfWeek).slice(-3);
-      
-      if (similarDays.length > 0) {
-        for (let h = 0; h < 24; h++) {
-          let sum = 0;
-          for (const d of similarDays) {
-            sum += (d.totalConsumption[h] / d.clientCount);
+    if (cupsList.length > 0) {
+      // Obtenemos los últimos 60 registros por CUPS
+      const curves: any[] = await prisma.$queryRaw`
+        SELECT cups, date, readings 
+        FROM (
+          SELECT cups, date, readings, ROW_NUMBER() OVER(PARTITION BY cups ORDER BY date DESC) as rn
+          FROM "LoadCurve"
+          WHERE cups = ANY(string_to_array(${cupsList.join(',')}, ','))
+        ) t
+        WHERE rn <= 60
+      `;
+
+      const curvesByCups: Record<string, any[]> = {};
+      for (const row of curves) {
+        if (!curvesByCups[row.cups]) curvesByCups[row.cups] = [];
+        curvesByCups[row.cups].push(row);
+      }
+
+      for (const c of vipVeContracts) {
+        const cups = c.supplyPoint?.cups || '';
+        const baseCups = cups.length >= 20 ? cups.substring(0, 20) : cups;
+        const tariff = c.supplyPoint?.tariff || '';
+        const lossFactor = tariff.includes('6.1TD') ? 1.08 : 1.17;
+        
+        const history = curvesByCups[baseCups] || [];
+        const similarDays = history.filter(r => getDay(new Date(r.date)) === targetDayOfWeek).slice(0, 3);
+
+        if (similarDays.length > 0) {
+          for (let h = 0; h < 24; h++) {
+            let sum = 0;
+            for (const d of similarDays) {
+              if (d.readings && d.readings.length === 96) {
+                sum += (d.readings[h * 4] + d.readings[h * 4 + 1] + d.readings[h * 4 + 2] + d.readings[h * 4 + 3]);
+              } else if (d.readings && d.readings.length >= 24) {
+                sum += d.readings[h];
+              }
+            }
+            const avgHour = sum / similarDays.length;
+            const finalVal = avgHour * lossFactor;
+            vipPredictions[h] += finalVal;
+            finalPrediction[h] += finalVal;
+            const segKey = c.supplyPoint?.segment || 'VIP';
+            if (segmentBreakdown[segKey]) segmentBreakdown[segKey][h] += finalVal;
           }
-          const avgPerClient = sum / similarDays.length;
-          vipPredictions[h] += avgPerClient * activeCount;
-          finalPrediction[h] += avgPerClient * activeCount;
         }
       }
-      continue;
     }
+  }
 
-    if (!regression) continue;
+  // --- 3. CÁLCULO IA PARA HOGARES Y PYMES ---
+  if (regression) {
+    for (const [key, activeCount] of Object.entries(currentClients)) {
+      if (activeCount === 0) continue; 
+      
+      const [segment, province] = key.split('|');
 
-    const tomorrowTemps = weatherCache[province] || new Array(24).fill(20.0);
-    const tDow = getDay(tomorrow);
-    const tMonth = getMonth(tomorrow);
-    const tIsWknd = isWeekend(tomorrow) ? 1 : 0;
-    
-    const segmentId = SEGMENTS.indexOf(segment);
-    const provinceId = PROVINCES.indexOf(province);
+      const tomorrowTemps = weatherCache[province] || new Array(24).fill(20.0);
+      const tDow = getDay(tomorrow);
+      const tMonth = getMonth(tomorrow);
+      const tIsWknd = isWeekend(tomorrow) ? 1 : 0;
+      
+      const segmentId = SEGMENTS.indexOf(segment);
+      const provinceId = PROVINCES.indexOf(province);
 
-    const X_test: number[][] = [];
-    for (let h = 0; h < 24; h++) {
-      X_test.push([segmentId, provinceId, tDow, tMonth, h, tomorrowTemps[h], tIsWknd]);
-    }
+      const X_test: number[][] = [];
+      for (let h = 0; h < 24; h++) {
+        X_test.push([segmentId, provinceId, tDow, tMonth, h, tomorrowTemps[h], tIsWknd]);
+      }
 
-    const Y_pred = regression.predict(X_test);
+      const Y_pred = regression.predict(X_test);
 
-    for (let h = 0; h < 24; h++) {
-      const clusterPrediction = Math.max(0, Y_pred[h]) * activeCount;
-      finalPrediction[h] += clusterPrediction;
+      for (let h = 0; h < 24; h++) {
+        const clusterPrediction = Math.max(0, Y_pred[h]) * activeCount;
+        finalPrediction[h] += clusterPrediction;
+        if (segmentBreakdown[segment]) segmentBreakdown[segment][h] += clusterPrediction;
+      }
     }
   }
 
@@ -159,5 +197,5 @@ export async function generateTomorrowForecast() {
     }
   });
 
-  return { targetDate: tomorrowStr, finalPrediction, totalPredicted: totalPred, vipPredictions };
+  return { targetDate: tomorrowStr, finalPrediction, totalPredicted: totalPred, vipPredictions, segmentBreakdown };
 }

@@ -5,8 +5,8 @@ import JSZip from 'jszip';
 import { processCchCsv } from '../src/lib/services/cchParser';
 
 const rootDir = 'Z:\\AED\\CCH\\CCH';
-// La última actualización fue en Febrero 2026, ignoramos ficheros antiguos
-const minDate = new Date('2026-02-01T00:00:00.000Z');
+// MODO FAST-TRACK: Solo importamos desde Mayo 2026 para alimentar a la IA rápidamente
+const minDate = new Date('2026-05-01T00:00:00.000Z');
 
 async function *walk(dir: string): AsyncGenerator<string> {
   for await (const d of await fs.promises.opendir(dir)) {

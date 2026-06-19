@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Activity, Zap, Download, RefreshCw, BarChart2, Brain } from 'lucide-react';
 import { format } from 'date-fns';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Topbar from '@/components/Topbar';
 
 export default function ComprasDashboard({ initialForecasts, activeContracts }: any) {
@@ -54,15 +55,48 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
     if (!forecastResult) return;
     
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "FECHA_HORA;DEMANDA_OMIE_MW\\n";
+    csvContent += "SEGMENTO;" + Array.from({length: 96}, (_, i) => `Q${i+1}`).join(";") + "\n";
     
-    const d = new Date(forecastResult.targetDate);
-    
-    for(let i=0; i<24; i++) {
-      const h = i + 1;
-      const mw = (forecastResult.finalPrediction[i] / 1000).toFixed(3);
-      csvContent += `${format(d, 'yyyy-MM-dd')} ${h.toString().padStart(2, '0')}:00;${mw}\\n`;
+    if (forecastResult.segmentBreakdown) {
+      const segments = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'PYME >50 MWh', 'VE <15 MWh', 'VE >15 MWh', 'VIP'];
+      for (const seg of segments) {
+        const data = forecastResult.segmentBreakdown[seg];
+        if (data) {
+          csvContent += `${seg}`;
+          for(let i=0; i<24; i++) {
+            const mw = (data[i] / 1000).toFixed(3).replace('.', ',');
+            // Repetimos la potencia horaria en los 4 cuartos
+            for(let q=0; q<4; q++) csvContent += `;${mw}`;
+          }
+          csvContent += "\n";
+        }
+      }
     }
+    
+    // Suavizado (Interpolación Lineal) para OMIE
+    const xHours = Array.from({length: 24}, (_, i) => i + 0.5);
+    const yPotencia = forecastResult.finalPrediction.map((p: number) => p / 1000);
+    const xCuartos = Array.from({length: 96}, (_, i) => i * 0.25);
+    
+    const smoothPower = xCuartos.map(xq => {
+      if (xq <= xHours[0]) return yPotencia[0];
+      if (xq >= xHours[23]) return yPotencia[23];
+      let i = 0;
+      while (xHours[i+1] < xq) i++;
+      const x0 = xHours[i]; const x1 = xHours[i+1];
+      const y0 = yPotencia[i]; const y1 = yPotencia[i+1];
+      return y0 + (xq - x0) * (y1 - y0) / (x1 - x0);
+    });
+
+    const d = new Date(forecastResult.targetDate);
+    csvContent += `TOTAL_OMIE_${format(d, 'dd/MM/yyyy')}`;
+    
+    for(let i=0; i<96; i++) {
+      // Redondeamos a 1 decimal como requería OMIE_MW_lineal
+      const mw = smoothPower[i].toFixed(1).replace('.', ',');
+      csvContent += `;${mw}`;
+    }
+    csvContent += "\n";
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -142,9 +176,10 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
                       disabled={training || loading}
                       className="btn btn-secondary"
                       style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                      title="Sincroniza los últimos 30 días de agregados y entrena el modelo"
                     >
                       {training ? <RefreshCw className="animate-spin" size={16} /> : <Brain size={16} />}
-                      {training ? 'Entrenando...' : 'Entrenar Modelo'}
+                      {training ? 'Sincronizando y Entrenando...' : 'Sincronizar y Entrenar'}
                     </button>
                     <button 
                       onClick={generateForecast}
@@ -154,6 +189,26 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
                     >
                       {loading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
                       {loading ? 'Calculando IA...' : 'Generar Predicción Mañana'}
+                    </button>
+                    
+                    <button 
+                      onClick={async () => {
+                        if (!confirm('Esto regenerará el histórico completo de los últimos 365 días. Puede tardar un par de minutos. ¿Continuar?')) return;
+                        try {
+                          alert('La sincronización profunda se ha iniciado. Esto puede tardar varios minutos en segundo plano.');
+                          await fetch('/api/cron/aggregate-history?days=365');
+                          alert('Sincronización profunda completada con éxito.');
+                        } catch (e) {
+                          alert('Hubo un error al sincronizar. Es posible que el proceso haya excedido el tiempo límite de Vercel, pero seguirá en segundo plano si usas un servidor propio.');
+                        }
+                      }}
+                      disabled={training || loading}
+                      className="btn btn-outline"
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.7 }}
+                      title="Forzar cálculo de los últimos 365 días (Solo usar tras importar ZIPs antiguos)"
+                    >
+                      <RefreshCw size={16} />
+                      Sincronización Profunda
                     </button>
                   </div>
                 </div>
@@ -204,13 +259,51 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
                       </div>
                     </div>
 
+                    <div style={{ background: 'var(--bg-elevated)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ width: '100%', maxWidth: '850px', display: 'flex', justifyContent: 'flex-start' }}>
+                        <h4 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>Curva de Demanda</h4>
+                      </div>
+                      <div style={{ width: '100%', maxWidth: '850px', height: 400 }}>
+                        <ResponsiveContainer>
+                          <LineChart 
+                            data={forecastResult.finalPrediction.map((val: number, i: number) => ({
+                              hora: `${String(i + 1).padStart(2, '0')}:00`,
+                              'Resto (IA)': parseFloat(((val - forecastResult.vipPredictions[i]) / 1000).toFixed(3)),
+                              'VIP/VE (SDA)': parseFloat((forecastResult.vipPredictions[i] / 1000).toFixed(3)),
+                              'Total OMIE': parseFloat((val / 1000).toFixed(3))
+                            }))} 
+                            margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                            <XAxis dataKey="hora" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                            <YAxis 
+                              domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.1)]} 
+                              stroke="var(--text-muted)" 
+                              fontSize={12} 
+                              tickLine={false} 
+                              axisLine={false} 
+                              tickFormatter={(val) => `${val} MW`} 
+                            />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)' }}
+                              itemStyle={{ color: 'var(--text-primary)' }}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            <Line type="monotone" dataKey="Total OMIE" stroke="#3b82f6" strokeWidth={4} dot={false} />
+                            <Line type="monotone" dataKey="Resto (IA)" stroke="var(--text-muted)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                            <Line type="monotone" dataKey="VIP/VE (SDA)" stroke="var(--success)" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
                     <div style={{ borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
                           <tr>
                             <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Hora</th>
-                            <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Demanda Resto (MWh)</th>
-                            <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Demanda VIP (MWh)</th>
+                            <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Demanda Resto (MWh) - Cálculo IA</th>
+                            <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Demanda VIP/VE (MWh) - Cálculo SDA</th>
                             <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>TOTAL OMIE (MWh)</th>
                           </tr>
                         </thead>
@@ -229,6 +322,11 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
                           })}
                         </tbody>
                       </table>
+                    </div>
+
+                    <div style={{ padding: '16px 20px', background: 'var(--bg-elevated)', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      <strong>ℹ️ Nota sobre los métodos de cálculo:</strong><br />
+                      Tanto los Puntos de Suministro asociados a <strong>Vehículos Eléctricos (VE)</strong> como los CUPS clasificados como <strong>VIP</strong> (consumo superior a 100 MWh/año) son estimados mediante el algoritmo <strong>SDA (Similar Day Average)</strong>, ya que su perfil de demanda responde a rutinas estables y no presenta correlación fuerte con la temperatura exterior. El resto de la cartera se estima mediante Machine Learning (IA) basado en previsión meteorológica provincial.
                     </div>
                   </div>
                 )}
