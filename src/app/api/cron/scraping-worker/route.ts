@@ -72,6 +72,14 @@ export async function POST(request: Request) {
       }
     });
 
+    const finalStatus = status || 'COMPLETED';
+    if (finalStatus === 'COMPLETED') {
+      await prisma.distributor.updateMany({
+        where: { webScrapingActive: true },
+        data: { webLastSyncAt: new Date() }
+      });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error en scraping-worker POST:', error);
