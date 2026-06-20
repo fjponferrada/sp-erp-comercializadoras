@@ -151,15 +151,14 @@ export default function SwitchingWarningsClient({
             </button>
             <button
               onClick={async () => {
-                setLoading(true);
+                const toastId = toast.loading('Reintentando eventos...');
                 const result = await retryUnresolvedSwitchingEventsAction();
                 if (result.success) {
-                  toast.success(result.message || 'Eventos re-asociados');
+                  toast.success(`Eventos re-asociados: ${result.resolvedCount} de ${result.processedCount}`, { id: toastId });
                   fetchEvents(true);
                 } else {
-                  toast.error(result.message || 'Error reintentando');
+                  toast.error(String(result.error || 'Error reintentando'), { id: toastId });
                 }
-                setLoading(false);
               }}
               disabled={loading}
               className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-4 py-2 rounded-lg text-sm font-medium border border-blue-500/30 transition-colors flex items-center gap-2 whitespace-nowrap"
