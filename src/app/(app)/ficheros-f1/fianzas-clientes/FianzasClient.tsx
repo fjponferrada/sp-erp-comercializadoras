@@ -134,7 +134,7 @@ export default function FianzasClient() {
                       <td className="px-4 py-3 font-mono text-xs">{file.supplyPoint?.cups || '-'}</td>
                       <td className="px-4 py-3 text-center">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                          {file.motivoFacturacion === '04' || file.motivoFacturacion === '4' ? 'Fianza' : 'Abono'}
+                          {file.motivoFacturacion === '06' || file.motivoFacturacion === '6' ? 'Fianza' : (file.motivoFacturacion === '04' || file.motivoFacturacion === '4' ? 'Derechos (Actuación/Acceso)' : 'Abono/Otros')}
                         </span>
                       </td>
                       <td className={`px-4 py-3 text-right font-medium ${file.saldoFactura < 0 ? 'text-green-400' : 'text-white'}`}>

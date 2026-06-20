@@ -157,7 +157,7 @@ export default function FicherosF1Client() {
                         {file.numeroFactura || '-'}
                         {file.tipoDocumento === 'OtrasFacturas' && (
                           <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                            {file.motivoFacturacion === '04' || file.motivoFacturacion === '4' ? 'Fianza' : 'Abono'}
+                            {file.motivoFacturacion === '06' || file.motivoFacturacion === '6' ? 'Fianza' : (file.motivoFacturacion === '04' || file.motivoFacturacion === '4' ? 'Derechos (Actuación/Acceso)' : 'Abono/Otros')}
                           </span>
                         )}
                       </td>

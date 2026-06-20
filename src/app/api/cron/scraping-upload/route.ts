@@ -38,8 +38,9 @@ export async function POST(request: Request) {
     }
 
     if (!result.success) {
-      console.error('Error procesando XML de Worker:', result.error);
-      return NextResponse.json({ error: result.error }, { status: 500 });
+      const errMessage = (result as any).error || (result as any).warning || 'Error procesando XML';
+      console.error('Error procesando XML de Worker:', errMessage);
+      return NextResponse.json({ error: errMessage }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, message: 'Fichero procesado correctamente' });
