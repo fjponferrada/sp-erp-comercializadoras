@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { normalizeProvincia, normalizeMunicipio, normalizeTipoVia } from '@/lib/normalizeAddress';
+import { unstable_noStore as noStore } from 'next/cache';
 
 const removeAccents = (str: string) => {
   if (!str) return str;
@@ -81,6 +82,77 @@ export async function searchCupsForClaim(cups: string) {
   } catch (error: any) {
     console.error('Error in searchCupsForClaim:', error);
     return { success: false, error: 'Error buscando CUPS' };
+  }
+}
+
+export async function searchInvoicesForMassClaim(desde: string, hasta: string, procedencia: string, tipoFactura: string = 'Normal') {
+  noStore();
+  try {
+    const session = await auth();
+    if (!session?.user) return { success: false, error: 'No autorizado' };
+
+    const whereClause: any = {};
+    if (desde || hasta) {
+      whereClause.issueDate = {};
+      if (desde) {
+        const d = new Date(desde + 'T00:00:00.000Z');
+        d.setHours(d.getHours() - 4); // Margen de seguridad para atrapar 22:00 UTC del día anterior
+        whereClause.issueDate.gte = d;
+      }
+      if (hasta) {
+        const h = new Date(hasta + 'T23:59:59.999Z');
+        h.setHours(h.getHours() + 4);
+        whereClause.issueDate.lte = h;
+      }
+    }
+    
+    if (tipoFactura) {
+      whereClause.invoiceType = { equals: tipoFactura, mode: 'insensitive' };
+    }
+
+    const invoices = await prisma.invoice.findMany({
+      where: whereClause,
+      include: { client: true, supplyPoint: true, contract: true },
+      orderBy: { issueDate: 'desc' },
+      take: 5000 // Increased from 300 to allow in-memory filtering of 'Procedencia' without cutting off older dates
+    });
+
+    const mapped = invoices.map(inv => {
+      const d = (inv.invoiceData && typeof inv.invoiceData === 'object') ? inv.invoiceData as any : {};
+      
+      let procHasta = inv.origin || d['Procedencia Hasta'] || '';
+      let procDesde = d['Procedencia Desde'] || '';
+      let cf = String(d['Codigo Fiscal'] || '').trim();
+      if (cf.startsWith('CF ')) cf = cf.substring(3).trim();
+      else if (cf.startsWith('CF')) cf = cf.substring(2).trim();
+
+      return {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        clientName: inv.client?.businessName || `${inv.client?.firstName || ''} ${inv.client?.lastName || ''}`.trim(),
+        cups: inv.supplyPoint?.cups || '',
+        contractCode: inv.contract?.contractCode || '',
+        codigoFiscal: cf,
+        invoiceType: inv.invoiceType || d['Tipo Factura'] || '',
+        issueDate: inv.issueDate,
+        procedenciaDesde: procDesde,
+        procedenciaHasta: procHasta,
+        billingStart: inv.billingStart,
+        billingEnd: inv.billingEnd,
+        totalAmount: inv.totalAmount,
+        pdfUrl: inv.pdfUrl || d['pdfUrl'] || d['Factura PDF'] || '',
+        origin: procHasta
+      };
+    });
+
+    const final = procedencia 
+      ? mapped.filter(i => i.origin?.toLowerCase().includes(procedencia.toLowerCase()))
+      : mapped;
+
+    return { success: true, invoices: final };
+  } catch (err: any) {
+    console.error('Error in searchInvoicesForMassClaim:', err);
+    return { success: false, error: err.message };
   }
 }
 
@@ -177,9 +249,19 @@ export async function generateClaim(data: any) {
 
       let numFacturaAtrXml = '';
       if (f1Id) {
-        const f1 = await prisma.f1Invoice.findUnique({ where: { id: f1Id } });
+        const f1 = await prisma.f1Invoice.findFirst({ 
+          where: { 
+            OR: [
+              { id: f1Id },
+              { numeroFactura: f1Id }
+            ]
+          } 
+        });
         if (f1 && f1.numeroFactura) {
           numFacturaAtrXml = `\n<NumFacturaATR>${f1.numeroFactura}</NumFacturaATR>`;
+        } else {
+          // Fallback para CSV: asume que es el código fiscal directamente
+          numFacturaAtrXml = `\n<NumFacturaATR>${f1Id}</NumFacturaATR>`;
         }
       }
       
@@ -302,7 +384,62 @@ ${xmlNombre}
       return {
         success: true,
         isZip: true,
-        fileName: `Reclamaciones_Masivas_${new Date().getTime()}.zip`,
+        fileName: `Reclamaciones_Masivas_CSV_${new Date().getTime()}.zip`,
+        fileContent: zipBase64
+      };
+    } else if (mode === 'Masiva' && data.invoiceIds && Array.isArray(data.invoiceIds) && data.invoiceIds.length > 0) {
+      const zip = new PizZip();
+      let count = 0;
+
+      const invoices = await prisma.invoice.findMany({
+        where: { id: { in: data.invoiceIds } },
+        include: { supplyPoint: true }
+      });
+
+      for (const inv of invoices) {
+        if (!inv.supplyPoint?.cups) continue;
+        
+        let f1IdToUse = '';
+        
+        if (inv.invoiceData && typeof inv.invoiceData === 'object') {
+          const d = inv.invoiceData as any;
+          if (d['Codigo Fiscal']) {
+            let cf = String(d['Codigo Fiscal']).trim();
+            if (cf.startsWith('CF ')) {
+              cf = cf.substring(3).trim();
+            } else if (cf.startsWith('CF')) {
+              cf = cf.substring(2).trim();
+            }
+            f1IdToUse = cf;
+          }
+        }
+
+        if (!f1IdToUse && inv.billingEnd) {
+          const f1 = await prisma.f1Invoice.findFirst({
+            where: {
+              supplyPointId: inv.supplyPointId,
+              fechaFin: {
+                gte: new Date(inv.billingEnd.getTime() - 2 * 24 * 60 * 60 * 1000),
+                lte: new Date(inv.billingEnd.getTime() + 2 * 24 * 60 * 60 * 1000)
+              }
+            },
+            orderBy: { fechaFin: 'desc' }
+          });
+          if (f1) {
+            f1IdToUse = f1.id;
+          }
+        }
+
+        const xml = await buildR1Xml(inv.supplyPoint.cups, motivo, submotivo, f1IdToUse);
+        zip.file(`Reclamacion_${inv.supplyPoint.cups}_${count}.xml`, xml);
+        count++;
+      }
+
+      const zipBase64 = zip.generate({ type: 'base64' });
+      return {
+        success: true,
+        isZip: true,
+        fileName: `Reclamaciones_Masivas_Facturas_${new Date().getTime()}.zip`,
         fileContent: zipBase64
       };
     }

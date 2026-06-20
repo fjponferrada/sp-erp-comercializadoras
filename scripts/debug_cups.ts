@@ -1,0 +1,1 @@
+import { prisma } from '../src/lib/prisma'; prisma.supplyPoint.findMany({where: {cups: 'ES0031101652994001SC0F'}, include: {contracts: {select: {id: true, status: true, contractCode: true}}}}).then(r => console.log(JSON.stringify(r, null, 2))).finally(() => prisma.$disconnect());

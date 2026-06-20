@@ -94,21 +94,37 @@ export async function processCchCsv(
     }
 
     // --- PARSEO Y AJUSTE DE FECHA (UTC -1h) ---
-    // Intentamos parsear. Python: %Y/%m/%d %H:%M o %Y/%m/%d %H:%M:%S
-    let dateObj = new Date(dateStr);
-    if (isNaN(dateObj.getTime())) {
-      const parts = dateStr.split(' ');
-      if (parts.length >= 2) {
-        const dParts = parts[0].split('/');
-        if (dParts.length === 3) {
-          // Asumimos formato europeo DD/MM/YYYY si el primero > 12, sino dejamos Date que lo intente
-          if (parseInt(dParts[0]) > 12) {
-            dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1]}Z`);
-          } else {
-            dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1]}Z`);
-          }
-        }
+    // Las distribuidoras españolas envían DD/MM/YYYY (o YYYY/MM/DD).
+    // Si usamos new Date() directo con DD/MM/YYYY, JS lo interpreta como MM/DD/YYYY (US) si DD <= 12.
+    // Esto provoca que el 07/05/2026 (7 de Mayo) se parsee como 5 de Julio (en el futuro).
+    
+    let dateObj: Date;
+    const parts = dateStr.split(' ');
+    
+    if (parts[0].includes('/')) {
+      const dParts = parts[0].split('/');
+      if (dParts[0].length === 4) {
+        // Formato YYYY/MM/DD
+        dateObj = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T${parts[1] || '00:00'}Z`);
+      } else if (dParts[2].length === 4) {
+        // Formato DD/MM/YYYY
+        dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}Z`);
+      } else {
+        dateObj = new Date(dateStr); // Fallback
       }
+    } else if (parts[0].includes('-')) {
+      const dParts = parts[0].split('-');
+      if (dParts[0].length === 4) {
+        // Formato YYYY-MM-DD
+        dateObj = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T${parts[1] || '00:00'}Z`);
+      } else if (dParts[2].length === 4) {
+        // Formato DD-MM-YYYY
+        dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}Z`);
+      } else {
+        dateObj = new Date(dateStr); // Fallback
+      }
+    } else {
+      dateObj = new Date(dateStr);
     }
 
     if (isNaN(dateObj.getTime())) {

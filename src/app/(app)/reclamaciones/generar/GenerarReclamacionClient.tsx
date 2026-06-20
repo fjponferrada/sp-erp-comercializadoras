@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Send, Upload, FileUp } from 'lucide-react';
-import { searchCupsForClaim, generateClaim } from '@/app/actions/reclamacionesActions';
+import { searchCupsForClaim, generateClaim, searchInvoicesForMassClaim } from '@/app/actions/reclamacionesActions';
 import toast from 'react-hot-toast';
 import { SUBTIPO_REQUIREMENTS } from '../utils/casuisticas';
 import { CNMC_DROPDOWN_OPTIONS } from '../utils/cnmc_codes';
@@ -39,7 +39,28 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
   const [file, setFile] = useState<File | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   
+  // Masiva Facturas State
+  const [masivaInputMode, setMasivaInputMode] = useState<'csv' | 'facturas'>('csv');
+  const [filtroDesde, setFiltroDesde] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 10);
+    return d.toISOString().split('T')[0];
+  });
+  const [filtroHasta, setFiltroHasta] = useState(() => new Date().toISOString().split('T')[0]);
+  const [filtroProcedencia, setFiltroProcedencia] = useState('Estimada');
+  const [filtroTipoFactura, setFiltroTipoFactura] = useState('Normal');
+  const [searchedInvoices, setSearchedInvoices] = useState<any[]>([]);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [isSearchingInvoices, setIsSearchingInvoices] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
+
+  // Efecto para autocompletar comentarios si el submotivo es 009 en Masiva
+  React.useEffect(() => {
+    if (mode === 'Masiva' && submotivo.includes('009')) {
+      setComentarios('El Cliente niega haber imposibilitado el acceso para la toma de lectura, tampoco tiene aviso de ausencia, ni se le ofrece alternativa o tlf para concertar cita. La Distribuidora está incumpliendo su obligación de mantenimiento del equipo de medida (incidencia de comunicaciones persistente). Según el RD 1110/2007 y la Resolución de 18 de diciembre de 2019, ante la falta de lectura real por fallo del equipo, deben proceder a su reparación inmediata. SOLICITAMOS: 1) Anulación de la lectura estimada por ser materialmente errónea. 2) Reparación urgente del sistema de telegestión. 3) Refacturación con lectura REAL. De persistir la estimación sin subsanar la avería del contador, se elevará denuncia ante el órgano competente de Energía de la Junta de Andalucía');
+    }
+  }, [mode, submotivo]);
 
   const handleSearchCups = async () => {
     if (!cups) return toast.error('Introduce un CUPS');
@@ -78,6 +99,7 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       selectedF1Id: mode === 'Individual' ? selectedF1Id : undefined,
       comentarios,
       csvContent,
+      invoiceIds: mode === 'Masiva' && masivaInputMode === 'facturas' ? selectedInvoiceIds : undefined,
       dynamicFields,
       fechaLectura: submotivo.includes('036') ? fechaLectura : undefined,
       lecturas: submotivo.includes('036') ? lecturas : undefined
@@ -111,6 +133,35 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       toast.error(res.error || 'Error al generar');
     }
     setSubmitting(false);
+  };
+
+  const handleSearchInvoices = async () => {
+    setIsSearchingInvoices(true);
+    const res = await searchInvoicesForMassClaim(filtroDesde, filtroHasta, filtroProcedencia, filtroTipoFactura);
+    if (res.success && res.invoices) {
+      setSearchedInvoices(res.invoices);
+      toast.success(`Se encontraron ${res.invoices.length} facturas`);
+    } else {
+      toast.error(res.error || 'Error al buscar facturas');
+      setSearchedInvoices([]);
+    }
+    setIsSearchingInvoices(false);
+  };
+
+  const toggleInvoiceSelection = (id: string) => {
+    if (selectedInvoiceIds.includes(id)) {
+      setSelectedInvoiceIds(selectedInvoiceIds.filter(i => i !== id));
+    } else {
+      setSelectedInvoiceIds([...selectedInvoiceIds, id]);
+    }
+  };
+
+  const toggleAllInvoices = () => {
+    if (selectedInvoiceIds.length === searchedInvoices.length && searchedInvoices.length > 0) {
+      setSelectedInvoiceIds([]);
+    } else {
+      setSelectedInvoiceIds(searchedInvoices.map(i => i.id));
+    }
   };
 
   // Mapeo estricto definido por el usuario
@@ -505,45 +556,228 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
         )}
 
         {mode === 'Masiva' && (
-          <div className="bg-[var(--bg-elevated)] p-6 md:p-8 rounded-2xl border border-[var(--border)] shadow-lg space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-            <h3 className="text-sm font-bold text-[var(--lime)] tracking-widest uppercase border-b border-[var(--border)] pb-3 mb-6">
-              Archivos para Generación Masiva
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-[var(--text-muted)] block">
-                  1. Archivo Base (Requerido)
-                </label>
-                <div className="border-2 border-dashed border-[var(--lime)] bg-[rgba(222,255,154,0.02)] rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all hover:bg-[rgba(222,255,154,0.05)]">
-                  <Upload size={32} className="text-[var(--lime)] mb-3" />
-                  <label className="bg-[var(--lime)] text-[#0B0F19] font-bold px-6 py-2 rounded-lg cursor-pointer hover:brightness-110 transition-all shadow-md">
-                    Seleccionar CSV
-                    <input type="file" accept=".csv" className="hidden" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
-                  </label>
-                  <p className="mt-4 text-sm text-gray-300 font-medium">
-                    {csvFile ? csvFile.name : 'Arrastre su CSV o haga clic para buscar'}
-                  </p>
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">
-                    Formato: CUPS;CODIGO FISCAL;MARCA
-                  </p>
+          <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-[var(--bg-elevated)] p-6 md:p-8 rounded-2xl border border-[var(--border)] shadow-lg space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-[var(--border)] pb-4 mb-6">
+                <h3 className="text-sm font-bold text-[var(--lime)] tracking-widest uppercase">
+                  Origen de Datos
+                </h3>
+                <div className="flex bg-[#111827] rounded-lg p-1 border border-[var(--border)] mt-4 md:mt-0">
+                  <button
+                    onClick={() => setMasivaInputMode('csv')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${masivaInputMode === 'csv' ? 'bg-[var(--lime)] text-[#0B0F19]' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    Aportar CSV
+                  </button>
+                  <button
+                    onClick={() => setMasivaInputMode('facturas')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${masivaInputMode === 'facturas' ? 'bg-[var(--lime)] text-[#0B0F19]' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    Seleccionar Facturas
+                  </button>
                 </div>
               </div>
+              
+              {masivaInputMode === 'csv' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">
+                  <div className="space-y-3">
+                    <label className="text-sm font-semibold text-[var(--text-muted)] block">
+                      1. Archivo Base (Requerido)
+                    </label>
+                    <div className="border-2 border-dashed border-[var(--lime)] bg-[rgba(222,255,154,0.02)] rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all hover:bg-[rgba(222,255,154,0.05)]">
+                      <Upload size={32} className="text-[var(--lime)] mb-3" />
+                      <label className="bg-[var(--lime)] text-[#0B0F19] font-bold px-6 py-2 rounded-lg cursor-pointer hover:brightness-110 transition-all shadow-md">
+                        Seleccionar CSV
+                        <input type="file" accept=".csv" className="hidden" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
+                      </label>
+                      <p className="mt-4 text-sm text-gray-300 font-medium">
+                        {csvFile ? csvFile.name : 'Arrastre su CSV o haga clic para buscar'}
+                      </p>
+                      <p className="mt-2 text-xs text-[var(--text-muted)]">
+                        Formato: CUPS;CODIGO FISCAL;MARCA
+                      </p>
+                    </div>
+                  </div>
 
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-[var(--text-muted)] block">
-                  2. Documentación de Respaldo (Opcional)
-                </label>
-                <div className="border-2 border-dashed border-[var(--border)] bg-[#111827] rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all hover:border-gray-500 hover:bg-[#1E293B]">
-                  <FileUp size={32} className="text-gray-400 mb-3" />
-                  <label className="bg-[#1E293B] border border-[var(--border)] text-gray-200 font-semibold px-6 py-2 rounded-lg cursor-pointer hover:bg-[#334155] transition-all shadow-sm">
-                    Añadir Adjunto
-                    <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-                  </label>
-                  <p className="mt-4 text-sm text-gray-400 font-medium">
-                    {file ? file.name : 'Ej: PDF genérico para todas las reclamaciones'}
-                  </p>
+                  <div className="space-y-3">
+                    <label className="text-sm font-semibold text-[var(--text-muted)] block">
+                      2. Documentación de Respaldo (Opcional)
+                    </label>
+                    <div className="border-2 border-dashed border-[var(--border)] bg-[#111827] rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all hover:border-gray-500 hover:bg-[#1E293B]">
+                      <FileUp size={32} className="text-gray-400 mb-3" />
+                      <label className="bg-[#1E293B] border border-[var(--border)] text-gray-200 font-semibold px-6 py-2 rounded-lg cursor-pointer hover:bg-[#334155] transition-all shadow-sm">
+                        Añadir Adjunto
+                        <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                      </label>
+                      <p className="mt-4 text-sm text-gray-400 font-medium">
+                        {file ? file.name : 'Ej: PDF genérico para todas las reclamaciones'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              ) : (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="grid grid-cols-5 gap-4 mb-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Desde</label>
+                      <input 
+                        type="date" 
+                        value={filtroDesde} 
+                        onChange={e => setFiltroDesde(e.target.value)} 
+                        className="w-full border border-[var(--border)] bg-[#111827] rounded-lg px-3 py-2 text-sm text-gray-100 focus:ring-2 focus:ring-[var(--lime)]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Hasta</label>
+                      <input 
+                        type="date" 
+                        value={filtroHasta} 
+                        onChange={e => setFiltroHasta(e.target.value)} 
+                        className="w-full border border-[var(--border)] bg-[#111827] rounded-lg px-3 py-2 text-sm text-gray-100 focus:ring-2 focus:ring-[var(--lime)]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Procedencia Hasta</label>
+                      <select 
+                        value={filtroProcedencia} 
+                        onChange={e => setFiltroProcedencia(e.target.value)} 
+                        className="w-full border border-[var(--border)] bg-[#111827] rounded-lg px-3 py-2 text-sm text-gray-100 focus:ring-2 focus:ring-[var(--lime)] appearance-none"
+                      >
+                        <option value="Telegestion">Telegestion</option>
+                        <option value="TPL">TPL</option>
+                        <option value="Telemedida">Telemedida</option>
+                        <option value="Visual">Visual</option>
+                        <option value="Estimada">Estimada</option>
+                        <option value="Sin Lectura">Sin Lectura</option>
+                        <option value="Autolectura">Autolectura</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Tipo Factura</label>
+                      <select 
+                        value={filtroTipoFactura} 
+                        onChange={e => setFiltroTipoFactura(e.target.value)} 
+                        className="w-full border border-[var(--border)] bg-[#111827] rounded-lg px-3 py-2 text-sm text-gray-100 focus:ring-2 focus:ring-[var(--lime)] appearance-none"
+                      >
+                        <option value="Normal">Normal</option>
+                        <option value="Rectificativa">Rectificativa</option>
+                        <option value="Abono">Abono</option>
+                        <option value="Regularizadora">Regularizadora</option>
+                        <option value="Complementaria">Complementaria</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button 
+                        onClick={handleSearchInvoices}
+                        disabled={isSearchingInvoices}
+                        className="w-full bg-[var(--lime)] text-[#0B0F19] font-bold px-4 py-2 rounded-lg hover:brightness-110 flex justify-center items-center gap-2"
+                      >
+                        <Search size={16} /> {isSearchingInvoices ? 'Buscando...' : 'Buscar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden border border-[var(--border)] rounded-xl">
+                    <div className="p-3 bg-[#111827] border-b border-[var(--border)] flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-300">
+                        {searchedInvoices.length} facturas encontradas
+                      </span>
+                      <span className="text-xs text-[var(--lime)] font-bold px-2 py-1 bg-[rgba(222,255,154,0.1)] rounded">
+                        {selectedInvoiceIds.length} seleccionadas
+                      </span>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto no-scrollbar">
+                      <table className="w-full text-left text-sm whitespace-nowrap bg-[#1E293B]">
+                        <thead className="bg-[#0B0F19] text-gray-400 text-xs uppercase tracking-wider sticky top-0 z-10">
+                          <tr>
+                            <th className="px-4 py-3 text-center">
+                              <input 
+                                type="checkbox" 
+                                checked={searchedInvoices.length > 0 && selectedInvoiceIds.length === searchedInvoices.length}
+                                onChange={toggleAllInvoices}
+                                className="w-4 h-4 accent-[var(--lime)] rounded"
+                              />
+                            </th>
+                            <th className="px-4 py-3">Núm Factura</th>
+                            <th className="px-4 py-3">Titular</th>
+                            <th className="px-4 py-3">CUPS</th>
+                            <th className="px-4 py-3">Contrato</th>
+                            <th className="px-4 py-3">Cód. Fiscal F1</th>
+                            <th className="px-4 py-3">Tipo Factura</th>
+                            <th className="px-4 py-3">Fecha Fact.</th>
+                            <th className="px-4 py-3">Proc. Desde</th>
+                            <th className="px-4 py-3">Proc. Hasta</th>
+                            <th className="px-4 py-3">Desde</th>
+                            <th className="px-4 py-3">Hasta</th>
+                            <th className="px-4 py-3">Total</th>
+                            <th className="px-4 py-3 text-center">PDF</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border)]">
+                          {searchedInvoices.length === 0 ? (
+                            <tr>
+                              <td colSpan={14} className="px-4 py-8 text-center text-[var(--text-muted)] text-sm">
+                                Utilice los filtros para buscar facturas.
+                              </td>
+                            </tr>
+                          ) : (
+                            searchedInvoices.map((inv) => (
+                              <tr 
+                                key={inv.id} 
+                                onClick={() => toggleInvoiceSelection(inv.id)}
+                                className={`cursor-pointer transition-colors ${selectedInvoiceIds.includes(inv.id) ? 'bg-[rgba(222,255,154,0.05)]' : 'hover:bg-[#334155]'}`}
+                              >
+                                <td className="px-4 py-3 text-center">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedInvoiceIds.includes(inv.id)}
+                                    onChange={() => toggleInvoiceSelection(inv.id)}
+                                    onClick={e => e.stopPropagation()}
+                                    className="w-4 h-4 accent-[var(--lime)] rounded"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 font-mono text-gray-300">{inv.invoiceNumber}</td>
+                                <td className="px-4 py-3 truncate max-w-[150px]">{inv.clientName}</td>
+                                <td className="px-4 py-3 font-mono text-[var(--lime)] text-xs">{inv.cups || '-'}</td>
+                                <td className="px-4 py-3 text-gray-300 text-xs">{inv.contractCode || '-'}</td>
+                                <td className="px-4 py-3 font-mono text-purple-400 text-xs">{inv.codigoFiscal || '-'}</td>
+                                <td className="px-4 py-3 text-gray-400 text-xs">{inv.invoiceType || '-'}</td>
+                                <td className="px-4 py-3 text-gray-300">{inv.issueDate ? new Date(inv.issueDate).toLocaleDateString() : '-'}</td>
+                                <td className="px-4 py-3 text-[var(--text-muted)] text-xs">{inv.procedenciaDesde || '-'}</td>
+                                <td className="px-4 py-3 text-[var(--text-muted)] text-xs">{inv.procedenciaHasta || '-'}</td>
+                                <td className="px-4 py-3 text-gray-300">{inv.billingStart ? new Date(inv.billingStart).toLocaleDateString() : '-'}</td>
+                                <td className="px-4 py-3 text-gray-300">{inv.billingEnd ? new Date(inv.billingEnd).toLocaleDateString() : '-'}</td>
+                                <td className="px-4 py-3 font-bold text-gray-200">{inv.totalAmount ? `${inv.totalAmount.toFixed(2)} €` : '-'}</td>
+                                <td className="px-4 py-3 text-center">
+                                  {inv.pdfUrl ? (
+                                    <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 flex justify-center" onClick={e => e.stopPropagation()} title="Ver PDF">
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-file-text"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                                    </a>
+                                  ) : '-'}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-[var(--bg-elevated)] p-6 md:p-8 rounded-2xl border border-[var(--border)] shadow-lg">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
+                  Comentarios
+                </label>
+                <textarea 
+                  rows={4}
+                  className="w-full border border-[var(--border)] bg-[#111827] rounded-xl px-4 py-3 text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--lime)] focus:border-transparent transition-all shadow-sm resize-y"
+                  placeholder="Escriba aquí sus comentarios..."
+                  value={comentarios}
+                  onChange={(e) => setComentarios(e.target.value)}
+                />
               </div>
             </div>
           </div>

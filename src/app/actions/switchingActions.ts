@@ -147,3 +147,16 @@ export async function retryUnresolvedSwitchingEventsAction() {
     return { success: false, error: error.message };
   }
 }
+
+export async function getDistributorScrapingStatus() {
+  try {
+    const configs = await prisma.distributor.findMany({
+      where: { webScrapingActive: true },
+      select: { name: true, webLastSyncAt: true }
+    });
+    return configs;
+  } catch (error) {
+    console.error("Error fetching scraping status:", error);
+    return [];
+  }
+}

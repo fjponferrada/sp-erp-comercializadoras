@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { UploadCloud, CheckCircle, AlertTriangle, RefreshCcw, FileText, Check, X } from 'lucide-react';
+import { UploadCloud, CheckCircle, AlertTriangle, RefreshCcw, FileText, Check, X, Server, Loader2 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import Topbar from '@/components/Topbar';
+import { triggerFtpSyncManually, getDistributorSyncStatus } from '@/app/actions/ftpSync';
 
 export default function ImportadorCchPage() {
   const [uploading, setUploading] = useState(false);
@@ -13,6 +14,57 @@ export default function ImportadorCchPage() {
   const [processedFiles, setProcessedFiles] = useState(0);
   const [results, setResults] = useState<{ file: string; success: boolean; message: string; details?: any }[]>([]);
   const [finished, setFinished] = useState(false);
+  const [syncingFtp, setSyncingFtp] = useState(false);
+  const [ftpResults, setFtpResults] = useState<any>(null);
+  const [syncJobId, setSyncJobId] = useState<string | null>(null);
+  const [syncJobStatus, setSyncJobStatus] = useState<any>(null);
+  const [distributorStatuses, setDistributorStatuses] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    getDistributorSyncStatus().then(setDistributorStatuses);
+  }, []);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (syncJobId) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/jobs/sync/${syncJobId}`);
+          if (res.ok) {
+            const data = await res.json();
+            setSyncJobStatus(data);
+            if (data.status === 'COMPLETED' || data.status === 'ERROR') {
+              setSyncingFtp(false);
+              clearInterval(interval);
+              getDistributorSyncStatus().then(setDistributorStatuses);
+            }
+          }
+        } catch (e) {}
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [syncJobId]);
+
+  const handleSyncFtp = async () => {
+    try {
+      setSyncingFtp(true);
+      setFtpResults(null);
+      setSyncJobId(null);
+      setSyncJobStatus(null);
+      
+      const res = await triggerFtpSyncManually();
+      if (res.jobId) {
+        setSyncJobId(res.jobId);
+        setSyncJobStatus({ status: 'PENDING', progress: 0, logs: 'Iniciando sincronización en segundo plano...' });
+      } else {
+        setFtpResults({ success: true, message: res.message, results: res.results });
+        setSyncingFtp(false);
+      }
+    } catch (error: any) {
+      setFtpResults({ success: false, message: error.message });
+      setSyncingFtp(false);
+    }
+  };
 
   const processFiles = async (files: File[]) => {
     if (!files || files.length === 0) return;
@@ -92,6 +144,95 @@ export default function ImportadorCchPage() {
       />
 
       <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+        {/* FTP SYNC BUTTON */}
+        <div className="flex flex-col items-start gap-4 p-6 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl shadow-sm">
+          <div className="flex items-center justify-between w-full">
+            <div>
+              <h3 className="text-lg font-bold text-gray-200 flex items-center gap-2">
+                <Server className="w-5 h-5 text-[var(--lime)]" />
+                Sincronización FTP Automática
+              </h3>
+              <p className="text-sm text-gray-400 mt-1">Conecta con los servidores FTP de las distribuidoras configuradas para descargar nuevas curvas de carga.</p>
+              {distributorStatuses.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {distributorStatuses.map(d => (
+                    <span key={d.name} className="text-xs px-2 py-1 bg-gray-800 rounded-md border border-gray-700 text-gray-300">
+                      <strong className="text-[var(--lime)]">{d.name}</strong>:{' '}
+                      {d.ftpLastSyncAt ? new Date(d.ftpLastSyncAt).toLocaleString('es-ES') : 'Nunca'}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button 
+              onClick={handleSyncFtp}
+              disabled={syncingFtp || uploading}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold transition-all ${
+                syncingFtp || uploading 
+                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+                  : 'bg-[var(--lime)] text-black hover:scale-105'
+              }`}
+            >
+              {syncingFtp ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
+              {syncingFtp ? 'Sincronizando...' : 'Conectar FTPs Ahora'}
+            </button>
+          </div>
+          
+          {syncJobStatus && (
+            <div className="w-full p-4 rounded-lg mt-2 bg-gray-800/50 border border-gray-700">
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between text-sm text-gray-300">
+                  <span className="font-semibold text-[var(--lime)]">{syncJobStatus.status}</span>
+                  <span>{syncJobStatus.progress}%</span>
+                </div>
+                <div className="w-full bg-gray-900 rounded-full h-2.5">
+                  <div className="bg-[var(--lime)] h-2.5 rounded-full transition-all duration-500" style={{ width: `${syncJobStatus.progress}%` }}></div>
+                </div>
+                {syncJobStatus.logs && (
+                  <pre className="mt-2 text-xs text-gray-400 bg-black/50 p-2 rounded-md max-h-32 overflow-y-auto whitespace-pre-wrap">
+                    {syncJobStatus.logs}
+                  </pre>
+                )}
+                {syncJobStatus.status === 'COMPLETED' && syncJobStatus.results && (
+                  <div className="mt-2 p-3 bg-green-900/20 border border-green-800 rounded-md">
+                    <p className="text-green-400 font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Sincronización finalizada con éxito.</p>
+                  </div>
+                )}
+                {syncJobStatus.status === 'ERROR' && (
+                  <div className="mt-2 p-3 bg-red-900/20 border border-red-800 rounded-md">
+                    <p className="text-red-400 font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Ocurrió un error en la sincronización.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!syncJobStatus && ftpResults && (
+            <div className={`w-full p-4 rounded-lg mt-2 ${ftpResults.success ? 'bg-green-900/20 border border-green-800' : 'bg-red-900/20 border border-red-800'}`}>
+              <div className="flex items-start">
+                {ftpResults.success ? <CheckCircle className="w-5 h-5 text-green-400 mt-0.5 mr-2 flex-shrink-0" /> : <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 mr-2 flex-shrink-0" />}
+                <div>
+                  <p className={`font-medium ${ftpResults.success ? 'text-green-300' : 'text-red-300'}`}>{ftpResults.message}</p>
+                  {ftpResults.results && Array.isArray(ftpResults.results) && (
+                    <ul className="mt-2 text-sm text-gray-300 space-y-1">
+                      {ftpResults.results.map((r: any, idx: number) => (
+                        <li key={idx} className="flex gap-2">
+                          <span className="font-mono text-gray-400">[{r.distributor}]</span>
+                          {r.status === 'success' ? (
+                            <span className="text-green-400">OK ({r.processedFiles} archivos procesados)</span>
+                          ) : (
+                            <span className="text-red-400">Error: {r.error}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* DROPZONE */}
         {!uploading && !finished && (

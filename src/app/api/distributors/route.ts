@@ -42,6 +42,10 @@ export async function POST(req: Request) {
         ftpPassword: body.ftpPassword || null,
         ftpTargetPath: body.ftpTargetPath || null,
         ftpActive: body.ftpActive || false,
+        webUser: body.webUser || null,
+        webPassword: body.webPassword || null,
+        webScriptPath: body.webScriptPath || null,
+        webScrapingActive: body.webScrapingActive || false,
       }
     });
 

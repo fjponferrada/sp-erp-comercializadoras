@@ -15,6 +15,10 @@ const r2 = new S3Client({
   },
 });
 
+export async function ingestWorkerXml(file: File) {
+  return await ingestCore(file);
+}
+
 export async function ingestSwitchingXmlAction(formData: FormData) {
   try {
     const session = await auth();
@@ -26,6 +30,16 @@ export async function ingestSwitchingXmlAction(formData: FormData) {
     if (!file) {
       return { success: false, error: 'No se envió ningún archivo' };
     }
+
+    return await ingestCore(file);
+  } catch (error: any) {
+    console.error('Error ingestSwitchingXmlAction:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function ingestCore(file: File) {
+  try {
 
     const originalName = file.name;
     const arrayBuffer = await file.arrayBuffer();
@@ -84,7 +98,7 @@ export async function ingestSwitchingXmlAction(formData: FormData) {
     return result;
 
   } catch (error: any) {
-    console.error('Error ingestSwitchingXmlAction:', error);
+    console.error('Error ingestCore:', error);
     return { success: false, error: error.message };
   }
 }
@@ -164,9 +178,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     if (paso === '06' && procesoBase !== 'R1') {
       // Regla estricta: No se puede procesar 06 si fechaPrevistaBaja está vacía (esperando al 11)
       const activeContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: 'ACTIVO' }
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
       });
       if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = activeContract.id;
         if (!activeContract.fechaPrevistaBaja) {
           tipoError = "ESPERANDO_PASO_11";
@@ -179,6 +197,35 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             where: { id: activeContract.id },
             data: { terminationDate: parsedData.fechaActivacionBaja, status: 'FINALIZADO' }
           });
+
+          // Rechazo en cadena: versiones M1 posteriores pendientes
+          if (activeContract.contractCode) {
+            await prisma.contract.updateMany({
+              where: {
+                contractCode: activeContract.contractCode,
+                tipo: 'M1',
+                version: { gt: activeContract.version },
+                status: { in: ['BORRADOR', 'ACEPTADO', 'TRAMITANDO'] }
+              },
+              data: { 
+                status: 'RECHAZADO',
+                internalComments: 'Rechazado automático: CUPS causa baja antes de la activación de este contrato.'
+              }
+            });
+          }
+
+          // Rechazo en cadena: renovaciones huérfanas para este CUPS
+          await prisma.contract.updateMany({
+            where: {
+              supplyPoint: { cups: supplyPoint.cups },
+              tipo: 'R',
+              status: { in: ['BORRADOR', 'ACEPTADO', 'TRAMITANDO'] }
+            },
+            data: { 
+              status: 'RECHAZADO',
+              internalComments: 'Rechazado automático: CUPS causa baja antes de la activación de este contrato.'
+            }
+          });
         }
       } else {
         tipoError = "CONTRATO_NO_ACTIVO";
@@ -186,9 +233,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       }
     } else if (paso === '11' && procesoBase !== 'R1') {
       const activeContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: 'ACTIVO' }
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
       });
       if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = activeContract.id;
         if (activeContract.fechaPrevistaBaja) {
           tipoError = "COLISION_DE_FECHAS";
@@ -205,9 +256,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       }
     } else if ((procesoBase === 'B1' || procesoBase === 'B2' || procesoBase === 'E2') && paso === '05') {
       const activeContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: 'ACTIVO' }
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
       });
       if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = activeContract.id;
         if (procesoBase === 'B1' || procesoBase === 'B2') {
           await prisma.contract.update({
@@ -224,9 +279,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       }
     } else if (paso === '05' && procesoBase !== 'R1') {
       const tramitandoContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: 'TRAMITANDO' }
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'TRAMITANDO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
       });
       if (tramitandoContract) {
+        supplyPoint = tramitandoContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = tramitandoContract.id;
         if (!tramitandoContract.fechaPrevistaActivacion) {
           tipoError = "ESPERANDO_PASO_02";
@@ -243,7 +302,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           // Regla M1/M2: Rescindir contrato anterior
           if (procesoBase === 'M1' || procesoBase === 'M2') {
             const oldActiveContract = await prisma.contract.findFirst({
-              where: { supplyPointId: supplyPoint.id, status: 'ACTIVO', id: { not: tramitandoContract.id } }
+              where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO', id: { not: tramitandoContract.id } }
             });
             if (oldActiveContract && !oldActiveContract.terminationDate) {
               const prevDate = new Date(parsedData.fechaActivacionAlta);
@@ -261,9 +320,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       }
     } else if ((procesoBase === 'B1' || procesoBase === 'B2' || procesoBase === 'E2') && paso === '02') {
       const activeContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: 'ACTIVO' }
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
       });
       if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = activeContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
           const updateData: any = { fechaAceptacion: parsedData.fechaAR || new Date() };
@@ -288,9 +351,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       }
     } else if ((paso === '02' || paso === '04') && procesoBase !== 'R1') {
       const tramitandoContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: 'TRAMITANDO' }
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'TRAMITANDO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
       });
       if (tramitandoContract) {
+        supplyPoint = tramitandoContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = tramitandoContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
           if (tramitandoContract.fechaAceptacion) {
@@ -324,10 +391,13 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     } else {
       // Fallback genérico para otros pasos
       const anyContract = await prisma.contract.findFirst({
-        where: { supplyPointId: supplyPoint.id, status: { notIn: ['FINALIZADO', 'Finalizado'] } },
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: { notIn: ['FINALIZADO', 'Finalizado'] } },
+        include: { supplyPoint: true },
         orderBy: { createdAt: 'desc' }
       });
       if (anyContract) {
+        supplyPoint = anyContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
         contractId = anyContract.id;
       } else {
         warning = "No se encontró un contrato reciente para asignar este evento.";

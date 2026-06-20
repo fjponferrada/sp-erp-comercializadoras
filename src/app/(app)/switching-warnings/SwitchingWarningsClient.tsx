@@ -1,5 +1,7 @@
 'use client';
 
+import Topbar from '@/components/Topbar';
+
 import React, { useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -104,22 +106,12 @@ export default function SwitchingWarningsClient({
   };
 
   return (
-    <div className="min-h-screen relative outline-none" style={{ background: 'var(--bg-base)' }}>
-      <div className="p-6 w-full max-w-[1920px] mx-auto space-y-6">
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2 text-[var(--lime)]">
-              <AlertTriangle className="h-6 w-6" />
-              Eventos Switchings
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Revisa todos los archivos XML subidos (Completados y Errores). Total: {totalCount}
-            </p>
-          </div>
-          
+    <div className="min-h-screen relative outline-none flex flex-col" style={{ background: 'var(--bg-base)' }}>
+      <Topbar 
+        title="Eventos Switchings"
+        subtitle={`Revisa todos los archivos XML subidos (Completados y Errores). Total: ${totalCount}`}
+        customActions={
           <div className="flex gap-3 w-full md:w-auto items-center">
-
             <div className="relative flex-1 md:w-64">
               <input
                 type="text"
@@ -160,24 +152,25 @@ export default function SwitchingWarningsClient({
             <button
               onClick={async () => {
                 setLoading(true);
-                const sweepId = toast.loading('Iniciando barrido manual...');
-                const retryResult = await retryUnresolvedSwitchingEventsAction();
-                if (retryResult.success) {
-                  toast.success(`Barrido completado: ${retryResult.resolvedCount}/${retryResult.processedCount} resueltos`, { id: sweepId });
+                const result = await retryUnresolvedSwitchingEventsAction();
+                if (result.success) {
+                  toast.success(result.message || 'Eventos re-asociados');
                   fetchEvents(true);
                 } else {
-                  toast.error('Error en el barrido: ' + retryResult.error, { id: sweepId });
+                  toast.error(result.message || 'Error reintentando');
                 }
                 setLoading(false);
               }}
               disabled={loading}
-              className="flex items-center gap-2 bg-[var(--lime)] text-black px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors text-sm font-bold shadow-lg"
-              title="Re-procesar Warnings"
+              className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-4 py-2 rounded-lg text-sm font-medium border border-blue-500/30 transition-colors flex items-center gap-2 whitespace-nowrap"
             >
-              Re-procesar Pendientes
+              <RefreshCcw className="h-4 w-4" />
+              Reintentar Asociación
             </button>
           </div>
-        </div>
+        }
+      />
+      <div className="p-6 w-full max-w-[1920px] mx-auto space-y-6 flex-1">
 
         {/* TABLE */}
         <div className="bg-[var(--bg-elevated)] rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">

@@ -722,6 +722,8 @@ model F1Invoice {
   contract   Contract? @relation(fields: [contractId], references: [id])
 
   numeroFactura String?
+  tipoDocumento String @default("FacturaATR")
+  motivoFacturacion String?
   fechaEmision  DateTime?
   fechaInicio   DateTime?
   fechaFin      DateTime?
@@ -753,7 +755,12 @@ model Distributor {
   ftpPassword   String?
   ftpTargetPath String?
   ftpActive     Boolean   @default(false)
-  ftpLastSyncAt DateTime?
+  ftpLastSyncAt     DateTime?
+  webUser           String?
+  webPassword       String?
+  webScriptPath     String?
+  webScrapingActive Boolean   @default(false)
+  webLastSyncAt     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -830,4 +837,24 @@ model ForecastModelCache {
   version   Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ScrapingJob {
+  id        String   @id @default(cuid())
+  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, ERROR
+  logs      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SyncJob {
+  id          String   @id @default(cuid())
+  type        String   @default("FTP_SYNC")
+  status      String   @default("PENDING") // PENDING, RUNNING, COMPLETED, ERROR
+  progress    Int      @default(0)
+  total       Int      @default(0)
+  logs        String?
+  results     Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -164,7 +164,17 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
         </div>
         
         {showPaymentButtons && <SendInvoicesButton pendingCount={pendingCount} />}
-        <button className="btn-secondary">
+        <button 
+          className="btn-secondary"
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (searchTerm) params.set('search', searchTerm);
+            if (filterType) params.set('type', filterType);
+            if (dateFrom) params.set('from', dateFrom);
+            if (dateTo) params.set('to', dateTo);
+            window.open(`/api/facturas/export?${params.toString()}`, '_blank');
+          }}
+        >
           <Download size={14} />
           Exportar
         </button>

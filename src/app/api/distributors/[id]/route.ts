@@ -24,6 +24,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.ftpTargetPath !== undefined) dataToUpdate.ftpTargetPath = body.ftpTargetPath;
     if (body.ftpActive !== undefined) dataToUpdate.ftpActive = Boolean(body.ftpActive);
 
+    // Scraping fields
+    if (body.webUser !== undefined) dataToUpdate.webUser = body.webUser;
+    if (body.webPassword !== undefined) dataToUpdate.webPassword = body.webPassword;
+    if (body.webScriptPath !== undefined) dataToUpdate.webScriptPath = body.webScriptPath;
+    if (body.webScrapingActive !== undefined) dataToUpdate.webScrapingActive = Boolean(body.webScrapingActive);
+
     const updated = await prisma.distributor.update({
       where: { id },
       data: dataToUpdate

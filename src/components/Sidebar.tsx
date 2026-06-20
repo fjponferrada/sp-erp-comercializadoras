@@ -73,12 +73,12 @@ const baseNavGroups = [
     items: [
       { href: '/distribuidoras', icon: Building2, label: 'Datos Distribuidora' },
       { href: '/ajustes/importador', icon: UploadCloud, label: 'Importar CCH' },
-      { href: '/importar-switching', icon: UploadCloud, label: 'Importar Switching' },
+      { href: '/importar-switching', icon: UploadCloud, label: 'Importador XML' },
       { href: '/switching-warnings', icon: AlertCircle, label: 'Eventos Switchings' },
       { href: '/eventos-switching/generar', icon: FileText, label: 'Generar Switching' },
       { href: '/eventos-switching/anulaciones', icon: FileWarning, label: 'Generar Anulación' },
       { href: '/reclamaciones', icon: FileWarning, label: 'Reclamaciones' },
-      { href: '/ficheros-f1', icon: FileText, label: 'Ficheros F1' },
+      { href: '/ficheros-f1', icon: FileText, label: 'Listado F1' },
     ],
   },
   {

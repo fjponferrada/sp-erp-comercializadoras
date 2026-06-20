@@ -38,6 +38,7 @@
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.8.1",
     "resend": "^6.14.0",
+    "ssh2-sftp-client": "^12.1.1",
     "uuid": "^14.0.0",
     "xlsx": "^0.18.5"
   },
@@ -52,6 +53,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ssh2-sftp-client": "^9.0.6",
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",

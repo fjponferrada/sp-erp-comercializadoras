@@ -14,6 +14,10 @@ const r2 = new S3Client({
   },
 });
 
+export async function ingestF1WorkerXml(file: File) {
+  return await ingestF1Core(file);
+}
+
 export async function ingestF1XmlAction(formData: FormData) {
   try {
     const session = await auth();
@@ -26,6 +30,15 @@ export async function ingestF1XmlAction(formData: FormData) {
       return { success: false, error: 'No se envió ningún archivo' };
     }
 
+    return await ingestF1Core(file);
+  } catch (error: any) {
+    console.error('Error ingestF1XmlAction:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function ingestF1Core(file: File) {
+  try {
     const originalName = file.name;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -49,12 +62,14 @@ export async function ingestF1XmlAction(formData: FormData) {
       return { success: false, error: `El archivo ${originalName} es del proceso ${proceso}, no F1.` };
     }
 
-    // El XML puede traer múltiples facturas, o solo una. Si no es array, lo forzamos a array.
-    const facturasList = mensaje.Facturas?.FacturaATR || [];
-    const facturasAtrArray = Array.isArray(facturasList) ? facturasList : [facturasList];
+    const facturasList = mensaje.Facturas?.FacturaATR;
+    const facturasAtrArray = facturasList ? (Array.isArray(facturasList) ? facturasList : [facturasList]) : [];
+    
+    const otrasFacturasList = mensaje.Facturas?.OtrasFacturas;
+    const otrasFacturasArray = otrasFacturasList ? (Array.isArray(otrasFacturasList) ? otrasFacturasList : [otrasFacturasList]) : [];
 
-    if (facturasAtrArray.length === 0) {
-       return { success: false, error: `El archivo ${originalName} no contiene ninguna FacturaATR.` };
+    if (facturasAtrArray.length === 0 && otrasFacturasArray.length === 0) {
+       return { success: false, error: `El archivo ${originalName} no contiene ninguna FacturaATR ni OtrasFacturas.` };
     }
 
     // 2. Subir a Cloudflare R2
@@ -116,9 +131,35 @@ export async function ingestF1XmlAction(formData: FormData) {
         }
       }
 
+      const parsedCodFactura = codFactura ? String(codFactura) : 'SIN_COD';
+      const finalFechaEmi = fechaEmiStr ? new Date(fechaEmiStr) : undefined;
+      const finalSaldo = isNaN(saldo) ? 0 : saldo;
+
+      // Buscar si ya existe para obviar y no machacar datos ni la fecha de importación
+      let existingF1;
+      if (parsedCodFactura !== 'SIN_COD') {
+        existingF1 = await prisma.f1Invoice.findFirst({
+          where: { numeroFactura: parsedCodFactura }
+        });
+      } else if (supplyPointId && finalFechaEmi) {
+        existingF1 = await prisma.f1Invoice.findFirst({
+          where: { 
+            numeroFactura: 'SIN_COD',
+            supplyPointId,
+            fechaEmision: finalFechaEmi,
+            saldoFactura: finalSaldo
+          }
+        });
+      }
+
+      if (existingF1) {
+        continue; // La obviamos
+      }
+
       await prisma.f1Invoice.create({
         data: {
-          numeroFactura: codFactura || 'SIN_COD',
+          numeroFactura: parsedCodFactura,
+          tipoDocumento: 'FacturaATR',
           fechaEmision: fechaEmiStr ? new Date(fechaEmiStr) : undefined,
           fechaInicio: fechaIniStr ? new Date(fechaIniStr) : undefined,
           fechaFin: fechaFinStr ? new Date(fechaFinStr) : undefined,
@@ -129,6 +170,83 @@ export async function ingestF1XmlAction(formData: FormData) {
           xmlUrl: xmlUrl,
           jsonData: f,
           supplyPointId,
+          contractId,
+          facturaRealizada: true,
+        }
+      });
+      procesadas++;
+    }
+
+    // Procesar OtrasFacturas
+    for (const of of otrasFacturasArray) {
+      const dGen = of.DatosGeneralesOtrasFacturas || {};
+      let cups = mensaje.Cabecera?.CUPS; // El CUPS viene en la Cabecera para OtrasFacturas
+      if (cups) cups = String(cups).trim();
+
+      const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+      const fechaEmiStr = dGen.DatosGeneralesFactura?.FechaFactura;
+      const motivoFacturacion = dGen.DatosGeneralesFactura?.MotivoFacturacion;
+      
+      const rawImporteTotal = dGen.DatosGeneralesFactura?.ImporteTotalFactura;
+      const saldo = parseFloat(rawImporteTotal !== undefined ? rawImporteTotal : '0');
+      
+      let supplyPointId = undefined;
+      let contractId = undefined;
+
+      if (cups) {
+        const baseCups = cups.substring(0, 20);
+        const sp = await prisma.supplyPoint.findFirst({ 
+          where: { cups: { startsWith: baseCups, mode: 'insensitive' } },
+          include: { contracts: { orderBy: { createdAt: 'desc' } } }
+        });
+        if (sp) {
+          supplyPointId = sp.id;
+          const activeContract = sp.contracts.find(c => c.status !== 'DRAFT' && c.status !== 'Borrador');
+          if (activeContract) {
+            contractId = activeContract.id;
+          }
+        }
+      }
+
+      const parsedCodFactura = codFactura ? String(codFactura) : 'SIN_COD';
+      const finalFechaEmi = fechaEmiStr ? new Date(fechaEmiStr) : undefined;
+      const finalSaldo = isNaN(saldo) ? 0 : saldo;
+
+      // Buscar si ya existe para obviar y no machacar datos ni la fecha de importación
+      let existingF1;
+      if (parsedCodFactura !== 'SIN_COD') {
+        existingF1 = await prisma.f1Invoice.findFirst({
+          where: { numeroFactura: parsedCodFactura }
+        });
+      } else if (supplyPointId && finalFechaEmi) {
+        existingF1 = await prisma.f1Invoice.findFirst({
+          where: { 
+            numeroFactura: 'SIN_COD',
+            supplyPointId,
+            fechaEmision: finalFechaEmi,
+            saldoFactura: finalSaldo
+          }
+        });
+      }
+
+      if (existingF1) {
+        continue; // La obviamos
+      }
+
+      await prisma.f1Invoice.create({
+        data: {
+          numeroFactura: parsedCodFactura,
+          tipoDocumento: 'OtrasFacturas',
+          motivoFacturacion: motivoFacturacion ? String(motivoFacturacion) : undefined,
+          fechaEmision: fechaEmiStr ? new Date(fechaEmiStr) : undefined,
+          saldoFactura: isNaN(saldo) ? 0 : saldo,
+          baseImponible: 0,
+          totalPeajes: 0,
+          totalCargos: 0,
+          xmlUrl: xmlUrl,
+          jsonData: of,
+          supplyPointId,
+          contractId,
           facturaRealizada: true,
         }
       });

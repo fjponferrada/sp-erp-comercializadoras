@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { SessionProvider } from 'next-auth/react';
+import AuthProvider from '@/components/AuthProvider';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <SessionProvider>
+        <AuthProvider>
           {children}
-        </SessionProvider>
+        </AuthProvider>
       </body>
     </html>
   );

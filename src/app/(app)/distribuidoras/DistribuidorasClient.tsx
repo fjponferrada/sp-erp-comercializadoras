@@ -150,6 +150,24 @@ export default function DistribuidorasClient() {
                         <span className="text-sm font-medium text-slate-300">Activar sincronización nocturna para esta distribuidora</span>
                       </label>
                     </div>
+
+                    <div className="col-span-2 pt-4 border-t border-slate-700/50 mt-2">
+                      <h4 className="text-sm font-semibold text-white mb-2">Configuración Web Scraping (SCTD)</h4>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Usuario Portal Web</label>
+                      <input type="text" className="form-input w-full" value={editForm.webUser || ''} onChange={e => setEditForm({...editForm, webUser: e.target.value})} placeholder="DNI / Usuario" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Contraseña Portal Web</label>
+                      <input type="password" className="form-input w-full" value={editForm.webPassword || ''} onChange={e => setEditForm({...editForm, webPassword: e.target.value})} placeholder="••••••••" />
+                    </div>
+                    <div className="col-span-2 flex items-center mt-2">
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input type="checkbox" className="form-checkbox bg-[#16272E] border-slate-600 text-primary-500 rounded focus:ring-primary-500 focus:ring-offset-[#16272E]" checked={editForm.webScrapingActive || false} onChange={e => setEditForm({...editForm, webScrapingActive: e.target.checked})} />
+                        <span className="text-sm font-medium text-slate-300">Activar Scraping Automático de ficheros SCTD (XML)</span>
+                      </label>
+                    </div>
                   </div>
 
                   <div className="flex justify-end space-x-3 pt-4">
@@ -202,6 +220,24 @@ export default function DistribuidorasClient() {
                         <label className="flex items-center space-x-3 cursor-pointer">
                           <input type="checkbox" className="form-checkbox bg-[#16272E] border-slate-600 text-primary-500 rounded focus:ring-primary-500 focus:ring-offset-[#16272E]" checked={editForm.ftpActive || false} onChange={e => setEditForm({...editForm, ftpActive: e.target.checked})} />
                           <span className="text-sm font-medium text-slate-300">Activar sincronización nocturna para esta distribuidora</span>
+                        </label>
+                      </div>
+
+                      <div className="col-span-2 pt-4 border-t border-slate-700/50 mt-2">
+                        <h4 className="text-sm font-semibold text-white mb-2">Configuración Web Scraping (SCTD)</h4>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Usuario Portal Web</label>
+                        <input type="text" className="form-input w-full" value={editForm.webUser || ''} onChange={e => setEditForm({...editForm, webUser: e.target.value})} placeholder="DNI / Usuario" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Contraseña Portal Web</label>
+                        <input type="password" className="form-input w-full" value={editForm.webPassword || ''} onChange={e => setEditForm({...editForm, webPassword: e.target.value})} placeholder="••••••••" />
+                      </div>
+                      <div className="col-span-2 flex items-center mt-2">
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                          <input type="checkbox" className="form-checkbox bg-[#16272E] border-slate-600 text-primary-500 rounded focus:ring-primary-500 focus:ring-offset-[#16272E]" checked={editForm.webScrapingActive || false} onChange={e => setEditForm({...editForm, webScrapingActive: e.target.checked})} />
+                          <span className="text-sm font-medium text-slate-300">Activar Scraping Automático de ficheros SCTD (XML)</span>
                         </label>
                       </div>
                     </div>

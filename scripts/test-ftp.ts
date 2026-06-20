@@ -1,0 +1,1 @@
+import 'dotenv/config'; import { GET } from '../src/app/api/cron/ftp-sync/route'; async function main() { const req = new Request('http://localhost?secret=' + process.env.CRON_SECRET); const res = await GET(req); const data = await res.json(); console.log(JSON.stringify(data, null, 2)); } main().catch(console.error);

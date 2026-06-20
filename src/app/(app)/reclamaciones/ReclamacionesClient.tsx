@@ -1,5 +1,7 @@
 'use client';
 
+import Topbar from '@/components/Topbar';
+
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -54,32 +56,28 @@ export default function ReclamacionesClient({
 
   
   return (
-    <div className="min-h-screen relative outline-none" style={{ background: 'var(--bg-base)' }}>
-      <div className="p-6 w-full mx-auto space-y-6">
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2 text-[var(--lime)]">
-              <FileWarning className="h-6 w-6" />
-              Reclamaciones
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Listado general de procesos de reclamación (R1). Total: {totalCount}
-            </p>
-          </div>
-          
+    <div className="min-h-screen relative outline-none flex flex-col" style={{ background: 'var(--bg-base)' }}>
+      <Topbar 
+        title="Reclamaciones"
+        subtitle={`Listado general de procesos de reclamación (R1). Total: ${totalCount}`}
+        customActions={
           <div className="flex gap-3 w-full md:w-auto items-center">
             <div className="relative flex-1 md:w-64">
               <input
                 type="text"
-                placeholder="Buscar CUPS, código..."
+                placeholder="Buscar CUPS, nombre..."
                 className="w-full pl-9 pr-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg focus:ring-1 focus:ring-[var(--lime)] focus:border-[var(--lime)] text-sm text-gray-200 placeholder-gray-500"
                 value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); fetchClaims(true, e.target.value); }}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (e.target.value === '') {
+                    fetchClaims(true, '');
+                  }
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && fetchClaims(true)}
               />
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
             </div>
-            
             <button
               onClick={() => fetchClaims(true)}
               disabled={loading}
@@ -88,7 +86,6 @@ export default function ReclamacionesClient({
             >
               <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
-
             <a
               href="/reclamaciones/generar"
               className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--lime)] text-[var(--bg-base)] font-semibold rounded-lg hover:bg-[#c9f07a] transition-colors"
@@ -96,7 +93,9 @@ export default function ReclamacionesClient({
               Generar Reclamación
             </a>
           </div>
-        </div>
+        }
+      />
+      <div className="p-6 w-full mx-auto space-y-6 flex-1">
 
         {/* TABLE */}
         <div className="bg-[var(--bg-elevated)] rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">

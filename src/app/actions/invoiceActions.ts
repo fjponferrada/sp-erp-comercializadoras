@@ -95,22 +95,31 @@ export async function importInvoicesAction(invoicesData: any[]) {
       // Helper para parsear fechas de Excel (serial) o strings (DD/MM/YYYY)
       const parseExcelDate = (val: any): Date => {
         if (!val) return new Date();
+        let d: Date;
         if (typeof val === 'number') {
-          return new Date((val - 25569) * 86400 * 1000);
-        }
-        if (typeof val === 'string') {
+          d = new Date((val - 25569) * 86400 * 1000);
+        } else if (typeof val === 'string') {
           if (val.includes('/')) {
             const parts = val.split('/');
             if (parts.length === 3) {
-               return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+               d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00Z`);
+            } else {
+               d = new Date(val);
             }
           } else if (/^\d+$/.test(val)) {
-            // Es un número de serie de Excel convertido a string por el modo raw
-            return new Date((parseInt(val, 10) - 25569) * 86400 * 1000);
+            d = new Date((parseInt(val, 10) - 25569) * 86400 * 1000);
+          } else {
+            d = new Date(val);
           }
+        } else {
+          d = new Date(val);
         }
-        const d = new Date(val);
+        
         if (isNaN(d.getTime())) return new Date();
+        
+        // Forzamos que la hora sea las 12:00 UTC para evitar que, por cambios de zona horaria (UTC+2 en España), 
+        // caiga a las 22:00 del día anterior.
+        d.setUTCHours(12, 0, 0, 0);
         return d;
       };
 
