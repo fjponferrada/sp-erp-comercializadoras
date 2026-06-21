@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function GET() {
   try {
@@ -13,7 +14,7 @@ export async function GET() {
 
     const contracts = await prisma.contract.findMany({
       where: {
-        airtableData: { not: null }
+        airtableData: { not: Prisma.AnyNull }
       },
       include: {
         AdditionalService: true

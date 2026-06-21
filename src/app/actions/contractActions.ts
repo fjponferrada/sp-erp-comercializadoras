@@ -350,7 +350,7 @@ export async function convertLeadToContractAction(leadId: string) {
         commissionType: product.commissionType || null,
         powerTiersCommission: product.powerTiersCommission ? product.powerTiersCommission : undefined,
         permanenceMonths: product.permanenceMonths || null,
-        additionalServicesSnapshot: additionalServicesSnapshot,
+        additionalServicesSnapshot: additionalServicesSnapshot ?? undefined,
         AdditionalService: additionalServiceConnect,
       },
     });
