@@ -154,7 +154,8 @@ export async function processCchCsv(
 
   let success = 0;
   
-  for (const [mapKey, data] of dailyData.entries()) {
+  // Transform map to array for batch processing
+  const allData = Array.from(dailyData.values()).map(data => {
     let isQuarterHourly = false;
     for (let i = 0; i < 96; i++) {
       if (i % 4 !== 0 && data.readings[i] !== 0) {
@@ -170,49 +171,87 @@ export async function processCchCsv(
       resolution = 'HOURLY';
     }
 
-    const dateIso = new Date(`${data.date}T00:00:00.000Z`);
+    return {
+      cups: data.cups,
+      dateIso: new Date(`${data.date}T00:00:00.000Z`),
+      finalReadings,
+      resolution,
+      isProvisional,
+      source
+    };
+  });
 
+  const BATCH_SIZE = 500;
+  for (let i = 0; i < allData.length; i += BATCH_SIZE) {
+    const batch = allData.slice(i, i + BATCH_SIZE);
+    
     try {
-      await prisma.$transaction(async (tx) => {
-        const existing = await tx.loadCurve.findUnique({
-          where: {
-            cups_date: {
-              cups: data.cups,
-              date: dateIso
-            }
-          }
-        });
+      // 1. Fetch existing records for this batch
+      const existingRecords = await prisma.loadCurve.findMany({
+        where: {
+          OR: batch.map(b => ({
+            cups: b.cups,
+            date: b.dateIso
+          }))
+        },
+        select: { id: true, cups: true, date: true, isProvisional: true }
+      });
+
+      const existingMap = new Map();
+      for (const rec of existingRecords) {
+        existingMap.set(`${rec.cups}_${rec.date.toISOString()}`, rec);
+      }
+
+      // 2. Separate into creates and updates
+      const creates: any[] = [];
+      const updates: any[] = [];
+
+      for (const item of batch) {
+        const key = `${item.cups}_${item.dateIso.toISOString()}`;
+        const existing = existingMap.get(key);
 
         if (existing) {
-          if (!existing.isProvisional && isProvisional) {
-            return;
+          if (!existing.isProvisional && item.isProvisional) {
+            continue; // Skip updating definitive with provisional
           }
-          await tx.loadCurve.update({
-            where: { id: existing.id },
-            data: {
-              readings: finalReadings,
-              resolution,
-              isProvisional,
-              source
-            }
-          });
+          updates.push(
+            prisma.loadCurve.update({
+              where: { id: existing.id },
+              data: {
+                readings: item.finalReadings,
+                resolution: item.resolution,
+                isProvisional: item.isProvisional,
+                source: item.source
+              }
+            })
+          );
         } else {
-          await tx.loadCurve.create({
-            data: {
-              cups: data.cups,
-              date: dateIso,
-              readings: finalReadings,
-              resolution,
-              isProvisional,
-              source
-            }
+          creates.push({
+            cups: item.cups,
+            date: item.dateIso,
+            readings: item.finalReadings,
+            resolution: item.resolution,
+            isProvisional: item.isProvisional,
+            source: item.source
           });
         }
-      });
-      success++;
+      }
+
+      // 3. Execute all operations for this batch in a single transaction
+      const operations: any[] = [];
+      if (creates.length > 0) {
+        operations.push(prisma.loadCurve.createMany({ data: creates, skipDuplicates: true }));
+      }
+      operations.push(...updates);
+
+      if (operations.length > 0) {
+        await prisma.$transaction(operations);
+      }
+
+      success += creates.length + updates.length;
     } catch (e) {
-      console.error(`Error saving load curve for ${data.cups} on ${data.date}:`, e);
-      errors++;
+      console.error(`Error saving batch of load curves starting at index ${i}:`, e);
+      errors += batch.length; // Count the whole batch as errors if transaction fails
     }
   }
 
