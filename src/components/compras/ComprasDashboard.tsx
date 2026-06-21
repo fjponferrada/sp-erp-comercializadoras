@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Topbar from '@/components/Topbar';
 
-export default function ComprasDashboard({ initialForecasts, activeContracts }: any) {
+export default function ComprasDashboard({ initialForecasts, activeContracts, lastTrainingDate }: any) {
   const [activeTab, setActiveTab] = useState('prediccion');
   const [loading, setLoading] = useState(false);
   const [training, setTraining] = useState(false);
@@ -161,8 +161,14 @@ export default function ComprasDashboard({ initialForecasts, activeContracts }: 
             {activeTab === 'prediccion' && (
               <div className="space-y-8">
                 
-                <div style={{ background: 'var(--bg-elevated)', padding: '16px 20px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                <div style={{ background: 'var(--bg-elevated)', padding: '16px 20px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
                   <p><strong>Nota sobre el Entrenamiento:</strong> No es necesario entrenar el modelo más de una vez al día. La IA aprende de los históricos de demanda, por lo que incluso entrenándolo <strong>una vez por semana</strong> sería suficiente para mantener una alta precisión.</p>
+                  {lastTrainingDate && (
+                    <div style={{ background: 'var(--bg-base)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 'fit-content' }}>
+                      <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Último Entrenamiento</span>
+                      <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{format(new Date(lastTrainingDate), 'dd/MM/yyyy HH:mm')}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-elevated)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)' }}>

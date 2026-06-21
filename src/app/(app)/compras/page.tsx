@@ -12,11 +12,16 @@ export default async function ComprasPage() {
     where: { status: 'ACTIVO' }
   });
 
+  const lastModelCache = await prisma.forecastModelCache.findFirst({
+    select: { updatedAt: true }
+  });
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <ComprasDashboard 
         initialForecasts={recentForecasts} 
         activeContracts={activeContracts} 
+        lastTrainingDate={lastModelCache?.updatedAt}
       />
     </div>
   );

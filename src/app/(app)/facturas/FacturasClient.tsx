@@ -43,6 +43,7 @@ interface Invoice {
   billingEnd?: Date | null;
   origin?: string | null;
   totalMWh?: number | null;
+  communicatedAt?: Date | null;
 }
 
 interface FacturasClientProps {
@@ -241,7 +242,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                   <td>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{invoice.invoiceNumber}</div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>{formatDateUTC(invoice.issueDate)}</div>
-                    <div style={{ marginTop: '6px' }}>
+                    <div style={{ marginTop: '6px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       <span style={{ 
                         fontSize: '0.7rem', 
                         textTransform: 'uppercase', 
@@ -253,6 +254,15 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                       }}>
                         {invoice.invoiceType || 'Normal'}
                       </span>
+                      {invoice.communicatedAt ? (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }} title={`Comunicada el ${formatDateUTC(new Date(invoice.communicatedAt))}`}>
+                          ✅ Comunicada
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                          ⏳ Pte. Envío
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td>
