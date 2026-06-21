@@ -181,7 +181,7 @@ export async function processCchCsv(
     };
   });
 
-  const BATCH_SIZE = 500;
+  const BATCH_SIZE = 250;
   for (let i = 0; i < allData.length; i += BATCH_SIZE) {
     const batch = allData.slice(i, i + BATCH_SIZE);
     
@@ -245,7 +245,7 @@ export async function processCchCsv(
       operations.push(...updates);
 
       if (operations.length > 0) {
-        await prisma.$transaction(operations);
+        await prisma.$transaction(operations, { timeout: 30000 });
       }
 
       success += creates.length + updates.length;

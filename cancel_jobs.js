@@ -5,8 +5,10 @@ const client = new Client({
 
 async function run() {
   await client.connect();
-  const res = await client.query('SELECT id, status, progress, "createdAt" FROM "SyncJob" ORDER BY "createdAt" DESC LIMIT 5');
-  console.log(JSON.stringify(res.rows, null, 2));
+  await client.query('UPDATE "SyncJob" SET status = $1, logs = logs || $2 WHERE status IN ($3, $4)', 
+    ['ERROR', '\n[SISTEMA] Cancelado para aplicar nueva versión optimizada ultrarrápida.', 'RUNNING', 'PENDING']
+  );
+  console.log("Updated stuck jobs.");
   await client.end();
 }
 run().catch(console.error);
