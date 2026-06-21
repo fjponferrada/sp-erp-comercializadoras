@@ -17,6 +17,7 @@ import {
   RefreshCcw,
   TrendingDown,
   Package,
+  PackagePlus,
   Share2,
   AlertCircle,
   Settings,
@@ -28,7 +29,9 @@ import {
   UploadCloud,
   ChevronDown,
   ChevronRight,
-  X
+  X,
+  Briefcase,
+  Wallet
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -58,6 +61,14 @@ const baseNavGroups = [
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
       { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/bajas', icon: TrendingDown, label: 'Bajas', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
+    ],
+  },
+  {
+    label: 'GESTIÓN',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/comisiones-activas', icon: Briefcase, label: 'Comisiones Activas' },
+      { href: '/liquidacion-comisiones', icon: Wallet, label: 'Liquidación Comisiones' },
     ],
   },
   {
@@ -110,7 +121,9 @@ const baseNavGroups = [
     items: [
       { href: '/usuarios', icon: Users, label: 'Usuarios', roles: ['SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/productos', icon: Package, label: 'Productos' },
+      { href: '/servicios', icon: PackagePlus, label: 'Servicios Adic.' },
       { href: '/canales', icon: Share2, label: 'Canales' },
+      { href: '/comisiones-config', icon: Settings, label: 'Comisiones' },
       { href: '/ajustes', icon: Settings, label: 'Ajustes' },
     ],
   },

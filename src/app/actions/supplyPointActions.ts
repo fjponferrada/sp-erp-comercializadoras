@@ -162,6 +162,7 @@ export async function updateSupplyPointAction(id: string, data: any) {
         p6c: data.p6c ? parseFloat(data.p6c) : null,
         hasSelfConsumption: data.hasSelfConsumption === true || data.hasSelfConsumption === 'true',
         selfConsumptionType: data.selfConsumptionType || null,
+        isBimonthly: data.isBimonthly === true || data.isBimonthly === 'true',
       }
     });
 

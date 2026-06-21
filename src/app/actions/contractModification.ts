@@ -149,6 +149,8 @@ export async function createContractModificationAction(
         p4p: oldContract.p4p, p5p: oldContract.p5p, p6p: oldContract.p6p,
         fee: oldContract.fee,
         commissionBase: oldContract.commissionBase,
+        commissionFinal: oldContract.commissionFinal,
+        commissionVariable: oldContract.commissionVariable,
         svaConcept: isSubrogation ? formData.servicio : oldContract.svaConcept,
         filePdfSigned: oldContract.filePdfSigned,
         fileAnexoFirmado: oldContract.fileAnexoFirmado,

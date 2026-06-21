@@ -254,6 +254,29 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = "Se recibió un paso 11 (Aviso baja), pero no se encontró un contrato ACTIVO para este CUPS.";
       }
+    } else if (paso === '10' && procesoBase !== 'R1') {
+      const activeContract = await prisma.contract.findFirst({
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
+      });
+      if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
+        contractId = activeContract.id;
+        
+        // Si el contrato tenía una fecha de baja prevista (probablemente por un paso 11 anterior), 
+        // la borramos porque el cambio de comercializador ha sido anulado.
+        if (activeContract.fechaPrevistaBaja) {
+          await prisma.contract.update({
+            where: { id: activeContract.id },
+            data: { fechaPrevistaBaja: null }
+          });
+        }
+      } else {
+        tipoError = "CONTRATO_NO_ACTIVO";
+        warning = "Se recibió un paso 10 (Anulación de cambio), pero no se encontró un contrato ACTIVO para este CUPS.";
+      }
     } else if ((procesoBase === 'B1' || procesoBase === 'B2' || procesoBase === 'E2') && paso === '05') {
       const activeContract = await prisma.contract.findFirst({
         where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
@@ -388,6 +411,9 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_TRAMITANDO";
         warning = "Se recibió Aceptación/Rechazo, pero no se encontró un contrato TRAMITANDO para este CUPS.";
       }
+    } else if (procesoBase === 'R1') {
+      // Dejamos que caiga al fallback genérico o no asignamos nada especial,
+      // simplemente guardamos el evento en SwitchingEvent y NO creamos Ticket.
     } else {
       // Fallback genérico para otros pasos
       const anyContract = await prisma.contract.findFirst({
@@ -437,6 +463,8 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         procesoBase: parsedData.procesoBase,
         paso: parsedData.paso,
         estadoAR: parsedData.estadoAR,
+        tipoReclamacion: parsedData.tipoReclamacion,
+        subtipoReclamacion: parsedData.subtipoReclamacion,
         fechaAR: parsedData.fechaAR,
         fechaPrevActivacion: parsedData.fechaPrevActivacion,
         fechaActivacionAlta: parsedData.fechaActivacionAlta,
@@ -458,6 +486,8 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPointId: supplyPointId || undefined,
         tipoError: tipoError || null,
         warning: warning || null,
+        tipoReclamacion: parsedData.tipoReclamacion || undefined,
+        subtipoReclamacion: parsedData.subtipoReclamacion || undefined,
         observaciones: parsedData.observaciones,
         motivosRechazo: parsedData.motivosRechazo || null,
         actuacionCampo: parsedData.actuacionCampo ?? undefined,

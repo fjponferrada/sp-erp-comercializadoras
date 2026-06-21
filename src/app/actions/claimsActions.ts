@@ -8,6 +8,9 @@ export interface ClaimSummary {
   cups: string;
   codigoReclamacion: string | null;
   diasAbierta: number | null;
+  tipoReclamacion: string | null;
+  subtipoReclamacion: string | null;
+  estadoIntegrado: 'Aceptada' | 'En Proceso' | 'Rechazada' | 'Cerrada' | 'Desconocido';
   paso01: {
     fecha: Date | null;
     xmlUrl: string | null;
@@ -15,6 +18,7 @@ export interface ClaimSummary {
   paso02: {
     fecha: Date | null;
     xmlUrl: string | null;
+    estadoAR: string | null;
   } | null;
   paso03: {
     comentario: string | null;
@@ -67,6 +71,9 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
           cups: cupsFallback,
           codigoReclamacion: null,
           diasAbierta: null,
+          tipoReclamacion: null,
+          subtipoReclamacion: null,
+          estadoIntegrado: 'Desconocido',
           paso01: null,
           paso02: null,
           paso03: null,
@@ -79,11 +86,19 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
       if (event.codigoReclamacion && !claim.codigoReclamacion) {
          claim.codigoReclamacion = event.codigoReclamacion;
       }
+      
+      if (event.tipoReclamacion && !claim.tipoReclamacion) {
+         claim.tipoReclamacion = event.tipoReclamacion;
+      }
+      
+      if (event.subtipoReclamacion && !claim.subtipoReclamacion) {
+         claim.subtipoReclamacion = event.subtipoReclamacion;
+      }
 
       if (event.paso === '01') {
         claim.paso01 = { fecha: event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl };
       } else if (event.paso === '02') {
-        claim.paso02 = { fecha: event.fechaAR || event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl };
+        claim.paso02 = { fecha: event.fechaAR || event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl, estadoAR: event.estadoAR };
       } else if (event.paso === '03') {
         claim.paso03 = { comentario: event.observaciones || null, xmlUrl: event.xmlUrl };
       } else if (event.paso === '05') {
@@ -109,6 +124,21 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
         d1.setHours(0, 0, 0, 0);
         const diffTime = Math.abs(now.getTime() - d1.getTime());
         claim.diasAbierta = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      // Calculate estadoIntegrado
+      if (claim.paso05) {
+        claim.estadoIntegrado = 'Cerrada';
+      } else if (claim.paso03) {
+        claim.estadoIntegrado = 'En Proceso';
+      } else if (claim.paso02) {
+        if (claim.paso02.estadoAR === 'RECHAZADO') {
+          claim.estadoIntegrado = 'Rechazada';
+        } else {
+          claim.estadoIntegrado = 'Aceptada';
+        }
+      } else if (claim.paso01) {
+        claim.estadoIntegrado = 'En Proceso';
       }
     }
 

@@ -292,6 +292,22 @@ export async function convertLeadToContractAction(leadId: string) {
       contractCode = `${contractCode}-${Math.floor(Math.random() * 1000)}`;
     }
 
+    let additionalServicesSnapshot = null;
+    let additionalServiceConnect = undefined;
+    if (cData.additionalServiceIds && Array.isArray(cData.additionalServiceIds) && cData.additionalServiceIds.length > 0) {
+      const services = await prisma.additionalService.findMany({
+        where: { id: { in: cData.additionalServiceIds } }
+      });
+      additionalServicesSnapshot = services.map(s => ({
+        id: s.id,
+        name: s.name,
+        monthlyPrice: s.monthlyPrice,
+        dailyPrice: s.dailyPrice,
+        isCommissionable: s.isCommissionable
+      }));
+      additionalServiceConnect = { connect: services.map(s => ({ id: s.id })) };
+    }
+
     // 5. Crear el contrato
     const contract = await prisma.contract.create({
       data: {
@@ -302,6 +318,7 @@ export async function convertLeadToContractAction(leadId: string) {
         status: isMultipoint ? 'ACEPTADO' : 'BORRADOR',
         previousContractId: previousContractId,
         contractCode,
+        annualConsumption: supplyPoint.annualConsumption || (sipsConsumoKWh ? sipsConsumoKWh / 1000 : null),
         iban: cData.iban || null,
         tramitationType: cData.tipoTramitacion || 'Alta nueva',
         tipo: getTramitationCodes(cData.tipoTramitacion || 'Alta nueva').tipo,
@@ -333,6 +350,8 @@ export async function convertLeadToContractAction(leadId: string) {
         commissionType: product.commissionType || null,
         powerTiersCommission: product.powerTiersCommission ? product.powerTiersCommission : undefined,
         permanenceMonths: product.permanenceMonths || null,
+        additionalServicesSnapshot: additionalServicesSnapshot,
+        AdditionalService: additionalServiceConnect,
       },
     });
 

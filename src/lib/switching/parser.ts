@@ -18,6 +18,8 @@ export interface ParsedSwitchingData {
   actuacionCampo?: boolean;
   codigoComercializadora?: string;
   codigoReclamacion?: string;
+  tipoReclamacion?: string;
+  subtipoReclamacion?: string;
   // Campos F1
   numeroFactura?: string;
   fechaEmision?: Date;
@@ -107,6 +109,15 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
   
   const nifCliente = findKeyRecursively(root, 'NIF') || findKeyRecursively(root, 'CIF') || findKeyRecursively(root, 'Documento');
 
+  // R1 Specific fields
+  let tipoReclamacion = undefined;
+  let subtipoReclamacion = undefined;
+  if (procesoBase === 'R1') {
+    const datosSolicitud = findKeyRecursively(root, 'DatosSolicitud') || findKeyRecursively(root, 'DatosDeLaSolicitud');
+    tipoReclamacion = findKeyRecursively(datosSolicitud || root, 'Tipo');
+    subtipoReclamacion = findKeyRecursively(datosSolicitud || root, 'Subtipo');
+  }
+
   const result: ParsedSwitchingData = {
     codigoSolicitud: finalCodigoSolicitud ? String(finalCodigoSolicitud) : undefined,
     fechaSolicitud: isNaN(fechaSolicitudDate?.getTime() as number) ? undefined : fechaSolicitudDate,
@@ -117,6 +128,8 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
     codigoComercializadora,
     codigoReclamacion: codigoReclamacion ? String(codigoReclamacion) : undefined,
     nifCliente: nifCliente ? String(nifCliente).toUpperCase().trim() : undefined,
+    tipoReclamacion: tipoReclamacion ? String(tipoReclamacion) : undefined,
+    subtipoReclamacion: subtipoReclamacion ? String(subtipoReclamacion) : undefined,
   };
 
   // 3. Lógica Específica por "Paso"

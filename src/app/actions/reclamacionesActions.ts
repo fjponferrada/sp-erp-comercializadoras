@@ -195,7 +195,10 @@ export async function generateClaim(data: any) {
       
       const vat = sp?.client?.vatNumber || '00000000T';
       const isCif = /^[A-Z]/.test(vat);
-      const tipoIdentificador = isCif ? 'CI' : 'NI';
+      
+      // En el estándar CNMC, tanto NIF como CIF se envían como 'NI' (o 'NV' si es NIF-IVA, pero por defecto 'NI').
+      // No existe el código 'CI'.
+      const tipoIdentificador = 'NI';
       const tipoPersona = isCif ? 'J' : 'F';
       
       let xmlNombre = '';
@@ -442,11 +445,153 @@ ${xmlNombre}
         fileName: `Reclamaciones_Masivas_Facturas_${new Date().getTime()}.zip`,
         fileContent: zipBase64
       };
+    } else if (mode === 'Masiva' && data.cupsIds && Array.isArray(data.cupsIds) && data.cupsIds.length > 0) {
+      const zip = new PizZip();
+      let count = 0;
+
+      for (const cups of data.cupsIds) {
+        if (!cups) continue;
+        const xml = await buildR1Xml(cups, motivo, submotivo);
+        zip.file(`Reclamacion_${cups}_${count}.xml`, xml);
+        count++;
+      }
+
+      const zipBase64 = zip.generate({ type: 'base64' });
+      return {
+        success: true,
+        isZip: true,
+        fileName: `Reclamaciones_Masivas_Retrasos_${new Date().getTime()}.zip`,
+        fileContent: zipBase64
+      };
     }
 
-    return { success: false, error: 'Modo no soportado o falta CSV' };
+    return { success: false, error: 'Modo no soportado o falta CSV/Facturas/CUPS' };
   } catch (error: any) {
     console.error('Error in generateClaim:', error);
     return { success: false, error: 'Error al generar la reclamación' };
+  }
+}
+
+export async function searchCupsWithBillingDelay(minDays: number = 45) {
+  try {
+    const session = await auth();
+    if (!session?.user) return { success: false, error: 'No autorizado' };
+
+    // Buscar CUPS que tengan al menos un contrato ACTIVO, BAJA o FINALIZADO
+    const supplyPoints = await prisma.supplyPoint.findMany({
+      where: { contracts: { some: { status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] } } } },
+      include: {
+        client: { select: { businessName: true, firstName: true, lastName: true, vatNumber: true, airtableData: true } },
+        contracts: {
+          where: { status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] } },
+          select: { contractCode: true, activationDate: true, terminationDate: true, expectedEndDate: true, status: true },
+          orderBy: { activationDate: 'desc' }
+        }
+      }
+    });
+
+    const cupsList = [...new Set(supplyPoints.map(sp => sp.cups))];
+
+    const invoices = await prisma.invoice.findMany({
+      where: { 
+        supplyPoint: { cups: { in: cupsList } },
+        billingEnd: { not: null }
+      },
+      select: { billingEnd: true, supplyPoint: { select: { cups: true } } },
+      orderBy: { billingEnd: 'desc' }
+    });
+
+    const latestInvoiceByCups = new Map<string, Date>();
+    for (const inv of invoices) {
+      if (inv.supplyPoint?.cups && inv.billingEnd && !latestInvoiceByCups.has(inv.supplyPoint.cups)) {
+        latestInvoiceByCups.set(inv.supplyPoint.cups, new Date(inv.billingEnd));
+      }
+    }
+
+    const results = [];
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    for (const sp of supplyPoints) {
+      let effectiveStartDate: Date | null = null;
+      let effectiveEndDate: Date | null = null;
+      
+      const latestContract = sp.contracts[0];
+      if (!latestContract) continue;
+      
+      effectiveStartDate = latestContract.activationDate;
+      if (!effectiveStartDate) continue;
+
+      // Si el último contrato está dado de baja, recogemos su fecha de fin
+      if (latestContract.status !== 'ACTIVO') {
+        effectiveEndDate = latestContract.terminationDate || latestContract.expectedEndDate || null;
+      }
+
+      let currentStart = new Date(effectiveStartDate);
+      
+      // Buscar contratos anteriores contiguos
+      for (let i = 1; i < sp.contracts.length; i++) {
+        const prevContract = sp.contracts[i];
+        if (!prevContract.activationDate) continue;
+        
+        const prevEnd = prevContract.terminationDate || prevContract.expectedEndDate;
+        if (!prevEnd) break;
+        
+        const diffTime = currentStart.getTime() - prevEnd.getTime();
+        const diffDays = diffTime / (1000 * 3600 * 24);
+        
+        if (diffDays <= 2 && diffDays >= -2) {
+          currentStart = new Date(prevContract.activationDate);
+        } else {
+          break;
+        }
+      }
+
+      effectiveStartDate = currentStart;
+
+      let lastBilledDate: Date | null = null;
+      const latestBillingEnd = latestInvoiceByCups.get(sp.cups);
+      
+      if (latestBillingEnd && latestBillingEnd >= effectiveStartDate) {
+        lastBilledDate = new Date(latestBillingEnd);
+      } else {
+        lastBilledDate = new Date(effectiveStartDate.getTime() - (24 * 3600 * 1000));
+      }
+
+      lastBilledDate.setHours(0, 0, 0, 0);
+
+      // Regla: si el CUPS ya causó baja definitiva y la factura llega hasta o pasa la fecha de baja, no se reclama
+      if (effectiveEndDate) {
+        effectiveEndDate.setHours(0, 0, 0, 0);
+        if (lastBilledDate >= effectiveEndDate) {
+          continue; // Ya está facturado hasta el final
+        }
+      }
+
+      let delayDays = Math.floor((now.getTime() - lastBilledDate.getTime()) / (1000 * 3600 * 24));
+
+      if (sp.isBimonthly) {
+        delayDays -= 30;
+      }
+
+      if (delayDays >= minDays) {
+        results.push({
+          cupsId: sp.id,
+          cups: sp.cups,
+          titular: sp.client.businessName || `${sp.client.firstName || ''} ${sp.client.lastName || ''}`.trim(),
+          tarifa: (sp as any).tariff || (sp.client.airtableData as any)?.TARIFA || '',
+          contrato: latestContract.contractCode || 'N/A',
+          inicioPeriodoContinuo: effectiveStartDate.toISOString(),
+          ultimoDiaFacturado: lastBilledDate.toISOString(),
+          diasRetraso: delayDays
+        });
+      }
+    }
+
+    results.sort((a, b) => b.diasRetraso - a.diasRetraso);
+    return { success: true, data: results };
+  } catch (error: any) {
+    console.error('Error en searchCupsWithBillingDelay:', error);
+    return { success: false, error: 'Error al calcular retrasos' };
   }
 }

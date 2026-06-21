@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Send, Upload, FileUp } from 'lucide-react';
-import { searchCupsForClaim, generateClaim, searchInvoicesForMassClaim } from '@/app/actions/reclamacionesActions';
+import { searchCupsForClaim, generateClaim, searchInvoicesForMassClaim, searchCupsWithBillingDelay } from '@/app/actions/reclamacionesActions';
 import toast from 'react-hot-toast';
 import { SUBTIPO_REQUIREMENTS } from '../utils/casuisticas';
 import { CNMC_DROPDOWN_OPTIONS } from '../utils/cnmc_codes';
@@ -40,7 +40,7 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
   const [csvFile, setCsvFile] = useState<File | null>(null);
   
   // Masiva Facturas State
-  const [masivaInputMode, setMasivaInputMode] = useState<'csv' | 'facturas'>('csv');
+  const [masivaInputMode, setMasivaInputMode] = useState<'csv' | 'facturas' | 'retrasos'>('csv');
   const [filtroDesde, setFiltroDesde] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 10);
@@ -53,12 +53,19 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isSearchingInvoices, setIsSearchingInvoices] = useState(false);
 
+  // Masiva Retrasos State (006)
+  const [searchedCups, setSearchedCups] = useState<any[]>([]);
+  const [selectedCupsIds, setSelectedCupsIds] = useState<string[]>([]);
+  const [isSearchingCups, setIsSearchingCups] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
 
   // Efecto para autocompletar comentarios si el submotivo es 009 en Masiva
   React.useEffect(() => {
     if (mode === 'Masiva' && submotivo.includes('009')) {
       setComentarios('El Cliente niega haber imposibilitado el acceso para la toma de lectura, tampoco tiene aviso de ausencia, ni se le ofrece alternativa o tlf para concertar cita. La Distribuidora está incumpliendo su obligación de mantenimiento del equipo de medida (incidencia de comunicaciones persistente). Según el RD 1110/2007 y la Resolución de 18 de diciembre de 2019, ante la falta de lectura real por fallo del equipo, deben proceder a su reparación inmediata. SOLICITAMOS: 1) Anulación de la lectura estimada por ser materialmente errónea. 2) Reparación urgente del sistema de telegestión. 3) Refacturación con lectura REAL. De persistir la estimación sin subsanar la avería del contador, se elevará denuncia ante el órgano competente de Energía de la Junta de Andalucía');
+    } else if (mode === 'Masiva' && submotivo.includes('006')) {
+      setComentarios('Solicitamos el envío de lecturas para facturar a este cliente y que se realice la recepción de facturas en plazo. Si existe algún problema para la suspensión del proceso de facturación para este cliente, rogamos lo comuniquen a nosotros y al cliente.');
     }
   }, [mode, submotivo]);
 
@@ -76,6 +83,35 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       setF1Invoices([]);
     }
     setSearching(false);
+  };
+
+  const handleSearchCupsRetrasos = async () => {
+    setIsSearchingCups(true);
+    const res = await searchCupsWithBillingDelay(45);
+    if (res.success && res.data) {
+      setSearchedCups(res.data);
+      toast.success(`${res.data.length} CUPS con retraso encontrados`);
+    } else {
+      toast.error(res.error || 'Error al buscar CUPS');
+      setSearchedCups([]);
+    }
+    setIsSearchingCups(false);
+  };
+
+  const toggleAllCups = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedCupsIds(searchedCups.map(c => c.cups));
+    } else {
+      setSelectedCupsIds([]);
+    }
+  };
+
+  const toggleCupsSelection = (cups: string) => {
+    if (selectedCupsIds.includes(cups)) {
+      setSelectedCupsIds(selectedCupsIds.filter(id => id !== cups));
+    } else {
+      setSelectedCupsIds([...selectedCupsIds, cups]);
+    }
   };
 
   const handleGenerate = async () => {
@@ -100,6 +136,7 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       comentarios,
       csvContent,
       invoiceIds: mode === 'Masiva' && masivaInputMode === 'facturas' ? selectedInvoiceIds : undefined,
+      cupsIds: mode === 'Masiva' && masivaInputMode === 'retrasos' ? selectedCupsIds : undefined,
       dynamicFields,
       fechaLectura: submotivo.includes('036') ? fechaLectura : undefined,
       lecturas: submotivo.includes('036') ? lecturas : undefined
@@ -569,16 +606,26 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
                   >
                     Aportar CSV
                   </button>
-                  <button
-                    onClick={() => setMasivaInputMode('facturas')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${masivaInputMode === 'facturas' ? 'bg-[var(--lime)] text-[#0B0F19]' : 'text-gray-400 hover:text-gray-200'}`}
-                  >
-                    Seleccionar Facturas
-                  </button>
+                  {submotivo.includes('009') && (
+                    <button
+                      onClick={() => setMasivaInputMode('facturas')}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${masivaInputMode === 'facturas' ? 'bg-[var(--lime)] text-[#0B0F19]' : 'text-gray-400 hover:text-gray-200'}`}
+                    >
+                      Seleccionar Facturas
+                    </button>
+                  )}
+                  {submotivo.includes('006') && (
+                    <button
+                      onClick={() => setMasivaInputMode('retrasos')}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${masivaInputMode === 'retrasos' ? 'bg-[var(--lime)] text-[#0B0F19]' : 'text-gray-400 hover:text-gray-200'}`}
+                    >
+                      Buscar Retrasos
+                    </button>
+                  )}
                 </div>
               </div>
               
-              {masivaInputMode === 'csv' ? (
+              {masivaInputMode === 'csv' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">
                   <div className="space-y-3">
                     <label className="text-sm font-semibold text-[var(--text-muted)] block">
@@ -615,7 +662,95 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
                     </div>
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {masivaInputMode === 'retrasos' && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="flex justify-between items-center bg-[#111827] p-4 rounded-xl border border-[var(--border)]">
+                    <div>
+                      <h4 className="text-gray-200 font-bold">Buscador de Retrasos Automático</h4>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        Detecta todos los CUPS con contratos activos (o recién dados de baja) que lleven 45 días o más sin facturación.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={handleSearchCupsRetrasos}
+                      disabled={isSearchingCups}
+                      className="bg-[var(--lime)] text-[#0B0F19] font-bold px-6 py-2 rounded-lg hover:brightness-110 flex items-center gap-2 shadow-sm whitespace-nowrap"
+                    >
+                      <Search size={16} /> {isSearchingCups ? 'Calculando...' : 'Buscar CUPS (≥ 45 días)'}
+                    </button>
+                  </div>
+
+                  <div className="overflow-hidden border border-[var(--border)] rounded-xl">
+                    <div className="p-3 bg-[#111827] border-b border-[var(--border)] flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-300">
+                        {searchedCups.length} CUPS con retraso encontrados
+                      </span>
+                      <span className="text-xs text-[var(--lime)] font-bold px-2 py-1 bg-[rgba(222,255,154,0.1)] rounded">
+                        {selectedCupsIds.length} seleccionados
+                      </span>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto no-scrollbar">
+                      <table className="w-full text-left text-sm whitespace-nowrap bg-[#1E293B]">
+                        <thead className="bg-[#0B0F19] text-gray-400 text-xs uppercase tracking-wider sticky top-0 z-10">
+                          <tr>
+                            <th className="px-4 py-3 text-center">
+                              <input 
+                                type="checkbox" 
+                                checked={searchedCups.length > 0 && selectedCupsIds.length === searchedCups.length}
+                                onChange={toggleAllCups}
+                                className="w-4 h-4 accent-[var(--lime)] rounded"
+                              />
+                            </th>
+                            <th className="px-4 py-3">CUPS</th>
+                            <th className="px-4 py-3">Contrato</th>
+                            <th className="px-4 py-3">Titular</th>
+                            <th className="px-4 py-3">Alta Periodo</th>
+                            <th className="px-4 py-3">Último Día Facturado</th>
+                            <th className="px-4 py-3 text-[var(--lime)] font-bold">Retraso</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border)]">
+                          {searchedCups.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-8 text-center text-[var(--text-muted)] text-sm">
+                                Pulsa en "Buscar CUPS" para escanear retrasos.
+                              </td>
+                            </tr>
+                          ) : (
+                            searchedCups.map((c) => (
+                              <tr 
+                                key={c.cupsId} 
+                                onClick={() => toggleCupsSelection(c.cups)}
+                                className={`cursor-pointer transition-colors ${selectedCupsIds.includes(c.cups) ? 'bg-[rgba(222,255,154,0.05)]' : 'hover:bg-[#334155]'}`}
+                              >
+                                <td className="px-4 py-3 text-center">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedCupsIds.includes(c.cups)}
+                                    onChange={() => toggleCupsSelection(c.cups)}
+                                    onClick={e => e.stopPropagation()}
+                                    className="w-4 h-4 accent-[var(--lime)] rounded"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 font-mono text-[var(--lime)] text-xs font-bold">{c.cups}</td>
+                                <td className="px-4 py-3 text-gray-300 text-xs">{c.contrato}</td>
+                                <td className="px-4 py-3 text-gray-300 truncate max-w-[200px]">{c.titular}</td>
+                                <td className="px-4 py-3 text-gray-400">{new Date(c.inicioPeriodoContinuo).toLocaleDateString()}</td>
+                                <td className="px-4 py-3 font-medium text-gray-200">{new Date(c.ultimoDiaFacturado).toLocaleDateString()}</td>
+                                <td className="px-4 py-3 font-bold text-red-400">{c.diasRetraso} días</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {masivaInputMode === 'facturas' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                   <div className="grid grid-cols-5 gap-4 mb-4">
                     <div className="space-y-1">

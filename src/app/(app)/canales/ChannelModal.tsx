@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
 
-export default function ChannelModal({ channel, onClose, onSaved }: any) {
+export default function ChannelModal({ channel, commissionTiers, onClose, onSaved }: any) {
   const [formData, setFormData] = useState({
     nombre: channel?.nombre || '',
     codigo: channel?.codigo || '',
@@ -13,7 +13,14 @@ export default function ChannelModal({ channel, onClose, onSaved }: any) {
     supportEmail: channel?.supportEmail || '',
     autoGenerateContract: channel?.autoGenerateContract || false,
     maxRenewalDays: channel?.maxRenewalDays || 45,
+    commissionTierId: channel?.commissionTierId || '',
   });
+
+  const [assignedProducts, setAssignedProducts] = useState<any[]>(channel?.products || []);
+
+  const handleRemoveProduct = (productId: string) => {
+    setAssignedProducts(prev => prev.filter(p => p.id !== productId));
+  };
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -27,10 +34,12 @@ export default function ChannelModal({ channel, onClose, onSaved }: any) {
       const url = isNew ? '/api/channels' : `/api/channels/${channel.id}`;
       const method = isNew ? 'POST' : 'PUT';
 
+      const payload = { ...formData, productIds: assignedProducts.map(p => p.id) };
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -97,24 +106,17 @@ export default function ChannelModal({ channel, onClose, onSaved }: any) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">Comisión Fija (€/MWh)</label>
-                <input
-                  type="number"
-                  step="0.01"
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Nivel de Comisión</label>
+                <select
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-lime-500"
-                  value={formData.comisionFijo}
-                  onChange={e => setFormData({ ...formData, comisionFijo: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">Comisión Variable (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-lime-500"
-                  value={formData.comisionVariable}
-                  onChange={e => setFormData({ ...formData, comisionVariable: parseFloat(e.target.value) || 0 })}
-                />
+                  value={formData.commissionTierId}
+                  onChange={e => setFormData({ ...formData, commissionTierId: e.target.value })}
+                >
+                  <option value="">Selecciona un nivel...</option>
+                  {commissionTiers?.map((tier: any) => (
+                    <option key={tier.id} value={tier.id}>{tier.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
@@ -200,15 +202,134 @@ export default function ChannelModal({ channel, onClose, onSaved }: any) {
           {/* Sección 4: Productos */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-wider mb-2">Productos Asignados</h3>
-            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-              {channel?.products && channel.products.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {channel.products.map((p: any) => (
-                    <span key={p.id} className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-700/50 text-slate-300 border border-slate-600">
-                      {p.name}
-                    </span>
-                  ))}
-                </div>
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col gap-4">
+              {assignedProducts && assignedProducts.length > 0 ? (
+                <>
+                  {['2.0TD', '3.0TD', '6.1TD', '3.0TDVE'].map(tariff => {
+                    const tariffProducts = assignedProducts
+                      .filter((p: any) => p.tariff === tariff)
+                      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+                    if (tariffProducts.length === 0) return null;
+                    
+                    const fijos = tariffProducts.filter((p: any) => p.type && p.type.toLowerCase().includes('fijo'));
+                    const indexados = tariffProducts.filter((p: any) => p.type && p.type.toLowerCase().includes('indexado'));
+                    const otros = tariffProducts.filter((p: any) => !p.type || (!p.type.toLowerCase().includes('fijo') && !p.type.toLowerCase().includes('indexado')));
+
+                    const fijosSin = fijos.filter((p: any) => !p.hasSelfConsumption);
+                    const fijosCon = fijos.filter((p: any) => p.hasSelfConsumption);
+                    const indSin = indexados.filter((p: any) => !p.hasSelfConsumption);
+                    const indCon = indexados.filter((p: any) => p.hasSelfConsumption);
+
+                    return (
+                      <div key={tariff} className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/60">
+                        <h4 className="text-sm font-bold text-lime-400 uppercase tracking-wide border-b border-slate-700/60 pb-2 mb-3">{tariff}</h4>
+                        
+                        <div className="grid grid-cols-2 gap-6">
+                          {/* Columna Fijos */}
+                          <div className="flex flex-col gap-3">
+                            <h5 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/40 pb-1">Fijos</h5>
+                            {fijos.length === 0 ? (
+                              <span className="text-xs text-slate-500 italic">No hay productos fijos</span>
+                            ) : (
+                              <>
+                                {fijosSin.length > 0 && (
+                                  <div className="flex flex-col gap-1.5">
+                                    <h6 className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">Sin Autoconsumo</h6>
+                                    {fijosSin.map((p: any) => (
+                                      <span key={p.id} className="group relative inline-flex items-center px-2 py-1.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20 break-words text-left">
+                                        {p.name}
+                                        <button type="button" onClick={() => handleRemoveProduct(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 p-0.5 text-blue-400 hover:bg-red-500/20 hover:text-red-400 rounded"><X size={12} /></button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {fijosCon.length > 0 && (
+                                  <div className="flex flex-col gap-1.5 mt-2">
+                                    <h6 className="text-[10px] text-amber-500/90 font-medium uppercase tracking-wide flex items-center gap-1">Con Autoconsumo <span className="text-[10px]">☀️</span></h6>
+                                    {fijosCon.map((p: any) => (
+                                      <span key={p.id} className="group relative inline-flex items-center px-2 py-1.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20 break-words text-left">
+                                        {p.name}
+                                        <button type="button" onClick={() => handleRemoveProduct(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 p-0.5 text-blue-400 hover:bg-red-500/20 hover:text-red-400 rounded"><X size={12} /></button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+
+                          {/* Columna Indexados */}
+                          <div className="flex flex-col gap-3">
+                            <h5 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700/40 pb-1">Indexados</h5>
+                            {indexados.length === 0 ? (
+                              <span className="text-xs text-slate-500 italic">No hay productos indexados</span>
+                            ) : (
+                              <>
+                                {indSin.length > 0 && (
+                                  <div className="flex flex-col gap-1.5">
+                                    <h6 className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">Sin Autoconsumo</h6>
+                                    {indSin.map((p: any) => (
+                                      <span key={p.id} className="group relative inline-flex items-center px-2 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 break-words text-left">
+                                        {p.name}
+                                        <button type="button" onClick={() => handleRemoveProduct(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 p-0.5 text-emerald-400 hover:bg-red-500/20 hover:text-red-400 rounded"><X size={12} /></button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {indCon.length > 0 && (
+                                  <div className="flex flex-col gap-1.5 mt-2">
+                                    <h6 className="text-[10px] text-amber-500/90 font-medium uppercase tracking-wide flex items-center gap-1">Con Autoconsumo <span className="text-[10px]">☀️</span></h6>
+                                    {indCon.map((p: any) => (
+                                      <span key={p.id} className="group relative inline-flex items-center px-2 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 break-words text-left">
+                                        {p.name}
+                                        <button type="button" onClick={() => handleRemoveProduct(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 p-0.5 text-emerald-400 hover:bg-red-500/20 hover:text-red-400 rounded"><X size={12} /></button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Otros */}
+                        {otros.length > 0 && (
+                          <div className="mt-4 pt-3 border-t border-slate-700/60">
+                            <h5 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Otros</h5>
+                            <div className="flex flex-wrap gap-1.5">
+                              {otros.map((p: any) => (
+                                <span key={p.id} className="group relative inline-flex items-center px-2 py-1.5 rounded-md text-xs font-medium bg-slate-700/50 text-slate-400 border border-slate-600">
+                                  {p.name}
+                                  <button type="button" onClick={() => handleRemoveProduct(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 p-0.5 text-slate-400 hover:bg-red-500/20 hover:text-red-400 rounded"><X size={12} /></button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {(() => {
+                    const otherProducts = assignedProducts
+                      .filter((p: any) => !['2.0TD', '3.0TD', '6.1TD', '3.0TDVE'].includes(p.tariff))
+                      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+                    if (otherProducts.length === 0) return null;
+                    return (
+                      <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/60">
+                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wide border-b border-slate-700/60 pb-2 mb-3">OTRAS TARIFAS</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {otherProducts.map((p: any) => (
+                            <span key={p.id} className="group relative inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium bg-slate-700/50 text-slate-300 border border-slate-600">
+                              {p.name}
+                              <button type="button" onClick={() => handleRemoveProduct(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 p-0.5 text-slate-300 hover:bg-red-500/20 hover:text-red-400 rounded"><X size={12} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
               ) : (
                 <p className="text-sm text-slate-500 italic text-center py-2">
                   No hay productos asignados a este canal.

@@ -7,26 +7,32 @@ import PaginationFooter from '@/components/PaginationFooter';
 import ChannelModal from './ChannelModal';
 
 export interface CanalData {
-  id: string;
+  id?: string;
+  codigo: string;
   nombre: string;
   contacto: string;
   telefono: string;
   email: string;
-  codigo: string;
+  adminEmail: string;
+  managerEmail: string;
+  supportEmail: string;
+  autoGenerateContract: boolean;
+  maxRenewalDays: number;
   contratos: number;
   activos: number;
+  estado: 'ACTIVO' | 'INACTIVO';
   comisionFijo: number;
   comisionVariable: number;
-  estado: string; // 'ACTIVO' | 'INACTIVO'
-  adminEmail?: string;
-  managerEmail?: string;
-  supportEmail?: string;
-  autoGenerateContract?: boolean;
-  maxRenewalDays?: number;
   products?: any[];
+  commissionTierId?: string | null;
 }
 
-export default function CanalesClient({ initialCanales }: { initialCanales: CanalData[] }) {
+interface Props {
+  initialCanales: CanalData[];
+  commissionTiers: { id: string, name: string }[];
+}
+
+export default function CanalesClient({ initialCanales, commissionTiers }: Props) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
@@ -174,6 +180,7 @@ export default function CanalesClient({ initialCanales }: { initialCanales: Cana
       {isModalOpen && (
         <ChannelModal
           channel={editingChannel}
+          commissionTiers={commissionTiers}
           onClose={() => setIsModalOpen(false)}
           onSaved={() => {
             setIsModalOpen(false);

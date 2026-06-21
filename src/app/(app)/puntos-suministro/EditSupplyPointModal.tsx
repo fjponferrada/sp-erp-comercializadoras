@@ -39,6 +39,7 @@ export default function EditSupplyPointModal({
     p6c: supplyPoint.p6c || '',
     hasSelfConsumption: supplyPoint.hasSelfConsumption || false,
     selfConsumptionType: supplyPoint.selfConsumptionType || '',
+    isBimonthly: supplyPoint.isBimonthly || false,
   });
 
   const [loading, setLoading] = useState(false);
@@ -141,6 +142,23 @@ export default function EditSupplyPointModal({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputField label="IBAN" name="iban" />
                     <InputField label="SWIFT/BIC" name="swift" />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lime-400 font-bold mb-4">Datos de Facturación</h3>
+                  <div className="bg-black/30 border border-white/10 rounded-lg p-4 flex items-center gap-3 cursor-pointer hover:border-lime-500/30 transition-colors" onClick={() => setFormData(prev => ({...prev, isBimonthly: !prev.isBimonthly}))}>
+                    <input 
+                      type="checkbox" 
+                      name="isBimonthly" 
+                      checked={formData.isBimonthly} 
+                      onChange={handleChange}
+                      className="w-5 h-5 accent-lime-500 rounded cursor-pointer"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-white">Periodicidad Bimensual</p>
+                      <p className="text-xs text-white/50">Resta 30 días adicionales al retraso acumulado de reclamaciones.</p>
+                    </div>
                   </div>
                 </div>
               </div>

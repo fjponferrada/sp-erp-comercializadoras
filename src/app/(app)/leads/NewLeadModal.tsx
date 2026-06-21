@@ -129,12 +129,13 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
 
     // Producto
     bolsilloSolar: 'NO',
-    tipoProducto: 'FIJO',
+    tipoProducto: 'Precio fijo único',
     product: '',
     formaPago: 'Domiciliación',
     iban: '',
     envioFactura: 'Email',
     serviciosAdicionales: '',
+    additionalServiceIds: [] as string[],
 
     // Potencias
     p1c: '', p2c: '', p3c: '', p4c: '', p5c: '', p6c: '',
@@ -171,6 +172,7 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
   });
 
   const [productsDb, setProductsDb] = useState<any[]>([]);
+  const [additionalServicesDb, setAdditionalServicesDb] = useState<any[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -183,6 +185,15 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
           }
         })
         .catch(err => console.error('Error fetching products:', err));
+
+      fetch(`/api/additional-services?t=${Date.now()}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            setAdditionalServicesDb(data.data);
+          }
+        })
+        .catch(err => console.error('Error fetching additional services:', err));
 
       setStep(1);
       setError('');
@@ -220,14 +231,7 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
           return 'NÚMERO';
         };
 
-        const normProdType = (val: any) => {
-          const upper = String(val || '').toUpperCase().trim();
-          if (upper === 'FIJO' || upper === 'INDEXADO' || upper === 'FIJO_PERS' || upper === 'INDEXADO_PERS') return upper;
-          if (upper.includes('INDEX')) return 'INDEXADO';
-          return 'FIJO';
-        };
-        
-        let rawTipoProducto = normProdType(leadToEdit.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']));
+        let rawTipoProducto = leadToEdit.productType || cd.tipoProducto || getScalar(ad['Tipo de producto']) || 'Precio fijo único';
 
         setData(prev => ({
           ...prev,
@@ -278,6 +282,7 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
           iban: leadToEdit.iban || cd.iban || getScalar(ad['IBAN']) || getScalar(ad['Certificado IBAN']) || '',
           envioFactura: leadToEdit.invoiceDelivery || cd.envioFactura || (getScalar(ad['¿Facturas papel?']) === true || getScalar(ad['¿Facturas papel?']) === 'SI' || getScalar(ad['¿Facturas papel?']) === 'Sí' ? 'Postal' : 'Email'),
           serviciosAdicionales: leadToEdit.additionalServices || cd.serviciosAdicionales || '',
+          additionalServiceIds: cd.additionalServiceIds || [],
           
           p1c: cd.potencias?.p1 || cd.p1c || String(leadToEdit.p1c || getScalar(ad['P1C']) || ''),
           p2c: cd.potencias?.p2 || cd.p2c || String(leadToEdit.p2c || getScalar(ad['P2C']) || ''),
@@ -365,7 +370,11 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
       formData.append('phone', data.phone);
       formData.append('productType', data.tipoProducto);
       formData.append('product', data.product);
-      formData.append('additionalServices', data.serviciosAdicionales);
+      
+      const selectedServices = additionalServicesDb.filter(s => data.additionalServiceIds.includes(s.id));
+      const textServices = selectedServices.map(s => s.name).join(', ');
+      formData.append('additionalServices', textServices || data.serviciosAdicionales);
+
       formData.append('tariff', data.tarifa);
       formData.append('selfConsumption', data.autoconsumo);
       
@@ -434,7 +443,8 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
         priceServiceActual: data.priceServiceActual,
         comparative: data.comparative,
         savings: data.savings,
-        comments: data.comments
+        comments: data.comments,
+        additionalServiceIds: data.additionalServiceIds
       };
       formData.append('contractData', JSON.stringify(contractData));
 
@@ -674,8 +684,14 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
 
       case 3:
         const isNot20 = data.tarifa !== '2.0TD';
-        const isIndexadoPers = data.tipoProducto === 'INDEXADO_PERS';
-        const isPersAutoconsumo = (data.tipoProducto === 'INDEXADO_PERS' || data.tipoProducto === 'FIJO_PERS') && data.autoconsumo === 'SI';
+        const prodTypeLower = (data.tipoProducto || '').toLowerCase();
+        const isIndexadoPers = prodTypeLower.includes('indexado') && prodTypeLower.includes('personalizado');
+        const isPersAutoconsumo = prodTypeLower.includes('personalizado') && data.autoconsumo === 'SI';
+
+        const uniqueProductTypes = Array.from(new Set(productsDb.map(p => p.type).filter(Boolean)));
+        if (uniqueProductTypes.length === 0) {
+          uniqueProductTypes.push('Precio fijo único', 'Precio indexado Pass-Through', 'Precio fijo por periodo', 'Precio indexado Pass-Through Personalizado', 'Precio indexado Pass-Through Personalizado Exc Fijo');
+        }
 
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -683,7 +699,7 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
               <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 border-b border-[#1E2A3A] pb-2 text-[#DEFF9A]">Producto y Facturación</h3>
               <div className="grid grid-cols-2 gap-4 mb-5">
                 <Select label="¿Asociar a Bolsillo Solar?" field="bolsilloSolar" options={['NO', 'SI']} width="half" />
-                <Select label="Tipo de Producto" field="tipoProducto" options={['FIJO', 'INDEXADO', 'FIJO_PERS', 'INDEXADO_PERS']} width="half" />
+                <Select label="Tipo de Producto" field="tipoProducto" options={uniqueProductTypes} width="half" />
                 
                 {/* Selector de Producto Dinámico */}
                 <div className="flex flex-col">
@@ -699,9 +715,7 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
                       if (data.autoconsumo === 'NO' && p.hasSelfConsumption) return false;
                       if (data.autoconsumo === 'SI' && !p.hasSelfConsumption) return false;
                       
-                      const reqType = data.tipoProducto ? data.tipoProducto.replace('_PERS', '') : '';
-                      if (reqType === 'FIJO' && p.pricingModel !== 'FIXED' && !p.name.toLowerCase().includes('fijo')) return false;
-                      if (reqType === 'INDEXADO' && p.pricingModel !== 'INDEXED' && !p.name.toLowerCase().includes('indexado')) return false;
+                      if (data.tipoProducto && p.type !== data.tipoProducto) return false;
                       
                       return true;
                     }).map(p => (
@@ -714,7 +728,34 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
                   </select>
                 </div>
                 
-                <Input label="Servicios Adicionales" field="serviciosAdicionales" width="half" />
+                <div className="col-span-2 mt-4">
+                  <label className="text-xs font-semibold text-gray-400 mb-2 block uppercase tracking-wide">Servicios Adicionales</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {additionalServicesDb.map(svc => (
+                      <label key={svc.id} className="flex items-center gap-3 p-3 bg-[#0B0F19] border border-[#1E2A3A] rounded-lg cursor-pointer hover:border-[#DEFF9A]/50 transition-colors">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#DEFF9A] focus:ring-[#DEFF9A]"
+                          checked={data.additionalServiceIds.includes(svc.id)}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              updateData('additionalServiceIds', [...data.additionalServiceIds, svc.id]);
+                            } else {
+                              updateData('additionalServiceIds', data.additionalServiceIds.filter(id => id !== svc.id));
+                            }
+                          }}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-white">{svc.name}</span>
+                          <span className="text-xs text-gray-500">{(svc.dailyPrice || 0).toLocaleString('es-ES', { minimumFractionDigits: 3 })} €/día</span>
+                        </div>
+                      </label>
+                    ))}
+                    {additionalServicesDb.length === 0 && (
+                      <div className="text-xs text-gray-500 p-3">No hay servicios configurados en la marca.</div>
+                    )}
+                  </div>
+                </div>
               </div>
               {mode === 'contract' && (
                 <div className="grid grid-cols-3 gap-4">
@@ -750,11 +791,11 @@ export default function NewLeadModal({ isOpen, onClose, mode, leadToEdit }: NewL
                       <Input label="FEE Index" field="feeIndex" type="number" width="col-span-1" />
                       <Input label="IP P1" field="ip1" type="number" width="col-span-1" />
                       <Input label="IP P2" field="ip2" type="number" width="col-span-1" />
-                      <Input label="IP P3" field="ip3" type="number" width="col-span-1" />
                     </>
                   )}
                   {isIndexadoPers && isNot20 && (
                     <>
+                      <Input label="IP P3" field="ip3" type="number" width="col-span-1" />
                       <Input label="IP P4" field="ip4" type="number" width="col-span-1" />
                       <Input label="IP P5" field="ip5" type="number" width="col-span-1" />
                       <Input label="IP P6" field="ip6" type="number" width="col-span-1" />

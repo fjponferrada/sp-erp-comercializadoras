@@ -38,7 +38,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         managerEmail: data.managerEmail,
         supportEmail: data.supportEmail,
         autoGenerateContract: data.autoGenerateContract,
-        maxRenewalDays: data.maxRenewalDays
+        maxRenewalDays: data.maxRenewalDays,
+        ...(data.productIds ? { products: { set: data.productIds.map((pid: string) => ({ id: pid })) } } : {})
       }
     });
 

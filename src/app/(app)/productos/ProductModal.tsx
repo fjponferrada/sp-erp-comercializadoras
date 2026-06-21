@@ -41,6 +41,14 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
     p5e: product?.p5e || 0,
     p6e: product?.p6e || 0,
 
+    // Márgenes
+    marginFC: product?.marginFC || 0,
+    ip1: product?.ip1 || 0,
+    ip2: product?.ip2 || 0,
+    ip3: product?.ip3 || 0,
+    ip4: product?.ip4 || 0,
+    ip5: product?.ip5 || 0,
+    ip6: product?.ip6 || 0,
   });
 
   const [saving, setSaving] = useState(false);
@@ -108,7 +116,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
 
         {/* TABS */}
         <div className="flex border-b border-slate-800 px-6 gap-6 overflow-x-auto no-scrollbar">
-          {['general', 'potencia', 'energia', 'autoconsumo', 'comisiones'].map(tab => (
+          {['general', 'potencia', 'energia', 'autoconsumo', 'comisiones', 'márgenes'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -286,6 +294,30 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
             </div>
           )}
 
+          {activeTab === 'márgenes' && (
+            <div className="space-y-6">
+              <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-wider mb-4">Márgenes Base del Producto</h3>
+              <p className="text-xs text-slate-400 mb-6">Configura el margen comercial de este producto. Esto se usará para calcular comisiones basadas en porcentaje.</p>
+              
+              <InputField label="Fee de Comercialización Energía (marginFC) (€/MWh)" field="marginFC" type="number" step="0.01" />
+              
+              <div className="pt-4 border-t border-slate-800">
+                <h4 className="text-xs font-semibold text-slate-300 mb-4">Márgenes de Potencia (IP) (€/kW/año)</h4>
+                <div className="grid grid-cols-3 gap-6">
+                  <InputField label="IP P1" field="ip1" type="number" step="0.01" />
+                  <InputField label="IP P2" field="ip2" type="number" step="0.01" />
+                  {formData.tariff !== '2.0TD' && (
+                    <>
+                      <InputField label="IP P3" field="ip3" type="number" step="0.01" />
+                      <InputField label="IP P4" field="ip4" type="number" step="0.01" />
+                      <InputField label="IP P5" field="ip5" type="number" step="0.01" />
+                      <InputField label="IP P6" field="ip6" type="number" step="0.01" />
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* FOOTER */}

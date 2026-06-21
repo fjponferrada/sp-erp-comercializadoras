@@ -52,9 +52,12 @@ export default async function CanalesPage() {
       comisionFijo: c.fixedCommissionPct || 0,
       comisionVariable: c.variableCommissionPct || 0,
       estado: 'ACTIVO', // Asumimos activos si están en BD
-      products: c.products || []
+      products: c.products || [],
+      commissionTierId: c.commissionTierId
     };
   });
 
-  return <CanalesClient initialCanales={canalesData} />;
+  const commissionTiers = await prisma.commissionTier.findMany({ orderBy: { name: 'asc' } });
+
+  return <CanalesClient initialCanales={canalesData} commissionTiers={commissionTiers} />;
 }

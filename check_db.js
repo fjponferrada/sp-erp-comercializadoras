@@ -1,16 +1,21 @@
-const { Client } = require('pg');
-
-const client = new Client({
-  connectionString: "postgres://66eac579e1d9a1c746f57ec7d2e8f66365779625a1401b77a77fbe2ce06bcfaa:sk_AVG9axzbc7q1h8JePCkX1@db.prisma.io:5432/postgres?sslmode=require"
-});
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 async function main() {
-  await client.connect();
-  const res = await client.query("SELECT * FROM \"SwitchingEvent\" WHERE cups = 'ES0031101654201001PA0F' OR \"uniqueProcess\" LIKE '%ES0031101654201001PA0F%'");
-  console.log("EVENTS:", res.rows);
-  const c = await client.query("SELECT id, status FROM \"Contract\" WHERE \"supplyPointId\" IN (SELECT id FROM \"SupplyPoint\" WHERE cups = 'ES0031101654201001PA0F')");
-  console.log("CONTRACT:", c.rows);
-  await client.end();
+  const c = await prisma.contract.findUnique({
+    where: { contractCode: 'NUEB26392039DH0F' },
+    include: { product: true }
+  });
+  console.log('Product for NUEB26392039DH0F:');
+  console.log('ID:', c.product.id);
+  console.log('Name:', c.product.name);
+  console.log('CommissionType:', c.product.commissionType);
+  
+  const rules = await prisma.commissionRule.findMany({
+    where: { tierId: 'cmqmnoucf00068441h382g88k' } // the tier from previous steps
+  });
+  console.log('\nRules for this tier:');
+  rules.forEach(r => console.log(`- ${r.commissionType} | ${r.productType} | ${r.tariff} | ${r.powerMin}-${r.powerMax} | ${r.value}`));
 }
 
-main().catch(console.error);
+main().catch(console.error).finally(() => prisma.$disconnect());

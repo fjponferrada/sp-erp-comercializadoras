@@ -85,6 +85,9 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
   nombreTitular = nombreTitular.replace(/\s+/g, ' ').trim(); // clean multiple spaces
 
   const sp = supplyPoint || contract?.supplyPoint || {};
+  const additionalServicesStr = Array.isArray(contract?.additionalServicesSnapshot)
+    ? contract.additionalServicesSnapshot.map((s: any) => s.name).join(' - ')
+    : cData.svaConcept || '';
 
   return {
     nombretit: nombreTitular,
@@ -117,7 +120,7 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     p1c: contract.p1c || '0', p2c: contract.p2c || '0', p3c: contract.p3c || '0', p4c: contract.p4c || '0', p5c: contract.p5c || '0', p6c: contract.p6c || '0',
     p1p: contract.p1p || '0', p2p: contract.p2p || '0', p3p: contract.p3p || '0', p4p: contract.p4p || '0', p5p: contract.p5p || '0', p6p: contract.p6p || '0',
     MESESPERMANENCIA: contract.permanenceMonths || '0',
-    servicios: cData.svaConcept || '',
+    servicios: additionalServicesStr,
     consumoanual: lead.estimatedMWh ? (lead.estimatedMWh * 1000).toString() : (cData.consumoEstimado || cData.consumoAnual || '0'),
     tramitacion: cData.tipoTramitacion || '',
     modalidadauto: cData.autoconsumo === 'Si' ? 'Con excedentes' : 'Sin autoconsumo',
@@ -165,6 +168,9 @@ export function buildTemplateDataFromContract(contract: any, cData: any, product
 
   const sp = contract.supplyPoint || {};
   const cl = contract.client || {};
+  const additionalServicesStr = Array.isArray(contract?.additionalServicesSnapshot)
+    ? contract.additionalServicesSnapshot.map((s: any) => s.name).join(' - ')
+    : cData.svaConcept || '';
 
   return {
     nombretit: nombreTitular,
@@ -209,6 +215,7 @@ export function buildTemplateDataFromContract(contract: any, cData: any, product
     p6e: formatField(product?.e6 || contract.p6e || cData.p6e) || '',
     fee: formatField(contract.fee || product?.fee || cData.fee) || '',
     feee: formatField(contract.svaConcept || product?.svaConcept || cData.feee) || '',
+    servicios: additionalServicesStr,
     conpexc: formatField(product?.feeExcedentes || contract.commissionBase || cData.conpexc) || '',
     pexc: formatField(product?.pexc || cData.pexc) || '',
     f1: formatField(product?.f1 || cData.f1) || '',
