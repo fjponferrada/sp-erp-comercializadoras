@@ -61,6 +61,8 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+  
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
@@ -104,7 +106,24 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   // Reset page when filters change
   React.useEffect(() => {
     setCurrentPage(1);
+    setSelectedInvoiceIds(new Set()); // Clear selection when filters change
   }, [searchTerm, filterType, itemsPerPage, dateFrom, dateTo]);
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const allIds = new Set(invoices.map(i => i.id));
+      setSelectedInvoiceIds(allIds);
+    } else {
+      setSelectedInvoiceIds(new Set());
+    }
+  };
+
+  const handleSelectInvoice = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedInvoiceIds);
+    if (checked) newSelected.add(id);
+    else newSelected.delete(id);
+    setSelectedInvoiceIds(newSelected);
+  };
 
   return (
     <div className="space-y-6">
@@ -163,7 +182,12 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
           />
         </div>
         
-        {showPaymentButtons && <SendInvoicesButton pendingCount={pendingCount} />}
+        {showPaymentButtons && (
+          <SendInvoicesButton 
+            selectedInvoiceIds={Array.from(selectedInvoiceIds)} 
+            onSentSuccess={() => setSelectedInvoiceIds(new Set())}
+          />
+        )}
         <button 
           className="btn-secondary"
           onClick={() => {
@@ -186,6 +210,14 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: '40px', textAlign: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={invoices.length > 0 && selectedInvoiceIds.size === invoices.length}
+                    onChange={handleSelectAll}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
                 <th>Nº Factura / Emisión</th>
                 <th>Cliente</th>
                 <th>Suministro (CUPS, Dir, Proc)</th>
@@ -198,6 +230,14 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
             <tbody>
               {invoices.map((invoice) => (
                 <tr key={invoice.id}>
+                  <td style={{ textAlign: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedInvoiceIds.has(invoice.id)}
+                      onChange={(e) => handleSelectInvoice(invoice.id, e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </td>
                   <td>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{invoice.invoiceNumber}</div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>{formatDateUTC(invoice.issueDate)}</div>
@@ -304,7 +344,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
               
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                     {isLoading ? "Cargando facturas..." : "No se encontraron facturas."}
                   </td>
                 </tr>

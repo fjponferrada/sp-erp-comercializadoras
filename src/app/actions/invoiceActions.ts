@@ -382,6 +382,84 @@ export async function sendPendingInvoicesAction() {
   }
 }
 
+export async function sendSelectedInvoicesAction(invoiceIds: string[]) {
+  try {
+    if (!invoiceIds || invoiceIds.length === 0) {
+      return { success: false, error: "No se han seleccionado facturas." };
+    }
+
+    // Buscar facturas seleccionadas que tengan PDF, email de cliente, y no hayan sido comunicadas
+    const pendingInvoices = await prisma.invoice.findMany({
+      where: {
+        id: { in: invoiceIds },
+        communicatedAt: null,
+        pdfUrl: { not: null },
+        client: { contactEmail: { not: "" } }
+      },
+      include: {
+        client: {
+          include: { brand: true } // Cargar info de la Comercializadora / Marca
+        },
+        supplyPoint: true
+      }
+    });
+
+    if (pendingInvoices.length === 0) {
+      return { success: true, sentCount: 0, message: "Las facturas seleccionadas ya fueron comunicadas, no tienen PDF o no tienen Email válido." };
+    }
+
+    let sentCount = 0;
+
+    for (const invoice of pendingInvoices) {
+      try {
+        const brand = invoice.client.brand;
+        const brandName = brand?.name || 'Su Comercializadora';
+        const brandColor = brand?.accentColor || '#4F46E5';
+        const logoHtml = brand?.logoUrl 
+          ? `<img src="${brand.logoUrl}" alt="${brandName}" style="max-height: 60px; margin-bottom: 20px;" />`
+          : '';
+
+        const emailContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+            ${logoHtml}
+            <p>Hola <b>${invoice.client.businessName || invoice.client.firstName}</b>,</p>
+            <p>Te adjuntamos (enlace seguro) la factura con número <b>${invoice.invoiceNumber}</b>, correspondiente a tu suministro <b>${invoice.supplyPoint?.cups || 'Desconocido'}</b>.</p>
+            <p><a href="${invoice.pdfUrl}" style="background-color: ${brandColor}; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0; font-weight: bold;">Descargar Factura en PDF</a></p>
+            <p>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email.</p>
+            <p>Gracias por confiar en nosotros,</p>
+            <p><b>El Equipo de ${brandName}</b></p>
+          </div>
+        `;
+
+        await resend.emails.send({
+          from: `facturacion@${brand?.slug || 'crm'}.com`,
+          to: invoice.client.contactEmail!,
+          subject: `[${brandName}] Aviso de factura emitida - ${invoice.invoiceNumber}`,
+          html: emailContent
+        });
+
+        // Marcar como enviada
+        await prisma.invoice.update({
+          where: { id: invoice.id },
+          data: { communicatedAt: new Date() }
+        });
+
+        sentCount++;
+      } catch (err) {
+        console.error(`Error enviando factura ${invoice.id}:`, err);
+        // Continuamos con la siguiente
+      }
+    }
+
+    revalidatePath('/facturas');
+    return { success: true, sentCount, message: `Se han enviado ${sentCount} facturas correctamente.` };
+
+  } catch (error: any) {
+    console.error("Error en envío seleccionado:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function createPenalizationInvoiceAction(data: {
   contractId: string;
   invoiceNumber: string;
