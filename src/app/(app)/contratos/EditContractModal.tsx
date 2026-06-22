@@ -186,7 +186,7 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
 
       if (selectedFile) {
         const presigned = await getPresignedUrlAction(`contracts/${contract.id}/${selectedFile.name}`, selectedFile.type || 'application/pdf');
-        if (presigned.success && presigned.uploadUrl) {
+        if ('success' in presigned && presigned.success && 'uploadUrl' in presigned && presigned.uploadUrl) {
           const uploadRes = await fetch(presigned.uploadUrl, {
             method: 'PUT',
             body: selectedFile,
@@ -204,7 +204,7 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
       }
       if (selectedAnexoFile) {
         const presigned = await getPresignedUrlAction(`contracts/${contract.id}/anexo_${selectedAnexoFile.name}`, selectedAnexoFile.type || 'application/pdf');
-        if (presigned.success && presigned.uploadUrl) {
+        if ('success' in presigned && presigned.success && 'uploadUrl' in presigned && presigned.uploadUrl) {
           const uploadRes = await fetch(presigned.uploadUrl, {
             method: 'PUT',
             body: selectedAnexoFile,
