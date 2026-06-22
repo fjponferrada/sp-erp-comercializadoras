@@ -317,9 +317,14 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           tipoError = "COLISION_DE_FECHAS";
           warning = "El XML trae una fecha de activación, pero el contrato ya tiene una fecha de alta asignada.";
         } else if (parsedData.fechaActivacionAlta) {
+          const isA3C1C2 = ['A3', 'C1', 'C2'].includes(procesoBase);
           await prisma.contract.update({
             where: { id: tramitandoContract.id },
-            data: { activationDate: parsedData.fechaActivacionAlta, status: 'ACTIVO' }
+            data: { 
+              activationDate: parsedData.fechaActivacionAlta, 
+              status: 'ACTIVO',
+              ...(isA3C1C2 && { permanenceStartDate: parsedData.fechaActivacionAlta })
+            }
           });
 
           // Regla M1/M2: Rescindir contrato anterior

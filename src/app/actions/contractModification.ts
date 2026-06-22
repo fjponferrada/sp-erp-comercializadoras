@@ -98,7 +98,16 @@ export async function createContractModificationAction(
         city: formData.poblacion,
         province: formData.provincia,
         iban: formData.iban,
-        tariff: oldContract.supplyPoint.tariff || "2.0TD"
+        tariff: oldContract.supplyPoint.tariff || "2.0TD",
+        distributor: oldContract.supplyPoint.distributor,
+        distributorName: oldContract.supplyPoint.distributorName,
+        annualConsumption: oldContract.supplyPoint.annualConsumption,
+        p1c: oldContract.supplyPoint.p1c,
+        p2c: oldContract.supplyPoint.p2c,
+        p3c: oldContract.supplyPoint.p3c,
+        p4c: oldContract.supplyPoint.p4c,
+        p5c: oldContract.supplyPoint.p5c,
+        p6c: oldContract.supplyPoint.p6c,
       };
 
       const supplyPoint = await findOrUpdateSupplyPointByCups(prisma, cups, newClientId, spData);
@@ -124,9 +133,8 @@ export async function createContractModificationAction(
       newContractData.p6c = formData.p6c;
     }
 
-    const nextVersion = (oldContract.version || 1) + 1;
-    const baseCode = (oldContract.contractCode || "").split('-V')[0];
-    const newCode = `${baseCode}-V${nextVersion}`;
+    const nextVersion = (oldContract.version ?? 0) + 1;
+    const newCode = oldContract.contractCode;
 
     // Create the new contract version
     const newContract = await prisma.contract.create({
@@ -142,11 +150,18 @@ export async function createContractModificationAction(
         tipo: 'M1',
         tipoC2: isSubrogation ? 'S' : 'N',
         status: 'BORRADOR',
+        permanenceStartDate: oldContract.permanenceStartDate,
         airtableData: newContractData,
         p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,
         p4e: oldContract.p4e, p5e: oldContract.p5e, p6e: oldContract.p6e,
         p1p: oldContract.p1p, p2p: oldContract.p2p, p3p: oldContract.p3p,
         p4p: oldContract.p4p, p5p: oldContract.p5p, p6p: oldContract.p6p,
+        p1c: isTecnica && formData.p1c ? parseFloat(String(formData.p1c)) : oldContract.p1c,
+        p2c: isTecnica && formData.p2c ? parseFloat(String(formData.p2c)) : oldContract.p2c,
+        p3c: isTecnica && formData.p3c ? parseFloat(String(formData.p3c)) : oldContract.p3c,
+        p4c: isTecnica && formData.p4c ? parseFloat(String(formData.p4c)) : oldContract.p4c,
+        p5c: isTecnica && formData.p5c ? parseFloat(String(formData.p5c)) : oldContract.p5c,
+        p6c: isTecnica && formData.p6c ? parseFloat(String(formData.p6c)) : oldContract.p6c,
         fee: oldContract.fee,
         commissionBase: oldContract.commissionBase,
         commissionFinal: oldContract.commissionFinal,
@@ -163,6 +178,8 @@ export async function createContractModificationAction(
       : `${oldContract.client.billingAddress || oldContractDataObj.direccionTitular || ''}`;
       
     const templateData = {
+      contrato: newCode || "",
+      fecha: new Date().toLocaleDateString('es-ES'),
       nombretit: nombreFinal,
       "1apetit": apellido1Final,
       "2apetit": apellido2Final,

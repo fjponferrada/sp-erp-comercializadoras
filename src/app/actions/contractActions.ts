@@ -1200,8 +1200,14 @@ export async function updateContractFull(formData: FormData) {
     const file = formData.get('signedContractPdf') as File | null;
     const anexoFile = formData.get('signedAnexoPdf') as File | null;
 
-    let filePdfSignedUrl: string | undefined = undefined;
-    let fileAnexoFirmadoUrl: string | undefined = undefined;
+    const fileUrlStr = formData.get('signedContractPdfUrl') as string | null;
+    const fileNameStr = formData.get('signedContractPdfName') as string | null;
+    
+    const anexoUrlStr = formData.get('signedAnexoPdfUrl') as string | null;
+    const anexoNameStr = formData.get('signedAnexoPdfName') as string | null;
+
+    let filePdfSignedUrl: string | undefined = fileUrlStr || undefined;
+    let fileAnexoFirmadoUrl: string | undefined = anexoUrlStr || undefined;
 
     // First fetch the existing contract to get client and supply point IDs
     const existing = await prisma.contract.findUnique({
@@ -1212,7 +1218,16 @@ export async function updateContractFull(formData: FormData) {
     if (!existing) throw new Error('Contract not found');
 
     // Handle file upload
-    if (file && file.size > 0) {
+    if (fileUrlStr && fileNameStr) {
+      await prisma.document.create({
+        data: {
+          type: 'Contrato',
+          url: fileUrlStr,
+          name: fileNameStr,
+          contractId: contractId
+        }
+      });
+    } else if (file && file.size > 0) {
       const { uploadFileToR2 } = await import('@/lib/r2');
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -1230,7 +1245,16 @@ export async function updateContractFull(formData: FormData) {
       });
     }
 
-    if (anexoFile && anexoFile.size > 0) {
+    if (anexoUrlStr && anexoNameStr) {
+      await prisma.document.create({
+        data: {
+          type: 'Anexo',
+          url: anexoUrlStr,
+          name: anexoNameStr,
+          contractId: contractId
+        }
+      });
+    } else if (anexoFile && anexoFile.size > 0) {
       const { uploadFileToR2 } = await import('@/lib/r2');
       const arrayBuffer = await anexoFile.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -1248,7 +1272,13 @@ export async function updateContractFull(formData: FormData) {
     }
 
     // Determine if we should update SupplyPoint or Contract with IBAN
-    const newStatus = status || existing.status;
+    let newStatus = status || existing.status;
+    
+    // Auto-accept if M1, version > 0 and a signed anexo was uploaded
+    if (existing.tipo === 'M1' && (existing.version || 0) > 0 && fileAnexoFirmadoUrl) {
+      newStatus = 'ACEPTADO';
+    }
+    
     const isActivo = newStatus === 'ACTIVO';
 
     // Contract data is a snapshot. We no longer update Client or SupplyPoint from here.
@@ -1256,7 +1286,7 @@ export async function updateContractFull(formData: FormData) {
     await prisma.contract.update({
       where: { id: contractId },
       data: {
-        status: status || undefined,
+        status: newStatus || undefined,
         iban: iban || undefined,
         internalComments: internalComments,
         signatureDate: signatureDate ? new Date(signatureDate) : null,
@@ -1634,5 +1664,44 @@ export async function getFullContractAction(id: string) {
     return { success: true, contract };
   } catch (err: any) {
     return { success: false, error: err.message };
+  }
+}
+
+export async function getPresignedUrlAction(path: string, contentType: string) {
+  try {
+    const { generatePresignedUrl } = await import('@/lib/r2');
+    const urls = await generatePresignedUrl(path, contentType);
+    return { success: true, ...urls };
+  } catch (error: any) {
+    return { error: error.message || 'Error generating presigned URL' };
+  }
+}
+
+export async function deleteLatestVersionAction(contractId: string) {
+  try {
+    const { prisma } = await import('@/lib/prisma');
+    const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+    if (!contract) return { error: 'Contrato no encontrado' };
+
+    // Find all versions of this contractCode
+    const versions = await prisma.contract.findMany({
+      where: { contractCode: contract.contractCode },
+      orderBy: { version: 'desc' }
+    });
+
+    if (versions.length <= 1) return { error: 'No se puede eliminar la única versión' };
+    if (versions[0].id !== contractId) return { error: 'Solo se puede eliminar la versión más reciente' };
+
+    // Remove the latest version
+    await prisma.contract.delete({ where: { id: contractId } });
+
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/contratos');
+    revalidatePath(`/contratos/${versions[1].id}`);
+
+    return { success: true, previousVersionId: versions[1].id };
+  } catch (error: any) {
+    console.error('Error deleting latest version:', error);
+    return { error: error.message || 'Error al eliminar la versión' };
   }
 }

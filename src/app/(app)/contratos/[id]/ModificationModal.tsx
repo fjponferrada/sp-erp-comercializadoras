@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, RefreshCw } from 'lucide-react';
+import { getProvincesAction, getMunicipalitiesAction, getAdditionalServicesAction } from '@/app/actions/dictionaryActions';
 
 interface ModificationModalProps {
   contractId: string;
@@ -40,6 +41,28 @@ export default function ModificationModal({ contractId, initialContract, onClose
   const [provincia, setProvincia] = useState('');
   const [facturaPapel, setFacturaPapel] = useState('NO');
   const [servicio, setServicio] = useState('-');
+
+  const [dbProvinces, setDbProvinces] = useState<any[]>([]);
+  const [dbMunicipalities, setDbMunicipalities] = useState<any[]>([]);
+  const [dbServices, setDbServices] = useState<any[]>([]);
+
+  useEffect(() => {
+    getProvincesAction().then(res => { if (res.success) setDbProvinces(res.data); });
+    getAdditionalServicesAction().then(res => { if (res.success) setDbServices(res.data); });
+  }, []);
+
+  useEffect(() => {
+    if (provincia) {
+      const selectedProv = dbProvinces.find(p => p.name === provincia);
+      if (selectedProv) {
+        getMunicipalitiesAction(selectedProv.id).then(res => { if (res.success) setDbMunicipalities(res.data); });
+      } else {
+        setDbMunicipalities([]);
+      }
+    } else {
+      setDbMunicipalities([]);
+    }
+  }, [provincia, dbProvinces]);
 
   // Form states for Technical Mod
   const initialTarifa = initialContract?.contractData?.tarifa || initialContract?.airtableData?.tarifa || initialContract?.supplyPoint?.tariff || '2.0TD';
@@ -225,11 +248,21 @@ export default function ModificationModal({ contractId, initialContract, onClose
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-1">Población Titular *</label>
-                    <input required type="text" value={poblacion} onChange={(e) => setPoblacion(e.target.value)} className="form-input w-full" />
+                    <select required value={poblacion} onChange={(e) => setPoblacion(e.target.value)} className="form-input w-full">
+                      <option value="">Seleccione población</option>
+                      {dbMunicipalities.map(m => (
+                        <option key={m.id} value={m.name}>{m.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-400 mb-1">Provincia Titular *</label>
-                    <input required type="text" value={provincia} onChange={(e) => setProvincia(e.target.value)} className="form-input w-full" />
+                    <select required value={provincia} onChange={(e) => { setProvincia(e.target.value); setPoblacion(''); }} className="form-input w-full">
+                      <option value="">Seleccione provincia</option>
+                      {dbProvinces.map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-400 mb-1">País Titular</label>
@@ -273,14 +306,14 @@ export default function ModificationModal({ contractId, initialContract, onClose
                     <label className="block text-sm font-medium text-gray-400 mb-1">Servicio *</label>
                     <select required value={servicio} onChange={(e) => setServicio(e.target.value)} className="form-input w-full">
                       <option value="-">-</option>
-                      <option value="rec3giNSPTAHYZ6Ca">Batería Virtual</option>
-                      <option value="rec4ALZMphWAuIb40">Gestión energía a coste</option>
-                      <option value="rec4m16hzWuPSCFC7">Asesoramiento + Papel</option>
+                      {dbServices.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-400 mb-1">IBAN *</label>
-                    <input required type="text" value={iban} onChange={(e) => setIban(e.target.value)} className="form-input w-full" placeholder="ESXX..." />
+                    <input required type="text" value={iban} onChange={(e) => setIban(e.target.value.replace(/\s+/g, '').toUpperCase())} pattern="^ES\d{22}$" title="El IBAN debe empezar por ES seguido de 22 números" className="form-input w-full" placeholder="ESXX..." />
                   </div>
                 </div>
               </div>

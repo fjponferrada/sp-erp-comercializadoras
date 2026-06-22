@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Topbar from '@/components/Topbar';
 import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery, BarChart2 } from 'lucide-react';
 import { useState } from 'react';
-import { updateContractDatesAction, sendContractToDocuSignAction } from '@/app/actions/contractActions';
+import { updateContractDatesAction, sendContractToDocuSignAction, deleteLatestVersionAction } from '@/app/actions/contractActions';
 import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
 import ConsumosTab from './ConsumosTab';
@@ -36,6 +36,7 @@ export default function ContractDetailClient({
   const [isRequestingMod, setIsRequestingMod] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
   const [isGeneratingXml, setIsGeneratingXml] = useState(false);
+  const [isDeletingVersion, setIsDeletingVersion] = useState(false);
 
   // Forms state
   const formatDateForInput = (isoDate: Date | string | null | undefined) => {
@@ -280,6 +281,28 @@ export default function ContractDetailClient({
                 {isSendingSignature ? 'Enviando...' : 'Enviar a DocuSign'}
               </button>
             )}
+            {versions && versions.length > 1 && initialContract.id === versions[0].id && (
+              <button 
+                onClick={async () => {
+                  if (confirm('¿Estás seguro de que quieres eliminar esta última versión y volver a la anterior? Esta acción no se puede deshacer.')) {
+                    setIsDeletingVersion(true);
+                    const res = await deleteLatestVersionAction(initialContract.id);
+                    setIsDeletingVersion(false);
+                    if (res.error) {
+                      alert(res.error);
+                    } else if (res.previousVersionId) {
+                      router.push(`/contratos/${res.previousVersionId}`);
+                    }
+                  }
+                }} 
+                disabled={isDeletingVersion}
+                className="btn-secondary flex items-center gap-2 border-red-500/50 text-red-400 hover:bg-red-500/10"
+                title="Elimina esta versión y vuelve a la anterior"
+              >
+                {isDeletingVersion ? <RefreshCw size={16} className="animate-spin" /> : <AlertTriangle size={16} />}
+                {isDeletingVersion ? 'Eliminando...' : 'Volver a Versión anterior'}
+              </button>
+            )}
             {versions && versions.length > 1 && (
               <select
                 className="form-input text-xs py-1 px-2 h-auto"
@@ -445,12 +468,12 @@ export default function ContractDetailClient({
                   <DataItem label="Provincia" value={supplyPoint.province} />
 
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Potencias Contratadas (kW)</h3></div>
-                  <DataItem label="P1P" value={initialContract.p1c || supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
-                  <DataItem label="P2P" value={initialContract.p2c || supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
-                  <DataItem label="P3P" value={initialContract.p3c || supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
-                  <DataItem label="P4P" value={initialContract.p4c || supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
-                  <DataItem label="P5P" value={initialContract.p5c || supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
-                  <DataItem label="P6P" value={initialContract.p6c || supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
+                  <DataItem label="P1P" value={(initialContract.airtableData as any)?.p1c || initialContract.p1c || supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
+                  <DataItem label="P2P" value={(initialContract.airtableData as any)?.p2c || initialContract.p2c || supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
+                  <DataItem label="P3P" value={(initialContract.airtableData as any)?.p3c || initialContract.p3c || supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
+                  <DataItem label="P4P" value={(initialContract.airtableData as any)?.p4c || initialContract.p4c || supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
+                  <DataItem label="P5P" value={(initialContract.airtableData as any)?.p5c || initialContract.p5c || supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
+                  <DataItem label="P6P" value={(initialContract.airtableData as any)?.p6c || initialContract.p6c || supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
                 </SectionCard>
               )}
 

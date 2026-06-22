@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Upload, Loader2, Save } from 'lucide-react';
-import { updateContractFull } from '@/app/actions/contractActions';
+import { updateContractFull, getPresignedUrlAction } from '@/app/actions/contractActions';
 import { TIPO_TRAMITACION_MAPPING } from '@/lib/tramitationMapper';
 
 interface EditContractModalProps {
@@ -122,12 +122,12 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
     p5p: contract.p5p ?? lead.p5p ?? '', 
     p6p: contract.p6p ?? lead.p6p ?? '',
     
-    p1c: contract.p1c ?? supplyPoint.p1c ?? lead.p1c ?? supplyPoint.p1p ?? '', 
-    p2c: contract.p2c ?? supplyPoint.p2c ?? lead.p2c ?? supplyPoint.p2p ?? '', 
-    p3c: contract.p3c ?? supplyPoint.p3c ?? lead.p3c ?? supplyPoint.p3p ?? '',
-    p4c: contract.p4c ?? supplyPoint.p4c ?? lead.p4c ?? supplyPoint.p4p ?? '', 
-    p5c: contract.p5c ?? supplyPoint.p5c ?? lead.p5c ?? supplyPoint.p5p ?? '', 
-    p6c: contract.p6c ?? supplyPoint.p6c ?? lead.p6c ?? supplyPoint.p6p ?? '',
+    p1c: (contract.airtableData as any)?.p1c ?? contract.p1c ?? supplyPoint.p1c ?? lead.p1c ?? supplyPoint.p1p ?? '', 
+    p2c: (contract.airtableData as any)?.p2c ?? contract.p2c ?? supplyPoint.p2c ?? lead.p2c ?? supplyPoint.p2p ?? '', 
+    p3c: (contract.airtableData as any)?.p3c ?? contract.p3c ?? supplyPoint.p3c ?? lead.p3c ?? supplyPoint.p3p ?? '',
+    p4c: (contract.airtableData as any)?.p4c ?? contract.p4c ?? supplyPoint.p4c ?? lead.p4c ?? supplyPoint.p4p ?? '', 
+    p5c: (contract.airtableData as any)?.p5c ?? contract.p5c ?? supplyPoint.p5c ?? lead.p5c ?? supplyPoint.p5p ?? '', 
+    p6c: (contract.airtableData as any)?.p6c ?? contract.p6c ?? supplyPoint.p6c ?? lead.p6c ?? supplyPoint.p6p ?? '',
     tariff: supplyPoint.tariff ?? lead.tariff ?? '',
 
     requestType: contract.requestType || '',
@@ -185,10 +185,40 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
       formPayload.append('requestType', formData.isBajaM1 ? 'M1' : formData.requestType);
 
       if (selectedFile) {
-        formPayload.append('signedContractPdf', selectedFile);
+        const presigned = await getPresignedUrlAction(`contracts/${contract.id}/${selectedFile.name}`, selectedFile.type || 'application/pdf');
+        if (presigned.success && presigned.uploadUrl) {
+          const uploadRes = await fetch(presigned.uploadUrl, {
+            method: 'PUT',
+            body: selectedFile,
+            headers: { 'Content-Type': selectedFile.type || 'application/pdf' },
+          });
+          if (uploadRes.ok) {
+            formPayload.append('signedContractPdfUrl', presigned.publicUrl!);
+            formPayload.append('signedContractPdfName', selectedFile.name);
+          } else {
+            throw new Error('Error subiendo PDF principal a la nube');
+          }
+        } else {
+          throw new Error('Error obteniendo URL de subida para PDF principal');
+        }
       }
       if (selectedAnexoFile) {
-        formPayload.append('signedAnexoPdf', selectedAnexoFile);
+        const presigned = await getPresignedUrlAction(`contracts/${contract.id}/anexo_${selectedAnexoFile.name}`, selectedAnexoFile.type || 'application/pdf');
+        if (presigned.success && presigned.uploadUrl) {
+          const uploadRes = await fetch(presigned.uploadUrl, {
+            method: 'PUT',
+            body: selectedAnexoFile,
+            headers: { 'Content-Type': selectedAnexoFile.type || 'application/pdf' },
+          });
+          if (uploadRes.ok) {
+            formPayload.append('signedAnexoPdfUrl', presigned.publicUrl!);
+            formPayload.append('signedAnexoPdfName', selectedAnexoFile.name);
+          } else {
+            throw new Error('Error subiendo Anexo a la nube');
+          }
+        } else {
+          throw new Error('Error obteniendo URL de subida para Anexo');
+        }
       }
 
       const res = await updateContractFull(formPayload);
