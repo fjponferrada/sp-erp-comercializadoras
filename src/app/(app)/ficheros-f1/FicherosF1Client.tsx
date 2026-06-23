@@ -3,7 +3,7 @@
 import Topbar from '@/components/Topbar';
 
 import React, { useState, useEffect } from 'react';
-import { getPaginatedF1FilesAction } from '@/app/actions/f1Actions';
+import { getPaginatedF1FilesAction, getPendingF1EnergyAction } from '@/app/actions/f1Actions';
 import { Search, Loader2, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -12,11 +12,14 @@ export default function FicherosF1Client() {
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [pendingMWh, setPendingMWh] = useState<number | null>(null);
   
   // Filtros
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [cups, setCups] = useState('');
+  const [billedStatus, setBilledStatus] = useState<'ALL' | 'BILLED' | 'PENDING'>('ALL');
+
   
   // Paginación
   const [page, setPage] = useState(1);
@@ -30,7 +33,8 @@ export default function FicherosF1Client() {
         limit,
         dateFrom || undefined,
         dateTo || undefined,
-        cups || undefined
+        cups || undefined,
+        billedStatus
       );
       if (res.success && res.files) {
         setFiles(res.files);
@@ -44,9 +48,24 @@ export default function FicherosF1Client() {
     }
   };
 
+  const fetchPendingEnergy = async () => {
+    try {
+      const res = await getPendingF1EnergyAction();
+      if (res.success && res.totalMWh != null) {
+        setPendingMWh(res.totalMWh);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchFiles(page);
   }, [page]);
+
+  useEffect(() => {
+    fetchPendingEnergy();
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +82,12 @@ export default function FicherosF1Client() {
         subtitle="Revisa y filtra las facturas F1 importadas en el sistema."
         customActions={
           <div className="flex gap-3 items-center">
+            {pendingMWh !== null && (
+              <div className="bg-yellow-500/10 text-yellow-400 px-4 py-2 rounded-lg text-sm font-medium border border-yellow-500/20 flex items-center gap-2" title="Energía total de los F1 que aún no tienen factura vinculada">
+                <FileText className="w-4 h-4" />
+                Pendiente facturar: {pendingMWh.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh
+              </div>
+            )}
             <a href="/ficheros-f1/fianzas-clientes" className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-4 py-2 rounded-lg text-sm font-medium border border-blue-500/30 transition-colors flex items-center gap-2">
               Ver Fianzas a Devolver
             </a>
@@ -106,6 +131,18 @@ export default function FicherosF1Client() {
                 />
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
               </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-400">Estado Facturación</label>
+              <select 
+                value={billedStatus}
+                onChange={(e) => setBilledStatus(e.target.value as any)}
+                className="w-[160px] px-3 py-2 bg-[var(--bg-base)] border border-[var(--border)] rounded-lg text-sm text-gray-200 focus:border-[var(--lime)] focus:ring-1 focus:ring-[var(--lime)] outline-none"
+              >
+                <option value="ALL">Todos</option>
+                <option value="BILLED">Facturados</option>
+                <option value="PENDING">Pendientes</option>
+              </select>
             </div>
             <button 
               type="submit" 
@@ -154,12 +191,25 @@ export default function FicherosF1Client() {
                     <tr key={file.id} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                       <td className="px-4 py-3">{file.fechaEmision ? format(new Date(file.fechaEmision), 'dd/MM/yyyy') : '-'}</td>
                       <td className="px-4 py-3 font-mono text-xs text-[var(--lime)]">
-                        {file.numeroFactura || '-'}
-                        {file.tipoDocumento === 'OtrasFacturas' && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                            {file.motivoFacturacion === '06' || file.motivoFacturacion === '6' ? 'Fianza' : (file.motivoFacturacion === '04' || file.motivoFacturacion === '4' ? 'Fianza / Derechos' : 'Abono/Otros')}
-                          </span>
-                        )}
+                        <div className="flex flex-col items-start gap-1">
+                          <div className="flex items-center gap-2">
+                            <span>{file.numeroFactura || '-'}</span>
+                            {file.invoices && file.invoices.length > 0 ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                                Facturado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                                Pendiente
+                              </span>
+                            )}
+                          </div>
+                          {file.tipoDocumento === 'OtrasFacturas' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              {file.motivoFacturacion === '06' || file.motivoFacturacion === '6' ? 'Fianza' : (file.motivoFacturacion === '04' || file.motivoFacturacion === '4' ? 'Fianza / Derechos' : 'Abono/Otros')}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{file.supplyPoint?.cups || '-'}</td>
                       <td className="px-4 py-3 font-mono text-xs">{file.contract?.contractCode || '-'}</td>

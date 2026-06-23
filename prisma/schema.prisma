@@ -506,6 +506,7 @@ model Invoice {
   rectifiedInvoiceId String?
   contractId         String?
   supplyPointId      String?
+  f1InvoiceId        String?
   issueDate          DateTime
   paymentDate        DateTime?
   subtotal1          Float?
@@ -527,6 +528,7 @@ model Invoice {
   invoice            Invoice?     @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
   otherInvoices      Invoice[]    @relation("InvoiceToInvoice")
   supplyPoint        SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+  f1Invoice          F1Invoice?   @relation(fields: [f1InvoiceId], references: [id])
 
   @@unique([invoiceNumber, companyId])
 }
@@ -788,8 +790,9 @@ model F1Invoice {
   xmlUrl   String?
   jsonData Json?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  invoices  Invoice[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Distributor {

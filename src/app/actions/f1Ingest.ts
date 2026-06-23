@@ -156,7 +156,7 @@ async function ingestF1Core(file: File) {
         continue; // La obviamos
       }
 
-      await prisma.f1Invoice.create({
+      const newF1 = await prisma.f1Invoice.create({
         data: {
           numeroFactura: parsedCodFactura,
           tipoDocumento: 'FacturaATR',
@@ -174,6 +174,20 @@ async function ingestF1Core(file: File) {
           facturaRealizada: true,
         }
       });
+
+      // Intentar enlazar automáticamente con una factura ya importada
+      if (parsedCodFactura !== 'SIN_COD') {
+        await prisma.$executeRaw`
+          UPDATE "Invoice"
+          SET "f1InvoiceId" = ${newF1.id}
+          WHERE "f1InvoiceId" IS NULL AND (
+            LTRIM(TRIM(REPLACE(REPLACE("invoiceData"->>'Codigo Fiscal', 'CF ', ''), 'CF', '')), '0') = LTRIM(${parsedCodFactura}, '0')
+            OR LTRIM("invoiceData"->>'Numero Factura .xml', '0') = LTRIM(CONCAT(${parsedCodFactura}, '.xml'), '0')
+            OR LTRIM("invoiceData"->>'FechaFtra_NumFtra', '0') LIKE CONCAT('%', LTRIM(${parsedCodFactura}, '0'))
+          )
+        `;
+      }
+
       procesadas++;
     }
 

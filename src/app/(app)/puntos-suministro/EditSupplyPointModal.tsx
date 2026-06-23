@@ -4,6 +4,19 @@ import React, { useState } from 'react';
 import { updateSupplyPointAction } from '@/app/actions/supplyPointActions';
 import { X, Save, Zap } from 'lucide-react';
 
+const InputField = ({ label, name, type = "text", value, onChange }: { label: string, name: string, type?: string, value: any, onChange: any }) => (
+  <div>
+    <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">{label}</label>
+    <input
+      type={type}
+      name={name}
+      value={value}
+      onChange={onChange}
+      className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:border-lime-500/50 transition-all outline-none"
+    />
+  </div>
+);
+
 export default function EditSupplyPointModal({
   isOpen,
   onClose,
@@ -72,19 +85,6 @@ export default function EditSupplyPointModal({
     setLoading(false);
   };
 
-  const InputField = ({ label, name, type = "text" }: { label: string, name: string, type?: string }) => (
-    <div>
-      <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">{label}</label>
-      <input
-        type={type}
-        name={name}
-        value={(formData as any)[name]}
-        onChange={handleChange}
-        className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:border-lime-500/50 transition-all outline-none"
-      />
-    </div>
-  );
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <div className="bg-[#111111] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -119,29 +119,39 @@ export default function EditSupplyPointModal({
                 <div>
                   <h3 className="text-lime-400 font-bold mb-4">Dirección de Suministro</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <InputField label="Tipo de Vía" name="streetType" />
+                    <InputField label="Tipo de Vía" name="streetType" value={formData.streetType} onChange={handleChange} />
                     <div className="md:col-span-2">
-                      <InputField label="Nombre de la Vía" name="street" />
+                      <InputField label="Nombre de la Vía" name="street" value={formData.street} onChange={handleChange} />
                     </div>
-                    <InputField label="Número" name="streetNumber" />
-                    <InputField label="Piso" name="floor" />
-                    <InputField label="Puerta" name="door" />
+                    <InputField label="Número" name="streetNumber" value={formData.streetNumber} onChange={handleChange} />
+                    <InputField label="Piso" name="floor" value={formData.floor} onChange={handleChange} />
+                    <InputField label="Puerta" name="door" value={formData.door} onChange={handleChange} />
                     <div className="md:col-span-2">
-                      <InputField label="Adicional" name="addressAddition" />
+                      <InputField label="Adicional" name="addressAddition" value={formData.addressAddition} onChange={handleChange} />
                     </div>
-                    <InputField label="Código Postal" name="postalCode" />
+                    <InputField label="Código Postal" name="postalCode" value={formData.postalCode} onChange={handleChange} />
                     <div className="md:col-span-2">
-                      <InputField label="Población" name="city" />
+                      <InputField label="Población" name="city" value={formData.city} onChange={handleChange} />
                     </div>
-                    <InputField label="Provincia" name="province" />
+                    <InputField label="Provincia" name="province" value={formData.province} onChange={handleChange} />
                   </div>
                 </div>
 
                 <div>
                   <h3 className="text-lime-400 font-bold mb-4">Datos Bancarios</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <InputField label="IBAN" name="iban" />
-                    <InputField label="SWIFT/BIC" name="swift" />
+                    <InputField label="IBAN" name="iban" value={formData.iban} onChange={handleChange} />
+                    <InputField label="SWIFT/BIC" name="swift" value={formData.swift} onChange={handleChange} />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lime-400 font-bold mb-4">Datos Técnicos</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InputField label="CNAE" name="cnae" value={formData.cnae} onChange={handleChange} />
+                    <InputField label="Tarifa" name="tariff" value={formData.tariff} onChange={handleChange} />
+                    <InputField label="Distribuidora" name="distributor" value={formData.distributor} onChange={handleChange} />
+                    <InputField label="Consumo Anual (kWh)" name="annualConsumption" type="number" value={formData.annualConsumption} onChange={handleChange} />
                   </div>
                 </div>
 

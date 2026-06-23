@@ -8,7 +8,8 @@ export async function getPaginatedF1FilesAction(
   pageSize: number = 20,
   startDate?: string,
   endDate?: string,
-  cups?: string
+  cups?: string,
+  billedStatus?: 'ALL' | 'BILLED' | 'PENDING'
 ) {
   try {
     const session = await auth();
@@ -30,6 +31,12 @@ export async function getPaginatedF1FilesAction(
       }
     }
 
+    if (billedStatus === 'BILLED') {
+      whereClause.invoices = { some: {} };
+    } else if (billedStatus === 'PENDING') {
+      whereClause.invoices = { none: {} };
+    }
+
     const [files, total] = await Promise.all([
       prisma.f1Invoice.findMany({
         where: whereClause,
@@ -41,7 +48,8 @@ export async function getPaginatedF1FilesAction(
                 include: { client: true }
               }
             }
-          }
+          },
+          invoices: { select: { id: true } }
         },
         orderBy: { fechaEmision: 'desc' },
         skip: (page - 1) * pageSize,
@@ -82,6 +90,34 @@ export async function getPaginatedF1FilesAction(
   } catch (error: any) {
     console.error('Error fetching F1 files:', error);
     return { success: false, error: error.message };
+  }
+}
+
+export async function getPendingF1EnergyAction() {
+  try {
+    const session = await auth();
+    if (!session?.user) throw new Error("No autorizado");
+
+    const result = await prisma.$queryRaw<any[]>`
+      SELECT SUM((p->>'ValorEnergiaActiva')::numeric) as total_energia
+      FROM "F1Invoice" f
+      CROSS JOIN jsonb_array_elements(
+        CASE 
+          WHEN jsonb_typeof(f."jsonData"->'EnergiaActiva'->'TerminoEnergiaActiva'->'Periodo') = 'array' 
+          THEN f."jsonData"->'EnergiaActiva'->'TerminoEnergiaActiva'->'Periodo'
+          ELSE '[]'::jsonb
+        END
+      ) as p
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "Invoice" i WHERE i."f1InvoiceId" = f.id
+      )
+    `;
+
+    const totalEnergiaKWh = result[0]?.total_energia ? parseFloat(result[0].total_energia) : 0;
+    return { success: true, totalMWh: totalEnergiaKWh / 1000 };
+  } catch (err: any) {
+    console.error("Error fetching pending F1 energy:", err);
+    return { success: false, error: err.message };
   }
 }
 

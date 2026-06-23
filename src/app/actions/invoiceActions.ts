@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
@@ -13,6 +14,8 @@ export async function importInvoicesAction(invoicesData: any[]) {
       imported: 0,
       errors: [] as string[]
     };
+    
+    const insertedInvoiceNumbers: string[] = [];
 
     const session = await auth();
     const cookieStore = await cookies();
@@ -294,7 +297,27 @@ export async function importInvoicesAction(invoicesData: any[]) {
         }
       });
       
+      insertedInvoiceNumbers.push(invoiceNumber);
       results.imported++;
+    }
+
+    // Auto-link new invoices to existing F1 files based on JSON data
+    if (insertedInvoiceNumbers.length > 0) {
+      try {
+        await prisma.$executeRaw`
+          UPDATE "Invoice" i
+          SET "f1InvoiceId" = f1.id
+          FROM "F1Invoice" f1
+          WHERE i."invoiceNumber" IN (${Prisma.join(insertedInvoiceNumbers)})
+          AND i."f1InvoiceId" IS NULL AND (
+            LTRIM(TRIM(REPLACE(REPLACE(i."invoiceData"->>'Codigo Fiscal', 'CF ', ''), 'CF', '')), '0') = LTRIM(f1."numeroFactura", '0')
+            OR LTRIM(i."invoiceData"->>'Numero Factura .xml', '0') = LTRIM(CONCAT(f1."numeroFactura", '.xml'), '0')
+            OR LTRIM(i."invoiceData"->>'FechaFtra_NumFtra', '0') LIKE CONCAT('%', LTRIM(f1."numeroFactura", '0'))
+          )
+        `;
+      } catch (err) {
+        console.error("Error auto-linking invoices to F1:", err);
+      }
     }
 
     revalidatePath('/facturas');

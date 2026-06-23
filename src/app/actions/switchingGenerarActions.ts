@@ -71,10 +71,19 @@ export async function fetchPendingSwitchingContracts() {
         const hasAnexoAirtable = airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0;
         const hasAnexo = !!c.fileAnexoFirmado || hasAnexoAirtable;
 
+        const computedAddress = [
+          c.supplyPoint.streetType,
+          c.supplyPoint.street,
+          c.supplyPoint.streetNumber ? `NÚM ${c.supplyPoint.streetNumber}` : null,
+          c.supplyPoint.floor ? `Piso ${c.supplyPoint.floor}` : null,
+          c.supplyPoint.door ? `Puerta ${c.supplyPoint.door}` : null,
+          c.supplyPoint.addressAddition
+        ].filter(Boolean).join(' ') || c.supplyPoint.address || '';
+
         return {
           id: c.id,
           cups: c.supplyPoint.cups,
-          direccion: `${c.supplyPoint.address} ${c.supplyPoint.postalCode} ${c.supplyPoint.city}`,
+          direccion: `${computedAddress} ${c.supplyPoint.postalCode || ''} ${c.supplyPoint.city || ''}`.trim().replace(/\s+/g, ' '),
           nif: c.client.vatNumber,
           nombre: c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim(),
           proceso: c.tipo || getTramitationCodes(c.tramitationType).tipo || 'C1',
@@ -118,7 +127,8 @@ export async function generateSwitchingXmls(contractIds: string[]) {
       const tipoC2 = c.tipoC2 || getTramitationCodes(c.tramitationType).tipoC2 || cAirtableFallback['Tipo_c2'] || 'C2_A';
 
       const codEmisora = c.brand?.company?.codigoRee || '1713';
-      const codDestino = c.supplyPoint.distributorReeCode || c.supplyPoint.distributor || cAirtableFallback['CODIGO REE DISTRIBUIDORA'] || c.supplyPoint.cups?.substring(2, 6) || '0021';
+      const codDestinoRaw = c.supplyPoint.distributorReeCode || c.supplyPoint.distributor || cAirtableFallback['CODIGO REE DISTRIBUIDORA'] || c.supplyPoint.cups?.substring(2, 6) || '0021';
+      const codDestino = codDestinoRaw.match(/\d{4}/)?.[0] || '0021';
       
       const rawTariff = (cAirtableFallback['Código Tarifa'] && cAirtableFallback['Código Tarifa'][0]) || cAirtableFallback['Tarifa'] || c.supplyPoint.tariff || '';
       const mappedTarifa = getTarifaAtrCode(rawTariff);
@@ -136,7 +146,7 @@ export async function generateSwitchingXmls(contractIds: string[]) {
       const localISO = (new Date(now.getTime() - now.getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
       const fechaSol = localISO.split('.')[0]; // YYYY-MM-DDTHH:mm:ss
       
-      const clientName = c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim();
+      const clientName = cAirtableFallback['NOMBRE Y APELLIDOS'] || cAirtableFallback['Titular'] || c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim();
       
       if (!c.supplyPoint.cups || !c.client.vatNumber || !codDestino || !codEmisora) {
         errors.push({
@@ -151,11 +161,12 @@ export async function generateSwitchingXmls(contractIds: string[]) {
       let payloadContent = '';
 
       // Básicos de cliente (común a todos)
-      const isCompany = c.client.vatNumber.startsWith('B') || c.client.vatNumber.startsWith('A') || c.client.vatNumber.startsWith('W');
+      const isCompany = /^[ABCDEFGHJNPQRSUVW]/i.test(c.client.vatNumber);
+      const companyName = c.client.businessName || cAirtableFallback['NOMBRERAZON SOCIAL'] || cAirtableFallback['Razón Social'] || clientName;
       
-      let nombreDePila = c.client.firstName || clientName.split(' ')[0] || '';
-      let primerApellido = c.client.lastName || clientName.split(' ')[1] || '';
-      let segundoApellido = c.client.lastName2 || clientName.split(' ').slice(2).join(' ') || '';
+      let nombreDePila = cAirtableFallback['NOMBRERAZON SOCIAL'] || cAirtableFallback['Nombre de pila'] || c.client.firstName || '';
+      let primerApellido = cAirtableFallback['Primer Apellido'] || c.client.lastName || '';
+      let segundoApellido = cAirtableFallback['Segundo Apellido'] || c.client.lastName2 || '';
 
       const clienteXml = `
         <Cliente>
@@ -165,7 +176,7 @@ export async function generateSwitchingXmls(contractIds: string[]) {
           </IdCliente>
           <Nombre>
             ${isCompany 
-              ? `<RazonSocial>${removeAccents(clientName)}</RazonSocial>` 
+              ? `<RazonSocial>${removeAccents(companyName)}</RazonSocial>` 
               : `<NombreDePila>${removeAccents(nombreDePila)}</NombreDePila><PrimerApellido>${removeAccents(primerApellido)}</PrimerApellido>${segundoApellido ? `<SegundoApellido>${removeAccents(segundoApellido)}</SegundoApellido>` : ''}`}
           </Nombre>
           <Telefono>
@@ -197,15 +208,25 @@ export async function generateSwitchingXmls(contractIds: string[]) {
       const normProvincia = normalizeProvincia(postalCode) || '28';
       const rawMuni = normalizeMunicipio(postalCode, cityRaw);
       const normMunicipio = rawMuni === '000' ? '00000' : `${normProvincia}${rawMuni}`;
-      const normTipoVia = normalizeTipoVia(c.client.billingStreetType || 'CL');
+      const normTipoVia = normalizeTipoVia(c.client.billingStreetType || c.supplyPoint.streetType || 'CL');
       
-      const fullStreet = c.client.billingStreet || c.supplyPoint.address || '';
+      const fullStreet = c.client.billingStreet || c.supplyPoint.street || c.supplyPoint.address || '';
       
-      // Fallback a airtableData si es contrato importado
       const cAirtable: any = c.airtableData || c.client.airtableData || {};
       const isBillingNumberValid = c.client.billingNumber && c.client.billingNumber !== '00' && c.client.billingNumber !== '0';
-      const numeroFincaFinal = isBillingNumberValid ? c.client.billingNumber : (cAirtable['Número Titular'] !== undefined ? String(cAirtable['Número Titular']) : '00');
-      const representativeNameFinal = c.client.representativeName || cAirtable['Apoderado / Rep. Legal'] || cAirtable['NOMBRE Y APELLIDOS'] || cAirtable['Nombre Contacto'] || cAirtable['Nombre Representante'] || cAirtable['Apoderado'] || '';
+      const numeroFincaFinal = isBillingNumberValid ? c.client.billingNumber : (c.supplyPoint.streetNumber ? c.supplyPoint.streetNumber : (cAirtable['Número Titular'] !== undefined ? String(cAirtable['Número Titular']) : '00'));
+      
+      let personaContactoXml = '';
+      if (!isCompany) {
+        const fullPhysicalName = `${nombreDePila} ${primerApellido} ${segundoApellido}`.trim().replace(/\s+/g, ' ');
+        personaContactoXml = removeAccents(fullPhysicalName);
+      } else {
+        const repNameRaw = c.client.representativeName || cAirtable['Apoderado / Rep. Legal'] || cAirtable['NOMBRE Y APELLIDOS'] || cAirtable['Nombre Contacto'] || cAirtable['Nombre Representante'] || cAirtable['Apoderado'] || '';
+        const repName = typeof repNameRaw === 'string' ? repNameRaw.trim() : '';
+        const contactName = c.client.contactName ? `${c.client.contactName} ${c.client.contactLastName || ''}`.trim() : '';
+        const fallbackCompany = repName || contactName || 'Representante Legal';
+        personaContactoXml = removeAccents(fallbackCompany);
+      }
 
       const clienteConDireccionXml = `
         <Cliente>
@@ -215,7 +236,7 @@ export async function generateSwitchingXmls(contractIds: string[]) {
           </IdCliente>
           <Nombre>
             ${isCompany 
-              ? `<RazonSocial>${removeAccents(clientName)}</RazonSocial>` 
+              ? `<RazonSocial>${removeAccents(companyName)}</RazonSocial>` 
               : `<NombreDePila>${removeAccents(nombreDePila)}</NombreDePila><PrimerApellido>${removeAccents(primerApellido)}</PrimerApellido>${segundoApellido ? `<SegundoApellido>${removeAccents(segundoApellido)}</SegundoApellido>` : ''}`}
           </Nombre>
           <Telefono>
@@ -248,7 +269,7 @@ export async function generateSwitchingXmls(contractIds: string[]) {
             </PotenciasContratadas>
           </CondicionesContractuales>
           <Contacto>
-            <PersonaDeContacto>${removeAccents(representativeNameFinal ? representativeNameFinal : (c.client.contactName ? c.client.contactName + ' ' + (c.client.contactLastName || '') : (isCompany ? 'Representante Legal' : clientName)))}</PersonaDeContacto>
+            <PersonaDeContacto>${personaContactoXml}</PersonaDeContacto>
             <Telefono>
               <PrefijoPais>0034</PrefijoPais>
               <Numero>${c.client.contactPhone || c.client.representativePhone || '600000000'}</Numero>

@@ -70,7 +70,8 @@ export async function createContractModificationAction(
             contactPhone: formData.telefono,
             contactEmail: formData.email,
             paperInvoice: formData.facturaPapel === 'SI',
-            brandId: brandIdToUse
+            brandId: brandIdToUse,
+            cnae: oldContract.client.cnae || oldContract.supplyPoint.cnae,
           }
         });
       } else {
@@ -85,7 +86,8 @@ export async function createContractModificationAction(
             lastName2: isFisica ? apellido2Final : newClient.lastName2,
             businessName: fullBusinessName,
             representativeName: repNameFinal || newClient.representativeName,
-            representativeVat: repVatFinal || newClient.representativeVat
+            representativeVat: repVatFinal || newClient.representativeVat,
+            cnae: newClient.cnae || oldContract.client.cnae || oldContract.supplyPoint.cnae,
           }
         });
       }
@@ -94,6 +96,10 @@ export async function createContractModificationAction(
       // 2. Find or create SupplyPoint for the NEW client with SAME cups
       const spData = {
         address: `${formData.tipoVia} ${formData.calle} ${formData.numero} ${formData.adicional}`.trim(),
+        streetType: formData.tipoVia,
+        street: formData.calle,
+        streetNumber: formData.numero,
+        addressAddition: formData.adicional,
         postalCode: formData.cp,
         city: formData.poblacion,
         province: formData.provincia,
@@ -102,6 +108,7 @@ export async function createContractModificationAction(
         distributor: oldContract.supplyPoint.distributor,
         distributorName: oldContract.supplyPoint.distributorName,
         annualConsumption: oldContract.supplyPoint.annualConsumption,
+        cnae: oldContract.supplyPoint.cnae || oldContract.client.cnae,
         p1c: oldContract.supplyPoint.p1c,
         p2c: oldContract.supplyPoint.p2c,
         p3c: oldContract.supplyPoint.p3c,
@@ -184,14 +191,14 @@ export async function createContractModificationAction(
       "1apetit": apellido1Final,
       "2apetit": apellido2Final,
       nif: nifFinal,
-      cnae: oldContractDataObj.cnae || "",
+      cnae: oldContract.supplyPoint.cnae || oldContract.client.cnae || oldContractDataObj.cnae || "",
       direcciontitular: titularDir,
-      cptit: isSubrogation ? formData.cp : (oldContract.client.billingPostalCode || ""),
-      loctit: isSubrogation ? formData.poblacion : (oldContract.client.billingCity || ""),
-      provtit: isSubrogation ? formData.provincia : (oldContract.client.billingProvince || ""),
-      mailtitular: isSubrogation ? formData.email : (oldContract.client.contactEmail || ""),
-      tlftitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || ""),
-      mvtitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || ""),
+      cptit: isSubrogation ? formData.cp : (oldContract.client.billingPostalCode || oldContractDataObj.cpTitular || ""),
+      loctit: isSubrogation ? formData.poblacion : (oldContract.client.billingCity || oldContractDataObj.poblacionTitular || ""),
+      provtit: isSubrogation ? formData.provincia : (oldContract.client.billingProvince || oldContractDataObj.provinciaTitular || ""),
+      mailtitular: isSubrogation ? formData.email : (oldContract.client.contactEmail || oldContractDataObj.emailTitular || ""),
+      tlftitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || oldContractDataObj.telefonoTitular || ""),
+      mvtitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || oldContractDataObj.movilTitular || ""),
       nombrerep: repNameFinal || oldContractDataObj.contactoNombre || "",
       nifrep: repVatFinal || oldContractDataObj.contactoNif || "",
       cups: cups,
@@ -201,13 +208,13 @@ export async function createContractModificationAction(
       provPS: oldContract.supplyPoint.province || "",
       iban: ibanFinal,
       // For Tech Mod
-      tarifa: isTecnica ? formData.tarifa : (oldContractDataObj.tarifa || ""),
-      p1c: isTecnica ? formData.p1c : (oldContractDataObj.p1c || ""),
-      p2c: isTecnica ? formData.p2c : (oldContractDataObj.p2c || ""),
-      p3c: isTecnica ? formData.p3c : (oldContractDataObj.p3c || ""),
-      p4c: isTecnica ? formData.p4c : (oldContractDataObj.p4c || ""),
-      p5c: isTecnica ? formData.p5c : (oldContractDataObj.p5c || ""),
-      p6c: isTecnica ? formData.p6c : (oldContractDataObj.p6c || ""),
+      tarifa: isTecnica ? formData.tarifa : (oldContract.supplyPoint.tariff || oldContractDataObj.tarifa || ""),
+      p1c: isTecnica ? formData.p1c : (oldContract.p1c || oldContractDataObj.p1c || ""),
+      p2c: isTecnica ? formData.p2c : (oldContract.p2c || oldContractDataObj.p2c || ""),
+      p3c: isTecnica ? formData.p3c : (oldContract.p3c || oldContractDataObj.p3c || ""),
+      p4c: isTecnica ? formData.p4c : (oldContract.p4c || oldContractDataObj.p4c || ""),
+      p5c: isTecnica ? formData.p5c : (oldContract.p5c || oldContractDataObj.p5c || ""),
+      p6c: isTecnica ? formData.p6c : (oldContract.p6c || oldContractDataObj.p6c || ""),
     };
 
     const docxBuffer = await generateModificationDocxBuffer(templateData, isTecnica);

@@ -31,7 +31,8 @@ import {
   ChevronRight,
   X,
   Briefcase,
-  Wallet
+  Wallet,
+  ZapOff
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -69,6 +70,7 @@ const baseNavGroups = [
     items: [
       { href: '/comisiones-activas', icon: Briefcase, label: 'Comisiones Activas' },
       { href: '/liquidacion-comisiones', icon: Wallet, label: 'Liquidación Comisiones' },
+      { href: '/energia-pendiente', icon: ZapOff, label: 'Energía Pendiente' },
     ],
   },
   {
