@@ -105,8 +105,8 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
                 <FileDown size={16} /> PDF no disponible
               </button>
             )}
-            {initialInvoice.xML || (initialInvoice.invoiceData && initialInvoice.invoiceData.XML) ? (
-              <a href={initialInvoice.xML || initialInvoice.invoiceData?.XML} target="_blank" rel="noreferrer" className="btn-secondary flex items-center gap-2">
+            {initialInvoice.xML || (initialInvoice.invoiceData && (initialInvoice.invoiceData.XML || initialInvoice.invoiceData.xmlUrl)) ? (
+              <a href={initialInvoice.xML || initialInvoice.invoiceData?.XML || initialInvoice.invoiceData?.xmlUrl} target="_blank" rel="noreferrer" className="btn-secondary flex items-center gap-2">
                 <Download size={16} /> Ver XML
               </a>
             ) : (
