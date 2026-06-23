@@ -57,6 +57,28 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
     `;
 
     const today = new Date();
+
+    const historyM12 = await prisma.$queryRaw`
+      SELECT 
+        sp."cups",
+        EXTRACT(MONTH FROM i."billingEnd") as "month",
+        SUM(i."totalMWh") as "totalMWh",
+        SUM(EXTRACT(DAY FROM (i."billingEnd" - i."billingStart"))) as "days"
+      FROM "Invoice" i
+      JOIN "SupplyPoint" sp ON i."supplyPointId" = sp.id
+      WHERE i."billingEnd" >= ${subMonths(today, 15)}
+        AND i."billingStart" IS NOT NULL
+        AND i."billingEnd" IS NOT NULL
+      GROUP BY sp."cups", EXTRACT(MONTH FROM i."billingEnd")
+    `;
+
+    const m12Map = new Map<string, number>();
+    for (const row of (historyM12 as any[])) {
+      if (row.days && Number(row.days) > 0) {
+        m12Map.set(`${row.cups}_${row.month}`, Number(row.totalMWh) / Number(row.days));
+      }
+    }
+
     // M0
     const m0Start = startOfMonth(today);
     const m0End = endOfMonth(today);
@@ -117,20 +139,38 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
 
       const dailyConsumption = (annualConsumption || 0) / 365; // value is already in MWh or small scale
 
-      const getDaysInPeriod = (pStart: Date, pEnd: Date) => {
-        const overlapStart = startCalculo > pStart ? startCalculo : pStart;
-        const overlapEnd = endCalculo < pEnd ? endCalculo : pEnd;
-        if (overlapEnd < overlapStart) return 0;
-        return Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1; // inclusive
+      const getSeasonalDailyConsumption = (targetMonth: Date) => {
+        // Aplicar estacionalidad M-12 solo si el consumo anual es grande (> 40 MWh)
+        if (!annualConsumption || annualConsumption < 40) return dailyConsumption;
+        
+        const monthNum = targetMonth.getMonth() + 1;
+        const seasonalDaily = m12Map.get(`${cups}_${monthNum}`);
+        return seasonalDaily !== undefined ? seasonalDaily : dailyConsumption;
       };
 
-      const daysM0 = getDaysInPeriod(m0Start, m0End);
-      const daysM1 = getDaysInPeriod(m1Start, m1End);
-      const daysM2 = getDaysInPeriod(m2Start, m2End);
-      
-      const totalPendingDays = getDaysInPeriod(startCalculo, endCalculo);
+      const getMWhInPeriod = (pStart: Date, pEnd: Date, targetMonth: Date) => {
+        const overlapStart = startCalculo > pStart ? startCalculo : pStart;
+        const overlapEnd = endCalculo < pEnd ? endCalculo : pEnd;
+        if (overlapEnd < overlapStart) return { days: 0, mwh: 0 };
+        const days = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1; // inclusive
+        return { days, mwh: days * getSeasonalDailyConsumption(targetMonth) };
+      };
 
-      if (totalPendingDays <= 0) continue;
+      const m0Data = getMWhInPeriod(m0Start, m0End, m0Start);
+      const m1Data = getMWhInPeriod(m1Start, m1End, m1Start);
+      const m2Data = getMWhInPeriod(m2Start, m2End, m2Start);
+      
+      const totalPendingDays = m0Data.days + m1Data.days + m2Data.days; // This is a rough estimation of total days if they span exactly these 3 months
+      // Calculate true total days for the entire period
+      const trueTotalDays = Math.floor((endCalculo.getTime() - startCalculo.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+      if (trueTotalDays <= 0) continue;
+
+      // The total pending MWh is the sum of the months we track + the rest as linear
+      const trackedMwh = m0Data.mwh + m1Data.mwh + m2Data.mwh;
+      const trackedDays = m0Data.days + m1Data.days + m2Data.days;
+      const untrackedDays = trueTotalDays - trackedDays;
+      const totalPendingMWh = trackedMwh + (untrackedDays > 0 ? untrackedDays * dailyConsumption : 0);
 
       results.push({
         contractId,
@@ -139,11 +179,11 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
         status,
         lastBilledDate: lastBilledDate ? new Date(lastBilledDate).toISOString() : null,
         annualConsumption: Number(annualConsumption) || 0,
-        totalPendingDays,
-        totalPendingMWh: totalPendingDays * dailyConsumption,
-        m0PendingMWh: daysM0 * dailyConsumption,
-        m1PendingMWh: daysM1 * dailyConsumption,
-        m2PendingMWh: daysM2 * dailyConsumption,
+        totalPendingDays: trueTotalDays,
+        totalPendingMWh,
+        m0PendingMWh: m0Data.mwh,
+        m1PendingMWh: m1Data.mwh,
+        m2PendingMWh: m2Data.mwh,
       });
     }
 
