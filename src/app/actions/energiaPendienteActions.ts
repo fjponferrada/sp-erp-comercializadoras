@@ -62,8 +62,18 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
       SELECT 
         sp."cups",
         EXTRACT(MONTH FROM i."billingEnd") as "month",
-        SUM(i."totalMWh") as "totalMWh",
-        SUM(EXTRACT(DAY FROM (i."billingEnd" - i."billingStart"))) as "days"
+        SUM(
+          CASE 
+            WHEN i."invoiceType" ILIKE '%abono%' THEN -1 * ABS(i."totalMWh")
+            ELSE ABS(i."totalMWh") 
+          END
+        ) / 1000 as "totalMWh",
+        SUM(
+          CASE 
+            WHEN i."invoiceType" ILIKE '%abono%' THEN -1 * EXTRACT(DAY FROM (i."billingEnd" - i."billingStart"))
+            ELSE EXTRACT(DAY FROM (i."billingEnd" - i."billingStart")) 
+          END
+        ) as "days"
       FROM "Invoice" i
       JOIN "SupplyPoint" sp ON i."supplyPointId" = sp.id
       WHERE i."billingEnd" >= ${subMonths(today, 15)}
