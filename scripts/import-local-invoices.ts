@@ -93,8 +93,8 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
 async function run() {
   console.log('--- INICIANDO IMPORTACIÓN LOCAL DE FACTURAS HACIA CLOUDFLARE R2 ---');
 
-  const pdfDir = "W:\\Contabilidad\\Facturas_Clientes\\PDF\\2026_1";
-  const xmlDir = "W:\\Contabilidad\\Facturas_Clientes\\E Facturas\\2026_1";
+  const pdfDir = "W:\\Contabilidad\\Facturas_Clientes\\PDF\\2025";
+  const xmlDir = "W:\\Contabilidad\\Facturas_Clientes\\E Facturas\\2025";
 
   console.log('\n>>> FASE 1: Subiendo PDFs');
   await uploadInvoicesFromDirectory(pdfDir, 'pdf');

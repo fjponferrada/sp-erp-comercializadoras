@@ -175,7 +175,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     // IMPORTANTE: Para el proceso R1 (Reclamaciones) los pasos 02, 05, etc no significan lo mismo que en Switching.
     const { paso, procesoBase } = parsedData;
 
-    if (paso === '06' && procesoBase !== 'R1') {
+    if (paso === '06' && ['C1', 'C2'].includes(procesoBase)) {
       // Regla estricta: No se puede procesar 06 si fechaPrevistaBaja está vacía (esperando al 11)
       const activeContract = await prisma.contract.findFirst({
         where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
@@ -231,7 +231,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = "Se recibió un paso 06 (Baja), pero no se encontró un contrato ACTIVO para este CUPS.";
       }
-    } else if (paso === '11' && procesoBase !== 'R1') {
+    } else if (paso === '11' && ['C1', 'C2'].includes(procesoBase)) {
       const activeContract = await prisma.contract.findFirst({
         where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
         include: { supplyPoint: true },
@@ -254,7 +254,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = "Se recibió un paso 11 (Aviso baja), pero no se encontró un contrato ACTIVO para este CUPS.";
       }
-    } else if (paso === '10' && procesoBase !== 'R1') {
+    } else if (paso === '10' && ['C1', 'C2'].includes(procesoBase)) {
       const activeContract = await prisma.contract.findFirst({
         where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
         include: { supplyPoint: true },
@@ -398,14 +398,14 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             });
           }
         } else if (parsedData.estadoAR === 'RECHAZADO') {
-          if (tramitandoContract.status === 'RECHAZADO') {
+          if (tramitandoContract.status === 'RECHAZADO' || tramitandoContract.status === 'Rechazo Distribuidora') {
             tipoError = "COLISION_DE_ESTADO";
-            warning = "El contrato ya estaba en estado RECHAZADO.";
+            warning = "El contrato ya estaba en estado RECHAZADO o Rechazo Distribuidora.";
           } else {
             await prisma.contract.update({
               where: { id: tramitandoContract.id },
               data: { 
-                status: 'RECHAZADO', 
+                status: 'Rechazo Distribuidora', 
                 fechaRechazo: parsedData.fechaAR,
                 internalComments: parsedData.observaciones || tramitandoContract.internalComments 
               }
@@ -419,6 +419,44 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     } else if (procesoBase === 'R1') {
       // Dejamos que caiga al fallback genérico o no asignamos nada especial,
       // simplemente guardamos el evento en SwitchingEvent y NO creamos Ticket.
+    } else if (paso === '01' && ['A3', 'C1', 'C2', 'M1'].includes(procesoBase)) {
+      // Buscar el contrato en estado ACEPTADO o Rechazo Distribuidora para este CUPS
+      const acceptedContract = await prisma.contract.findFirst({
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: { in: ['ACEPTADO', 'Rechazo Distribuidora', 'RECHAZADO'] } },
+        include: { supplyPoint: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (acceptedContract) {
+        supplyPoint = acceptedContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
+        contractId = acceptedContract.id;
+
+        // Pasar a TRAMITANDO
+        await prisma.contract.update({
+          where: { id: acceptedContract.id },
+          data: { 
+            status: 'TRAMITANDO',
+            nSolicitud: parsedData.codigoSolicitud || acceptedContract.nSolicitud
+          }
+        });
+      } else {
+        // Si no hay un contrato ACEPTADO, usamos el fallback habitual para enlazar el evento al último contrato
+        const anyContract = await prisma.contract.findFirst({
+          where: { supplyPoint: { cups: supplyPoint.cups }, status: { notIn: ['FINALIZADO', 'Finalizado'] } },
+          include: { supplyPoint: true },
+          orderBy: { createdAt: 'desc' }
+        });
+        if (anyContract) {
+          supplyPoint = anyContract.supplyPoint;
+          supplyPointId = supplyPoint.id;
+          contractId = anyContract.id;
+        } else {
+          warning = "No se encontró un contrato reciente para asignar este evento.";
+        }
+        tipoError = "CONTRATO_NO_ACEPTADO_O_RECHAZADO";
+        if (!warning) warning = `Se recibió un paso 01 (${procesoBase}), pero no se encontró un contrato en estado ACEPTADO o Rechazo Distribuidora para pasarlo a TRAMITANDO.`;
+      }
     } else {
       // Fallback genérico para otros pasos
       const anyContract = await prisma.contract.findFirst({

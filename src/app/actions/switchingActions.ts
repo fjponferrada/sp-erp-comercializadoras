@@ -9,7 +9,8 @@ export async function getPaginatedSwitchingEventsAction(
   searchTerm: string = '',
   onlyWarnings: boolean = false,
   procesoBase: string = '',
-  sortBy: string = 'fechaSolicitud'
+  sortBy: string = 'fechaSolicitud',
+  resolveFilter: string = 'all'
 ) {
   try {
     const session = await auth();
@@ -22,6 +23,12 @@ export async function getPaginatedSwitchingEventsAction(
 
     if (onlyWarnings) {
       whereClause.warning = { not: null };
+      whereClause.isResolved = false;
+    }
+
+    if (resolveFilter === 'resolved') {
+      whereClause.isResolved = true;
+    } else if (resolveFilter === 'unresolved') {
       whereClause.isResolved = false;
     }
 

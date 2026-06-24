@@ -25,13 +25,14 @@ export default function SwitchingWarningsClient({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('fechaSolicitud');
+  const [resolveStatus, setResolveStatus] = useState('all');
   const [page, setPage] = useState(1);
 
-  const fetchEvents = async (resetPage = false, newSortBy = sortBy, newSearchTerm = searchTerm) => {
+  const fetchEvents = async (resetPage = false, newSortBy = sortBy, newSearchTerm = searchTerm, newResolveStatus = resolveStatus) => {
     setLoading(true);
     const currentPage = resetPage ? 1 : page + 1;
-    // Cambiado a false para mostrar absolutamente todos
-    const result = await getPaginatedSwitchingEventsAction(currentPage, 50, newSearchTerm, false, '', newSortBy);
+    // Cambiado a false para mostrar absolutamente todos, pasando el resolveStatus
+    const result = await getPaginatedSwitchingEventsAction(currentPage, 50, newSearchTerm, false, '', newSortBy, newResolveStatus);
     if (result.success) {
       if (resetPage) {
         setEvents(result.events || []);
@@ -121,7 +122,7 @@ export default function SwitchingWarningsClient({
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   if (e.target.value === '') {
-                    fetchEvents(true, sortBy, '');
+                    fetchEvents(true, sortBy, '', resolveStatus);
                   }
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && fetchEvents(true)}
@@ -133,12 +134,25 @@ export default function SwitchingWarningsClient({
               value={sortBy}
               onChange={(e) => {
                 setSortBy(e.target.value);
-                fetchEvents(true, e.target.value);
+                fetchEvents(true, e.target.value, searchTerm, resolveStatus);
               }}
               className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-gray-200 focus:ring-1 focus:ring-[var(--lime)]"
             >
               <option value="fechaSolicitud">Fecha Solicitud</option>
               <option value="fechaAviso">Fecha Aviso</option>
+            </select>
+
+            <select
+              value={resolveStatus}
+              onChange={(e) => {
+                setResolveStatus(e.target.value);
+                fetchEvents(true, sortBy, searchTerm, e.target.value);
+              }}
+              className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-gray-200 focus:ring-1 focus:ring-[var(--lime)]"
+            >
+              <option value="all">Estado: Todos</option>
+              <option value="resolved">Solo procesados</option>
+              <option value="unresolved">Solo no procesados</option>
             </select>
             
             <button
