@@ -113,6 +113,11 @@ export async function POST(request: Request) {
       }
     }
 
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const expectedDays = Math.round((end.getTime() - start.getTime() + 1) / msPerDay);
+    const calculatedDays = omiePrices.length;
+    const missingDays = expectedDays > calculatedDays ? expectedDays - calculatedDays : 0;
+
     const omieMedioPpa = totalMwh > 0 ? (omieMedioPpaNumerator / totalMwh) : 0;
 
     return NextResponse.json({
@@ -120,7 +125,8 @@ export async function POST(request: Request) {
         totalMwh,
         totalEur,
         omieMedioPpa,
-        isFijo
+        isFijo,
+        missingDays
       },
       details: detailedRows
     });

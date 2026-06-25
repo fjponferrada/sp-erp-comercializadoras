@@ -151,6 +151,15 @@ export default function LiquidacionesPpa() {
               Descargar CSV Detallado
             </button>
           </div>
+
+          {result.summary.missingDays > 0 && (
+            <div style={{ padding: '12px 16px', background: 'rgba(239, 160, 15, 0.1)', color: '#D97706', borderRadius: '8px', marginBottom: '24px', border: '1px solid rgba(239, 160, 15, 0.3)', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+              <div style={{ fontSize: '1.25rem' }}>⚠️</div>
+              <div>
+                <strong>Atención:</strong> Faltan precios de OMIE para <strong>{result.summary.missingDays} días</strong> en este rango. La liquidación se ha calculado únicamente sobre los días de los que se tiene registro.
+              </div>
+            </div>
+          )}
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
             <div style={{ background: 'var(--bg-base)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)' }}>
