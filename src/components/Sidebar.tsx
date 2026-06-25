@@ -32,7 +32,8 @@ import {
   X,
   Briefcase,
   Wallet,
-  ZapOff
+  ZapOff,
+  BarChart2
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -77,7 +78,9 @@ const baseNavGroups = [
     label: 'COMPRAS ENERGÍA',
     roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
-      { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' }
+      { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' },
+      { href: '/compras/ppas', icon: FileText, label: 'Gestión de PPAs' },
+      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' }
     ]
   },
   {

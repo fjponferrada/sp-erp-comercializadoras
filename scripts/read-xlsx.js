@@ -1,8 +1,13 @@
 const xlsx = require('xlsx');
 
-const filePath = 'C:\\\\Users\\\\Administrator\\\\sp-erp-comercializadoras\\\\docs\\\\diccionario_productos.xlsx';
-const workbook = xlsx.readFile(filePath);
-const sheetName = workbook.SheetNames[0];
-const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-console.log(JSON.stringify(data, null, 2));
+try {
+  const workbook = xlsx.readFile('Z:\\AED\\Compras Energia\\SCRIPT FACTURACION PPA FIN\\PERFIL_FIJO_RJ.xlsx');
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const json = xlsx.utils.sheet_to_json(sheet);
+  
+  console.log("Last 5 rows:");
+  console.log(json.slice(-5));
+} catch (e) {
+  console.error(e);
+}

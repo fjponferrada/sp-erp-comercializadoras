@@ -35,6 +35,7 @@ model Company {
   brands                 Brand[]
   users                  User[]    @relation("UserCompanies")
   invoices               Invoice[]
+  ppas                   Ppa[]
 }
 
 model Brand {
@@ -911,4 +912,51 @@ model SyncJob {
   results   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum PpaType {
+  FISICO
+  FINANCIERO
+}
+
+enum PpaSubtype {
+  CARGA_BASE
+  PERFIL_FIJO
+}
+
+enum PpaPriceType {
+  FIJO
+  INDEXADO
+}
+
+model Ppa {
+  id            String       @id @default(cuid())
+  name          String
+  companyId     String
+  type          PpaType
+  subtype       PpaSubtype
+  startDate     DateTime
+  endDate       DateTime?
+  priceType     PpaPriceType
+  priceValue    Float?       // Precio fijo (€/MWh) o Fee sobre OMIE
+  basePowerMw   Float?       // Obligatorio si es CARGA_BASE
+  profileData   Json?        // Obligatorio si es PERFIL_FIJO (Matriz 12x24)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  company       Company      @relation(fields: [companyId], references: [id])
+}
+
+model SystemComponentPrice {
+  id          String   @id @default(cuid())
+  component   String   // Ej: "OMIE", "DESVIOS", "PEAJE_P1", "CARGO_P1"
+  date        DateTime @db.Date
+  values      Float[]  // 96 valores (quinceminutales)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([component, date])
+  @@index([component])
+  @@index([date])
 }

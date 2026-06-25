@@ -1,43 +1,24 @@
-import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
-import dotenv from 'dotenv';
+import { prisma } from '../src/lib/prisma';
 
-dotenv.config();
-const connectionString = process.env.DATABASE_URL;
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+async function main() {
+  const inv = await prisma.invoice.findUnique({
+    where: { invoiceNumber: 'A260615450' },
+  });
 
-async function run() {
-  const orphans = await prisma.contract.findMany({ 
-    where: { brandId: null }, 
-    select: { 
-      id: true, 
-      contractCode: true, 
-      version: true,
-      airtableId: true,
-      _count: { select: { invoices: true } } 
-    } 
-  }); 
-  console.log(JSON.stringify(orphans, null, 2)); 
-
-  // Look up their counterparts that HAVE brandId
-  for (const o of orphans) {
-    const counterpart = await prisma.contract.findFirst({
-      where: {
-        contractCode: o.contractCode,
-        version: o.version,
-        brandId: { not: null }
-      },
-      select: {
-        id: true,
-        airtableId: true,
-        _count: { select: { invoices: true } }
-      }
-    });
-    console.log(`\nCounterpart for ${o.contractCode}:`, counterpart);
+  if (inv && inv.pdfData) {
+    console.log("Keys in pdfData:");
+    console.log(Object.keys(inv.pdfData));
+    
+    // Check if there are keys containing 'CUPS'
+    const cupsKeys = Object.keys(inv.pdfData).filter(k => k.toLowerCase().includes('cups'));
+    console.log("Keys containing CUPS:", cupsKeys);
+    
+    // Check if there are keys containing 'suministro' or 'punto'
+    const supplyKeys = Object.keys(inv.pdfData).filter(k => k.toLowerCase().includes('suministro') || k.toLowerCase().includes('punto'));
+    console.log("Keys containing supply:", supplyKeys);
   }
 }
 
-run().finally(() => prisma.$disconnect());
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());
