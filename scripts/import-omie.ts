@@ -43,9 +43,14 @@ async function main() {
     
     // Transformar datos horarios (N horas) en quinceminutales (N * 4 cuartos)
     // Normalmente N=24, resultando en 96. En días de cambio de hora puede ser 23 o 25 (92 o 100 cuartos).
+    // OJO: Si ya vienen 96 (o aprox, es decir, es cuarto-horario), no multiplicamos por 4.
     const quarterHourlyPrices: number[] = [];
-    for (const p of hourlyPrices) {
-      quarterHourlyPrices.push(p, p, p, p);
+    if (hourlyPrices.length >= 90) { // Ya es cuarto horario
+      quarterHourlyPrices.push(...hourlyPrices);
+    } else { // Es horario
+      for (const p of hourlyPrices) {
+        quarterHourlyPrices.push(p, p, p, p);
+      }
     }
 
     const dateObj = new Date(`${dateStr}T00:00:00Z`);

@@ -4,21 +4,34 @@ import { useState } from 'react';
 import { X, UploadCloud, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import * as xlsx from 'xlsx';
 
-export default function PpaForm({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) {
+export default function PpaForm({ 
+  onClose, 
+  onSuccess,
+  initialData = null
+}: { 
+  onClose: () => void, 
+  onSuccess: () => void,
+  initialData?: any 
+}) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    type: 'FISICO',
-    subtype: 'CARGA_BASE',
-    startDate: '',
-    endDate: '',
-    priceType: 'FIJO',
-    priceValue: '',
-    basePowerMw: '',
+    name: initialData?.name || '',
+    type: initialData?.type || 'FISICO',
+    subtype: initialData?.subtype || 'CARGA_BASE',
+    startDate: initialData?.startDate ? new Date(initialData.startDate).toISOString().split('T')[0] : '',
+    endDate: initialData?.endDate ? new Date(initialData.endDate).toISOString().split('T')[0] : '',
+    priceType: initialData?.priceType || 'FIJO',
+    priceValue: initialData?.priceValue !== null && initialData?.priceValue !== undefined ? initialData.priceValue.toString() : '',
+    basePowerMw: initialData?.basePowerMw !== null && initialData?.basePowerMw !== undefined ? initialData.basePowerMw.toString() : '',
   });
 
-  const [profileData, setProfileData] = useState<any>(null);
-  const [profilePreview, setProfilePreview] = useState<any>(null);
+  const [profileData, setProfileData] = useState<any>(initialData?.profileData || null);
+  const [profilePreview, setProfilePreview] = useState<any>(initialData?.profileData ? {
+    eneH0: initialData.profileData[0][0],
+    eneH12: initialData.profileData[0][12],
+    agoH12: initialData.profileData[7][12],
+    totalRows: 24
+  } : null);
 
   const handleFileUpload = (e: any) => {
     const file = e.target.files[0];
@@ -80,8 +93,12 @@ export default function PpaForm({ onClose, onSuccess }: { onClose: () => void, o
         profileData: formData.subtype === 'PERFIL_FIJO' ? profileData : null
       };
 
-      const res = await fetch('/api/ppas', {
-        method: 'POST',
+      const isEditing = !!initialData;
+      const url = isEditing ? `/api/ppas/${initialData.id}` : '/api/ppas';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -115,7 +132,7 @@ export default function PpaForm({ onClose, onSuccess }: { onClose: () => void, o
           padding: '20px 24px', borderBottom: '1px solid var(--border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>Nuevo PPA</h2>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>{initialData ? 'Editar PPA' : 'Nuevo PPA'}</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <X size={20} />
           </button>

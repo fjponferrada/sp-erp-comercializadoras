@@ -174,15 +174,15 @@ export default function LiquidacionesPpa() {
             </div>
             
             <div style={{ 
-              background: result.summary.isFijo ? (result.summary.totalEur > 0 ? 'rgba(239, 68, 68, 0.05)' : 'rgba(34, 197, 94, 0.05)') : 'rgba(34, 197, 94, 0.05)', 
+              background: result.summary.isFijo ? (result.summary.totalEur >= 0 ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)') : 'rgba(239, 68, 68, 0.05)', 
               padding: '20px', borderRadius: '12px', 
-              border: `1px solid ${result.summary.isFijo ? (result.summary.totalEur > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)') : 'rgba(34, 197, 94, 0.3)'}` 
+              border: `1px solid ${result.summary.isFijo ? (result.summary.totalEur >= 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)') : 'rgba(239, 68, 68, 0.3)'}` 
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: result.summary.isFijo ? (result.summary.totalEur > 0 ? '#EF4444' : '#22C55E') : '#22C55E', marginBottom: '8px', fontWeight: 600 }}>
-                <span>{result.summary.isFijo ? (result.summary.totalEur > 0 ? 'A favor de Comercializadora (CfD)' : 'A favor del Productor (CfD)') : 'Neto a Pagar al Productor'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: result.summary.isFijo ? (result.summary.totalEur >= 0 ? '#22C55E' : '#EF4444') : '#EF4444', marginBottom: '8px', fontWeight: 600 }}>
+                <span>{result.summary.isFijo ? (result.summary.totalEur >= 0 ? 'A favor de Comercializadora (CfD)' : 'A favor del Productor (CfD)') : 'Neto a Pagar al Productor'}</span>
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: result.summary.isFijo ? (result.summary.totalEur > 0 ? '#EF4444' : '#22C55E') : '#22C55E' }}>
-                {Math.abs(result.summary.totalEur).toLocaleString('es-ES', { maximumFractionDigits: 2 })} <span style={{ fontSize: '1rem', opacity: 0.8 }}>€</span>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: result.summary.isFijo ? (result.summary.totalEur >= 0 ? '#22C55E' : '#EF4444') : '#EF4444' }}>
+                {result.summary.totalEur.toLocaleString('es-ES', { maximumFractionDigits: 2 })} <span style={{ fontSize: '1rem', opacity: 0.8 }}>€</span>
               </div>
             </div>
           </div>

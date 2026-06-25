@@ -235,7 +235,12 @@ export default function Sidebar() {
                   {group.items.map((item: any) => {
                     if (item.roles && !item.roles.includes(userRole)) return null;
                     const Icon = item.icon;
-                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                    let isActive = false;
+                    if (item.href === '/compras') {
+                      isActive = pathname === '/compras';
+                    } else {
+                      isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                    }
                     return (
                       <Link 
                         key={item.href} 

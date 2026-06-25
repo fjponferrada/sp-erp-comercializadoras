@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, FileText, Zap } from 'lucide-react';
+import { Plus, Trash2, FileText, Zap, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import PpaForm from '@/components/compras/PpaForm';
 import LiquidacionesPpa from '@/components/compras/LiquidacionesPpa';
@@ -10,6 +10,7 @@ export default function PpaClient() {
   const [ppas, setPpas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingPpa, setEditingPpa] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'liquidaciones'>('list');
 
   const fetchPpas = async () => {
@@ -58,7 +59,7 @@ export default function PpaClient() {
           </p>
         </div>
         <button
-          onClick={() => setIsFormOpen(true)}
+          onClick={() => { setEditingPpa(null); setIsFormOpen(true); }}
           style={{
             display: 'flex', alignItems: 'center', gap: '8px',
             background: 'var(--lime)', color: 'var(--bg-base)',
@@ -160,7 +161,18 @@ export default function PpaClient() {
                   <td style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                     {ppa.priceType === 'FIJO' ? `${ppa.priceValue} €/MWh` : `OMIE + ${ppa.priceValue} €/MWh`}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right' }}>
+                  <td style={{ padding: '16px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button
+                      onClick={() => { setEditingPpa(ppa); setIsFormOpen(true); }}
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--text-secondary)',
+                        cursor: 'pointer', padding: '6px', borderRadius: '6px',
+                        transition: 'all 0.2s'
+                      }}
+                      title="Editar PPA"
+                    >
+                      <Pencil size={18} />
+                    </button>
                     <button
                       onClick={() => handleDelete(ppa.id)}
                       style={{
@@ -184,9 +196,11 @@ export default function PpaClient() {
 
       {isFormOpen && (
         <PpaForm 
-          onClose={() => setIsFormOpen(false)} 
+          initialData={editingPpa}
+          onClose={() => { setIsFormOpen(false); setEditingPpa(null); }} 
           onSuccess={() => {
             setIsFormOpen(false);
+            setEditingPpa(null);
             fetchPpas();
           }} 
         />
