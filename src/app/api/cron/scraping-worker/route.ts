@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
-    const { jobId, status, logs } = data;
+    const { jobId, status, logs, successfulDistributors } = data;
 
     if (!jobId) {
       return NextResponse.json({ error: 'Falta jobId' }, { status: 400 });
@@ -74,10 +74,18 @@ export async function POST(request: Request) {
 
     const finalStatus = status || 'COMPLETED';
     if (finalStatus === 'COMPLETED') {
-      await prisma.distributor.updateMany({
-        where: { webScrapingActive: true },
-        data: { webLastSyncAt: new Date() }
-      });
+      if (Array.isArray(successfulDistributors) && successfulDistributors.length > 0) {
+        await prisma.distributor.updateMany({
+          where: { name: { in: successfulDistributors } },
+          data: { webLastSyncAt: new Date() }
+        });
+      } else if (!successfulDistributors) {
+        // Fallback de retrocompatibilidad por si un worker antiguo llama a esta ruta
+        await prisma.distributor.updateMany({
+          where: { webScrapingActive: true },
+          data: { webLastSyncAt: new Date() }
+        });
+      }
     }
 
     return NextResponse.json({ success: true });
