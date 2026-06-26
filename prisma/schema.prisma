@@ -941,6 +941,7 @@ model Ppa {
   priceValue    Float?       // Precio fijo (€/MWh) o Fee sobre OMIE
   basePowerMw   Float?       // Obligatorio si es CARGA_BASE
   profileData   Json?        // Obligatorio si es PERFIL_FIJO (Matriz 12x24)
+  includeInPricing Boolean   @default(true)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -959,4 +960,56 @@ model SystemComponentPrice {
   @@unique([component, date])
   @@index([component])
   @@index([date])
+}
+
+model RegulatedCost {
+  id          String   @id @default(cuid())
+  concept     String   // Ej: "Cargos_Energia", "FNEE", "Tasa_Municipal"
+  tariff      String   // Ej: "2.0TD", "3.0TD", o "TODAS"
+  validFrom   DateTime @db.Date
+  validTo     DateTime @db.Date
+  p1          Float?
+  p2          Float?
+  p3          Float?
+  p4          Float?
+  p5          Float?
+  p6          Float?
+  singleValue Float?   // Para costes planos sin discriminación horaria
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([concept, tariff])
+}
+
+model FuturePrice {
+  id          String   @id @default(cuid())
+  month       Int      @unique // 1-12
+  price       Float    // Precio objetivo en €/MWh
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ReeProfile {
+  id        String @id @default(cuid())
+  year      Int
+  month     Int
+  day       Int
+  hour      Int
+  p20td     Float
+  p30td     Float
+  p30tdve   Float?
+
+  @@unique([year, month, day, hour])
+}
+
+model PortfolioBaseCurve {
+  id              String   @id @default(cuid())
+  datetime        DateTime @unique
+  basePriceEurMwh Float
+  omiePriceEurMwh Float
+  demandMwh       Float
+  ppaMwh          Float
+  updatedAt       DateTime @updatedAt
 }

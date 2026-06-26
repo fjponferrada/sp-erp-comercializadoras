@@ -11,6 +11,7 @@ import BrandSelector from './BrandSelector';
 import {
   LayoutDashboard,
   Zap,
+  Calculator,
   Users,
   FileText,
   Receipt,
@@ -84,6 +85,13 @@ const baseNavGroups = [
     ]
   },
   {
+    label: 'PRICING',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/pricing', icon: Calculator, label: 'Cotizador Comercial' }
+    ]
+  },
+  {
     label: 'DISTRIBUIDORAS',
     roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
@@ -129,6 +137,7 @@ const baseNavGroups = [
       { href: '/servicios', icon: PackagePlus, label: 'Servicios Adic.' },
       { href: '/canales', icon: Share2, label: 'Canales' },
       { href: '/comisiones-config', icon: Settings, label: 'Comisiones' },
+      { href: '/ajustes/costes-regulados', icon: FileText, label: 'Costes Regulados' },
       { href: '/ajustes', icon: Settings, label: 'Ajustes' },
     ],
   },

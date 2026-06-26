@@ -23,6 +23,7 @@ export default function PpaForm({
     priceType: initialData?.priceType || 'FIJO',
     priceValue: initialData?.priceValue !== null && initialData?.priceValue !== undefined ? initialData.priceValue.toString() : '',
     basePowerMw: initialData?.basePowerMw !== null && initialData?.basePowerMw !== undefined ? initialData.basePowerMw.toString() : '',
+    includeInPricing: initialData?.includeInPricing !== undefined ? initialData.includeInPricing : true,
   });
 
   const [profileData, setProfileData] = useState<any>(initialData?.profileData || null);
@@ -156,6 +157,16 @@ export default function PpaForm({
                 }}
               />
             </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={formData.includeInPricing} 
+                onChange={(e) => setFormData({ ...formData, includeInPricing: e.target.checked })}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>Considerar este PPA en el Pricing de clientes (Cotizador)</span>
+            </label>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>

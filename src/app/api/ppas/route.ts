@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     if (!brand) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 });
 
     const body = await req.json();
-    const { name, type, subtype, startDate, endDate, priceType, priceValue, basePowerMw, profileData } = body;
+    const { name, type, subtype, startDate, endDate, priceType, priceValue, basePowerMw, profileData, includeInPricing } = body;
 
     // Validación básica
     if (!name || !type || !subtype || !startDate || !priceType) {
@@ -69,7 +69,8 @@ export async function POST(req: Request) {
         priceType,
         priceValue: priceValue ? parseFloat(priceValue) : null,
         basePowerMw: basePowerMw ? parseFloat(basePowerMw) : null,
-        profileData: profileData || null
+        profileData: profileData || null,
+        includeInPricing: includeInPricing !== undefined ? Boolean(includeInPricing) : true
       }
     });
 

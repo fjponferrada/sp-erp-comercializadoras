@@ -1,1 +1,0 @@
-﻿const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.lead.findFirst({ where: { airtableId: { not: null } } }).then(l => console.log(JSON.stringify(l, null, 2))).finally(() => prisma['$disconnect']())

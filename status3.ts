@@ -1,0 +1,1 @@
+import { prisma } from './src/lib/prisma'; async function main() { const c = await prisma.contract.findMany({ where: { status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] } }, select: { annualConsumption: true, status: true }, take: 5 }); console.log(c); } main();

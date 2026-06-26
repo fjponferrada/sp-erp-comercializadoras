@@ -217,3 +217,78 @@ export async function updateSupplyPointSipsAction(id: string) {
     return { success: false, error: error.message };
   }
 }
+
+export async function fetchSipsForPricingAction(cups: string) {
+  try {
+    const { getSipsData } = await import('@/lib/sips');
+    const sipsData = await getSipsData(cups);
+
+    if (!sipsData || sipsData.result === 'ERROR') {
+      return { success: false, error: sipsData?.message || 'No hay datos suficientes en SIPS para este CUPS. Por favor, realiza un cálculo genérico.' };
+    }
+
+    let psData: any = null;
+    const raw: any = sipsData;
+    if (raw.data && raw.data.ps && raw.data.ps.length > 0) psData = raw.data.ps[0];
+    else if (raw.ps && raw.ps.length > 0) psData = raw.ps[0];
+    else if (raw.CUPS || raw.CNAE) psData = raw;
+
+    if (!psData) {
+      return { success: false, error: 'No se encontraron datos de suministro en la respuesta de SIPS. Por favor, realiza un cálculo genérico.' };
+    }
+
+    const tarifa = psData.TarifaATR || '';
+    
+    let p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0;
+    
+    // Si la API devuelve un desglose de consumos mensuales, calculamos el último año móvil (igual que con el CSV)
+    const consumosArr = raw.data?.consumos || raw.consumos || [];
+    
+    if (consumosArr && Array.isArray(consumosArr) && consumosArr.length > 0) {
+      let maxDate = 0;
+      for (const row of consumosArr) {
+        if (row.LecturaHasta) {
+          const d = new Date(row.LecturaHasta).getTime();
+          if (!isNaN(d) && d > maxDate) maxDate = d;
+        }
+      }
+      
+      const cutoff = maxDate > 0 ? maxDate - (365 * 24 * 60 * 60 * 1000) : 0;
+      
+      for (const row of consumosArr) {
+        let rowMaxDate = 0;
+        if (row.LecturaHasta) {
+           const d = new Date(row.LecturaHasta).getTime();
+           if (!isNaN(d)) rowMaxDate = d;
+        }
+        
+        if (rowMaxDate > 0 && rowMaxDate < cutoff) continue;
+        
+        p1 += Number(row['EnergiaActivaP1(kWh)'] || row['energiaActivaP1(kWh)'] || 0);
+        p2 += Number(row['EnergiaActivaP2(kWh)'] || row['energiaActivaP2(kWh)'] || 0);
+        p3 += Number(row['EnergiaActivaP3(kWh)'] || row['energiaActivaP3(kWh)'] || 0);
+        p4 += Number(row['EnergiaActivaP4(kWh)'] || row['energiaActivaP4(kWh)'] || 0);
+        p5 += Number(row['EnergiaActivaP5(kWh)'] || row['energiaActivaP5(kWh)'] || 0);
+        p6 += Number(row['EnergiaActivaP6(kWh)'] || row['energiaActivaP6(kWh)'] || 0);
+      }
+    } 
+    
+    // Fallback: si no hay array de consumos válido, usamos el acumulado anual de Ingebau
+    if (p1+p2+p3+p4+p5+p6 === 0) {
+      p1 = Number(psData.ConsumoAnualP1kWh) || 0;
+      p2 = Number(psData.ConsumoAnualP2kWh) || 0;
+      p3 = Number(psData.ConsumoAnualP3kWh) || 0;
+      p4 = Number(psData.ConsumoAnualP4kWh) || 0;
+      p5 = Number(psData.ConsumoAnualP5kWh) || 0;
+      p6 = Number(psData.ConsumoAnualP6kWh) || 0;
+    }
+
+    if (p1+p2+p3+p4+p5+p6 === 0) {
+      return { success: false, error: 'El SIPS no devolvió consumos (0 kWh). Por favor, realiza un cálculo genérico.' };
+    }
+
+    return { success: true, tarifa, consumos: { p1, p2, p3, p4, p5, p6 } };
+  } catch (error: any) {
+    return { success: false, error: 'Error de conexión con SIPS. Por favor, realiza un cálculo genérico.' };
+  }
+}

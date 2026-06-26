@@ -1,0 +1,1 @@
+import { prisma } from './src/lib/prisma'; async function main() { const ppa = await prisma.ppa.findFirst({ where: { name: 'RENEE RJE FIN SOLAR PERFIL FIJO 35' } }); console.log(ppa.profileData?.slice(0, 100)); } main();
