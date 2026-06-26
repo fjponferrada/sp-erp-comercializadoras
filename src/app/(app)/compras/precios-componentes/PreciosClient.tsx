@@ -66,6 +66,24 @@ export default function PreciosClient({ availableComponents = ['OMIE'] }: { avai
     document.body.removeChild(link);
   };
 
+  const COMPONENT_LABELS: Record<string, string> = {
+    BS3: "Banda Secundaria",
+    RAD3: "Reserva Adicional de Potencia",
+    RAD1X: "Ajustes 1ª Fase Reserva",
+    CT2: "Ajustes PBF",
+    CT3: "Ajustes Tiempo Real",
+    BALX: "Balance de Energía",
+    EXD: "Saldo de Desvíos",
+    IN7: "Pagos por Capacidad",
+    CFP: "Cuota de Financiación",
+    RT3: "Restricciones PBF",
+    RT6: "Restricciones en Tiempo Real"
+  };
+
+  const getLabel = (comp: string) => {
+    return COMPONENT_LABELS[comp] ? `${comp} (${COMPONENT_LABELS[comp]})` : comp;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -107,7 +125,7 @@ export default function PreciosClient({ availableComponents = ['OMIE'] }: { avai
             >
               {availableComponents.map(comp => (
                 <option key={comp} value={comp}>
-                  {comp}
+                  {getLabel(comp)}
                 </option>
               ))}
             </select>
