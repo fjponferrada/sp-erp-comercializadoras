@@ -54,10 +54,12 @@ export default function PricingPage() {
       if (res.success) {
         if (res.tarifa) setTariff(res.tarifa);
         setInputType('sips');
-        setSipsData(res.consumos);
-        const { p1, p2, p3, p4, p5, p6 } = res.consumos;
-        const total = p1 + p2 + p3 + p4 + p5 + p6;
-        setSipsSuccess(`Datos obtenidos de SIPS correctamente: ${total.toFixed(0)} kWh anuales.`);
+        if (res.consumos) {
+          setSipsData(res.consumos);
+          const { p1, p2, p3, p4, p5, p6 } = res.consumos;
+          const total = p1 + p2 + p3 + p4 + p5 + p6;
+          setSipsSuccess(`Datos obtenidos de SIPS correctamente: ${total.toFixed(0)} kWh anuales.`);
+        }
         toast.success('Datos de SIPS cargados correctamente');
       } else {
         setErrorMsg(res.error || 'Error desconocido');

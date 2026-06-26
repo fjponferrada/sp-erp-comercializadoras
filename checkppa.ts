@@ -1,1 +1,0 @@
-import { prisma } from './src/lib/prisma'; async function main() { const ppas = await prisma.ppa.findMany({ select: { name: true, includeInPricing: true, priceType: true } }); console.log(ppas); } main();

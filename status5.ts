@@ -1,1 +1,0 @@
-import { prisma } from './src/lib/prisma'; async function main() { const c = await prisma.contract.findMany({ where: { status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] } }, select: { airtableData: true }, take: 1 }); console.log(JSON.stringify(c[0].airtableData, null, 2).slice(0, 500)); } main();

@@ -1,1 +1,0 @@
-﻿import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); async function main() { const inv = await prisma.invoice.findFirst({ where: { totalMWh: { gt: 0 } } }); console.log(inv); } main();
