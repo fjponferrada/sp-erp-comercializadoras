@@ -7,7 +7,9 @@ import { subDays, format } from 'date-fns';
 // 1739: Coeficientes de pérdidas 2.0TD
 // 1740: Coeficientes de pérdidas 3.0TD
 // 600: Precio mercado diario OMIE
-const ESIOS_INDICATORS = [1739, 1740, 600];
+// 813, 814: Restricciones (PBF + TR)
+// 817, 816: Operación Sistema (Banda Secundaria + Reserva)
+const ESIOS_INDICATORS = [1739, 1740, 600, 813, 814, 817, 816];
 const DAYS_TO_SYNC = 30;
 
 export async function GET(req: Request) {
