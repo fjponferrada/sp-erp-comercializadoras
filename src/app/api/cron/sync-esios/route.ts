@@ -15,7 +15,7 @@ import { subDays, format } from 'date-fns';
 // 1286: Control Factor Potencia (CFP)
 // 1368: Energía de balance (BALX)
 const ESIOS_INDICATORS = [1739, 1740, 600, 806, 807, 811, 813, 814, 1286, 1368];
-const DAYS_TO_SYNC = 30;
+const DAYS_TO_SYNC = 365;
 
 export async function GET(req: Request) {
   try {
@@ -46,26 +46,30 @@ export async function GET(req: Request) {
           continue;
         }
 
-        // Upsert en base de datos
-        for (const record of records) {
-          await prisma.esiosIndicatorData.upsert({
-            where: {
-              indicatorId_date: {
+        // Upsert en base de datos optimizado en bloques para evitar timeouts en Vercel
+        const chunkSize = 50;
+        for (let i = 0; i < records.length; i += chunkSize) {
+          const chunk = records.slice(i, i + chunkSize);
+          await Promise.all(chunk.map(record => 
+            prisma.esiosIndicatorData.upsert({
+              where: {
+                indicatorId_date: {
+                  indicatorId: record.indicatorId,
+                  date: record.date
+                }
+              },
+              update: {
+                values: record.values,
+                name: record.name
+              },
+              create: {
                 indicatorId: record.indicatorId,
-                date: record.date
+                name: record.name,
+                date: record.date,
+                values: record.values
               }
-            },
-            update: {
-              values: record.values,
-              name: record.name
-            },
-            create: {
-              indicatorId: record.indicatorId,
-              name: record.name,
-              date: record.date,
-              values: record.values
-            }
-          });
+            })
+          ));
         }
 
         totalSaved += records.length;
