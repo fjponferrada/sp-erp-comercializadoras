@@ -952,7 +952,8 @@ model SystemComponentPrice {
   id          String   @id @default(cuid())
   component   String   // Ej: "OMIE", "DESVIOS", "PEAJE_P1", "CARGO_P1"
   date        DateTime @db.Date
-  values      Float[]  // 96 valores (quinceminutales)
+  values      Float[]  // 96 valores (quinceminutales) o 24 (horarios)
+  version     String?  // Ej: "C1", "C2", "C3", "C4", "C5"
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

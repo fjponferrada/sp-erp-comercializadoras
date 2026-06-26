@@ -81,7 +81,8 @@ const baseNavGroups = [
     items: [
       { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' },
       { href: '/compras/ppas', icon: FileText, label: 'Gestión de PPAs' },
-      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' }
+      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' },
+      { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' }
     ]
   },
   {
