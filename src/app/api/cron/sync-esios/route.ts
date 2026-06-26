@@ -7,9 +7,14 @@ import { subDays, format } from 'date-fns';
 // 1739: Coeficientes de pérdidas 2.0TD
 // 1740: Coeficientes de pérdidas 3.0TD
 // 600: Precio mercado diario OMIE
-// 813, 814: Restricciones (PBF + TR)
-// 817, 816: Operación Sistema (Banda Secundaria + Reserva)
-const ESIOS_INDICATORS = [1739, 1740, 600, 813, 814, 817, 816];
+// 806: Restricciones PBF (RT3)
+// 807: Restricciones TR (RT6)
+// 811: Banda Secundaria (BS3)
+// 813: Saldo Desvíos (EXD)
+// 814: Pagos Capacidad (IN7)
+// 1286: Control Factor Potencia (CFP)
+// 1368: Energía de balance (BALX)
+const ESIOS_INDICATORS = [1739, 1740, 600, 806, 807, 811, 813, 814, 1286, 1368];
 const DAYS_TO_SYNC = 30;
 
 export async function GET(req: Request) {
