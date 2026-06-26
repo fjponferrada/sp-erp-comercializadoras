@@ -1013,3 +1013,17 @@ model PortfolioBaseCurve {
   ppaMwh          Float
   updatedAt       DateTime @updatedAt
 }
+
+model EsiosIndicatorData {
+  id          String   @id @default(cuid())
+  indicatorId Int
+  name        String
+  date        DateTime @db.Date
+  values      Float[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([indicatorId, date])
+  @@index([indicatorId])
+}
