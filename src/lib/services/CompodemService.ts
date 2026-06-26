@@ -35,6 +35,8 @@ export class CompodemService {
       return { success: false, filesProcessed: 0, rowsInserted: 0, message: "No se encontraron ficheros compodem válidos en el ZIP." };
     }
 
+    type UpsertJob = { componentName: string, dateObj: Date, values: number[], version: string };
+    const jobs: UpsertJob[] = [];
     let totalInserted = 0;
 
     for (const file of files) {
@@ -58,22 +60,19 @@ export class CompodemService {
         continue;
       }
 
-      // dataByDate: date -> component -> array of 24/25 hours
       const dataByDate = new Map<string, Map<string, number[]>>();
 
       for (const row of records) {
         const tipo = (row.Tipo || '').trim().toUpperCase();
         if (tipo !== 'NOCUR') continue;
 
-        const dateStr = (row.Fecha || '').trim(); // "DD/MM/YYYY"
+        const dateStr = (row.Fecha || '').trim();
         const horaStr = (row.Hora || '').trim();
         const comp = (row.Componente || '').trim().toUpperCase();
         const precioStr = (row.Precio_Unitario || '0').replace(',', '.');
         const precio = parseFloat(precioStr) || 0;
 
         if (!dateStr || !horaStr) continue;
-
-        // Excluir PC3 como hacía el script de Python
         if (comp === 'PC3') continue;
 
         const parts = dateStr.split('/');
@@ -83,7 +82,7 @@ export class CompodemService {
         const dd = parts[0].padStart(2, '0');
         const isoDate = `${yyyy}-${mm}-${dd}T00:00:00.000Z`;
 
-        let horaIndex = parseInt(horaStr, 10) - 1; // 0 a 24
+        let horaIndex = parseInt(horaStr, 10) - 1;
         if (isNaN(horaIndex) || horaIndex < 0) continue;
         if (horaIndex > 24) horaIndex = 24;
 
@@ -99,11 +98,8 @@ export class CompodemService {
         dailyComps.get(comp)![horaIndex] += precio;
       }
 
-      // Upsert into DB
       for (const [isoDate, dailyComps] of dataByDate.entries()) {
         const dateObj = new Date(isoDate);
-
-        // Calculate RESTRICCIONES, OS, TOTAL_COMPODEM
         const cols_restricciones = ['RT3', 'RT6', 'CT2', 'CT3'];
         const cols_os = ['BS3', 'RAD3', 'RAD1', 'RAD1X', 'BALX', 'EXD', 'IN7', 'CFP', 'MI', 'SECX'];
 
@@ -121,20 +117,25 @@ export class CompodemService {
             arrTotal[h] += values[h];
           }
 
-          // Insert individual pure component (e.g. RT3, BS3, EXD...)
-          await this.upsertComponentWithVersion(comp, dateObj, values.slice(0, 24), version);
+          jobs.push({ componentName: comp, dateObj, values: values.slice(0, 24), version });
         }
 
-        // Insert aggregations
-        await this.upsertComponentWithVersion('RESTRICCIONES', dateObj, arrRestricciones.slice(0, 24), version);
-        await this.upsertComponentWithVersion('OS', dateObj, arrOS.slice(0, 24), version);
-        await this.upsertComponentWithVersion('TOTAL_COMPODEM', dateObj, arrTotal.slice(0, 24), version);
+        jobs.push({ componentName: 'RESTRICCIONES', dateObj, values: arrRestricciones.slice(0, 24), version });
+        jobs.push({ componentName: 'OS', dateObj, values: arrOS.slice(0, 24), version });
+        jobs.push({ componentName: 'TOTAL_COMPODEM', dateObj, values: arrTotal.slice(0, 24), version });
 
         totalInserted++;
       }
     }
 
-    return { success: true, filesProcessed: files.length, rowsInserted: totalInserted, message: `Se procesaron ${files.length} ficheros.` };
+    // Execute jobs in batches of 100 to prevent database connection starvation
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < jobs.length; i += CHUNK_SIZE) {
+      const chunk = jobs.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map(job => this.upsertComponentWithVersion(job.componentName, job.dateObj, job.values, job.version)));
+    }
+
+    return { success: true, filesProcessed: files.length, rowsInserted: totalInserted, message: `Se procesaron ${files.length} ficheros en la base de datos.` };
   }
 
   private static async upsertComponentWithVersion(componentName: string, dateObj: Date, values: number[], version: string) {
