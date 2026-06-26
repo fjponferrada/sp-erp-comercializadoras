@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { Search, Download, BarChart2, Calendar, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 
-export default function PreciosClient() {
+export default function PreciosClient({ availableComponents = ['OMIE'] }: { availableComponents?: string[] }) {
   const [loading, setLoading] = useState(false);
-  const [component, setComponent] = useState('OMIE');
+  const [component, setComponent] = useState(availableComponents[0] || 'OMIE');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -105,8 +105,11 @@ export default function PreciosClient() {
                 background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)'
               }}
             >
-              <option value="OMIE">OMIE (Mercado Diario)</option>
-              {/* Se pueden añadir más en el futuro: PEAJES, CARGOS, DESVIOS... */}
+              {availableComponents.map(comp => (
+                <option key={comp} value={comp}>
+                  {comp}
+                </option>
+              ))}
             </select>
           </div>
           <div>
