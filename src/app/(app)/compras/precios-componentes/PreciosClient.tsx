@@ -221,6 +221,24 @@ export default function PreciosClient({ availableComponents = ['OMIE'] }: { avai
           </table>
         </div>
       ) : null}
+
+      <div style={{ background: 'var(--bg-elevated)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border)', marginTop: '8px' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <FileText size={18} color="var(--lime)" />
+          Información sobre agregaciones del sistema
+        </h3>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.5 }}>
+          El sistema agrupa automáticamente los ficheros de liquidación (COMPODEM) de REE para generar dos agregados principales utilizados por el cotizador:
+        </p>
+        <ul style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', paddingLeft: '20px', lineHeight: 1.6, marginBottom: 0 }}>
+          <li>
+            <strong style={{ color: 'var(--text-primary)' }}>RESTRICCIONES:</strong> Suma de las restricciones técnicas (<strong>RT3</strong>, <strong>RT6</strong>, <strong>CT2</strong> y <strong>CT3</strong>).
+          </li>
+          <li>
+            <strong style={{ color: 'var(--text-primary)' }}>OS (Operador del Sistema):</strong> Suma de los componentes relacionados con los servicios de ajuste (<strong>BS3</strong>, <strong>RAD3</strong>, <strong>RAD1</strong>, <strong>RAD1X</strong>, <strong>BALX</strong>, <strong>EXD</strong>, <strong>IN7</strong>, <strong>CFP</strong>, <strong>MI</strong> y <strong>SECX</strong>).
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
