@@ -40,8 +40,8 @@ export class CompodemService {
     let totalInserted = 0;
 
     for (const file of files) {
-      const match = file.name.match(/C(\d)_compodem/i);
-      const version = match ? `C${match[1]}` : 'C0';
+      const match = file.name.match(/([AC]\d)_compodem/i);
+      const version = match ? match[1].toUpperCase() : 'C0';
 
       const lines = file.data.split(/\r?\n/);
       if (lines.length <= 2) continue;
@@ -139,6 +139,12 @@ export class CompodemService {
   }
 
   private static async upsertComponentWithVersion(componentName: string, dateObj: Date, values: number[], version: string) {
+    const VERSION_ORDER = ['A1', 'C1', 'A2', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8'];
+    const getVersionRank = (v: string) => {
+      const idx = VERSION_ORDER.indexOf(v);
+      return idx === -1 ? 0 : idx + 1;
+    };
+
     const existing = await prisma.systemComponentPrice.findUnique({
       where: {
         component_date: {
@@ -150,8 +156,8 @@ export class CompodemService {
 
     if (existing) {
       const existingVersion = existing.version || 'C0';
-      // Solo actualizamos si la versión entrante es mayor o igual (ej: C4 >= C3)
-      if (version.localeCompare(existingVersion) >= 0) {
+      // Solo actualizamos si la versión entrante tiene igual o mayor jerarquía (ej: A2 >= C1)
+      if (getVersionRank(version) >= getVersionRank(existingVersion)) {
         await prisma.systemComponentPrice.update({
           where: { id: existing.id },
           data: { values, version }
