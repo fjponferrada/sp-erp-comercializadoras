@@ -19,7 +19,7 @@ export class CompodemService {
       if (entry.name.endsWith('.zip')) {
         const innerZip = entry.getData();
         result.push(...this.getCompodemFiles(innerZip));
-      } else if (entry.name.toLowerCase().includes('_compodem_') && entry.name.toLowerCase().endsWith('.csv')) {
+      } else if (entry.name.toLowerCase().includes('_compodem_')) {
         result.push({
           name: entry.name,
           data: entry.getData().toString('latin1')
