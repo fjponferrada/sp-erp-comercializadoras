@@ -19,6 +19,17 @@ export function useMobileSidebar() {
 export function MobileSidebarProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
 
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
   return (
     <MobileSidebarContext.Provider value={{ isOpen, setIsOpen }}>
       {children}
