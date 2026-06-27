@@ -67,7 +67,7 @@ export default function Topbar({ title, subtitle, action, customActions, showSea
       </button>
 
       {/* Actions */}
-      <div className="flex gap-3 items-center">
+      <div className="flex gap-3 items-center shrink min-w-0">
         <BrandSelector />
         {customActions}
         {action && (

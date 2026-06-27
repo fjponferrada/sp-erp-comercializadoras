@@ -381,7 +381,7 @@ export default function ContractDetailClient({
             </div>
 
             {/* VERTICAL TAB CONTENT */}
-            <div className="flex-1 w-full flex flex-col gap-6">
+            <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
               
               {activeSubTab === 'Resumen Histórico' && (
                 <div className="animate-fade-in-up">
@@ -670,12 +670,12 @@ export default function ContractDetailClient({
               Actualiza los datos SIPS (Sistema de Información de Puntos de Suministro) directamente para este contrato. El CUPS asociado es <span className="font-mono text-gray-200">{supplyPoint.cups}</span>.
             </p>
             
-            <div className="bg-[var(--bg-elevated)] p-5 border border-[var(--border)] rounded-xl flex items-center justify-between">
+            <div className="bg-[var(--bg-elevated)] p-5 border border-[var(--border)] rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h4 className="text-sm font-bold text-gray-200">Consultar / Actualizar SIPS</h4>
                 <p className="text-xs text-gray-400 mt-1">Se realizará una petición al endpoint de SIPS para refrescar consumos y potencias.</p>
               </div>
-              <button className="btn-primary flex items-center gap-2">
+              <button className="btn-primary flex items-center gap-2 whitespace-nowrap">
                 <RefreshCw size={16} /> Actualizar Datos SIPS
               </button>
             </div>
