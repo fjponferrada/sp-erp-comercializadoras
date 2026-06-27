@@ -30,9 +30,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <BrandThemeProvider theme={activeBrand}>
       <MobileSidebarProvider>
-        <div style={{ display: 'flex' }}>
+        <div style={{ display: 'flex', minWidth: 0 }}>
           <Sidebar />
-          <div className="main-content" style={{ flex: 1 }}>
+          <div className="main-content" style={{ flex: 1, minWidth: 0 }}>
             {children}
           </div>
         </div>

@@ -16,9 +16,9 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
   const totalMWh = invoices.reduce((acc: number, curr: any) => acc + curr.totalMWh, 0);
 
   return (
-    <div className="space-y-6 mt-8">
+    <div className="space-y-6 mt-8 min-w-0 w-full">
       {/* NAVEGACIÓN TABS */}
-      <div className="flex space-x-1 border-b border-slate-700/50 overflow-x-auto no-scrollbar">
+      <div className="flex space-x-1 border-b border-slate-700/50 overflow-x-auto no-scrollbar min-w-0">
         <button 
           onClick={() => setActiveTab('resumen')}
           className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'resumen' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'}`}

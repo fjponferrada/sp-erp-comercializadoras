@@ -58,14 +58,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           {isCompany ? <Building2 className="w-48 h-48" /> : <User className="w-48 h-48" />}
         </div>
         
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="flex items-center gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 min-w-0">
+          <div className="flex items-center gap-6 min-w-0 max-w-full">
+            <div className="w-20 h-20 shrink-0 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
               {isCompany ? <Building2 className="w-10 h-10 text-indigo-400" /> : <User className="w-10 h-10 text-indigo-400" />}
             </div>
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-3xl font-bold text-white">{client.businessName || `${client.firstName} ${client.lastName}`}</h1>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-3 mb-1 min-w-0">
+                <h1 className="text-2xl md:text-3xl font-bold text-white truncate max-w-full" title={client.businessName || `${client.firstName} ${client.lastName}`}>{client.businessName || `${client.firstName} ${client.lastName}`}</h1>
                 {client.isMultipoint && (
                   <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold px-2 py-0.5 rounded-full">
                     MULTIPUNTO
@@ -83,16 +83,16 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
 
         {/* INFO RÁPIDA DE CONTACTO */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 pt-6 border-t border-slate-700/50 relative z-10">
-          <div className="flex items-center gap-3 text-slate-300">
-            <Mail className="w-5 h-5 text-slate-500" />
-            <span>{client.contactEmail || 'Sin email'}</span>
+          <div className="flex items-center gap-3 text-slate-300 min-w-0">
+            <Mail className="w-5 h-5 text-slate-500 shrink-0" />
+            <span className="truncate">{client.contactEmail || 'Sin email'}</span>
           </div>
-          <div className="flex items-center gap-3 text-slate-300">
-            <Phone className="w-5 h-5 text-slate-500" />
-            <span>{client.contactPhone || 'Sin teléfono'}</span>
+          <div className="flex items-center gap-3 text-slate-300 min-w-0">
+            <Phone className="w-5 h-5 text-slate-500 shrink-0" />
+            <span className="truncate">{client.contactPhone || 'Sin teléfono'}</span>
           </div>
-          <div className="flex items-center gap-3 text-slate-300">
-            <MapPin className="w-5 h-5 text-slate-500 min-w-5" />
+          <div className="flex items-center gap-3 text-slate-300 min-w-0">
+            <MapPin className="w-5 h-5 text-slate-500 shrink-0" />
             <span className="truncate" title={[client.billingAddress, client.billingPostalCode, client.billingCity, client.billingProvince].filter(Boolean).join(', ')}>
               {[client.billingAddress, client.billingPostalCode, client.billingCity, client.billingProvince].filter(Boolean).join(', ') || 'Dirección no especificada'}
             </span>
