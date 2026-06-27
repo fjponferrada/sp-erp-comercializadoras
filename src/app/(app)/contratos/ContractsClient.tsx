@@ -224,7 +224,7 @@ export default function ContractsClient({
         
         {/* STAT CARDS */}
         {showStats && (
-          <div className="animate-fade-in-up grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+          <div className="animate-fade-in-up grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
             {STATS.map((s, i) => {
               const Icon = s.icon;
               return (

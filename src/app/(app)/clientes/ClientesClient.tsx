@@ -164,7 +164,7 @@ export default function ClientesClient({
       <main style={{ padding: '28px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: 28 }}>
 
         {showStats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StatCard
               icon={Users}
               label="Total Clientes"

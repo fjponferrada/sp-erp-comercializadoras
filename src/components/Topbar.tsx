@@ -33,7 +33,7 @@ export default function Topbar({ title, subtitle, action, customActions, showSea
           {title}
         </h1>
         {subtitle && (
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, marginTop: '2px' }}>
+          <p className="hidden md:block" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, marginTop: '2px' }}>
             {subtitle}
           </p>
         )}

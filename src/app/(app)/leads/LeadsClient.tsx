@@ -264,8 +264,7 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
       <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
         <div
-          className="animate-fade-in-up"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px' }}
+          className="animate-fade-in-up grid grid-cols-2 lg:grid-cols-4 gap-4"
         >
           {KANBAN_CARDS.map((k, i) => {
             const Icon = k.icon;
