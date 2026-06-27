@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Topbar from '@/components/Topbar';
 import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery, BarChart2 } from 'lucide-react';
 import { useState } from 'react';
+import { formatDateUTC } from '@/lib/utils/date';
 import { updateContractDatesAction, sendContractToDocuSignAction, deleteLatestVersionAction } from '@/app/actions/contractActions';
 import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
@@ -316,7 +317,7 @@ export default function ContractDetailClient({
               >
                 {versions.map((v) => (
                   <option key={v.id} value={v.id}>
-                    Versión {v.version} - {new Date(v.createdAt).toLocaleDateString('es-ES')} ({v.status})
+                    Versión {v.version} - {formatDateUTC(v.createdAt)} ({v.status})
                   </option>
                 ))}
               </select>
@@ -433,19 +434,19 @@ export default function ContractDetailClient({
                     <DataItem label="Tipo Tramitación" value={initialContract.tramitationType || 'Alta'} />
                     <DataItem label="Duración (Meses)" value={initialContract.duration || initialContract.product?.permanenceMonths || '12'} />
                     
-                    <DataItem label="Fecha Firma" value={initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato ? new Date(initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Fecha Prev. Activación" value={initialContract.fechaPrevistaActivacion ? new Date(initialContract.fechaPrevistaActivacion).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Fecha Activación" value={initialContract.activationDate ? new Date(initialContract.activationDate).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Inicio Permanencia" value={initialContract.permanenceStartDate ? new Date(initialContract.permanenceStartDate).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Fecha de Baja" value={initialContract.terminationDate ? new Date(initialContract.terminationDate).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Fecha Prev. Baja" value={initialContract.fechaPrevistaBaja ? new Date(initialContract.fechaPrevistaBaja).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Firma" value={initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato ? formatDateUTC(initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato) : '-'} />
+                    <DataItem label="Fecha Prev. Activación" value={initialContract.fechaPrevistaActivacion ? formatDateUTC(initialContract.fechaPrevistaActivacion) : '-'} />
+                    <DataItem label="Fecha Activación" value={initialContract.activationDate ? formatDateUTC(initialContract.activationDate) : '-'} />
+                    <DataItem label="Inicio Permanencia" value={initialContract.permanenceStartDate ? formatDateUTC(initialContract.permanenceStartDate) : '-'} />
+                    <DataItem label="Fecha de Baja" value={initialContract.terminationDate ? formatDateUTC(initialContract.terminationDate) : '-'} />
+                    <DataItem label="Fecha Prev. Baja" value={initialContract.fechaPrevistaBaja ? formatDateUTC(initialContract.fechaPrevistaBaja) : '-'} />
                   </SectionCard>
 
                   <SectionCard title="Servicios de Valor Añadido (SVA)" icon={Settings} delay={100}>
                     <DataItem label="Concepto SVA" value={getSvaName()} />
                     <DataItem label="Precio SVA" value={initialContract.svaPrice || initialContract.preciofromSERVICIOS ? `€ ${initialContract.svaPrice || initialContract.preciofromSERVICIOS}` : '-'} />
                     <DataItem label="Duración SVA (Meses)" value={initialContract.svaDuration || '-'} />
-                    <DataItem label="Inicio SVA" value={initialContract.svaStartDate ? new Date(initialContract.svaStartDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Inicio SVA" value={initialContract.svaStartDate ? formatDateUTC(initialContract.svaStartDate) : '-'} />
                   </SectionCard>
                 </>
               )}
@@ -522,8 +523,8 @@ export default function ContractDetailClient({
 
                   <SectionCard title="Descuentos Aplicados" icon={CheckCircle} delay={200}>
                     <DataItem label="Descuento (€)" value={initialContract.discountPrice || '-'} />
-                    <DataItem label="Fecha Inicio Descuento" value={initialContract.discountStartDate ? new Date(initialContract.discountStartDate).toLocaleDateString('es-ES') : '-'} />
-                    <DataItem label="Fecha Fin Descuento" value={initialContract.discountEndDate ? new Date(initialContract.discountEndDate).toLocaleDateString('es-ES') : '-'} />
+                    <DataItem label="Fecha Inicio Descuento" value={initialContract.discountStartDate ? formatDateUTC(initialContract.discountStartDate) : '-'} />
+                    <DataItem label="Fecha Fin Descuento" value={initialContract.discountEndDate ? formatDateUTC(initialContract.discountEndDate) : '-'} />
                   </SectionCard>
                 </>
               )}
@@ -584,7 +585,7 @@ export default function ContractDetailClient({
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="font-mono text-[var(--lime)] font-bold mb-1">{inv.invoiceNumber}</div>
-                          <div className="text-sm text-gray-300">Emisión: {new Date(inv.issueDate).toLocaleDateString('es-ES')}</div>
+                          <div className="text-sm text-gray-300">Emisión: {formatDateUTC(inv.issueDate)}</div>
                         </div>
                         <span className={`px-2 py-1 rounded text-xs font-bold ${
                           inv.status === 'PAGADA' ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border border-[rgba(34,197,94,0.3)]' :
@@ -596,7 +597,7 @@ export default function ContractDetailClient({
                       </div>
                       
                       <div className="flex flex-col gap-1 text-xs">
-                        <div className="text-gray-400"><span className="text-gray-500">Periodo (Dist):</span> {inv.invoiceData?.Desde || inv.desde ? new Date(inv.invoiceData?.Desde || inv.desde).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? new Date(inv.invoiceData?.Hasta || inv.hasta).toLocaleDateString('es-ES') : '-'}</div>
+                        <div className="text-gray-400"><span className="text-gray-500">Periodo (Dist):</span> {inv.invoiceData?.Desde || inv.desde ? formatDateUTC(inv.invoiceData?.Desde || inv.desde) : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? formatDateUTC(inv.invoiceData?.Hasta || inv.hasta) : '-'}</div>
                         <div className="text-gray-500"><span className="text-gray-600">Periodo (Energía):</span> {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? new Date(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? new Date(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA).toLocaleDateString('es-ES') : '-'}</div>
                       </div>
 
@@ -627,9 +628,9 @@ export default function ContractDetailClient({
                     {initialContract.invoices.map((inv: any) => (
                       <tr key={inv.id} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                         <td className="py-3 px-4 font-mono text-sm text-gray-300">{inv.invoiceNumber}</td>
-                        <td className="py-3 px-4 text-sm text-gray-300">{new Date(inv.issueDate).toLocaleDateString('es-ES')}</td>
+                        <td className="py-3 px-4 text-sm text-gray-300">{formatDateUTC(inv.issueDate)}</td>
                         <td className="py-3 px-4 text-sm text-gray-400">
-                          {inv.invoiceData?.Desde || inv.desde ? new Date(inv.invoiceData?.Desde || inv.desde).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? new Date(inv.invoiceData?.Hasta || inv.hasta).toLocaleDateString('es-ES') : '-'}
+                          {inv.invoiceData?.Desde || inv.desde ? formatDateUTC(inv.invoiceData?.Desde || inv.desde) : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? formatDateUTC(inv.invoiceData?.Hasta || inv.hasta) : '-'}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-500">
                           {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? new Date(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? new Date(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA).toLocaleDateString('es-ES') : '-'}
@@ -713,7 +714,7 @@ export default function ContractDetailClient({
                     {initialContract.switchingEvents.map((ev: any) => (
                       <tr key={ev.id} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors text-sm">
                         <td className="py-3 px-4 text-gray-300 whitespace-nowrap">
-                          {ev.fechaSolicitud ? new Date(ev.fechaSolicitud).toLocaleDateString('es-ES') : (ev.fechaAviso ? new Date(ev.fechaAviso).toLocaleDateString('es-ES') : '-')}
+                          {ev.fechaSolicitud ? formatDateUTC(ev.fechaSolicitud) : (ev.fechaAviso ? formatDateUTC(ev.fechaAviso) : '-')}
                         </td>
                         <td className="py-3 px-4 font-mono text-gray-400">{ev.codigoSolicitud || '-'}</td>
                         <td className="py-3 px-4 text-[var(--lime)] font-bold">{ev.proceso || '-'}</td>
@@ -729,8 +730,8 @@ export default function ContractDetailClient({
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="py-3 px-4 text-gray-400">{ev.fechaAR ? new Date(ev.fechaAR).toLocaleDateString('es-ES') : '-'}</td>
-                        <td className="py-3 px-4 text-gray-300 font-medium">{ev.fechaPrevActivacion ? new Date(ev.fechaPrevActivacion).toLocaleDateString('es-ES') : '-'}</td>
+                        <td className="py-3 px-4 text-gray-400">{ev.fechaAR ? formatDateUTC(ev.fechaAR) : '-'}</td>
+                        <td className="py-3 px-4 text-gray-300 font-medium">{ev.fechaPrevActivacion ? formatDateUTC(ev.fechaPrevActivacion) : '-'}</td>
                         <td className="py-3 px-4 text-gray-500 max-w-[200px] truncate" title={ev.observaciones || ''}>{ev.observaciones || '-'}</td>
                         <td className="py-3 px-4">
                           {ev.xmlUrl ? (
@@ -788,12 +789,12 @@ export default function ContractDetailClient({
                       <div className="grid grid-cols-2 gap-2 text-xs border-t border-[var(--border-strong)] pt-2">
                         <div>
                           <div className="text-gray-500 mb-1">Paso 01</div>
-                          <div className="text-gray-300">{claim.paso01?.fecha ? new Date(claim.paso01.fecha).toLocaleDateString('es-ES') : '-'}</div>
+                          <div className="text-gray-300">{claim.paso01?.fecha ? formatDateUTC(claim.paso01.fecha) : '-'}</div>
                         </div>
                         <div>
                           <div className="text-gray-500 mb-1">Paso 02</div>
                           <div className="text-gray-300 flex items-center gap-2">
-                            {claim.paso02?.fecha ? new Date(claim.paso02.fecha).toLocaleDateString('es-ES') : '-'}
+                            {claim.paso02?.fecha ? formatDateUTC(claim.paso02.fecha) : '-'}
                             {claim.paso02?.xmlUrl && (
                               <a href={claim.paso02.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 02" className="text-gray-500 hover:text-[var(--lime)]">
                                 <Download size={14} />
@@ -864,11 +865,11 @@ export default function ContractDetailClient({
                           {claim.diasAbierta !== null ? claim.diasAbierta : '-'}
                         </td>
                         <td className="py-3 px-4 text-gray-400">
-                          {claim.paso01?.fecha ? new Date(claim.paso01.fecha).toLocaleDateString('es-ES') : '-'}
+                          {claim.paso01?.fecha ? formatDateUTC(claim.paso01.fecha) : '-'}
                         </td>
                         <td className="py-3 px-4 text-gray-400">
                           <div className="flex items-center gap-2">
-                            {claim.paso02?.fecha ? new Date(claim.paso02.fecha).toLocaleDateString('es-ES') : '-'}
+                            {claim.paso02?.fecha ? formatDateUTC(claim.paso02.fecha) : '-'}
                             {claim.paso02?.xmlUrl && (
                               <a href={claim.paso02.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 02" className="text-gray-500 hover:text-[var(--lime)]">
                                 <Download size={14} />
@@ -937,12 +938,12 @@ export default function ContractDetailClient({
                     {initialContract.f1Invoices.map((f1: any) => (
                       <tr key={f1.id} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors text-sm">
                         <td className="py-3 px-4 text-gray-300 whitespace-nowrap">
-                          {f1.fechaEmision ? new Date(f1.fechaEmision).toLocaleDateString('es-ES') : '-'}
+                          {f1.fechaEmision ? formatDateUTC(f1.fechaEmision) : '-'}
                         </td>
                         <td className="py-3 px-4 font-mono text-[var(--lime)] font-bold">{f1.numeroFactura || '-'}</td>
                         <td className="py-3 px-4 text-gray-300 text-xs">
                           {f1.fechaInicio && f1.fechaFin 
-                            ? `${new Date(f1.fechaInicio).toLocaleDateString('es-ES')} - ${new Date(f1.fechaFin).toLocaleDateString('es-ES')}`
+                            ? `${formatDateUTC(f1.fechaInicio)} - ${formatDateUTC(f1.fechaFin)}`
                             : '-'}
                         </td>
                         <td className="py-3 px-4 text-gray-300 text-right">{f1.baseImponible != null ? `${f1.baseImponible.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €` : '-'}</td>
