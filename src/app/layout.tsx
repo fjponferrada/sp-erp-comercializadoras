@@ -6,15 +6,20 @@ export const dynamic = 'force-dynamic';
 
 import { headers } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { cache } from 'react';
 
-export async function generateMetadata(): Promise<Metadata> {
+const getBrand = cache(async () => {
   const headersList = await headers();
   let host = headersList.get('host') || '';
   if (host.includes(':')) host = host.split(':')[0];
 
-  const brand = await prisma.brand.findFirst({
+  return await prisma.brand.findFirst({
     where: { domain: host }
   });
+});
+
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
 
   const appName = brand?.name || 'SP Energía ERP';
 
@@ -30,14 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export async function generateViewport() {
-  const headersList = await headers();
-  let host = headersList.get('host') || '';
-  if (host.includes(':')) host = host.split(':')[0];
-
-  const brand = await prisma.brand.findFirst({
-    where: { domain: host },
-    select: { accentColor: true }
-  });
+  const brand = await getBrand();
 
   return {
     themeColor: brand?.accentColor || '#84cc16',

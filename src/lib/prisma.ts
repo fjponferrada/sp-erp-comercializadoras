@@ -14,7 +14,7 @@ if (process.env.NODE_ENV === 'production') {
 } else {
   if (!globalForPrisma.prisma) {
     const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.PRISMA_DATABASE_URL;
-    const pool = new Pool({ connectionString });
+    const pool = new Pool({ connectionString, max: 2, idleTimeoutMillis: 10000 });
     const adapter = new PrismaPg(pool);
     globalForPrisma.prisma = new PrismaClient({ adapter });
   }
