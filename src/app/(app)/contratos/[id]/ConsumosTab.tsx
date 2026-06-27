@@ -61,7 +61,7 @@ export default function ConsumosTab({ cups }: { cups?: string }) {
   }
 
   return (
-    <div className="p-6 border border-[var(--border-strong)] rounded-2xl bg-[var(--bg-elevated)] animate-fade-in-up">
+    <div className="p-4 md:p-6 border border-[var(--border-strong)] rounded-2xl bg-[var(--bg-elevated)] animate-fade-in-up min-w-0">
       <div className="flex items-center space-x-3 mb-6">
         <div className="p-2 bg-primary-500/10 rounded-lg">
           <Zap className="text-primary-400 w-6 h-6" />

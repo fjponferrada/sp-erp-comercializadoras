@@ -17,9 +17,9 @@ export default function Topbar({ title, subtitle, action, customActions, showSea
 
   return (
     <header className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
         <button 
-          className="md:hidden"
+          className="md:hidden flex-shrink-0"
           onClick={() => setIsOpen(true)}
           style={{ 
             background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px',
@@ -28,15 +28,15 @@ export default function Topbar({ title, subtitle, action, customActions, showSea
         >
           <Menu size={24} />
         </button>
-        <div>
-          <h1 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.2 }}>
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="hidden md:block" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, marginTop: '2px' }}>
-            {subtitle}
-          </p>
-        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h1 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="hidden md:block" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {subtitle}
+            </p>
+          )}
         </div>
       </div>
 

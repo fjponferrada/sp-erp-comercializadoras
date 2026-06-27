@@ -142,19 +142,19 @@ export default function ContractDetailClient({
   };
 
   const DataItem = ({ label, value, icon: Icon, highlight, colSpan }: { label: string, value: React.ReactNode, icon?: any, highlight?: boolean, colSpan?: number }) => (
-    <div className={`p-4 rounded-xl border transition-all ${highlight ? 'bg-[rgba(222,255,154,0.03)] border-[var(--lime)] border-opacity-30' : 'bg-[var(--bg-elevated)] border-[var(--border)]'} ${colSpan ? `col-span-${colSpan}` : ''}`}>
-      <div className="flex items-center gap-2 mb-2">
-        {Icon && <Icon size={14} className={highlight ? 'text-[var(--lime)]' : 'text-gray-400'} />}
-        <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider">{label}</span>
+    <div className={`p-4 rounded-xl border transition-all min-w-0 ${highlight ? 'bg-[rgba(222,255,154,0.03)] border-[var(--lime)] border-opacity-30' : 'bg-[var(--bg-elevated)] border-[var(--border)]'} ${colSpan ? `col-span-${colSpan}` : ''}`}>
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        {Icon && <Icon size={14} className={highlight ? 'text-[var(--lime)] flex-shrink-0' : 'text-gray-400 flex-shrink-0'} />}
+        <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider truncate">{label}</span>
       </div>
-      <div className={`text-[0.95rem] font-medium break-words ${highlight ? 'text-[var(--lime)]' : 'text-gray-200'}`}>
+      <div className={`text-[0.95rem] font-medium break-all sm:break-words ${highlight ? 'text-[var(--lime)]' : 'text-gray-200'}`}>
         {value || '-'}
       </div>
     </div>
   );
 
   const SectionCard = ({ title, icon: Icon, children, delay }: { title: string, icon: any, children: React.ReactNode, delay: number }) => (
-    <div className={`card animate-fade-in-up delay-${delay}`} style={{ padding: '24px' }}>
+    <div className={`card animate-fade-in-up delay-${delay} min-w-0 w-full p-4 md:p-6`}>
       <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border)]">
         <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[var(--bg-base)] border border-[var(--border-strong)]">
           <Icon size={18} className="text-[var(--text-primary)]" />
