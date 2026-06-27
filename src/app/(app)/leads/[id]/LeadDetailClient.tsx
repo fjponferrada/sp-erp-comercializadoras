@@ -223,8 +223,8 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
         customActions={
           <div className="flex gap-2 md:gap-3 items-center overflow-x-auto md:overflow-visible no-scrollbar pb-1 md:pb-0">
             {(initialLead.isMultipoint || initialLead.businessName?.toUpperCase().includes('ERANOVUM')) && (
-              <span className="px-3 py-1.5 rounded-md bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)] text-green-400 text-sm font-semibold flex items-center gap-2">
-                <CheckCircle size={14} /> Cliente Multipunto
+              <span className="px-3 py-1.5 rounded-md bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)] text-green-400 text-sm font-semibold flex items-center gap-2" title="Cliente Multipunto">
+                <CheckCircle size={14} /> <span className="hidden md:inline">Cliente Multipunto</span>
               </span>
             )}
             <button onClick={() => router.push('/leads')} className="btn-ghost">
@@ -236,7 +236,7 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
               onClick={() => downloadOffer('suministro')}
             >
               {isDownloading === 'suministro' ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />} 
-              Oferta Suministro
+              <span className="hidden md:inline">Oferta Suministro</span>
             </button>
             {showActionButtons && (
               <button 
@@ -245,7 +245,7 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
                 onClick={() => downloadOffer('autoconsumo')}
               >
                 {isDownloading === 'autoconsumo' ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />} 
-                Oferta Autoconsumo
+                <span className="hidden md:inline">Oferta Autoconsumo</span>
               </button>
             )}
             {showActionButtons && initialLead.status !== 'CONTRATADO' && !initialLead.contractId && (
