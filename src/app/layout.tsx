@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import AuthProvider from '@/components/AuthProvider';
+import PWAInstall from '@/components/PWAInstall';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,7 @@ export async function generateViewport() {
   const brand = await getBrand();
 
   return {
-    themeColor: brand?.accentColor || '#84cc16',
+    themeColor: '#0a0a0a',
   };
 }
 
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AuthProvider>
+          <PWAInstall />
           {children}
         </AuthProvider>
       </body>

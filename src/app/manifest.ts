@@ -31,7 +31,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     short_name: shortName,
     description: 'Sistema de gestión para comercializadoras eléctricas',
     start_url: '/',
-    display: 'standalone',
+    display: 'fullscreen',
     background_color: bgColor,
     theme_color: themeColor,
     icons: [
