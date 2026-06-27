@@ -169,8 +169,8 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         {/* 3. CONSUMOS Y POTENCIAS (FÍSICO) */}
         <SectionCard title="3. Consumos Registrados (Físico)" icon={Activity} delay={300}>
           <div className="col-span-full overflow-x-auto">
-            <div className="min-w-[600px] bg-[var(--bg-elevated)] p-4 rounded-xl border border-[var(--border)]">
-              <div className="grid grid-cols-7 gap-2 pb-2 mb-2 border-b-2 border-[var(--border-strong)] text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <div className="md:min-w-[600px] bg-[var(--bg-elevated)] p-4 rounded-xl border border-[var(--border)]">
+              <div className="hidden md:grid grid-cols-7 gap-2 pb-2 mb-2 border-b-2 border-[var(--border-strong)] text-xs font-bold text-gray-500 uppercase tracking-wider">
                 <div>Concepto Físico</div>
                 <div className="text-right">P1</div>
                 <div className="text-right">P2</div>
@@ -224,8 +224,8 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         {/* 4. TÉRMINO DE POTENCIA (ECONÓMICO) */}
         <SectionCard title="4. Término de Potencia (Económico)" icon={Zap} delay={400}>
           <div className="col-span-full overflow-x-auto">
-            <div className="min-w-[600px] bg-[var(--bg-elevated)] p-4 rounded-xl border border-[var(--border)]">
-              <div className="grid grid-cols-7 gap-2 pb-2 mb-2 border-b-2 border-[var(--border-strong)] text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <div className="md:min-w-[600px] bg-[var(--bg-elevated)] p-4 rounded-xl border border-[var(--border)]">
+              <div className="hidden md:grid grid-cols-7 gap-2 pb-2 mb-2 border-b-2 border-[var(--border-strong)] text-xs font-bold text-gray-500 uppercase tracking-wider">
                 <div>Concepto Económico</div>
                 <div className="text-right">P1</div>
                 <div className="text-right">P2</div>
@@ -265,8 +265,8 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         {/* 5. TÉRMINO DE ENERGÍA (ECONÓMICO) */}
         <SectionCard title="5. Término de Energía (Económico)" icon={BatteryCharging} delay={500}>
           <div className="col-span-full overflow-x-auto">
-            <div className="min-w-[600px] bg-[var(--bg-elevated)] p-4 rounded-xl border border-[var(--border)]">
-              <div className="grid grid-cols-7 gap-2 pb-2 mb-2 border-b-2 border-[var(--border-strong)] text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <div className="md:min-w-[600px] bg-[var(--bg-elevated)] p-4 rounded-xl border border-[var(--border)]">
+              <div className="hidden md:grid grid-cols-7 gap-2 pb-2 mb-2 border-b-2 border-[var(--border-strong)] text-xs font-bold text-gray-500 uppercase tracking-wider">
                 <div>Concepto Económico</div>
                 <div className="text-right">P1</div>
                 <div className="text-right">P2</div>

@@ -221,14 +221,14 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
         subtitle={`ID: ${initialLead.id.toUpperCase()}`}
         showSearch={false}
         customActions={
-          <div className="flex gap-3 items-center">
+          <div className="flex gap-2 md:gap-3 items-center overflow-x-auto md:overflow-visible no-scrollbar pb-1 md:pb-0">
             {(initialLead.isMultipoint || initialLead.businessName?.toUpperCase().includes('ERANOVUM')) && (
               <span className="px-3 py-1.5 rounded-md bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)] text-green-400 text-sm font-semibold flex items-center gap-2">
                 <CheckCircle size={14} /> Cliente Multipunto
               </span>
             )}
             <button onClick={() => router.push('/leads')} className="btn-ghost">
-              <ChevronLeft size={16} /> Volver a Leads
+              <ChevronLeft size={16} /> <span className="hidden md:inline">Volver</span>
             </button>
             <button 
               className="btn-ghost text-gray-300 hover:text-white"
@@ -267,8 +267,7 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
                   }
                 }}
               >
-                {isConverting ? <CheckCircle size={16} className="animate-spin" /> : <FileCheck size={16} />} 
-                {isConverting ? 'Generando...' : 'Generar Contrato'}
+                {isConverting ? <CheckCircle size={16} className="animate-spin" /> : <FileCheck size={16} />} <span className="hidden md:inline">{isConverting ? 'Generando...' : 'Generar Contrato'}</span>
               </button>
             )}
             
@@ -294,15 +293,14 @@ export default function LeadDetailClient({ initialLead }: { initialLead: any }) 
                       }
                     }}
                   >
-                    {isConverting ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />} 
-                    {isConverting ? 'Rehaciendo...' : 'Rehacer Contrato'}
+                    {isConverting ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />} <span className="hidden md:inline">{isConverting ? 'Rehaciendo...' : 'Rehacer Contrato'}</span>
                   </button>
                 )}
                 <button 
                   onClick={() => router.push(`/contratos/${initialLead.contractId}`)} 
                   className="btn-primary"
                 >
-                  <FileText size={16} /> Ver Contrato
+                  <FileText size={16} /> <span className="hidden md:inline">Ver Contrato</span>
                 </button>
               </>
             )}

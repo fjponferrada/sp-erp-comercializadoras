@@ -1,4 +1,11 @@
 import type { NextConfig } from "next";
+import withPWAInit from "@ducanh2912/next-pwa";
+
+const withPWA = withPWAInit({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+});
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['pizzip', 'docusign-esign', 'ssh2', 'ssh2-sftp-client'],
@@ -19,7 +26,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  turbopack: {}, // Silence the webpack/turbopack warning from next-pwa
 };
 
-export default nextConfig;
-// force reload 2
+export default withPWA(nextConfig);
