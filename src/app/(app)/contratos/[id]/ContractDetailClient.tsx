@@ -598,7 +598,7 @@ export default function ContractDetailClient({
                       
                       <div className="flex flex-col gap-1 text-xs">
                         <div className="text-gray-400"><span className="text-gray-500">Periodo (Dist):</span> {inv.invoiceData?.Desde || inv.desde ? formatDateUTC(inv.invoiceData?.Desde || inv.desde) : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? formatDateUTC(inv.invoiceData?.Hasta || inv.hasta) : '-'}</div>
-                        <div className="text-gray-500"><span className="text-gray-600">Periodo (Energía):</span> {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? new Date(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? new Date(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA).toLocaleDateString('es-ES') : '-'}</div>
+                        <div className="text-gray-500"><span className="text-gray-600">Periodo (Energía):</span> {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? formatDateUTC(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA) : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? formatDateUTC(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA) : '-'}</div>
                       </div>
 
                       <div className="flex justify-between items-center mt-2 pt-2 border-t border-[var(--border-strong)]">
@@ -633,7 +633,7 @@ export default function ContractDetailClient({
                           {inv.invoiceData?.Desde || inv.desde ? formatDateUTC(inv.invoiceData?.Desde || inv.desde) : '-'} al {inv.invoiceData?.Hasta || inv.hasta ? formatDateUTC(inv.invoiceData?.Hasta || inv.hasta) : '-'}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-500">
-                          {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? new Date(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA).toLocaleDateString('es-ES') : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? new Date(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA).toLocaleDateString('es-ES') : '-'}
+                          {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? formatDateUTC(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA) : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? formatDateUTC(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA) : '-'}
                         </td>
                         <td className="py-3 px-4 text-sm font-bold text-[var(--lime)]">€ {inv.totalAmount.toFixed(2)}</td>
                         <td className="py-3 px-4">
