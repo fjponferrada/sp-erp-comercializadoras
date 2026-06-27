@@ -438,8 +438,6 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
           </table>
         </div>
 
-        </div>
-
         <PaginationFooter
           currentPage={currentPage}
           itemsPerPage={itemsPerPage}
