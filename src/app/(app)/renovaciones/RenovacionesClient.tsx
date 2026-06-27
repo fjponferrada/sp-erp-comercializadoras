@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Topbar from '@/components/Topbar';
-import { Search, RefreshCcw, Calendar, Zap, CheckCircle2, XCircle, AlertTriangle, MapPin, Phone, Mail, MoreHorizontal } from 'lucide-react';
+import { Search, RefreshCcw, Calendar, Zap, CheckCircle2, XCircle, AlertTriangle, MapPin, Phone, Mail, MoreHorizontal , ExternalLink} from 'lucide-react';
 import PaginationFooter from '@/components/PaginationFooter';
 import Link from 'next/link';
 import RenovarModal from '@/components/renovaciones/RenovarModal';
@@ -159,7 +159,63 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          {/* Mobile View (Cards) */}
+          <div className="block md:hidden">
+            {displayedRenovaciones.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                No hay contratos que venzan próximamente con los filtros actuales.
+              </div>
+            ) : (
+              displayedRenovaciones.map((r) => {
+                const renovado = renovados.includes(r.id);
+                return (
+                  <div key={r.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px', opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, paddingRight: '8px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{r.cliente}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{r.telefonoContacto}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {renovado ? (
+                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>✅ Renovado</span>
+                        ) : (
+                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>Vence en {r.diasRestantes}d</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--lime)', border: '1px solid var(--border)' }}>
+                        {r.tarifa}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                        {r.canal} / {r.emailComercial?.split('@')[0]}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      <strong>CUPS:</strong> {r.cups}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Vence: {new Date(r.vencimiento).toLocaleDateString('es-ES')}
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => window.location.href = `/contratos/${r.id}`} className="action-icon" style={{ background: 'rgba(255,255,255,0.05)', padding: '6px', borderRadius: '6px' }}>
+                          <ExternalLink size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop View (Table) */}
+          <div className="hidden md:block" style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>

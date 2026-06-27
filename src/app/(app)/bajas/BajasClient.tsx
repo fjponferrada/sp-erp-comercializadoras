@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Topbar from '@/components/Topbar';
-import { Search, TrendingDown, Zap, ExternalLink, Calendar } from 'lucide-react';
+import { Search, TrendingDown, Zap, ExternalLink, Calendar , Mail} from 'lucide-react';
 import PaginationFooter from '@/components/PaginationFooter';
 
 const motivos = ['Cese de actividad', 'Cambio de comercializadora', 'Venta del inmueble', 'Impago', 'Solicitud cliente', 'Fin de permanencia'];
@@ -111,7 +111,63 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          {/* Mobile View (Cards) */}
+          <div className="block md:hidden">
+            {bajas.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                No se encontraron bajas con los filtros aplicados.
+              </div>
+            ) : (
+              bajas.map((b) => (
+                <div key={b.cups} style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, paddingRight: '8px' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{b.cliente}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{b.telefono || '-'}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="badge badge-draft" style={{ fontSize: '0.72rem' }}>{b.tarifa}</span>
+                    </div>
+                  </div>
+                  
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    {b.producto}
+                  </div>
+
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <strong>CUPS:</strong> {b.cups}
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600 }}>
+                      Baja: {b.fechaBaja}
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {b.telefono && (
+                        <a href={`tel:${b.telefono}`} className="action-icon" style={{ background: 'rgba(52, 211, 153, 0.1)', color: '#34d399', padding: '6px', borderRadius: '6px' }} title="Llamar">
+                          <Phone size={16} />
+                        </a>
+                      )}
+                      {b.telefono && (
+                        <a href={`https://wa.me/${b.telefono.replace(/\s+/g, '')}`} target="_blank" rel="noreferrer" className="action-icon" style={{ background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', padding: '6px', borderRadius: '6px' }} title="WhatsApp">
+                          <MessageCircle size={16} />
+                        </a>
+                      )}
+                      {b.email && (
+                        <a href={`mailto:${b.email}`} className="action-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '6px', borderRadius: '6px' }} title="Enviar Email">
+                          <Mail size={16} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop View (Table) */}
+          <div className="hidden md:block" style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
