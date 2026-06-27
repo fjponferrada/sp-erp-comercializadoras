@@ -161,7 +161,7 @@ export default function ClientesClient({
         action={canCreate ? { label: 'Nuevo Cliente', onClick: () => alert('Nuevo Cliente') } : undefined}
       />
 
-      <main style={{ padding: '28px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <main className="px-4 md:px-8 py-6 md:py-8 flex-1 flex flex-col gap-6 w-full min-w-0">
 
         {showStats && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -190,19 +190,9 @@ export default function ClientesClient({
           </div>
         )}
 
-        <div className="card animate-fade-in-up delay-400" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card animate-fade-in-up delay-400 w-full min-w-0" style={{ padding: 0, overflow: 'hidden' }}>
 
-          <div
-            style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              flexWrap: 'wrap',
-            }}
-          >
+          <div className="p-4 md:p-6 border-b border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6 flex-wrap">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div className="lime-dot" />
               <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
@@ -224,10 +214,10 @@ export default function ClientesClient({
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <SlidersHorizontal size={14} color="var(--text-muted)" />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+              <div className="hidden sm:flex items-center"><SlidersHorizontal size={14} color="var(--text-muted)" /></div>
 
-              <div style={{ position: 'relative' }}>
+              <div className="relative w-full sm:w-[260px]">
                 <Search
                   size={14}
                   style={{
@@ -240,8 +230,8 @@ export default function ClientesClient({
                   }}
                 />
                 <input
-                  className="form-input"
-                  style={{ paddingLeft: 32, width: 260, fontSize: '0.85rem' }}
+                  className="form-input w-full"
+                  style={{ paddingLeft: 32, fontSize: '0.85rem' }}
                   placeholder="Buscar por nombre o NIF/CIF…"
                   value={search}
                   onChange={(e) => handleSearch(e.target.value)}
@@ -249,8 +239,8 @@ export default function ClientesClient({
               </div>
               {showStats && (
                 <select
-                  className="form-input"
-                  style={{ width: 170, fontSize: '0.85rem', cursor: 'pointer' }}
+                  className="form-input w-full sm:w-[170px]"
+                  style={{ fontSize: '0.85rem', cursor: 'pointer' }}
                   value={tipoFilter}
                   onChange={(e) => handleTipo(e.target.value as 'Todos' | TipoPersona)}
                 >

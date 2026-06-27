@@ -18,7 +18,7 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
   return (
     <div className="space-y-6 mt-8">
       {/* NAVEGACIÓN TABS */}
-      <div className="flex space-x-1 border-b border-slate-700/50">
+      <div className="flex space-x-1 border-b border-slate-700/50 overflow-x-auto no-scrollbar">
         <button 
           onClick={() => setActiveTab('resumen')}
           className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'resumen' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'}`}
@@ -83,10 +83,9 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
           </div>
         )}
 
-        {/* FACTURAS */}
         {activeTab === 'invoices' && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <table className="w-full text-left text-sm text-slate-300">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-x-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-w-0 w-full">
+            <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap min-w-[700px]">
               <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4">Nº Factura</th>
@@ -130,10 +129,9 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
           </div>
         )}
 
-        {/* PUNTOS DE SUMINISTRO */}
         {activeTab === 'supplyPoints' && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <table className="w-full text-left text-sm text-slate-300">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-x-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-w-0 w-full">
+            <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap min-w-[700px]">
               <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4">CUPS</th>
@@ -167,10 +165,9 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
           </div>
         )}
 
-        {/* CONTRATOS */}
         {activeTab === 'contracts' && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <table className="w-full text-left text-sm text-slate-300">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-x-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-w-0 w-full">
+            <table className="w-full text-left text-sm text-slate-300 whitespace-nowrap min-w-[700px]">
               <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
                 <tr>
                   <th className="px-6 py-4">Estado</th>

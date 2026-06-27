@@ -92,25 +92,25 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         subtitle={`Cliente: ${initialInvoice.client?.businessName || initialInvoice.client?.firstName || 'Desconocido'}`}
         showSearch={false}
         customActions={
-          <div className="flex gap-3 items-center">
-            <button onClick={() => router.push('/facturas')} className="btn-ghost">
+          <div className="flex gap-2 md:gap-3 items-center overflow-x-auto md:overflow-visible no-scrollbar pb-1 md:pb-0">
+            <button onClick={() => router.push('/facturas')} className="btn-ghost whitespace-nowrap">
               <ChevronLeft size={16} /> Volver a Facturas
             </button>
             {initialInvoice.pdfUrl || (initialInvoice.invoiceData && initialInvoice.invoiceData.output_pdf) ? (
-              <a href={initialInvoice.pdfUrl || initialInvoice.invoiceData?.output_pdf} target="_blank" rel="noreferrer" className="btn-primary flex items-center gap-2">
+              <a href={initialInvoice.pdfUrl || initialInvoice.invoiceData?.output_pdf} target="_blank" rel="noreferrer" className="btn-primary flex items-center gap-2 whitespace-nowrap">
                 <FileDown size={16} /> Ver PDF
               </a>
             ) : (
-              <button disabled className="btn-primary opacity-50 cursor-not-allowed flex items-center gap-2">
+              <button disabled className="btn-primary opacity-50 cursor-not-allowed flex items-center gap-2 whitespace-nowrap">
                 <FileDown size={16} /> PDF no disponible
               </button>
             )}
             {initialInvoice.xML || (initialInvoice.invoiceData && (initialInvoice.invoiceData.XML || initialInvoice.invoiceData.xmlUrl)) ? (
-              <a href={initialInvoice.xML || initialInvoice.invoiceData?.XML || initialInvoice.invoiceData?.xmlUrl} target="_blank" rel="noreferrer" className="btn-secondary flex items-center gap-2">
+              <a href={initialInvoice.xML || initialInvoice.invoiceData?.XML || initialInvoice.invoiceData?.xmlUrl} target="_blank" rel="noreferrer" className="btn-secondary flex items-center gap-2 whitespace-nowrap">
                 <Download size={16} /> Ver XML
               </a>
             ) : (
-              <button disabled className="btn-secondary opacity-50 cursor-not-allowed flex items-center gap-2">
+              <button disabled className="btn-secondary opacity-50 cursor-not-allowed flex items-center gap-2 whitespace-nowrap">
                 <Download size={16} /> XML no disponible
               </button>
             )}
@@ -118,7 +118,7 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         }
       />
 
-      <div className="max-w-7xl mx-auto px-6 py-8 flex flex-col gap-6">
+      <div className="max-w-7xl w-full min-w-0 mx-auto px-4 md:px-6 py-8 flex flex-col gap-6">
 
         {/* 1. DATOS PRINCIPALES */}
         <SectionCard title="1. Resumen Principal y Estado" icon={FileText} delay={100}>

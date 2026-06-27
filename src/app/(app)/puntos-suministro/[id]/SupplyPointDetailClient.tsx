@@ -44,7 +44,7 @@ export default function SupplyPointDetailClient({
     <div className="flex-1 bg-black/40 h-[100vh] overflow-y-auto w-full relative">
       <Topbar title="Detalle Punto de Suministro" showSearch={false} />
 
-      <div className="p-8 pb-32 max-w-[1600px] mx-auto w-full space-y-6">
+      <div className="p-4 md:p-8 pb-32 max-w-[1600px] mx-auto w-full min-w-0 space-y-6">
         
         {/* Header */}
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white/[0.02] border border-white/5 p-6 rounded-2xl backdrop-blur-xl">

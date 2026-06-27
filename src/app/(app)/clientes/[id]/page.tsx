@@ -51,10 +51,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           </Link>
         }
       />
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-7xl w-full min-w-0 mx-auto px-4 md:px-6 py-8 space-y-6">
       {/* HEADER CLIENTE */}
-      <div className="bg-slate-800/30 border border-slate-700 p-8 rounded-3xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+      <div className="bg-slate-800/30 border border-slate-700 p-6 md:p-8 rounded-3xl relative overflow-hidden min-w-0">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none hidden md:block">
           {isCompany ? <Building2 className="w-48 h-48" /> : <User className="w-48 h-48" />}
         </div>
         

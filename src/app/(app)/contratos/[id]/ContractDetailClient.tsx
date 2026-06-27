@@ -327,10 +327,10 @@ export default function ContractDetailClient({
         }
       />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8 flex flex-col gap-6">
+      <div className="max-w-[1400px] w-full mx-auto px-6 py-8 flex flex-col gap-6 min-w-0">
 
         {/* HORIZONTAL TABS */}
-        <div className="flex border-b border-[var(--border)] overflow-x-auto no-scrollbar gap-2 pb-[-1px]">
+        <div className="flex border-b border-[var(--border)] overflow-x-auto no-scrollbar gap-2 pb-[-1px] min-w-0">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -361,7 +361,7 @@ export default function ContractDetailClient({
       )}
         {/* TAB CONTENT */}
         {activeTab === 'Datos' && (
-          <div className="flex flex-col md:flex-row gap-6 items-start">
+          <div className="flex flex-col md:flex-row gap-6 items-start min-w-0 w-full">
             
             {/* VERTICAL TABS */}
             <div className="w-full md:w-64 shrink-0 flex flex-col gap-1 sticky top-6">
