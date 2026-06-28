@@ -100,6 +100,7 @@ const baseNavGroups = [
       { href: '/eventos-switching/generar', icon: FileText, label: 'Generar Switching' },
       { href: '/eventos-switching/anulaciones', icon: FileWarning, label: 'Generar Anulación' },
       { href: '/reclamaciones', icon: FileWarning, label: 'Reclamaciones' },
+      { href: '/distribuidoras/reposiciones', icon: RefreshCcw, label: 'Reposiciones' },
       { href: '/ficheros-f1', icon: FileText, label: 'Listado F1' },
     ],
   },
