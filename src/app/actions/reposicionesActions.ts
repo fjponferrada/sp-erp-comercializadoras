@@ -9,11 +9,10 @@ function buildE2_15Xml(data: any): string {
   const fechaHoy = (new Date(now.getTime() - now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const fechaHora = (new Date(now.getTime() - now.getTimezoneOffset() * 60000)).toISOString().slice(0, -1).split('.')[0];
   
-  const ns = isAccept ? 'http://www.cnmc.es/2024/05/16/AceptacionReposicionReceptor' : 'http://www.cnmc.es/2024/05/16/RechazoReposicionReceptor';
+  const rootElement = isAccept ? 'MensajeAceptacionReposicionReceptor' : 'MensajeRechazoReposicionReceptor';
 
-  if (isAccept) {
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<AceptacionReposicionReceptor xmlns="${ns}">
+  let body = `<?xml version="1.0" encoding="UTF-8"?>
+<${rootElement} xmlns="http://localhost/elegibilidad">
   <Cabecera>
     <CodigoREEEmpresaEmisora>${codEmisora}</CodigoREEEmpresaEmisora>
     <CodigoREEEmpresaDestino>${codDestino}</CodigoREEEmpresaDestino>
@@ -23,37 +22,35 @@ function buildE2_15Xml(data: any): string {
     <SecuencialDeSolicitud>01</SecuencialDeSolicitud>
     <FechaSolicitud>${fechaHora}</FechaSolicitud>
     <CUPS>${cups}</CUPS>
-  </Cabecera>
-  <AceptacionReposicionReceptor>
-    <FechaAceptacion>${fechaHoy}</FechaAceptacion>
-  </AceptacionReposicionReceptor>
-</AceptacionReposicionReceptor>`;
-  } else {
-    let motivosStr = '';
+  </Cabecera>`;
+
+  if (!isAccept) {
+    let rechazosStr = '';
     if (motivosRechazo && motivosRechazo.length > 0) {
-      motivosStr = `
-    <MotivosRechazo>
-${motivosRechazo.map((m: string) => `      <MotivoRechazo><CodigoMotivoRechazo>${m}</CodigoMotivoRechazo></MotivoRechazo>`).join('\n')}
-    </MotivosRechazo>`;
+      rechazosStr = motivosRechazo.map((m: string, idx: number) => `
+    <Rechazo>
+      <Secuencial>${String(idx + 1).padStart(2, '0')}</Secuencial>
+      <CodigoMotivo>${m}</CodigoMotivo>
+      <Comentarios>Rechazo por motivo ${m}</Comentarios>
+    </Rechazo>`).join('');
+    } else {
+      rechazosStr = `
+    <Rechazo>
+      <Secuencial>01</Secuencial>
+      <CodigoMotivo>99</CodigoMotivo>
+      <Comentarios>Rechazado</Comentarios>
+    </Rechazo>`;
     }
 
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<RechazoReposicionReceptor xmlns="${ns}">
-  <Cabecera>
-    <CodigoREEEmpresaEmisora>${codEmisora}</CodigoREEEmpresaEmisora>
-    <CodigoREEEmpresaDestino>${codDestino}</CodigoREEEmpresaDestino>
-    <CodigoDeProceso>E2</CodigoDeProceso>
-    <CodigoDePaso>15</CodigoDePaso>
-    <CodigoDeSolicitud>${codSolicitud}</CodigoDeSolicitud>
-    <SecuencialDeSolicitud>01</SecuencialDeSolicitud>
-    <FechaSolicitud>${fechaHora}</FechaSolicitud>
-    <CUPS>${cups}</CUPS>
-  </Cabecera>
-  <RechazoReposicionReceptor>
-    <FechaRechazo>${fechaHoy}</FechaRechazo>${motivosStr}
-  </RechazoReposicionReceptor>
-</RechazoReposicionReceptor>`;
+    body += `
+  <Rechazos>
+    <FechaRechazo>${fechaHoy}</FechaRechazo>${rechazosStr}
+  </Rechazos>`;
   }
+
+  body += `\n</${rootElement}>`;
+
+  return body;
 }
 
 function buildE2_01Xml(data: any): string {

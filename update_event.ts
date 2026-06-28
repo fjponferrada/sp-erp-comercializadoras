@@ -11,7 +11,7 @@ async function main() {
   if (event) {
     await prisma.switchingEvent.update({
       where: { id: event.id },
-      data: { observaciones: '01' }
+      data: { observaciones: '02' }
     });
     console.log('Event updated');
   }
