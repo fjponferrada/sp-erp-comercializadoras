@@ -60,7 +60,7 @@ export async function GET() {
               data: {
                 status: 'ACTIVO',
                 activationDate: expectedActivationDay,
-                permanenceStartDate: renewal.contract!.permanenceStartDate || renewal.contract!.activationDate || expectedActivationDay
+                permanenceStartDate: expectedActivationDay
               }
             });
           });
