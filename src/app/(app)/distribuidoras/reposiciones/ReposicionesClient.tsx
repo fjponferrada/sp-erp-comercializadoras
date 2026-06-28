@@ -141,15 +141,26 @@ export default function ReposicionesClient() {
                         <th className="px-4 py-3 font-medium rounded-tl-lg">CUPS</th>
                         <th className="px-4 py-3 font-medium">F. Solicitud</th>
                         <th className="px-4 py-3 font-medium">Cód. Solicitud Distribuidora</th>
+                        <th className="px-4 py-3 font-medium">Motivo (Tabla 135)</th>
                         <th className="px-4 py-3 font-medium text-right rounded-tr-lg">Acción</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)]">
-                      {pendingEvents.map(event => (
+                      {pendingEvents.map(event => {
+                        const getMotivoLabel = (cod: string) => {
+                          if (cod === '01') return '01 - Por Error';
+                          if (cod === '02') return '02 - Sin consentimiento';
+                          if (cod === '03') return '03 - Otro';
+                          return cod || 'No especificado';
+                        };
+                        return (
                         <tr key={event.id} className="hover:bg-[var(--bg-base)] transition-colors">
                           <td className="px-4 py-4 font-medium">{event.supplyPoint?.cups || 'Desconocido'}</td>
                           <td className="px-4 py-4">{new Date(event.createdAt).toLocaleDateString()}</td>
                           <td className="px-4 py-4">{event.codigoSolicitud || '-'}</td>
+                          <td className="px-4 py-4 text-amber-500 font-medium">
+                            {getMotivoLabel(event.observaciones)}
+                          </td>
                           <td className="px-4 py-4 text-right">
                             {selectedEventId === event.id ? (
                               <div className="flex flex-col gap-2 items-end">
@@ -184,7 +195,8 @@ export default function ReposicionesClient() {
                             )}
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 </div>
