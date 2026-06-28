@@ -81,8 +81,7 @@ const baseNavGroups = [
     items: [
       { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' },
       { href: '/compras/ppas', icon: FileText, label: 'Gestión de PPAs' },
-      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' },
-      { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' }
+      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' }
     ]
   },
   {
@@ -97,8 +96,6 @@ const baseNavGroups = [
     roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
       { href: '/distribuidoras', icon: Building2, label: 'Datos Distribuidora' },
-      { href: '/ajustes/importador', icon: UploadCloud, label: 'Importar CCH' },
-      { href: '/importar-switching', icon: UploadCloud, label: 'Importador XML' },
       { href: '/switching-warnings', icon: AlertCircle, label: 'Eventos Switchings' },
       { href: '/eventos-switching/generar', icon: FileText, label: 'Generar Switching' },
       { href: '/eventos-switching/anulaciones', icon: FileWarning, label: 'Generar Anulación' },
@@ -128,6 +125,15 @@ const baseNavGroups = [
     items: [
       { href: '/autoconsumo', icon: Sun, label: 'Autoconsumo' },
     ],
+  },
+  {
+    label: 'IMPORTACIÓN',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/ajustes/importador', icon: UploadCloud, label: 'Importar CCH' },
+      { href: '/importar-switching', icon: UploadCloud, label: 'Importador XML' },
+      { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' }
+    ]
   },
   {
     label: 'Configuración',
