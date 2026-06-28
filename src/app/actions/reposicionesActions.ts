@@ -98,7 +98,13 @@ export async function getPendingE2_14() {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return { success: true, data: events };
+    const r2Url = process.env.R2_PUBLIC_URL || '';
+    const enrichedEvents = events.map(e => ({
+      ...e,
+      fullXmlUrl: e.xmlUrl ? `${r2Url}/${e.xmlUrl}` : null
+    }));
+
+    return { success: true, data: enrichedEvents };
   } catch (e: any) {
     return { success: false, error: e.message };
   }

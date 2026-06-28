@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getPendingE2_14, respondToE2_14, generateE2_01 } from '@/app/actions/reposicionesActions';
-import { AlertCircle, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { AlertCircle, FileText, CheckCircle, XCircle, Download } from 'lucide-react';
 import { useBrandTheme } from '@/context/BrandThemeContext';
 import Topbar from '@/components/Topbar';
 
@@ -177,21 +177,33 @@ export default function ReposicionesClient() {
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex justify-end gap-2">
-                                <button 
-                                  onClick={() => handleRespond(event.id, true)}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-[var(--lime-glow)] text-[var(--lime)] hover:bg-[var(--lime-glow-lg)] border border-[var(--lime-glow)] rounded-lg transition-colors"
-                                  style={{ color: theme.accentColor, borderColor: theme.accentColor }}
-                                >
-                                  <CheckCircle className="w-4 h-4" /> Aceptar
-                                </button>
-                                <button 
-                                  onClick={() => setSelectedEventId(event.id)}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors"
-                                >
-                                  <XCircle className="w-4 h-4" /> Rechazar
-                                </button>
-                              </div>
+                                <div className="flex justify-end gap-2">
+                                  {event.fullXmlUrl && (
+                                    <a
+                                      href={event.fullXmlUrl}
+                                      download
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition-colors"
+                                      title="Descargar XML Original"
+                                    >
+                                      <Download className="w-4 h-4" /> XML
+                                    </a>
+                                  )}
+                                  <button 
+                                    onClick={() => handleRespond(event.id, true)}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-[var(--lime-glow)] text-[var(--lime)] hover:bg-[var(--lime-glow-lg)] border border-[var(--lime-glow)] rounded-lg transition-colors"
+                                    style={{ color: theme.accentColor, borderColor: theme.accentColor }}
+                                  >
+                                    <CheckCircle className="w-4 h-4" /> Aceptar
+                                  </button>
+                                  <button 
+                                    onClick={() => setSelectedEventId(event.id)}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors"
+                                  >
+                                    <XCircle className="w-4 h-4" /> Rechazar
+                                  </button>
+                                </div>
                             )}
                           </td>
                         </tr>
