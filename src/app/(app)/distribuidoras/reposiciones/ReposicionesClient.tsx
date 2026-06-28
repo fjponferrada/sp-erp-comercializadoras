@@ -148,9 +148,9 @@ export default function ReposicionesClient() {
                     <tbody className="divide-y divide-[var(--border)] text-[var(--text-primary)]">
                       {pendingEvents.map(event => {
                         const getMotivoLabel = (cod: string) => {
-                          if (cod === '01') return '01 - Por Error';
-                          if (cod === '02') return '02 - Sin consentimiento';
-                          if (cod === '03') return '03 - Otro';
+                          if (cod === '01') return '01 - Contratación indebida (Sin consentimiento)';
+                          if (cod === '02') return '02 - Error administrativo';
+                          if (cod === '03') return '03 - Solicitada por comercializador saliente';
                           return cod || 'No especificado';
                         };
                         return (
