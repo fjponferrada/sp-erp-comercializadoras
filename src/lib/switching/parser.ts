@@ -32,7 +32,13 @@ export interface ParsedSwitchingData {
   // Campos Autoconsumo
   cau?: string;
   tipoAutoconsumo?: string;
+  cauSubtype?: string;
+  cauCollective?: string;
   cil?: string;
+  generatorTechnology?: string;
+  installedPowerGen?: number;
+  installationType?: string;
+  meteringScheme?: string;
 }
 
 const parser = new XMLParser({
@@ -202,11 +208,23 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
     if (autoconsumo) {
       const cau = findKeyRecursively(autoconsumo, 'CAU');
       const tipoAutoconsumo = findKeyRecursively(autoconsumo, 'TipoAutoconsumo');
+      const tipoSubseccion = findKeyRecursively(autoconsumo, 'TipoSubseccion');
+      const colectivo = findKeyRecursively(autoconsumo, 'Colectivo');
       const cil = findKeyRecursively(autoconsumo, 'CIL');
+      const tecGenerador = findKeyRecursively(autoconsumo, 'TecGenerador');
+      const potInstaladaGen = findKeyRecursively(autoconsumo, 'PotInstaladaGen');
+      const tipoInstalacion = findKeyRecursively(autoconsumo, 'TipoInstalacion');
+      const esquemaMedida = findKeyRecursively(autoconsumo, 'EsquemaMedida');
       
       if (cau) result.cau = String(cau);
       if (tipoAutoconsumo) result.tipoAutoconsumo = String(tipoAutoconsumo);
+      if (tipoSubseccion) result.cauSubtype = String(tipoSubseccion);
+      if (colectivo) result.cauCollective = String(colectivo);
       if (cil) result.cil = String(cil);
+      if (tecGenerador) result.generatorTechnology = String(tecGenerador);
+      if (potInstaladaGen) result.installedPowerGen = Number(potInstaladaGen);
+      if (tipoInstalacion) result.installationType = String(tipoInstalacion);
+      if (esquemaMedida) result.meteringScheme = String(esquemaMedida);
     }
   } else if (paso === '11' || paso === '06') {
     // Baja

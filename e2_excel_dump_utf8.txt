@@ -1,0 +1,512 @@
+--- SHEET: Paso 01 ---
+TABLA PROCESO E2 - SolicitudReposición.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+SolicitudReposicion |  |  |  | S
+CodigoDeSolicitudRef | El CodigoDeSolicitud del proceso subyacente para el que se pretende reponer | Sólo caracteres numéricos permitidos. | Solo se permite reponer un Proceso C1 y C2. | S | X(12)
+TipoDeReposicion | Tipo de solicitud  |  |  | S | X(2) | 135
+IdCliente |  |  |  | S
+TipoIdentificador | Tipo identificador cliente |  | Si el distribuidor no tiene un Tipo de Identificador y/o un Identificador válido, no rechazará la solicitud del comercializador sino que actualizará la BBDD con la información que le proporciona el comercializador.
+En el caso de que el solicitante sea el comercializador entrante no se validará este campo. | S | X(2) | 6
+Identificador | Numero identificador cliente |  | Si el distribuidor no tiene un Tipo de Identificador y/o un Identificador válido, no rechazará la solicitud del comercializador sino que actualizará la BBDD con la información que le proporciona el comercializador.
+Las validaciones se harán en función del tipo de identificador informado y el número de indentificador de acuerdo a lo definido en el documento de consenso: "Tipo de Identificador" del área privada.
+En el caso de que el solicitante sea el comercializador entrante no se validará este campo. | S | X(14)
+TipoPersona | Fisica="F", Jurídica="J" |  | Solo se deberá informar este campo cuando el TipoIdentificador sea "NIVA",  "Otros" | N | X(1) | 115
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)
+--- SHEET: Paso 02 (acepta) ---
+TABLA PROCESO E2 - AceptacionReposicion.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+AceptacionReposicion |  |  |  | S
+FechaAceptacion | Fecha real de aceptación (incluida) |  |  | S | AAAA-MM-DD
+ActuacionCampo | Indicativo que informa de si son necesarias actuaciones en campo |  |  | S | X(1) | 26
+FechaActivacionPrevista |  |  | Se dará una previsión de la fecha de activación (incluida)
+Obligatorio si son necesarias actuaciones en campo | N  | AAAA-MM-DD
+
+
+
+
+
+
+
+
+
+
+
+--- SHEET: Paso 02 (rechaza) ---
+TABLA PROCESO E2 - Rechazo.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidora | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+Rechazos |  |  |  | S
+FechaRechazo |  |  |  | S | AAAA-MM-DD
+Rechazo |  |  | Sin límite de ocurrencias | S
+Secuencial |  |  |  | S | 9(2)
+CodigoMotivo |  |  |  | S | X(2) | 27
+Comentarios | Se utilizará para dar traslado de los comentarios del comercializador receptor ante el rechazo a la reposición. |  |  | S | X4000
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)
+--- SHEET: Paso 03 ---
+TABLA PROCESO E2 -IncidenciasATRDistribuidor.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidora | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+IncidenciasATRDistribuidor |  |  |  | S
+FechaIncidencia |  |  |  | S | AAAA-MM-DD
+FechaPrevistaAccion | Con carácter general se dará la mejor estimación de la Fecha Prevista de Acción |  | Si CodigoMotivo=08 este campo deberá estar informado con la fecha de la nueva cita.  | N | AAAA-MM-DD
+Incidencia |  | Sin límite de ocurrencias |  | S
+Secuencial |  |  |  | S | 9(2)
+CodigoMotivo |  |  |  | S | X(2) | 28
+Comentarios |  |  |  | S | X(4000)
+--- SHEET: Paso 04  ---
+TABLA PROCESO E2 - Rechazo.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidora | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+Rechazos |  |  |  | S
+FechaRechazo |  |  |  | S | AAAA-MM-DD
+Rechazo |  |  | Sin límite de ocurrencias | S
+Secuencial |  |  |  | S | 9(2)
+CodigoMotivo |  |  |  | S | X(2) | 27
+Comentarios |  |  |  | S | X4000
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)
+--- SHEET: Paso 05 ---
+TABLA PROCESO E2 - ActivacionReposicion.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+ActivacionReposicion |  |  |  | S
+DatosNotificacion |  |  |  | S
+FechaActivacion | Inclusive (Fecha fin de contrato para la comercializadora saliente. Será la fecha de activación de la comercializadora entrante, Paso 6, menos un día) |  | En el caso de que la solicitud subyacente se anule la fecha de activación de la reposición coincidiera con la de la anulación. | S | AAAA-MM-DD
+ResultadoActivacion | Información sobre el resultado de la activación de la reposición. |  |  | S | X(2) | 134
+CodigoSolCorte | Código de la solicitud unilateral de corte que ha generado el distribuidor para devolver al contrato en las condiciones previas (cortado). |  |  | N | X(12)
+IndEsencial | Este campo informa si el PS es esencial y el motivo, en su caso. |  |  | S | X(2) | 137
+FechaUltimoMovimientoIndEsencial | Fecha de la última modificación del indicativo de suministro esencial en el Distribuidor informada por el comercializador |  | Si se desconoce, incluir 1900-01-01 | S | AAAA-MM-DD
+Contrato |  |  | Será obligatorio informar este nodo en todos los casos en los que se puede aplicar una reposición. | N
+IdContrato |  |  |  | S
+CodContrato | Código del contrato que finaliza |  |  | S | 9(12)
+Autoconsumo | Información sobre autoconsumo |  | Obligatorio si hay algún autoconsumo activo (TipoAutoconsumo <> "00" y <> "0C"). Si es un multiCAU, es obligatorio enviar todos los CAUs, incluso aunque no sufran cambios. | N
+DatosSuministro |  |  | Obligatorio si algún CAU tiene TipoAutoconsumo <> "00" y <> "0C" | N
+TipoCUPS | Permite los siguientes valores:
+"01" - Consumo
+"02" - Servicios Auxiliares |  |  | S | X(2) | Tabla 131
+RefCatastro | Referencia Catastral del CUPS | min 20, max 20 |  | N | X(20)
+DatosCAU |  | Sin límite de ocurrencias |  | S
+CAU | Código de Autoconsumo que identifica univocamente la instalación de autoconsumo (todas las instalaciones de generación y CUPS asociados) | min 26, max 26 |  | S | X(26)
+TipoAutoconsumo | Informa sobre el tipo de autoconsumo contratado |  |  | S | X(2) | Tabla 113
+TipoSubseccion | Informa sobre el binomio Sección/Subsección |  |  | S | X(2) | Tabla 133
+Colectivo | Indicativo S/N |  | Obligatorio si TipoAutoconsumo de ese CAU <> "00" y  <> "0C" | N | X(1) | Tabla 26
+DatosInstGen |  | Sin límite de ocurrencias | Obligatorio si TipoAutoconsumo de ese CAU <> "00" y  <> "0C" | N
+CIL | Si procede | Min 25, Max 25 |  | N | X(25)
+TecGenerador | Clasificación según el Art. 2 RD 413/2014 |  |  | S | X(3) | Tabla 126
+Combustible | Combustible empleado, si procede |  |  | N | X(60)
+PotInstaladaGen | En W |  |  | S | 9(14)
+TipoInstalacion |  |  | Si "TipoAutoconsumo" es igual a "11" este campo solo se podrá informar con "01" o "02". | S | X(2) | Tabla 129
+EsquemaMedida | Permite las  configuraciones de medida según el art. 10 de RD 244/2019
+ |  | Si colectivo S y contador de generación está en serie de uno de los participantes, el campo ha de ser B únicamente del participante en cuestión, el resto será informado C o D, salvo que sea multigeneración, en cuyo caso se informará a F | N | X(1) | Tabla 130
+SSAA | Indicativo S/N
+Se informará con "S" si los servicios auxiliares no son despreciables según RD 244/2019  |  | Obligatorio si "TipoCups" es igual a "01" | N | X(1) | Tabla 26
+UnicoContrato | Indicativo S/N
+Se informará con "S" si según la regulación se puede firmar un único contrato de suministro para el punto de consumo y los servicios auxiliares. |  | Obligatorio si "SSAA" es igual a "S" | N | X(1) | Tabla 26
+RefCatastro | Referencia Catastral de la instalación de generación | min 20, max 20 |  | N | X(20)
+UTM | Coordenadas UTM de la Instalación (X, Y, Huso, Banda) |  |  | N
+X | En metros |  |  | S | X(8)
+Y | En metros |  |  | S | X(8)
+Huso |  | Entre 1 y 60 |  | S | X(2)
+Banda |  | Desde la C a la X (excluyendo "I" y "O") |  | N | X(1)
+TitularRepresentanteGen |  |  |  | N
+IdTitular |  |  |  | S
+TipoIdentificador |  |  |  | S | X(2) | 6
+Identificador |  |  |  | S | X(14)
+Nombre |  |  |  | S
+NombreDePila | nombre cliente | debes elegir nombre cliente o RazonSocial |  | S | X(80)
+PrimerApellido | nombre cliente | debes elegir nombre cliente o RazonSocial |  | S | X(80)
+SegundoApellido | nombre cliente | debes elegir nombre cliente o RazonSocial |  | N | X(80)
+RazonSocial |  | debes elegir nombre cliente o RazonSocial |  | S | X(80)
+Telefono |  | Máximo 5 ocurrencias |  | S
+PrefijoPais | Hasta cuatro dígitos con el prefijo internacional |  |  | S | X(4)
+Numero | De seis a doce dígitos correspondientes al teléfono |  |  | S | X(12)
+CorreoElectronico |  |  | Deberá estar formada por un texto seguido del carácter @ y un nombre de dominio. | N | X(60)
+TipoContratoATR |  |  |  | S | X(2) | 9
+CUPSPrincipal |  |  | Obligatorio para el tipo de contrato 08, 11 y 12 | N | X(22)
+CondicionesContractuales |  |  |  | S
+TarifaATR |  |  |  | S | X(3) | 17
+PeriodicidadFacturacion |  |  |  | S | X(2) | 108
+TipodeTelegestion | En función de si está integrado o no en la Telegestión, con o sin CCH |  |  | S | X(2) | 111
+PotenciasContratadas |  |  |  | S
+Potencia | PotenciasContratadas en watios. 
+Las potencias se deben informar en el orden correspondiente a los periodos. | Se informarán tantas potencias como esté regulado para esa tarifa. Máximo 6 ocurrencias |  | S | 9(14)
+ModoControlPotencia |  |  |  | N | X(1) | 51
+MarcaMedidaConPerdidas | Informar con S ó N  |  |  | N | X(1) | 26
+TensionDelSuministro | La tabla 64 realmente se denomina TensionSuminsitroCIEyAPM |  |  | S | X(2) | 64
+VAsTrafo | En VA |  | Sólo es obligatorio si campo MarcaMedidaConPerdidas=S y cuando no exista el trafo deberá ser informado a cero | N | 9(14)
+PorcentajePerdidas |  |  | Sólo es obligatorio si campo MarcaMedidaConPerdidas=S  | N | 9(2)V(4)
+PuntosDeMedida |  |  |  | S
+PuntoDeMedida |  | Máximo 10 ocurrencias |  | S
+CodPM | Código del Punto de Medida.  |  |  | S | X(22)
+TipoMovimiento |  |  |  | S | X(1) | 37
+TipoPM |  |  |  | S | X(2) | 30
+CodPMPrincipal | Código del punto de medida principal al que está asociado este punto de medida (aplicable a comprobantes y redundantes) |  |  | N | X(22)
+ModoLectura |  |  |  | S | X(1) | 38
+Funcion | Función del Punto de Medida |  |  | S | X(1) | 40
+DireccionEnlace | Dirección de enlace para comunicación con el registrador |  |  | N | X(10)
+DireccionPuntoMedida | Dirección del punto de medida |  |  | N | X(10)
+NumLinea | Número de línea para comunicación con el registrador |  |  | N | 9(2)
+TelefonoTelemedida | Teléfono para telemedida
+
+Se podrá informar con un mínimo de 9 posiciones y un máximo de 21 posiciones (para llamadas con extensiones, IP) |  |  | N | 9(21)
+EstadoTelefono |  |  |  | N | X(1) | 41
+ClaveAcceso | Clave de acceso al punto de medida (“password”) |  |  | N | X(10)
+TensionPM | Tensión del punto de medida 
+Este campo será obligatorio sólo si es diferente a la tensión del suministro |  |  | N | 9(9)
+FechaVigor | Fecha de entrada en vigor de la versión del punto de medida  |  |  | S | AAAA-MM-DD
+FechaAlta | Fecha de alta del Punto de Medida |  |  | S | AAAA-MM-DD
+FechaBaja | Fecha de baja del Punto de Medida |  |  | N | AAAA-MM-DD
+Aparatos |  |  |  | N
+Aparato |  | Máximo 40 ocurrencias |  | S
+ModeloAparato |  |  |  | S
+TipoAparato | Tipo de Aparato |  |  | S | X(2) | 24
+MarcaAparato |  |  |  | S | X(3) | 25
+ModeloMarca |  |  |  | N | X(30)
+TipoMovimiento | Tipo de movimiento del aparato |  |  | S | X(2) | 31
+TipoEquipoMedida | Tipo de Equipo de Medida |  |  | S | X(3) | 22
+TipoPropiedadAparato | Tipo de propiedad del aparato |  |  | S | X(1) | 32
+Propietario | Descripción del propietario del aparato. Obligatorio cuando el campo TipoPropiedadAparato se informa con la opción “Otros”. |  |  | N | X(20)
+TipoDHEdM | Tipo de discriminación horaria del Equipo de Medida |  |  | N | X(1) | 35
+ModoMedidaPotencia |  |  |  | N | X(1) | 50
+LecturaDirecta |  |  |  | N | X(1) | 36
+CodPrecinto | Código del precinto del Equipo de Medida |  |  | S | X(8)
+DatosAparato |  |  |  | S
+PeriodoFabricacion | Periodo de Fabricación |  |  | S | 9(4)
+NumeroSerie | Número de Serie |  |  | S | X(18)
+FuncionAparato | Función de aparato |  |  | S | X(1) | 33
+NumIntegradores | Número de integradores |  | Se informarán solo cuando el aparato sea el contador | N | 9(2)
+ConstanteEnergia | Constante multiplicadora del equipo en la energía |  | Se informarán solo cuando el aparato sea el contador | N | 9(6)V(3)
+ConstanteMaximetro | Constante multiplicadora del equipo en los maxímetros   |  | Se informarán solo cuando el aparato sea el contador | N | 9(6)V(3)
+RuedasEnteras | Número de ruedas enteras |  | Se informarán solo cuando el aparato sea el contador | N | 9(2)
+RuedasDecimales | Número de ruedas decimales |  | Se informarán solo cuando el aparato sea el contador | N | 9(2)
+Medidas |  |  |  | N
+Medida | Estructura de Medidas. | Sin límite de ocurrencias |  | S
+TipoDHEdM | Tipo de discriminación horaria del Equipo de Medida |  |  | S | X(1) | 35
+Periodo | Número de periodo  |  |  | S | X(2) | 42
+MagnitudMedida | Magnitud integrador |  |  | S | X(2) | 43
+Procedencia |  |  |  | S | X(2) | 44
+UltimaLecturaFirme | Lectura de cierre o en su defecto, lectura anterior ventana de facturación |  |  | S | 9(10)V(2)
+FechaLecturaFirme | Fecha de la lectura de cierre o en su defecto de la última lectura firme |  |  | S | AAAA-MM-DD
+Anomalia | Comunicación de anomalía en la medida |  |  | N | X(2) | 45
+Comentarios | Texto sobre anomalia |  |  | N | X(4000)
+Comentarios | Comentarios sobre el punto de medida |  |  | N | X(4000)
+IdCliente |  |  |  | S
+TipoIdentificador | Tipo identificador cliente |  | Si el distribuidor no tiene un Tipo de Identificador y/o un Identificador válido, no rechazará la solicitud del comercializador sino que actualizará la BBDD con la información que le proporciona el comercializador. | S | X(2) | 6
+Identificador | Numero identificador cliente |  | Si el distribuidor no tiene un Tipo de Identificador y/o un Identificador válido, no rechazará la solicitud del comercializador sino que actualizará la BBDD con la información que le proporciona el comercializador.
+Las validaciones se harán en función del tipo de identificador informado y el número de indentificador de acuerdo a lo definido en el documento de consenso: "Tipo de Identificador" del área privada. | S | X(14)
+TipoPersona | Fisica="F", Jurídica="J" |  | Solo se deberá informar este campo cuando el TipoIdentificador sea "NIVA",  "Otros" | N | X(1) | 115
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)
+Comentarios |  |  |  | N | X(4000)
+--- SHEET: Paso 06 ---
+TABLA PROCESO E2 - NotificacionActivacionPorReposicion.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+NotificacionActivacionPorReposicion |  |  |  | S
+DatosActivacion |  |  |  | S
+Fecha | Fecha de la activación (incluida)  |  |  | S | AAAA-MM-DD
+ResultadoActivacion | Información sobre el resultado de la activación de la reposición. |  |  | S | X(2) | 134
+EnServicio | Información sobre si el PS vuelve a la situación anterior en servicio (S) o cortado (N) |  |  | S | X(1) | 26
+Contrato |  |  |  | S
+IdContrato |  |  |  | S
+CodContrato | Código del contrato |  |  | S | 9(12)
+PuntosDeMedida |  |  |  | S
+PuntoDeMedida |  | Máximo 10 ocurrencias |  | S
+CodPM | Código del Punto de Medida.  |  |  | S | X(22)
+TipoMovimiento |  |  |  | S | X(1) | 37
+TipoPM |  |  |  | S | X(2) | 30
+CodPMPrincipal | Código del punto de medida principal al que está asociado este punto de medida (aplicable a comprobantes y redundantes) |  |  | N | X(22)
+ModoLectura |  |  |  | S | X(1) | 38
+Funcion | Función del Punto de Medida |  |  | S | X(1) | 40
+DireccionEnlace | Dirección de enlace para comunicación con el registrador |  |  | N | X(10)
+DireccionPuntoMedida | Dirección del punto de medida |  |  | N | X(10)
+NumLinea | Número de línea para comunicación con el registrador |  |  | N | 9(2)
+TelefonoTelemedida | Teléfono para telemedida
+
+Se podrá informar con un mínimo de 9 posiciones y un máximo de 21 posiciones (para llamadas con extensiones, IP) |  |  | N | X(21)
+EstadoTelefono |  |  |  | N | X(1) | 41
+ClaveAcceso | Clave de acceso al punto de medida (“password”) |  |  | N | X(10)
+TensionPM | Tensión del punto de medida 
+Este campo será obligatorio sólo si es diferente a la tensión del suministro |  |  | N | 9(9)
+FechaVigor | Fecha de entrada en vigor de la versión del punto de medida  |  |  | S | AAAA-MM-DD
+FechaAlta | Fecha de alta del Punto de Medida |  |  | S | AAAA-MM-DD
+FechaBaja | Fecha de baja del Punto de Medida |  |  | N | AAAA-MM-DD
+Aparatos |  |  |  | N
+Aparato |  | Máximo 40 ocurrencias |  | S
+ModeloAparato |  |  |  | S
+TipoAparato |  |  |  | S | X(2) | 24
+MarcaAparato |  |  |  | S | X(3) | 25
+ModeloMarca |  |  |  | N | X(30)
+TipoMovimiento |  |  |  | S | X(2) | 31
+TipoEquipoMedida |  |  |  | S | X(3) | 22
+TipoPropiedadAparato |  |  |  | S | X(1) | 32
+Propietario | Descripción del propietario del aparato. Obligatorio cuando el campo TipoPropiedadAparato se informa con la opción "Otros". |  |  | N | X(20)
+TipoDHEdM | Tipo de discriminación horaria del Equipo de Medida |  |  | N | X(1) | 35
+ModoMedidaPotencia |  |  |  | N | X(1) | 50
+LecturaDirecta |  |  |  | N | X(1) | 36
+CodPrecinto | Código del precinto del Equipo de Medida |  |  | S | X(8)
+DatosAparato |  |  |  | S
+PeriodoFabricacion | Periodo de Fabricación |  |  | S | 9(4)
+NumeroSerie | Número de Serie |  |  | S | X(18)
+FuncionAparato | Función de aparato |  |  | S | X(1) | 33
+NumIntegradores | Número de integradores |  | Se informarán solo cuando el aparato sea el contador (medidor) | N | 9(2)
+ConstanteEnergia | Constante multiplicadora del equipo en la energía |  | Se informarán solo cuando el aparato sea el contador (medidor) | N | 9(6)V(3)
+ConstanteMaximetro | Constante multiplicadora del equipo en los maxímetros   |  | Se informarán solo cuando el aparato sea el contador (medidor) | N | 9(6)V(3)
+RuedasEnteras | Número de ruedas enteras |  | Se informarán solo cuando el aparato sea el contador (medidor) | N | 9(2)
+RuedasDecimales | Número de ruedas decimales |  | Se informarán solo cuando el aparato sea el contador (medidor) | N | 9(2)
+Medidas |  |  |  | N
+Medida |  | Sin límite de ocurrencias |  | S
+TipoDHEdM | Tipo de discriminación horaria del Equipo de Medida |  |  | S | X(1) | 35
+Periodo | Número de periodo  |  |  | S | X(2) | 42
+MagnitudMedida | Magnitud integrador |  |  | S | X(2) | 43
+Procedencia |  |  |  | S | X(2) | 44
+UltimaLecturaFirme | Lectura de cierre o en su defecto, lectura anterior ventana de facturación |  |  | S | 9(10)V(2)
+FechaLecturaFirme | Fecha de la lectura de cierre o en su defecto de la última lectura firme |  |  | S | AAAA-MM-DD
+Anomalia | Comunicación de anomalía en la medida |  |  | N | X(2) | 45
+Comentarios | Texto sobre anomalia |  |  | N | X(4000)
+Comentarios | Comentarios sobre el PM |  |  | N | X(4000)
+--- SHEET: Paso 08 ---
+TABLA PROCESO E2 - AnulacionSolicitud.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+
+
+
+
+
+
+
+
+
+
+--- SHEET: Paso 09 (acept ---
+TABLA PROCESO E2 - AceptacionAnulacion.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+AceptacionAnulacion |  |  |  | S
+FechaAceptacion |  |  |  | S | AAAA-MM-DD
+--- SHEET: Paso 09 (rechaza) ---
+TABLA PROCESO E2 - Rechazo.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidora | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+Rechazos |  |  |  | S
+FechaRechazo |  |  |  | S | AAAA-MM-DD
+Rechazo |  |  | Sin límite de ocurrencias | S
+Secuencial |  |  |  | S | 9(2)
+CodigoMotivo |  |  |  | S | X(2) | 27
+Comentarios |  |  |  | S | X4000
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)
+--- SHEET: Paso 10 ---
+TABLA PROCESO E2 - AceptacionAnulacion.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso.
+El CodigoDeSolicitud para todo el proceso, es el que se informó en el paso 01 | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+AceptacionAnulacion |  |  |  | S
+FechaAceptacion |  |  |  | S | AAAA-MM-DD
+--- SHEET: Paso 12 ---
+TABLA PROCESO E2 - RechazoReposicion.xsd 
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+RechazoReposición |  |  |  | S
+FechaRechazo |  |  |  | S | AAAA-MM-DD
+--- SHEET: Paso 13 ---
+TABLA PROCESO E2 - ContestacionIncidencia.xsd
+Elemento XSD | Descripción | Condición distribuidor | Condición XSD | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+ContestacionIncidencia |  |  |  | S
+ContestacionIncidencia | Tipo de información envíada |  |  | S | X(2) | 121
+Contacto |  | Máximo 5 ocurrencias | Obligatorio si "ContestacionIncidencia" es igual a "01" | N
+PersonaDeContacto | Nombre de la persona de contacto |  |  | S | X(150)
+Telefono |  | Máximo 5 ocurrencias |  | S
+PrefijoPais | Hasta cuatro dígitos con el prefijo internacional |  |  | S | X(4)
+Numero | De seis a doce dígitos correspondientes al teléfono |  |  | S | X(12)
+CorreoElectronico |  |  | Deberá estar formada por un texto seguido del carácter @ y un nombre de dominio. | N | X(60)
+--- SHEET: Paso 14 ---
+TABLA PROCESO E2 - ConsultaSolicitudReposicion.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+SolicitudReposicion |  |  |  | S
+CodigoDeSolicitudRef | El CodigoDeSolicitud del proceso subyacente para el que se pretende reponer | Sólo caracteres numéricos permitidos. | Solo se permite Desistir un Proceso C1 y C2. | S | X(12)
+TipoDeReposicion | Tipo de solicitud  |  |  | S | X(2) | 135
+FechaPrevistaAccion | Fecha (incluida) prevista de la reposición. |  |  | S | AAAA-MM-DD
+ActuacionCampo | Indicativo que informa de si son necesarias actuaciones en campo |  |  | S | X(1) | 26
+DireccionPS | Domicilio Punto de Suministro |  |  | S
+Pais | Nombre del país |  |  | S | X(25)
+Provincia | Código INE de provincias (CPRO) |  |  | S | X(2)
+Municipio | Codigo INE compuesto por la concatenación de dos dígitos del código provincia (CPRO) más tres dígitos del código de municipio (CMUN) más un dígito de control (DC) adicional y opcional al final. |  | Este campo se informará con máximo de 6 dígitos y un mínimo de 5 | S | X(6)
+Poblacion | Codigo INE, compuesto por la concatenación de dos dígitos del código provincia (CPRO) más tres dígitos del código de municipio (CMUN) más seis dígitos de la unidad poblacional. |  | Este campo se informará con el código INE de 11 dígitos | N | X(11)
+TipoVia |  |  |  | N | X(2) | 12
+CodPostal |  |  |  | S | X(5)
+Calle |  |  |  | S | X(30)
+NumeroFinca |  |  |  | S | X(5)
+DuplicadorFinca |  |  |  | N | X(3)
+Escalera |  |  |  | N | X(3) | 13
+Piso |  |  |  | N | X(3) | 14
+Puerta |  |  |  | N | X(3) | 15
+TipoAclaradorFinca |  |  |  | N | X(2) | 16
+AclaradorFinca | Descripción adicional: Peluqueria, Bar, etc.  |  |  | N | X(40)
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)
+--- SHEET: Paso 15 (acepta) ---
+TABLA PROCESO E2 - AceptacionReposicionReceptor.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+--- SHEET: Paso 15 (rechaza) ---
+TABLA PROCESO E2 - RechazoReposicionReceptor.xsd
+Elemento XSD | Descripción | Condición XSD | Condición distribuidor | Obligatorio S/N | Formato | Tabla
+Cabecera |  |  |  | S
+CodigoREEEmpresaEmisora | Código REE  Empresa Emisora |  |  | S | X(4) | 1
+CodigoREEEmpresaDestino | Código REE  Empresa Destino |  |  | S | X(4) | 1
+CodigoDelProceso | Código de Proceso |  |  | S | X(2) | 2
+CodigoDePaso | Código del Paso |  |  | S | X(2) | 3
+CodigoDeSolicitud | Este número será obligatorio, único e incremental por empresa solicitante o iniciadora de un proceso. | Sólo caracteres numéricos permitidos. |  | S | X(12)
+SecuencialDeSolicitud | Secuencial de solicitud | Sólo caracteres numéricos permitidos. |  | S | X(2)
+FechaSolicitud | Fecha de construcción del paso por el agente emisor |  |  | S | AAAA-MM-DDTHH:MM:SS
+CUPS | Código Universal del Punto de Suministro |  |  | S | X(22)
+Rechazos |  |  |  | S
+FechaRechazo |  |  |  | S | AAAA-MM-DD
+Rechazo |  |  | Sin límite de ocurrencias | S
+Secuencial |  |  |  | S | 9(2)
+CodigoMotivo |  |  |  | S | X(2) | 27
+Comentarios | Se utilizará para dar traslado de los comentarios del comercializador receptor al solicante, ante el rechazo a la reposición. |  |  | S | X4000
+RegistrosDocumento |  |  | Si es necesario aportar documentación, será obligatorio aportar dicha documentación a través de esta URL | N
+RegistroDoc |  | Máximo 50 ocurrencias |  | S
+TipoDocAportado | Tipo de documento aportado |  |  | S | X(2) | 61
+DireccionUrl |  |  |  | S | X(255)

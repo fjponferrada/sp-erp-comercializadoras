@@ -254,11 +254,17 @@ export async function createUnilateralModificationAction(
     
     // 1. Actualizar SupplyPoint con datos de Autoconsumo si los hay
     const spUpdates: any = {};
-    if (parsedData.cau || parsedData.tipoAutoconsumo || parsedData.cil) {
+    if (parsedData.cau || parsedData.tipoAutoconsumo || parsedData.cil || parsedData.cauSubtype) {
       spUpdates.hasSelfConsumption = true;
       if (parsedData.cau) spUpdates.cau = parsedData.cau;
       if (parsedData.tipoAutoconsumo) spUpdates.selfConsumptionType = parsedData.tipoAutoconsumo;
+      if (parsedData.cauSubtype) spUpdates.cauSubtype = parsedData.cauSubtype;
+      if (parsedData.cauCollective) spUpdates.cauCollective = parsedData.cauCollective;
       if (parsedData.cil) spUpdates.cil = parsedData.cil;
+      if (parsedData.generatorTechnology) spUpdates.generatorTechnology = parsedData.generatorTechnology;
+      if (parsedData.installedPowerGen) spUpdates.installedPowerGen = parsedData.installedPowerGen;
+      if (parsedData.installationType) spUpdates.installationType = parsedData.installationType;
+      if (parsedData.meteringScheme) spUpdates.meteringScheme = parsedData.meteringScheme;
       
       await prisma.supplyPoint.update({
         where: { id: oldContract.supplyPointId! },
