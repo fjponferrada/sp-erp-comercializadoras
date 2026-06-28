@@ -284,7 +284,7 @@ export async function createUnilateralModificationAction(
         tipoC2: 'N',
         status: 'ACTIVO',
         activationDate: parsedData.fechaActivacionAlta || new Date(),
-        permanenceStartDate: parsedData.fechaActivacionAlta || new Date(),
+        permanenceStartDate: oldContract.permanenceStartDate,
         airtableData: oldContractDataObj,
         p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,
         p4e: oldContract.p4e, p5e: oldContract.p5e, p6e: oldContract.p6e,
