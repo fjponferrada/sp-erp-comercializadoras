@@ -480,6 +480,29 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACEPTADO_O_RECHAZADO";
         if (!warning) warning = `Se recibió un paso 01 (${procesoBase}), pero no se encontró un contrato en estado ACEPTADO o Rechazo Distribuidora para pasarlo a TRAMITANDO.`;
       }
+    } else if (procesoBase === 'E2' && paso !== '05' && paso !== '02') {
+      // Pasos del proceso de Reposición que no se auto-tramitan (01, 04, 06, 14, 15)
+      const anyContract = await prisma.contract.findFirst({
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: { notIn: ['FINALIZADO', 'Finalizado'] } },
+        include: { supplyPoint: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (anyContract) {
+        supplyPoint = anyContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
+        contractId = anyContract.id;
+      }
+      
+      if (paso === '14') {
+        tipoError = "E2_CONSULTA_REPOSICION";
+        warning = "Consulta de Reposición (E2_14) recibida. Se debe Aceptar (15) o Rechazar (15) la reposición solicitada por la otra comercializadora.";
+      } else if (paso === '06') {
+        tipoError = "E2_NOTIFICACION_BAJA";
+        warning = "Notificación de Activación de Reposición con baja (E2_06). Se nos ha quitado el suministro por una reposición.";
+      } else {
+        tipoError = `E2_PASO_${paso}`;
+        warning = `Aviso de Reposición (paso ${paso}) recibido y pendiente de revisión.`;
+      }
     } else {
       // Fallback genérico para otros pasos
       const anyContract = await prisma.contract.findFirst({

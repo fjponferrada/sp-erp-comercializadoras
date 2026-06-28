@@ -39,6 +39,10 @@ export interface ParsedSwitchingData {
   installedPowerGen?: number;
   installationType?: string;
   meteringScheme?: string;
+  // Campos Reposición (E2)
+  codigoDeSolicitudRef?: string;
+  tipoDeReposicion?: string;
+  fechaPrevistaAccion?: Date;
 }
 
 const parser = new XMLParser({
@@ -185,15 +189,53 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
   } else if (paso === '04') {
     // Rechazo explícito
     result.estadoAR = 'RECHAZADO';
-    const fechaRechazo = findKeyRecursively(root, 'FechaRechazo') || findKeyRecursively(root, 'FechaAR');
-    if (fechaRechazo) {
-      result.fechaAR = new Date(fechaRechazo);
+    const causas = root.RechazoPeticion?.MotivosRechazo || root.RechazoReclamacion?.MotivosRechazo || root.RechazoReposicion?.MotivosRechazo || root.RechazoReposicionReceptor?.MotivosRechazo || root.MotivosRechazo;
+    if (causas) {
+      if (Array.isArray(causas.MotivoRechazo)) {
+        result.motivosRechazo = causas.MotivoRechazo.map((m: any) => String(m.CodigoMotivoRechazo || m));
+      } else if (causas.MotivoRechazo) {
+        result.motivosRechazo = [String(causas.MotivoRechazo.CodigoMotivoRechazo || causas.MotivoRechazo)];
+      }
     }
-    const motivosRechazo = findKeyRecursively(root, 'MotivosRechazo');
-    if (motivosRechazo) {
-      result.motivosRechazo = motivosRechazo;
+  } else if (proceso === 'E2') {
+    // Proceso E2: Reposición
+    if (paso === '14') {
+      const solicitud = findKeyRecursively(root, 'SolicitudReposicion');
+      if (solicitud) {
+        if (solicitud.CodigoDeSolicitudRef) result.codigoDeSolicitudRef = String(solicitud.CodigoDeSolicitudRef);
+        if (solicitud.TipoDeReposicion) result.tipoDeReposicion = String(solicitud.TipoDeReposicion);
+        if (solicitud.FechaPrevistaAccion) result.fechaPrevistaAccion = new Date(solicitud.FechaPrevistaAccion);
+      }
+    } else if (paso === '15') {
+      // AceptacionReposicionReceptor / RechazoReposicionReceptor
+      if (root.AceptacionReposicionReceptor) {
+        result.estadoAR = 'ACEPTADO';
+        result.fechaAR = new Date(root.AceptacionReposicionReceptor.FechaAceptacion || result.fechaSolicitud || new Date());
+      } else if (root.RechazoReposicionReceptor) {
+        result.estadoAR = 'RECHAZADO';
+        result.fechaAR = new Date(root.RechazoReposicionReceptor.FechaRechazo || result.fechaSolicitud || new Date());
+        const causas = root.RechazoReposicionReceptor.MotivosRechazo;
+        if (causas) {
+          if (Array.isArray(causas.MotivoRechazo)) {
+            result.motivosRechazo = causas.MotivoRechazo.map((m: any) => String(m.CodigoMotivoRechazo || m));
+          } else if (causas.MotivoRechazo) {
+            result.motivosRechazo = [String(causas.MotivoRechazo.CodigoMotivoRechazo || causas.MotivoRechazo)];
+          }
+        }
+      }
+    } else if (paso === '01') {
+      const solicitud = findKeyRecursively(root, 'SolicitudReposicion');
+      if (solicitud) {
+        if (solicitud.CodigoDeSolicitudRef) result.codigoDeSolicitudRef = String(solicitud.CodigoDeSolicitudRef);
+        if (solicitud.TipoDeReposicion) result.tipoDeReposicion = String(solicitud.TipoDeReposicion);
+      }
+    } else if (paso === '05' || paso === '06') {
+      // Activación o Baja por Reposición
+      const fechaActivacion = findKeyRecursively(root, 'FechaActivacion') || findKeyRecursively(root, 'FechaActivacionBaja') || findKeyRecursively(root, 'FechaFinalizacion');
+      if (fechaActivacion) {
+        result.fechaActivacionAlta = new Date(fechaActivacion);
+      }
     }
-
   } else if (paso === '05') {
     // Activación (Alta, Cambio, Reposición...)
     // Buscar la fecha de activación, suele estar bajo <DatosActivacion><Fecha>
