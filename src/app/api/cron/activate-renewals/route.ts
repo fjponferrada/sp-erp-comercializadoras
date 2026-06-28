@@ -59,7 +59,8 @@ export async function GET() {
               where: { id: renewal.id },
               data: {
                 status: 'ACTIVO',
-                activationDate: expectedActivationDay
+                activationDate: expectedActivationDay,
+                permanenceStartDate: renewal.contract!.permanenceStartDate || renewal.contract!.activationDate || expectedActivationDay
               }
             });
           });
