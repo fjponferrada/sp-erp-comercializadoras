@@ -930,33 +930,33 @@ enum PpaPriceType {
 }
 
 model Ppa {
-  id            String       @id @default(cuid())
-  name          String
-  companyId     String
-  type          PpaType
-  subtype       PpaSubtype
-  startDate     DateTime
-  endDate       DateTime?
-  priceType     PpaPriceType
-  priceValue    Float?       // Precio fijo (€/MWh) o Fee sobre OMIE
-  basePowerMw   Float?       // Obligatorio si es CARGA_BASE
-  profileData   Json?        // Obligatorio si es PERFIL_FIJO (Matriz 12x24)
-  includeInPricing Boolean   @default(true)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id               String       @id @default(cuid())
+  name             String
+  companyId        String
+  type             PpaType
+  subtype          PpaSubtype
+  startDate        DateTime
+  endDate          DateTime?
+  priceType        PpaPriceType
+  priceValue       Float? // Precio fijo (€/MWh) o Fee sobre OMIE
+  basePowerMw      Float? // Obligatorio si es CARGA_BASE
+  profileData      Json? // Obligatorio si es PERFIL_FIJO (Matriz 12x24)
+  includeInPricing Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-  company       Company      @relation(fields: [companyId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
 }
 
 model SystemComponentPrice {
-  id          String   @id @default(cuid())
-  component   String   // Ej: "OMIE", "DESVIOS", "PEAJE_P1", "CARGO_P1"
-  date        DateTime @db.Date
-  values      Float[]  // 96 valores (quinceminutales) o 24 (horarios)
-  version     String?  // Ej: "C1", "C2", "C3", "C4", "C5"
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  component String // Ej: "OMIE", "DESVIOS", "PEAJE_P1", "CARGO_P1"
+  date      DateTime @db.Date
+  values    Float[] // 96 valores (quinceminutales) o 24 (horarios)
+  version   String? // Ej: "C1", "C2", "C3", "C4", "C5"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([component, date])
   @@index([component])
@@ -965,8 +965,8 @@ model SystemComponentPrice {
 
 model RegulatedCost {
   id          String   @id @default(cuid())
-  concept     String   // Ej: "Cargos_Energia", "FNEE", "Tasa_Municipal"
-  tariff      String   // Ej: "2.0TD", "3.0TD", o "TODAS"
+  concept     String // Ej: "Cargos_Energia", "FNEE", "Tasa_Municipal"
+  tariff      String // Ej: "2.0TD", "3.0TD", o "TODAS"
   validFrom   DateTime @db.Date
   validTo     DateTime @db.Date
   p1          Float?
@@ -975,32 +975,32 @@ model RegulatedCost {
   p4          Float?
   p5          Float?
   p6          Float?
-  singleValue Float?   // Para costes planos sin discriminación horaria
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  singleValue Float? // Para costes planos sin discriminación horaria
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([concept, tariff])
 }
 
 model FuturePrice {
-  id          String   @id @default(cuid())
-  month       Int      @unique // 1-12
-  price       Float    // Precio objetivo en €/MWh
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id    String @id @default(cuid())
+  month Int    @unique // 1-12
+  price Float // Precio objetivo en €/MWh
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ReeProfile {
-  id        String @id @default(cuid())
-  year      Int
-  month     Int
-  day       Int
-  hour      Int
-  p20td     Float
-  p30td     Float
-  p30tdve   Float?
+  id      String @id @default(cuid())
+  year    Int
+  month   Int
+  day     Int
+  hour    Int
+  p20td   Float
+  p30td   Float
+  p30tdve Float?
 
   @@unique([year, month, day, hour])
 }
@@ -1021,9 +1021,9 @@ model EsiosIndicatorData {
   name        String
   date        DateTime @db.Date
   values      Float[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([indicatorId, date])
   @@index([indicatorId])

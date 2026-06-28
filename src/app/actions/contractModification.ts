@@ -239,3 +239,88 @@ export async function createContractModificationAction(
     return { error: error.message };
   }
 }
+
+export async function createUnilateralModificationAction(
+  oldContractId: string,
+  parsedData: any
+) {
+  try {
+    const oldContract = await prisma.contract.findUnique({
+      where: { id: oldContractId },
+      include: { supplyPoint: true }
+    });
+
+    if (!oldContract) throw new Error("Contrato original no encontrado");
+    
+    // 1. Actualizar SupplyPoint con datos de Autoconsumo si los hay
+    const spUpdates: any = {};
+    if (parsedData.cau || parsedData.tipoAutoconsumo || parsedData.cil) {
+      spUpdates.hasSelfConsumption = true;
+      if (parsedData.cau) spUpdates.cau = parsedData.cau;
+      if (parsedData.tipoAutoconsumo) spUpdates.selfConsumptionType = parsedData.tipoAutoconsumo;
+      if (parsedData.cil) spUpdates.cil = parsedData.cil;
+      
+      await prisma.supplyPoint.update({
+        where: { id: oldContract.supplyPointId! },
+        data: spUpdates
+      });
+    }
+
+    // 2. Crear nueva versión del contrato
+    const nextVersion = (oldContract.version ?? 0) + 1;
+    const oldContractDataObj = (oldContract.airtableData as any) || {};
+
+    const newContract = await prisma.contract.create({
+      data: {
+        contractCode: oldContract.contractCode,
+        version: nextVersion,
+        clientId: oldContract.clientId,
+        supplyPointId: oldContract.supplyPointId,
+        productId: oldContract.productId,
+        brandId: oldContract.brandId,
+        userId: oldContract.userId, 
+        previousContractId: oldContract.id,
+        tipo: 'M1',
+        tipoC2: 'N',
+        status: 'ACTIVO',
+        activationDate: parsedData.fechaActivacionAlta || new Date(),
+        permanenceStartDate: parsedData.fechaActivacionAlta || new Date(),
+        airtableData: oldContractDataObj,
+        p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,
+        p4e: oldContract.p4e, p5e: oldContract.p5e, p6e: oldContract.p6e,
+        p1p: oldContract.p1p, p2p: oldContract.p2p, p3p: oldContract.p3p,
+        p4p: oldContract.p4p, p5p: oldContract.p5p, p6p: oldContract.p6p,
+        p1c: oldContract.p1c, p2c: oldContract.p2c, p3c: oldContract.p3c,
+        p4c: oldContract.p4c, p5c: oldContract.p5c, p6c: oldContract.p6c,
+        fee: oldContract.fee,
+        commissionBase: oldContract.commissionBase,
+        commissionFinal: oldContract.commissionFinal,
+        commissionVariable: oldContract.commissionVariable,
+        svaConcept: oldContract.svaConcept,
+        filePdfSigned: oldContract.filePdfSigned,
+        fileAnexoFirmado: oldContract.fileAnexoFirmado,
+        pdfUrl: oldContract.pdfUrl // Copiamos el enlace al PDF original, pues no se autogenera uno nuevo
+      }
+    });
+
+    // 3. Marcar el contrato anterior como FINALIZADO un día antes
+    let prevTermDate = parsedData.fechaActivacionAlta ? new Date(parsedData.fechaActivacionAlta) : new Date();
+    prevTermDate.setDate(prevTermDate.getDate() - 1);
+    
+    await prisma.contract.update({
+      where: { id: oldContract.id },
+      data: { 
+        status: 'FINALIZADO',
+        terminationDate: prevTermDate
+      }
+    });
+
+    revalidatePath(`/contratos/${oldContractId}`);
+    return { success: true, newContractId: newContract.id };
+
+  } catch (error: any) {
+    console.error("Error en createUnilateralModificationAction:", error);
+    return { error: error.message };
+  }
+}
+

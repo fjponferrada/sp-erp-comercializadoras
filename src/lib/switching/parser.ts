@@ -29,6 +29,10 @@ export interface ParsedSwitchingData {
   totalPeajes?: number;
   totalCargos?: number;
   saldoFactura?: number;
+  // Campos Autoconsumo
+  cau?: string;
+  tipoAutoconsumo?: string;
+  cil?: string;
 }
 
 const parser = new XMLParser({
@@ -192,7 +196,18 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
     if (fechaActivacion) {
       result.fechaActivacionAlta = new Date(fechaActivacion);
     }
-
+    
+    // Extracción de Autoconsumo (muy relevante en M2_05)
+    const autoconsumo = findKeyRecursively(root, 'Autoconsumo');
+    if (autoconsumo) {
+      const cau = findKeyRecursively(autoconsumo, 'CAU');
+      const tipoAutoconsumo = findKeyRecursively(autoconsumo, 'TipoAutoconsumo');
+      const cil = findKeyRecursively(autoconsumo, 'CIL');
+      
+      if (cau) result.cau = String(cau);
+      if (tipoAutoconsumo) result.tipoAutoconsumo = String(tipoAutoconsumo);
+      if (cil) result.cil = String(cil);
+    }
   } else if (paso === '11' || paso === '06') {
     // Baja
     // Buscar la fecha de finalización, suele ser <FechaFinalizacion> o <FechaBaja> o <FechaCese>

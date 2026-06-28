@@ -300,6 +300,29 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = `Se recibió Activación (05) de proceso ${procesoBase}, pero no se encontró un contrato ACTIVO para este CUPS.`;
       }
+    } else if (procesoBase === 'M2' && paso === '05') {
+      const activeContract = await prisma.contract.findFirst({
+        where: { supplyPoint: { cups: supplyPoint.cups }, status: 'ACTIVO' },
+        include: { supplyPoint: true },
+        orderBy: { requestDate: 'desc' }
+      });
+      if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
+        contractId = activeContract.id;
+        
+        const { createUnilateralModificationAction } = await import('@/app/actions/contractModification');
+        const modRes = await createUnilateralModificationAction(activeContract.id, parsedData);
+        if (modRes.error) {
+          tipoError = "ERROR_MODIFICACION_UNILATERAL";
+          warning = `Error al procesar la modificación M2: ${modRes.error}`;
+        } else {
+          contractId = modRes.newContractId;
+        }
+      } else {
+        tipoError = "CONTRATO_NO_ACTIVO";
+        warning = "Se recibió un paso 05 de M2 (Mod. Unilateral), pero no se encontró un contrato ACTIVO para este CUPS.";
+      }
     } else if (paso === '05' && procesoBase !== 'R1') {
       const tramitandoContract = await prisma.contract.findFirst({
         where: { supplyPoint: { cups: supplyPoint.cups }, status: 'TRAMITANDO' },
