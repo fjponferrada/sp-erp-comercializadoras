@@ -101,7 +101,9 @@ export async function getPendingE2_14() {
     const r2Url = process.env.R2_PUBLIC_URL || '';
     const enrichedEvents = events.map(e => ({
       ...e,
-      fullXmlUrl: e.xmlUrl ? `${r2Url}/${e.xmlUrl}` : null
+      fullXmlUrl: e.xmlUrl 
+        ? e.xmlUrl.startsWith('http') ? e.xmlUrl : `${r2Url}/${e.xmlUrl}` 
+        : null
     }));
 
     return { success: true, data: enrichedEvents };
