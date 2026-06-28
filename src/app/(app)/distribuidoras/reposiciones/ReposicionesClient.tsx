@@ -253,9 +253,9 @@ export default function ReposicionesClient() {
                   value={tipoReposicion}
                   onChange={e => setTipoReposicion(e.target.value)}
                 >
-                  <option value="01">01 - Por Error</option>
-                  <option value="02">02 - Sin consentimiento</option>
-                  <option value="03">03 - Otro (ver tabla 135)</option>
+                  <option value="01">01 - Contratación indebida (Sin consentimiento)</option>
+                  <option value="02">02 - Error administrativo (Ej. error en CUPS)</option>
+                  <option value="03">03 - Solicitada por comercializador saliente</option>
                 </select>
               </div>
               
