@@ -54,15 +54,14 @@ function buildE2_15Xml(data: any): string {
 }
 
 function buildE2_01Xml(data: any): string {
-  const { codEmisora, codDestino, codSolicitud, cups, tipoReposicion, codigoRef } = data;
+  const { codEmisora, codDestino, codSolicitud, cups, tipoReposicion, codigoRef, tipoIdentificador, identificador } = data;
   const now = new Date();
-  const fechaHoy = (new Date(now.getTime() - now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const fechaHora = (new Date(now.getTime() - now.getTimezoneOffset() * 60000)).toISOString().slice(0, -1).split('.')[0];
   
   const ns = 'http://www.cnmc.es/2024/05/16/SolicitudReposicion';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<SolicitudReposicion xmlns="${ns}">
+<MensajeSolicitudReposicion xmlns="${ns}">
   <Cabecera>
     <CodigoREEEmpresaEmisora>${codEmisora}</CodigoREEEmpresaEmisora>
     <CodigoREEEmpresaDestino>${codDestino}</CodigoREEEmpresaDestino>
@@ -76,10 +75,12 @@ function buildE2_01Xml(data: any): string {
   <SolicitudReposicion>
     <CodigoDeSolicitudRef>${codigoRef}</CodigoDeSolicitudRef>
     <TipoDeReposicion>${tipoReposicion}</TipoDeReposicion>
-    <FechaPrevistaAccion>${fechaHoy}</FechaPrevistaAccion>
-    <ActuacionCampo>N</ActuacionCampo>
+    <IdCliente>
+      <TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
+      <Identificador>${identificador}</Identificador>
+    </IdCliente>
   </SolicitudReposicion>
-</SolicitudReposicion>`;
+</MensajeSolicitudReposicion>`;
 }
 
 export async function getPendingE2_14() {
@@ -158,7 +159,10 @@ export async function respondToE2_14(eventId: string, isAccept: boolean, motivos
 export async function generateE2_01(cups: string, codigoRef: string, tipoReposicion: string) {
   try {
     const supplyPoint = await prisma.supplyPoint.findFirst({
-      where: { cups: cups }
+      where: { cups: cups },
+      include: {
+        client: true
+      }
     });
 
     if (!supplyPoint) {
@@ -170,13 +174,21 @@ export async function generateE2_01(cups: string, codigoRef: string, tipoReposic
     const codDestino = codDestinoRaw.match(/\d{4}/)?.[0] || '0021';
     const codSolicitud = Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0');
 
+    // Identificar Tipo
+    let tipoIdentificador = 'NIF';
+    const vat = supplyPoint.client?.vatNumber?.toUpperCase().trim() || '00000000T';
+    if (/^[XYZ]/.test(vat)) tipoIdentificador = 'NIE';
+    else if (/^[A-W]/.test(vat)) tipoIdentificador = 'CIF';
+
     const xml = buildE2_01Xml({
       codEmisora,
       codDestino,
       codSolicitud,
       cups,
       tipoReposicion,
-      codigoRef
+      codigoRef,
+      tipoIdentificador,
+      identificador: vat
     });
 
     const zip = new PizZip();
