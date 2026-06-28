@@ -255,6 +255,8 @@ export default function Sidebar() {
                     let isActive = false;
                     if (item.href === '/compras') {
                       isActive = pathname === '/compras';
+                    } else if (item.href === '/distribuidoras') {
+                      isActive = pathname === '/distribuidoras';
                     } else {
                       isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                     }
