@@ -66,7 +66,7 @@ export async function POST(req: Request) {
               peajesDistribuidora: result.peajesDistribuidora,
               cargosDistribuidora: result.cargosDistribuidora,
               periods: result.periods
-            }
+            } as any
           }
         });
         createdDrafts.push(draft);

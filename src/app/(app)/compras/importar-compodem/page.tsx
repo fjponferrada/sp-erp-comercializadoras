@@ -1,7 +1,7 @@
 import Topbar from '@/components/Topbar';
 import ImportarClient from './ImportarClient';
 import { prisma } from '@/lib/prisma';
-import { format, subMonths, startOfMonth } from 'date-fns';
+import { format, subMonths, subYears, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export const dynamic = 'force-dynamic';
@@ -58,6 +58,8 @@ export default async function ImportarCompodemPage() {
     return { background: 'rgba(59, 130, 246, 0.2)', color: '#93C5FD' };
   };
 
+  const reeUrl = `https://www.esios.ree.es/es/descargas?date_type=datos&start_date=${format(subYears(now, 1), 'dd-MM-yyyy')}&end_date=${format(now, 'dd-MM-yyyy')}`;
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar 
@@ -67,6 +69,24 @@ export default async function ImportarCompodemPage() {
       />
 
       <div style={{ padding: '24px 32px', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <a 
+            href={reeUrl}
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="btn-primary"
+            style={{ textDecoration: 'none' }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}>
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            Descargar históricos desde ESIOS (REE)
+          </a>
+        </div>
+
         <ImportarClient />
 
         <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
