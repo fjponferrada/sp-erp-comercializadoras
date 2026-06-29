@@ -7,10 +7,10 @@ datasource db {
 }
 
 model Company {
-  id                     String    @id @default(cuid())
+  id                     String            @id @default(cuid())
   name                   String
-  cif                    String    @unique
-  codigo                 String?   @unique
+  cif                    String            @unique
+  codigo                 String?           @unique
   address                String?
   email                  String?
   contactPerson          String?
@@ -26,16 +26,17 @@ model Company {
   representadoPor        String?
   fechaActivacionIsm     DateTime?
   fechaBajaIsm           DateTime?
-  residenciaCanarias     Boolean   @default(false)
-  exportableOdoo         Boolean   @default(false)
-  empresaVisible         Boolean   @default(true)
-  emisionFacturasCliente Boolean   @default(true)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  residenciaCanarias     Boolean           @default(false)
+  exportableOdoo         Boolean           @default(false)
+  empresaVisible         Boolean           @default(true)
+  emisionFacturasCliente Boolean           @default(true)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
   brands                 Brand[]
-  users                  User[]    @relation("UserCompanies")
+  users                  User[]            @relation("UserCompanies")
   invoices               Invoice[]
   ppas                   Ppa[]
+  internalInvoices       InternalInvoice[]
 }
 
 model Brand {
@@ -111,7 +112,7 @@ model User {
 }
 
 model Client {
-  id                        String        @id @default(cuid())
+  id                        String            @id @default(cuid())
   businessName              String
   firstName                 String?
   lastName                  String?
@@ -130,19 +131,19 @@ model Client {
   representativePhone       String?
   representativeEmail       String?
   representativeAddress     String?
-  isMultipoint              Boolean       @default(false)
+  isMultipoint              Boolean           @default(false)
   cnae                      String?
   clientType                String?
-  paperInvoice              Boolean       @default(false)
+  paperInvoice              Boolean           @default(false)
   invoiceEmail              String?
   billingAddress            String?
   billingPostalCode         String?
   billingCity               String?
   billingProvince           String?
   brandId                   String
-  airtableId                String?       @unique
-  createdAt                 DateTime      @default(now())
-  updatedAt                 DateTime      @updatedAt
+  airtableId                String?           @unique
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
   contactVat                String?
   contactRole               String?
   billingStreetType         String?
@@ -158,7 +159,7 @@ model Client {
   visibilitySupervisorEmail String?
   fileIbanCertificate       String?
   fileRepresentativeId      String?
-  brand                     Brand         @relation(fields: [brandId], references: [id])
+  brand                     Brand             @relation(fields: [brandId], references: [id])
   contracts                 Contract[]
   documents                 Document[]
   invoices                  Invoice[]
@@ -166,6 +167,7 @@ model Client {
   supplyPoints              SupplyPoint[]
   tickets                   Ticket[]
   airtableData              Json?
+  internalInvoices          InternalInvoice[]
 
   @@unique([vatNumber, brandId])
 }
@@ -342,7 +344,8 @@ model SupplyPoint {
   switchingEvents     SwitchingEvent[]
   f1Invoices          F1Invoice[]
 
-  isBimonthly Boolean @default(false)
+  isBimonthly      Boolean           @default(false)
+  internalInvoices InternalInvoice[]
 
   @@unique([cups, clientId])
 }
@@ -494,6 +497,7 @@ model Contract {
   pdfUrl                     String?
   filePdfSigned              String?
   fileAnexoFirmado           String?
+  internalInvoices           InternalInvoice[]
 
   @@unique([contractCode, version, brandId])
 }
@@ -530,6 +534,7 @@ model Invoice {
   otherInvoices      Invoice[]    @relation("InvoiceToInvoice")
   supplyPoint        SupplyPoint? @relation(fields: [supplyPointId], references: [id])
   f1Invoice          F1Invoice?   @relation(fields: [f1InvoiceId], references: [id])
+  xmlUrl             String?
 
   @@unique([invoiceNumber, companyId])
 }
@@ -791,9 +796,10 @@ model F1Invoice {
   xmlUrl   String?
   jsonData Json?
 
-  invoices  Invoice[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  invoices         Invoice[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  internalInvoices InternalInvoice[]
 }
 
 model Distributor {
@@ -1027,4 +1033,51 @@ model EsiosIndicatorData {
 
   @@unique([indicatorId, date])
   @@index([indicatorId])
+}
+
+enum InternalInvoiceStatus {
+  BORRADOR
+  EMITIDA
+  ABONO
+  REQUIERE_REPARACION
+}
+
+model InternalInvoice {
+  id                 String                @id @default(cuid())
+  invoiceNumber      String?
+  status             InternalInvoiceStatus @default(BORRADOR)
+  invoiceType        String?
+  clientId           String
+  companyId          String?
+  rectifiedInvoiceId String?
+  contractId         String?
+  supplyPointId      String?
+  f1InvoiceId        String?
+  issueDate          DateTime
+  paymentDate        DateTime?
+  subtotal1          Float?
+  taxPercentage      Float?
+  taxAmount          Float?
+  totalAmount        Float
+  totalMWh           Float
+  margin             Float?
+  billingStart       DateTime?
+  billingEnd         DateTime?
+  origin             String?
+  pdfUrl             String?
+  communicatedAt     DateTime?
+  invoiceData        Json?
+  createdAt          DateTime              @default(now())
+
+  client        Client            @relation(fields: [clientId], references: [id])
+  company       Company?          @relation(fields: [companyId], references: [id])
+  contract      Contract?         @relation(fields: [contractId], references: [id])
+  invoice       InternalInvoice?  @relation("InternalInvoiceToInternalInvoice", fields: [rectifiedInvoiceId], references: [id])
+  otherInvoices InternalInvoice[] @relation("InternalInvoiceToInternalInvoice")
+  supplyPoint   SupplyPoint?      @relation(fields: [supplyPointId], references: [id])
+  f1Invoice     F1Invoice?        @relation(fields: [f1InvoiceId], references: [id])
+  xmlUrl        String?
+  repairData    Json?
+
+  @@unique([invoiceNumber, companyId])
 }

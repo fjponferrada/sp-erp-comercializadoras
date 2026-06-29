@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { UploadCloud, File as FileIcon, CheckCircle, XCircle } from 'lucide-react';
 
 export default function ImportarClient() {
   const [file, setFile] = useState<File | null>(null);
@@ -55,58 +56,51 @@ export default function ImportarClient() {
   };
 
   return (
-    <div style={{ background: '#fff', borderRadius: '8px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-      <h2 style={{ marginTop: 0, fontSize: '1.5rem', color: '#111827' }}>Carga de archivo maestro</h2>
-      <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '24px' }}>
-        Sube un archivo ZIP (incluso si contiene otros ZIPs anidados) con los ficheros de liquidación de REE (C1, C2, C3, C4, C5). El sistema procesará todos los componentes internamente.
-      </p>
-
+    <div className="card">
       <div
         {...getRootProps()}
         style={{
-          border: isDragActive ? '2px dashed #3b82f6' : '2px dashed #d1d5db',
+          border: `2px dashed ${isDragActive ? 'var(--lime)' : 'var(--border-strong)'}`,
           borderRadius: '12px',
           padding: '48px 24px',
           textAlign: 'center',
           cursor: 'pointer',
-          backgroundColor: isDragActive ? '#eff6ff' : '#f9fafb',
+          background: isDragActive ? 'var(--lime-glow)' : 'var(--bg-elevated)',
           transition: 'all 0.2s ease',
-          marginBottom: '24px'
+        }}
+        onMouseOver={(e) => {
+          if (!isDragActive) e.currentTarget.style.borderColor = 'var(--text-secondary)';
+        }}
+        onMouseOut={(e) => {
+          if (!isDragActive) e.currentTarget.style.borderColor = 'var(--border-strong)';
         }}
       >
         <input {...getInputProps()} />
-        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📁</div>
+        <UploadCloud style={{ margin: '0 auto', height: '48px', width: '48px', marginBottom: '16px', color: isDragActive ? 'var(--lime)' : 'var(--text-secondary)' }} />
         {isDragActive ? (
-          <p style={{ fontWeight: 600, color: '#3b82f6', margin: 0 }}>Suelta el ZIP aquí...</p>
+          <p style={{ fontWeight: 600, color: 'var(--lime)', margin: 0 }}>Suelta el ZIP aquí...</p>
         ) : (
           <div>
-            <p style={{ fontWeight: 600, color: '#374151', margin: '0 0 8px 0' }}>Arrastra tu archivo .zip aquí</p>
-            <p style={{ color: '#6b7280', fontSize: '0.85rem', margin: 0 }}>o haz clic para seleccionar desde tu equipo</p>
+            <p style={{ fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>Arrastra tu archivo .zip aquí</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: 0 }}>o haz clic para seleccionar desde tu equipo</p>
           </div>
         )}
       </div>
 
       {file && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', backgroundColor: '#f3f4f6', borderRadius: '8px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '1.5rem' }}>📄</span>
+            <FileIcon style={{ height: '32px', width: '32px', color: 'var(--text-secondary)' }} />
             <div>
-              <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem', color: '#111827' }}>{file.name}</p>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+              <p style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{file.name}</p>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
             </div>
           </div>
           <button 
             onClick={handleUpload} 
             disabled={loading}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: loading ? '#9ca3af' : '#2563eb',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: 500,
-              cursor: loading ? 'not-allowed' : 'pointer'
-            }}
+            className="btn-primary"
+            style={{ opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
           >
             {loading ? 'Procesando...' : 'Iniciar Importación'}
           </button>
@@ -115,24 +109,31 @@ export default function ImportarClient() {
 
       {result && (
         <div style={{
+          marginTop: '24px',
           padding: '16px',
           borderRadius: '8px',
-          backgroundColor: result.success ? '#ecfdf5' : '#fef2f2',
-          border: `1px solid ${result.success ? '#a7f3d0' : '#fecaca'}`,
           display: 'flex',
-          gap: '12px'
+          gap: '12px',
+          background: result.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+          border: `1px solid ${result.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
         }}>
-          <span style={{ fontSize: '1.2rem' }}>{result.success ? '✅' : '❌'}</span>
+          {result.success ? (
+            <CheckCircle style={{ height: '24px', width: '24px', color: 'var(--success)', flexShrink: 0 }} />
+          ) : (
+            <XCircle style={{ height: '24px', width: '24px', color: 'var(--danger)', flexShrink: 0 }} />
+          )}
           <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '1rem', color: result.success ? '#065f46' : '#991b1b' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '0.875rem', fontWeight: 600, color: result.success ? 'var(--success)' : 'var(--danger)' }}>
               {result.success ? '¡Importación completada!' : 'Error de importación'}
             </h3>
-            <p style={{ margin: 0, fontSize: '0.9rem', color: result.success ? '#064e3b' : '#7f1d1d' }}>{result.message}</p>
+            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+              {result.message}
+            </p>
             
             {result.success && result.details && (
-              <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem', color: '#064e3b' }}>
-                <li>Ficheros CSV procesados: {result.details.filesProcessed}</li>
-                <li>Días (filas) insertados/actualizados: {result.details.rowsInserted}</li>
+              <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                <li>Ficheros CSV procesados: <strong style={{ color: 'var(--text-primary)' }}>{result.details.filesProcessed}</strong></li>
+                <li>Días (filas) insertados/actualizados: <strong style={{ color: 'var(--text-primary)' }}>{result.details.rowsInserted}</strong></li>
               </ul>
             )}
           </div>

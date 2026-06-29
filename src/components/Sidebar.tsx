@@ -67,6 +67,13 @@ const baseNavGroups = [
     ],
   },
   {
+    label: 'FACTURACIÓN',
+    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
+    items: [
+      { href: '/facturacion/interna', icon: Calculator, label: 'Facturación Interna' },
+    ],
+  },
+  {
     label: 'GESTIÓN',
     roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
