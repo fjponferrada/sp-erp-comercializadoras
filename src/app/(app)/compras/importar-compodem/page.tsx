@@ -14,9 +14,12 @@ export default async function ImportarCompodemPage() {
   const now = new Date();
   const startDate = startOfMonth(subMonths(now, 11)); // Last 12 months including current
 
-  // Fetch all component prices from startDate
+  // Fetch TOTAL_COMPODEM component prices from startDate to determine the version status of the whole month
   const prices = await prisma.systemComponentPrice.findMany({
-    where: { date: { gte: startDate } },
+    where: { 
+      date: { gte: startDate },
+      component: 'TOTAL_COMPODEM'
+    },
     select: { date: true, version: true }
   });
 
