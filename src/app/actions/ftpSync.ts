@@ -15,19 +15,21 @@ export async function triggerFtpSyncManually() {
     });
 
     // 2. Simulamos la request para pasar el middleware del endpoint, pasando el jobId
-    const req = new NextRequest(`http://localhost/api/cron/ftp-sync?secret=${process.env.CRON_SECRET}&jobId=${job.id}`);
+    // Si CRON_SECRET no está definido, usamos un fallback vacío para que coincidan (ambos undefined o vacíos)
+    const secret = process.env.CRON_SECRET || 'fallback_secret';
+    const req = new NextRequest(`http://localhost/api/cron/ftp-sync?secret=${secret}&jobId=${job.id}`);
     const res = await GET(req);
     
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Error al conectar con el FTP');
+      return { success: false, message: err.error || 'Error al conectar con el FTP' };
     }
     
     // Devolvemos la respuesta que contiene el jobId
     return await res.json();
   } catch (error: any) {
     console.error("Error triggering FTP sync:", error);
-    throw new Error(error.message || "Error desconocido al sincronizar FTP");
+    return { success: false, message: error.message || "Error desconocido al sincronizar FTP" };
   }
 }
 

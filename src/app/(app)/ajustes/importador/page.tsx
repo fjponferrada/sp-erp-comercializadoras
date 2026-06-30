@@ -53,6 +53,13 @@ export default function ImportadorCchPage() {
       setSyncJobStatus(null);
       
       const res = await triggerFtpSyncManually();
+      
+      if (res.success === false) {
+        setFtpResults({ success: false, message: res.message });
+        setSyncingFtp(false);
+        return;
+      }
+
       if (res.jobId) {
         setSyncJobId(res.jobId);
         setSyncJobStatus({ status: 'PENDING', progress: 0, logs: 'Iniciando sincronización en segundo plano...' });
