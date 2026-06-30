@@ -101,8 +101,12 @@ async function listFtpRecursive(ftpClient: Client, currentPath: string, onProgre
 export const maxDuration = 300; // Allow Vercel / Next up to 5 minutes to run this script
 
 export async function executeFtpSync(configs: any[], jobId?: string) {
+  const startTime = Date.now();
+  const MAX_EXECUTION_TIME_MS = 8000; // Vercel Hobby límite seguro de 8 segundos
+
   const results: any = {};
   const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
+  let hasMore = false;
 
   try {
     if (jobId) {
@@ -113,6 +117,11 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
     }
 
     for (const config of configs) {
+      if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
+        hasMore = true;
+        break;
+      }
+
       const port = config.ftpPort || 21;
       const isSftp = [22, 11022, 6222].includes(port);
       
@@ -140,8 +149,6 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         }
       };
 
-      // Si es la primera vez que se sincroniza, en lugar de bajar desde 1970 (todo el histórico),
-      // descargamos solo los ficheros subidos al FTP en los últimos 2 días.
       const lastSync = config.ftpLastSyncAt || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 
       if (isSftp) {
@@ -174,7 +181,9 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         if (file.isDirectory) return false;
         
         const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
-        if (fileDate <= lastSync) return false;
+        // Usamos < en lugar de <= para que si hay ficheros en el mismo milisegundo no nos los saltemos
+        // El parser de CSV es idempotente así que procesarlos de nuevo es seguro.
+        if (fileDate < lastSync) return false;
 
         const filenameUpper = file.name.toUpperCase();
         return PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || filenameUpper.endsWith('.ZIP');
@@ -182,7 +191,8 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
 
       results[config.name].newFiles = filesToProcess.length;
 
-      for (const file of filesToProcess) {
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const file = filesToProcess[i];
         let buffer: Buffer;
 
         if (isSftp && sftpClient) {
@@ -222,8 +232,14 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
 
         results[config.name].processed++;
 
-        if (jobId && results[config.name].processed % 5 === 0) {
-          const pct = Math.floor((results[config.name].processed / filesToProcess.length) * 100);
+        const pct = Math.floor((results[config.name].processed / filesToProcess.length) * 100);
+        
+        const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
+        if (fileDate > newestDate) {
+          newestDate = fileDate;
+        }
+
+        if (jobId) {
           await prisma.syncJob.update({
             where: { id: jobId },
             data: { 
@@ -233,17 +249,21 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
           });
         }
 
-        const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
-        if (fileDate > newestDate) {
-          newestDate = fileDate;
+        // CHUNKING: Cortar ejecución si nos acercamos a los 8 segundos
+        if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
+          hasMore = true;
+          break; // Rompe el bucle de ficheros
         }
       }
 
-      if (filesToProcess.length > 0) {
-        await prisma.distributor.update({
-          where: { id: config.id },
-          data: { ftpLastSyncAt: newestDate }
-        });
+      // Guardamos el progreso de tiempo para no repetir lo procesado
+      await prisma.distributor.update({
+        where: { id: config.id },
+        data: { ftpLastSyncAt: newestDate }
+      });
+
+      if (hasMore) {
+        break; // Rompe el bucle de configuraciones (distribuidoras) si se acabó el tiempo
       }
 
     } catch (err: any) {
@@ -262,14 +282,14 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
     }
   }
 
-  if (jobId) {
+  if (jobId && !hasMore) {
     await prisma.syncJob.update({
       where: { id: jobId },
       data: { status: 'COMPLETED', results: results, progress: 100 }
     });
   }
 
-  return results;
+  return { results, hasMore };
 } catch (globalErr: any) {
   if (jobId) {
     await prisma.syncJob.update({
@@ -301,13 +321,13 @@ export async function GET(req: Request) {
 
   if (jobId) {
     // Modo asíncrono
-    // Lanzamos la promesa y no la esperamos
+    // Lanzamos la promesa y no la esperamos (el cliente la llamará en bucle)
     executeFtpSync(configs, jobId).catch(console.error);
-    return NextResponse.json({ message: 'Sincronización FTP iniciada en segundo plano', jobId });
+    return NextResponse.json({ message: 'Sincronización FTP iniciada en segundo plano', jobId, hasMore: true });
   } else {
     // Modo síncrono (legacy / vercel cron)
-    const results = await executeFtpSync(configs);
-    return NextResponse.json({ message: 'Sincronización FTP completada', results });
+    const { results, hasMore } = await executeFtpSync(configs);
+    return NextResponse.json({ message: 'Sincronización FTP chunk completado', results, hasMore });
   }
 }
 

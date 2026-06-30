@@ -64,8 +64,22 @@ export default function ImportadorCchPage() {
         setSyncJobId(res.jobId);
         setSyncJobStatus({ status: 'PENDING', progress: 0, logs: 'Iniciando sincronización en segundo plano...' });
         
-        // Mantener viva la ejecución en Vercel
-        fetch(`/api/cron/ftp-sync/execute?jobId=${res.jobId}`).catch(console.error);
+        // CHUNKING: Ejecutar en bucle mientras Vercel devuelva hasMore=true para evitar timeouts
+        const executeChunks = async (id: string) => {
+          let hasMore = true;
+          while (hasMore) {
+            try {
+              const r = await fetch(`/api/cron/ftp-sync/execute?jobId=${id}`);
+              if (!r.ok) break;
+              const data = await r.json();
+              hasMore = !!data.hasMore;
+            } catch (e) {
+              console.error(e);
+              break;
+            }
+          }
+        };
+        executeChunks(res.jobId);
       } else {
         setFtpResults({ success: true, message: res.message, results: (res as any).results });
         setSyncingFtp(false);

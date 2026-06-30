@@ -18,8 +18,8 @@ export async function GET(req: Request) {
   try {
     // Al hacer await aquí, Vercel mantiene viva la función Serverless
     // mientras el cliente siga esperando la respuesta HTTP.
-    await executeFtpSync(configs, jobId);
-    return NextResponse.json({ success: true });
+    const { hasMore } = await executeFtpSync(configs, jobId);
+    return NextResponse.json({ success: true, hasMore });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
