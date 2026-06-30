@@ -100,7 +100,7 @@ async function listFtpRecursive(ftpClient: Client, currentPath: string, onProgre
 }
 export const maxDuration = 300; // Allow Vercel / Next up to 5 minutes to run this script
 
-async function executeFtpSync(configs: any[], jobId?: string) {
+export async function executeFtpSync(configs: any[], jobId?: string) {
   const results: any = {};
   const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
 
