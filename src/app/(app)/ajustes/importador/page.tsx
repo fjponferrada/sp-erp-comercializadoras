@@ -64,7 +64,7 @@ export default function ImportadorCchPage() {
         setSyncJobId(res.jobId);
         setSyncJobStatus({ status: 'PENDING', progress: 0, logs: 'Iniciando sincronización en segundo plano...' });
       } else {
-        setFtpResults({ success: true, message: res.message, results: res.results });
+        setFtpResults({ success: true, message: res.message, results: (res as any).results });
         setSyncingFtp(false);
       }
     } catch (error: any) {
