@@ -19,6 +19,8 @@ export default function ImportadorCchPage() {
   const [syncJobId, setSyncJobId] = useState<string | null>(null);
   const [syncJobStatus, setSyncJobStatus] = useState<any>(null);
   const [distributorStatuses, setDistributorStatuses] = useState<any[]>([]);
+  const [syncMode, setSyncMode] = useState<'auto' | 'custom'>('auto');
+  const [syncDays, setSyncDays] = useState<number>(5);
 
   React.useEffect(() => {
     getDistributorSyncStatus().then(setDistributorStatuses);
@@ -52,7 +54,7 @@ export default function ImportadorCchPage() {
       setSyncJobId(null);
       setSyncJobStatus(null);
       
-      const res = await triggerFtpSyncManually();
+      const res = await triggerFtpSyncManually(syncMode === 'custom' ? syncDays : undefined);
       
       if (res.success === false) {
         setFtpResults({ success: false, message: res.message });
@@ -189,18 +191,58 @@ export default function ImportadorCchPage() {
                 </div>
               )}
             </div>
-            <button 
-              onClick={handleSyncFtp}
-              disabled={syncingFtp || uploading}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold transition-all ${
-                syncingFtp || uploading 
-                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
-                  : 'bg-[var(--lime)] text-black hover:scale-105'
-              }`}
-            >
-              {syncingFtp ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
-              {syncingFtp ? 'Sincronizando...' : 'Conectar FTPs Ahora'}
-            </button>
+            <div className="flex flex-col items-end gap-3">
+              {/* Controles de Sincronización */}
+              <div className="flex items-center gap-3 bg-gray-900/50 p-2 rounded-lg border border-gray-800">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                  <input 
+                    type="radio" 
+                    name="syncMode" 
+                    value="auto" 
+                    checked={syncMode === 'auto'}
+                    onChange={() => setSyncMode('auto')}
+                    className="accent-[var(--lime)] cursor-pointer"
+                  />
+                  <span>Desde última fecha</span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300 ml-2">
+                  <input 
+                    type="radio" 
+                    name="syncMode" 
+                    value="custom" 
+                    checked={syncMode === 'custom'}
+                    onChange={() => setSyncMode('custom')}
+                    className="accent-[var(--lime)] cursor-pointer"
+                  />
+                  <span>Hacia atrás:</span>
+                </label>
+                
+                <input 
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={syncDays}
+                  onChange={(e) => setSyncDays(Number(e.target.value))}
+                  disabled={syncMode !== 'custom'}
+                  className={`w-16 bg-gray-800 border rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-[var(--lime)] transition-colors ${syncMode !== 'custom' ? 'border-gray-700 text-gray-500 opacity-50' : 'border-gray-600 text-white'}`}
+                />
+                <span className={`text-sm ${syncMode !== 'custom' ? 'text-gray-500 opacity-50' : 'text-gray-300'}`}>días</span>
+              </div>
+
+              <button 
+                onClick={handleSyncFtp}
+                disabled={syncingFtp || uploading}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold transition-all ${
+                  syncingFtp || uploading 
+                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+                    : 'bg-[var(--lime)] text-black hover:scale-105'
+                }`}
+              >
+                {syncingFtp ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
+                {syncingFtp ? 'Sincronizando...' : 'Conectar FTPs Ahora'}
+              </button>
+            </div>
           </div>
           
           {syncJobStatus && (

@@ -3,7 +3,7 @@
 import { executeFtpSync } from '@/app/api/cron/ftp-sync/route';
 import { prisma } from '@/lib/prisma';
 
-export async function triggerFtpSyncManually() {
+export async function triggerFtpSyncManually(daysBack?: number) {
   try {
     const configs = await prisma.distributor.findMany({
       where: { ftpActive: true }
@@ -11,6 +11,14 @@ export async function triggerFtpSyncManually() {
 
     if (configs.length === 0) {
       return { success: false, message: 'No hay configuraciones FTP activas.' };
+    }
+
+    if (daysBack && daysBack > 0) {
+      const pastDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+      await prisma.distributor.updateMany({
+        where: { ftpActive: true },
+        data: { ftpLastSyncAt: pastDate }
+      });
     }
 
     // 1. Create the job in Prisma
