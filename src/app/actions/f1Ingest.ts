@@ -181,9 +181,9 @@ async function ingestF1Core(file: File) {
           UPDATE "Invoice"
           SET "f1InvoiceId" = ${newF1.id}
           WHERE "f1InvoiceId" IS NULL AND (
-            LTRIM(TRIM(REPLACE(REPLACE("invoiceData"->>'Codigo Fiscal', 'CF ', ''), 'CF', '')), '0') = LTRIM(${parsedCodFactura}, '0')
-            OR LTRIM("invoiceData"->>'Numero Factura .xml', '0') = LTRIM(CONCAT(${parsedCodFactura}, '.xml'), '0')
-            OR LTRIM("invoiceData"->>'FechaFtra_NumFtra', '0') LIKE CONCAT('%', LTRIM(${parsedCodFactura}, '0'))
+            LTRIM(TRIM(REPLACE(REPLACE("invoiceData"->>'Codigo Fiscal', 'CF ', ''), 'CF', '')), '0') = LTRIM(${parsedCodFactura}::text, '0')
+            OR LTRIM("invoiceData"->>'Numero Factura .xml', '0') = LTRIM(CONCAT(${parsedCodFactura}::text, '.xml'), '0')
+            OR LTRIM("invoiceData"->>'FechaFtra_NumFtra', '0') LIKE CONCAT('%', LTRIM(${parsedCodFactura}::text, '0'))
           )
         `;
       }
