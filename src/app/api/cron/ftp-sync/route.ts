@@ -131,6 +131,8 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         break;
       }
 
+      try {
+
       let filesToProcess: any[] = [];
       let ftpClient: Client | null = null;
       let sftpClient: SftpClient | null = null;
