@@ -198,7 +198,16 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
 
         const filenameUpper = file.name.toUpperCase();
         return PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || filenameUpper.endsWith('.ZIP');
+      }).sort((a, b) => {
+        const timeA = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0;
+        const timeB = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0;
+        return timeA - timeB;
       });
+
+      // Guardar el total inicial si es el primer chunk de esta config para que el progreso visual sea correcto
+      if (!results[config.name].totalFiles) {
+        results[config.name].totalFiles = filesToProcess.length;
+      }
 
       results[config.name].newFiles = filesToProcess.length;
 
@@ -242,8 +251,8 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         }
 
         results[config.name].processed++;
-
-        const pct = Math.floor((results[config.name].processed / filesToProcess.length) * 100);
+        const totalFiles = results[config.name].totalFiles || filesToProcess.length || 1;
+        const pct = Math.floor((results[config.name].processed / totalFiles) * 100);
         
         const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
         if (fileDate > newestDate) {
@@ -255,7 +264,7 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
             where: { id: jobId },
             data: { 
               progress: pct,
-              logs: `Procesando ${config.name}... (${results[config.name].processed}/${filesToProcess.length})` 
+              logs: `Procesando ${config.name}... (${results[config.name].processed}/${totalFiles})` 
             }
           });
         }
