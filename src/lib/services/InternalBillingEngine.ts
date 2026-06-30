@@ -73,7 +73,7 @@ export class InternalBillingEngine {
     }
     
     const contract = f1.contract;
-    const tariff = contract.tariff || '3.0TD';
+    const tariff = f1.supplyPoint.tariff || '3.0TD';
     const startDate = f1.fechaInicio || new Date();
     const endDate = f1.fechaFin || new Date();
     
