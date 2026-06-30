@@ -104,12 +104,17 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
   const startTime = Date.now();
   const MAX_EXECUTION_TIME_MS = 8000; // Vercel Hobby límite seguro de 8 segundos
 
-  const results: any = {};
+  let results: any = {};
   const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
   let hasMore = false;
 
   try {
     if (jobId) {
+      const existingJob = await prisma.syncJob.findUnique({ where: { id: jobId } });
+      if (existingJob?.results) {
+        results = typeof existingJob.results === 'string' ? JSON.parse(existingJob.results) : existingJob.results;
+      }
+      
       await prisma.syncJob.update({
         where: { id: jobId },
         data: { status: 'RUNNING', logs: 'Iniciando proceso de sincronización...\n' }
@@ -117,6 +122,10 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
     }
 
     for (const config of configs) {
+      if (results[config.name]?.status === 'COMPLETED' || results[config.name]?.status === 'ERROR') {
+        continue;
+      }
+
       if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
         hasMore = true;
         break;
@@ -128,7 +137,9 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
       let ftpClient: Client | null = null;
       let sftpClient: SftpClient | null = null;
       
-      results[config.name] = { processed: 0, newFiles: 0, success: 0, skipped: 0, errors: 0, status: 'OK' };
+      if (!results[config.name]) {
+        results[config.name] = { processed: 0, newFiles: 0, success: 0, skipped: 0, errors: 0, status: 'OK' };
+      }
 
       if (jobId) {
         await prisma.syncJob.update({
@@ -265,6 +276,8 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
       if (hasMore) {
         break; // Rompe el bucle de configuraciones (distribuidoras) si se acabó el tiempo
       }
+      
+      results[config.name].status = 'COMPLETED';
 
     } catch (err: any) {
       console.error(`FTP Sync Error for ${config.name}:`, err);
@@ -282,11 +295,18 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
     }
   }
 
-  if (jobId && !hasMore) {
-    await prisma.syncJob.update({
-      where: { id: jobId },
-      data: { status: 'COMPLETED', results: results, progress: 100 }
-    });
+  if (jobId) {
+    if (!hasMore) {
+      await prisma.syncJob.update({
+        where: { id: jobId },
+        data: { status: 'COMPLETED', results: results, progress: 100 }
+      });
+    } else {
+      await prisma.syncJob.update({
+        where: { id: jobId },
+        data: { results: results }
+      });
+    }
   }
 
   return { results, hasMore };
