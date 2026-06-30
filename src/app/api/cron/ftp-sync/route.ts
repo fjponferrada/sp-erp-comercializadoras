@@ -131,9 +131,7 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         break;
       }
 
-      const port = config.ftpPort || 21;
-      const isSftp = [22, 11022, 6222].includes(port);
-      
+      let filesToProcess: any[] = [];
       let ftpClient: Client | null = null;
       let sftpClient: SftpClient | null = null;
       
@@ -141,78 +139,121 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         results[config.name] = { processed: 0, newFiles: 0, success: 0, skipped: 0, errors: 0, status: 'OK' };
       }
 
-      if (jobId) {
-        await prisma.syncJob.update({
-          where: { id: jobId },
-          data: { logs: `Conectando al FTP de ${config.name}...\n` }
-        });
-      }
-
-    try {
-      let fileList: any[] = [];
-      
-      const updateProgress = (path: string) => {
-        if (jobId) {
-          prisma.syncJob.update({
-            where: { id: jobId },
-            data: { logs: `Conectado a ${config.name}. \nExplorando directorios buscando ficheros recientes...\nDirectorio actual: ${path}` }
-          }).catch(() => {});
-        }
-      };
-
-      const lastSync = config.ftpLastSyncAt || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-
-      if (isSftp) {
-        sftpClient = new SftpClient();
-        await sftpClient.connect({
-          host: config.ftpHost || '',
-          port: port,
-          username: config.ftpUser || '',
-          password: config.ftpPassword || '',
-          readyTimeout: 5000
-        });
-        
-        fileList = await listSftpRecursive(sftpClient, config.ftpTargetPath || '/', updateProgress, lastSync);
+      if (results[config.name].pendingFiles) {
+        // En chunks posteriores, reutilizamos la lista de ficheros pendientes
+        filesToProcess = results[config.name].pendingFiles;
       } else {
-        ftpClient = new Client(5000);
-        await ftpClient.access({
-          host: config.ftpHost || '',
-          port: port,
-          user: config.ftpUser || '',
-          password: config.ftpPassword || '',
-          secure: port === 21 ? false : 'implicit',
-          secureOptions: { rejectUnauthorized: false }
-        });
-        fileList = await listFtpRecursive(ftpClient, config.ftpTargetPath || '/', updateProgress, lastSync);
+        // Primer chunk: Exploramos el FTP y guardamos la lista
+        if (jobId) {
+          await prisma.syncJob.update({
+            where: { id: jobId },
+            data: { logs: `Conectando al FTP de ${config.name}...\n` }
+          });
+        }
+
+        try {
+          const port = config.ftpPort || 21;
+          const isSftp = [22, 11022, 6222].includes(port);
+
+          const updateProgress = (path: string) => {
+            if (jobId) {
+              prisma.syncJob.update({
+                where: { id: jobId },
+                data: { logs: `Conectado a ${config.name}. \nExplorando directorios buscando ficheros recientes...\nDirectorio actual: ${path}` }
+              }).catch(() => {});
+            }
+          };
+
+          const lastSync = config.ftpLastSyncAt || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+          let fileList: any[] = [];
+
+          if (isSftp) {
+            sftpClient = new SftpClient();
+            await sftpClient.connect({
+              host: config.ftpHost || '',
+              port: port,
+              username: config.ftpUser || '',
+              password: config.ftpPassword || '',
+              readyTimeout: 5000
+            });
+            fileList = await listSftpRecursive(sftpClient, config.ftpTargetPath || '/', updateProgress, lastSync);
+          } else {
+            ftpClient = new Client(5000);
+            await ftpClient.access({
+              host: config.ftpHost || '',
+              port: port,
+              user: config.ftpUser || '',
+              password: config.ftpPassword || '',
+              secure: port === 21 ? false : 'implicit',
+              secureOptions: { rejectUnauthorized: false }
+            });
+            fileList = await listFtpRecursive(ftpClient, config.ftpTargetPath || '/', updateProgress, lastSync);
+          }
+
+          filesToProcess = fileList.filter(file => {
+            if (file.isDirectory) return false;
+            
+            const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
+            if (fileDate < lastSync) return false;
+
+            const filenameUpper = file.name.toUpperCase();
+            return PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || filenameUpper.endsWith('.ZIP');
+          }).sort((a, b) => {
+            const timeA = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0;
+            const timeB = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0;
+            return timeA - timeB;
+          });
+
+          results[config.name].pendingFiles = filesToProcess;
+          results[config.name].totalFiles = filesToProcess.length;
+          results[config.name].newFiles = filesToProcess.length;
+        } catch (err: any) {
+          console.error(`FTP Connection/List Error for ${config.name}:`, err);
+          results[config.name].status = 'ERROR';
+          results[config.name].errorMsg = err.message;
+          continue;
+        }
       }
-      
-      let newestDate = lastSync;
 
-      const filesToProcess = fileList.filter(file => {
-        if (file.isDirectory) return false;
-        
-        const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
-        // Usamos < en lugar de <= para que si hay ficheros en el mismo milisegundo no nos los saltemos
-        // El parser de CSV es idempotente así que procesarlos de nuevo es seguro.
-        if (fileDate < lastSync) return false;
-
-        const filenameUpper = file.name.toUpperCase();
-        return PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || filenameUpper.endsWith('.ZIP');
-      }).sort((a, b) => {
-        const timeA = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0;
-        const timeB = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0;
-        return timeA - timeB;
-      });
-
-      // Guardar el total inicial si es el primer chunk de esta config para que el progreso visual sea correcto
-      if (!results[config.name].totalFiles) {
-        results[config.name].totalFiles = filesToProcess.length;
+      // Si en este chunk no estamos conectados pero hay pendientes, conectamos de nuevo
+      if (filesToProcess.length > 0 && !ftpClient && !sftpClient) {
+        try {
+          const port = config.ftpPort || 21;
+          const isSftp = [22, 11022, 6222].includes(port);
+          if (isSftp) {
+            sftpClient = new SftpClient();
+            await sftpClient.connect({
+              host: config.ftpHost || '',
+              port: port,
+              username: config.ftpUser || '',
+              password: config.ftpPassword || '',
+              readyTimeout: 5000
+            });
+          } else {
+            ftpClient = new Client(5000);
+            await ftpClient.access({
+              host: config.ftpHost || '',
+              port: port,
+              user: config.ftpUser || '',
+              password: config.ftpPassword || '',
+              secure: port === 21 ? false : 'implicit',
+              secureOptions: { rejectUnauthorized: false }
+            });
+          }
+        } catch (err: any) {
+          console.error(`FTP Re-Connection Error for ${config.name}:`, err);
+          results[config.name].status = 'ERROR';
+          results[config.name].errorMsg = 'Error reconectando para procesar pendientes: ' + err.message;
+          continue;
+        }
       }
 
-      results[config.name].newFiles = filesToProcess.length;
+      // Necesitamos asegurar isSftp para el bucle
+      const isSftp = [22, 11022, 6222].includes(config.ftpPort || 21);
+      let newestDate = config.ftpLastSyncAt || new Date(0);
 
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const file = filesToProcess[i];
+      while (results[config.name].pendingFiles.length > 0) {
+        const file = results[config.name].pendingFiles[0];
         let buffer: Buffer;
 
         if (isSftp && sftpClient) {
@@ -251,7 +292,7 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
         }
 
         results[config.name].processed++;
-        const totalFiles = results[config.name].totalFiles || filesToProcess.length || 1;
+        const totalFiles = results[config.name].totalFiles || 1;
         const pct = Math.floor((results[config.name].processed / totalFiles) * 100);
         
         const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
@@ -268,6 +309,9 @@ export async function executeFtpSync(configs: any[], jobId?: string) {
             }
           });
         }
+
+        // Sacar el fichero de la cola ya que se procesó con éxito
+        results[config.name].pendingFiles.shift();
 
         // CHUNKING: Cortar ejecución si nos acercamos a los 8 segundos
         if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
