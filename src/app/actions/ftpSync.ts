@@ -21,9 +21,6 @@ export async function triggerFtpSyncManually() {
       }
     });
 
-    // Lanzamos la promesa y no la esperamos
-    executeFtpSync(configs, job.id).catch(console.error);
-
     return { success: true, message: 'Sincronización FTP iniciada en segundo plano', jobId: job.id };
   } catch (error: any) {
     console.error("Error triggering FTP sync:", error);

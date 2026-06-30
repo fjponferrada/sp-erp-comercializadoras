@@ -63,6 +63,9 @@ export default function ImportadorCchPage() {
       if (res.jobId) {
         setSyncJobId(res.jobId);
         setSyncJobStatus({ status: 'PENDING', progress: 0, logs: 'Iniciando sincronización en segundo plano...' });
+        
+        // Mantener viva la ejecución en Vercel
+        fetch(`/api/cron/ftp-sync/execute?jobId=${res.jobId}`).catch(console.error);
       } else {
         setFtpResults({ success: true, message: res.message, results: (res as any).results });
         setSyncingFtp(false);
