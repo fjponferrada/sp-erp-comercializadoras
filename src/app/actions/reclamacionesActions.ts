@@ -191,7 +191,7 @@ export async function generateClaim(data: any) {
       });
 
       const emisora = sp?.client?.brand?.company?.codigoRee || '1713';
-      const destino = sp?.distributorReeCode || '0031'; // Fallback
+      const destino = sp?.distributorReeCode || (claimCups && claimCups.length >= 6 ? claimCups.substring(2, 6) : '0031');
       
       const vat = sp?.client?.vatNumber || '00000000T';
       const isCif = /^[A-Z]/.test(vat);
@@ -347,7 +347,7 @@ ${xmlNombre}
 <CodPostal>${zip}</CodPostal>
 <Via>
 <TipoVia>${normTipoVia}</TipoVia>
-<Calle>${removeAccents(street || '')}</Calle>
+<Calle>${removeAccents(street || '').substring(0, 30)}</Calle>
 <NumeroFinca>${number}</NumeroFinca>
 </Via>
 </Direccion>
