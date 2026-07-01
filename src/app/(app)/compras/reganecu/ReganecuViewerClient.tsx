@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const CONCEPT_MAP: Record<string, string> = {
   'BS3': 'Banda Secundaria CF',
@@ -17,13 +17,15 @@ export default function ReganecuViewerClient() {
   const [cierre, setCierre] = useState<string>('');
   const [region, setRegion] = useState<string>('peninsula');
   const [nivelDetalle, setNivelDetalle] = useState<string>('TOTAL');
+  const [desglosarUpr, setDesglosarUpr] = useState<boolean>(false);
 
   const [availableCierres, setAvailableCierres] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   
-  // New state for selecting a unit when in MATRICIAL or UPR mode
-  const [selectedUnit, setSelectedUnit] = useState<string>('');
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const limit = 100;
 
   useEffect(() => {
     if (dateStr) {
@@ -47,7 +49,13 @@ export default function ReganecuViewerClient() {
     }
   }, [dateStr]);
 
-  const handleConsultar = async () => {
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+    setData(null);
+  }, [dateStr, cierre, region, nivelDetalle, desglosarUpr]);
+
+  const handleConsultar = async (targetPage: number = page) => {
     if (!dateStr) {
       alert('Por favor selecciona un mes');
       return;
@@ -59,23 +67,15 @@ export default function ReganecuViewerClient() {
     
     setLoading(true);
     try {
-      const matricial = (nivelDetalle === 'MATRICIAL' || nivelDetalle === 'UPR') ? 'SI' : 'NO';
-      const total = nivelDetalle === 'TOTAL' ? 'SI' : 'NO';
-      const upr = nivelDetalle === 'UPR' ? 'SI' : 'NO';
+      const matricial = nivelDetalle === 'MATRICIAL' ? 'SI' : 'NO';
+      const upr = desglosarUpr ? 'SI' : 'NO';
 
-      const res = await fetch(`/api/reganecu/query?date=${dateStr}&cierre=${cierre}&region=${region}&matricial=${matricial}&total=${total}&upr=${upr}`);
+      const res = await fetch(`/api/reganecu/query?date=${dateStr}&cierre=${cierre}&region=${region}&matricial=${matricial}&upr=${upr}&page=${targetPage}&limit=${limit}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error al obtener datos');
       
       setData(json);
-      if (json.units) {
-        const keys = Object.keys(json.units);
-        if (keys.length > 0) {
-          setSelectedUnit(keys[0]);
-        } else {
-          setSelectedUnit('');
-        }
-      }
+      setPage(targetPage);
     } catch (err: any) {
       console.error(err);
       alert('Error: ' + err.message);
@@ -84,22 +84,21 @@ export default function ReganecuViewerClient() {
     }
   };
 
-  // Determine what data to show in the table
-  let tableDataToShow: any[] = [];
-  let showUnitSelector = false;
-  let availableUnits: string[] = [];
-
-  if (data) {
-    if (data.units) {
-      showUnitSelector = true;
-      availableUnits = Object.keys(data.units).sort();
-      if (selectedUnit && data.units[selectedUnit]) {
-        tableDataToShow = data.units[selectedUnit];
-      }
-    } else if (data.data) {
-      tableDataToShow = data.data;
+  const handleExport = () => {
+    if (!dateStr || !cierre) {
+      alert('Faltan parámetros para exportar');
+      return;
     }
-  }
+    const matricial = nivelDetalle === 'MATRICIAL' ? 'SI' : 'NO';
+    const upr = desglosarUpr ? 'SI' : 'NO';
+    window.location.href = `/api/reganecu/export?date=${dateStr}&cierre=${cierre}&region=${region}&matricial=${matricial}&upr=${upr}`;
+  };
+
+  const formatNum = (num: number | undefined, currency: boolean = false) => {
+    if (!num || Math.abs(num) < 0.001) return '0,000';
+    if (currency) return num.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return num.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -156,28 +155,6 @@ export default function ReganecuViewerClient() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Tipo de region</label>
-          <select 
-            value={region}
-            onChange={e => setRegion(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg-base)',
-              color: 'var(--text-primary)',
-              minWidth: '150px'
-            }}
-          >
-            <option value="peninsula">peninsula</option>
-            <option value="baleares">baleares</option>
-            <option value="canarias">canarias</option>
-            <option value="ceuta">ceuta</option>
-            <option value="melilla">melilla</option>
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Nivel de Detalle</label>
           <select 
             value={nivelDetalle}
@@ -192,181 +169,198 @@ export default function ReganecuViewerClient() {
             }}
           >
             <option value="TOTAL">Total Empresa</option>
-            <option value="MATRICIAL">Matricial (Por Unidad)</option>
-            <option value="UPR">Por Unidad y UPR</option>
+            <option value="MATRICIAL">Matricial</option>
           </select>
         </div>
 
-          <button 
-            onClick={handleConsultar}
-            disabled={loading}
-            style={{
-              padding: '10px 24px',
-              borderRadius: '8px',
-              border: 'none',
-              background: 'var(--text-primary)',
-              color: 'var(--bg-base)',
-              fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginLeft: 'auto'
-            }}
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : 'Consultar Datos'}
-          </button>
+        {nivelDetalle === 'MATRICIAL' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '10px' }}>
+            <input 
+              type="checkbox" 
+              id="upr_check" 
+              checked={desglosarUpr} 
+              onChange={e => setDesglosarUpr(e.target.checked)} 
+              style={{ width: '16px', height: '16px' }}
+            />
+            <label htmlFor="upr_check" style={{ fontSize: '0.9rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+              Desglosar por UPR
+            </label>
+          </div>
+        )}
+
+        <button 
+          onClick={() => handleConsultar(1)}
+          disabled={loading}
+          style={{
+            padding: '10px 24px',
+            borderRadius: '8px',
+            border: 'none',
+            background: 'var(--text-primary)',
+            color: 'var(--bg-base)',
+            fontWeight: 600,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginLeft: 'auto'
+          }}
+        >
+          {loading ? <Loader2 size={18} className="animate-spin" /> : 'Consultar Datos'}
+        </button>
       </div>
 
       {/* RESULTS AREA */}
       {data ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
+              Resultados del mes ({data.rawRecords || 0} registros procesados)
+            </h2>
+            <button 
+              onClick={handleExport}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Download size={16} /> Exportar a Excel
+            </button>
+          </div>
+
           <div style={{ 
             background: 'var(--bg-card)', 
             padding: '24px', 
             borderRadius: '12px', 
             border: '1px solid var(--border)' 
           }}>
-            <h2 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Resultados del mes</h2>
             
-            {showUnitSelector && availableUnits.length > 0 && (
-              <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                  Seleccionar {nivelDetalle === 'UPR' ? 'UPR' : 'Unidad de Programación'}:
-                </label>
-                <select 
-                  value={selectedUnit}
-                  onChange={e => setSelectedUnit(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-base)',
-                    color: 'var(--text-primary)',
-                    minWidth: '250px'
-                  }}
-                >
-                  {availableUnits.map(u => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {Array.isArray(tableDataToShow) && tableDataToShow.length > 0 ? (
+            {Array.isArray(data.data) && data.data.length > 0 ? (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right' }}>
                   <thead>
                     <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                      <th rowSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
-                      <th colSpan={3} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Energía (MWh)</th>
-                      <th colSpan={3} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Importe (EUR)</th>
-                      <th colSpan={2} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Precio Medio (EUR/MWh)</th>
+                      {nivelDetalle === 'MATRICIAL' && (
+                        <>
+                          <th rowSpan={2} style={{ padding: '12px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Día</th>
+                          <th rowSpan={2} style={{ padding: '12px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Periodo</th>
+                          <th rowSpan={2} style={{ padding: '12px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Unidad</th>
+                          {desglosarUpr && <th rowSpan={2} style={{ padding: '12px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>UPR</th>}
+                        </>
+                      )}
+                      
+                      <th rowSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
+                      
+                      <th colSpan={3} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Energía (MWh)</th>
+                      <th colSpan={3} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Importe (EUR)</th>
+                      <th colSpan={2} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Precio Medio (EUR/MWh)</th>
                     </tr>
                     <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '2px solid rgba(59, 130, 246, 0.3)' }}>
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ventas</th>
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Compras</th>
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ventas</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Compras</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
                       
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Derechos Cobro</th>
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Obligaciones Pago</th>
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Der. Cobro</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Oblig. Pago</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
                       
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Venta</th>
-                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Compra</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Venta</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Compra</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(() => {
-                      // Order specific concepts to appear first if they exist
-                      const conceptOrder = ['BS3', 'CBM', 'RAD3', 'CAD', 'DSV', 'PC3'];
-                      
-                      const orderedData = [...tableDataToShow].sort((a, b) => {
-                        const aIdx = conceptOrder.indexOf(a.concept);
-                        const bIdx = conceptOrder.indexOf(b.concept);
-                        
-                        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-                        if (aIdx !== -1) return -1;
-                        if (bIdx !== -1) return 1;
-                        return a.concept.localeCompare(b.concept);
-                      });
+                    {data.data.map((row: any, i: number) => {
+                      const prVenta = row.energyVentas ? (row.costDerechos / row.energyVentas) : 0;
+                      const prCompra = row.energyCompras ? (row.costObligaciones / row.energyCompras) : 0;
 
-                      const formatNum = (num: number | undefined, currency: boolean = false) => {
-                        if (!num || Math.abs(num) < 0.001) return '';
-                        if (currency) return num.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                        return num.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-                      };
-
-                      let totalVentas = 0;
-                      let totalCompras = 0;
-                      let totalSaldoEn = 0;
-                      let totalDer = 0;
-                      let totalObl = 0;
-                      let totalSaldoIm = 0;
-
-                      orderedData.forEach(row => {
-                        totalVentas += (row.energyVentas || 0);
-                        totalCompras += (row.energyCompras || 0);
-                        totalSaldoEn += (row.energySaldo || 0);
-                        totalDer += (row.costDerechos || 0);
-                        totalObl += (row.costObligaciones || 0);
-                        totalSaldoIm += (row.costSaldo || 0);
-                      });
+                      const desc = CONCEPT_MAP[row.concept];
 
                       return (
-                        <>
-                          {orderedData.map((row: any) => {
-                            const prVenta = row.energyVentas ? (row.costDerechos / row.energyVentas) : 0;
-                            const prCompra = row.energyCompras ? (row.costObligaciones / row.energyCompras) : 0;
-
-                            const saldoEn = (row.energyVentas || 0) - (row.energyCompras || 0);
-                            const saldoIm = (row.costDerechos || 0) - (row.costObligaciones || 0);
-
-                            const desc = CONCEPT_MAP[row.concept];
-
-                            return (
-                              <tr key={row.concept} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s', background: row.concept === 'DSV' ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}>
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
-                                  {desc ? desc : row.concept}
-                                </td>
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)' }}>{formatNum(row.energyVentas)}</td>
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)' }}>{formatNum(row.energyCompras)}</td>
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(saldoEn)}</td>
-                                
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)' }}>{formatNum(row.costDerechos, true)}</td>
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)' }}>{formatNum(row.costObligaciones, true)}</td>
-                                <td style={{ padding: '12px 20px', color: saldoIm < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(saldoIm, true)}</td>
-                                
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)' }}>{formatNum(prVenta, true)}</td>
-                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)' }}>{formatNum(prCompra, true)}</td>
-                              </tr>
-                            );
-                          })}
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s', background: row.concept === 'DSV' ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}>
                           
-                          {/* Total Row */}
-                          <tr style={{ background: 'rgba(255,255,255,0.02)', borderTop: '2px solid var(--border)', fontWeight: 600 }}>
-                            <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid var(--border)' }}>
-                              Total
-                            </td>
-                            <td style={{ padding: '12px' }}>{formatNum(totalVentas)}</td>
-                            <td style={{ padding: '12px' }}>{formatNum(totalCompras)}</td>
-                            <td style={{ padding: '12px', borderRight: '1px solid var(--border)' }}>{formatNum(totalSaldoEn)}</td>
-                            
-                            <td style={{ padding: '12px' }}>{formatNum(totalDer, true)}</td>
-                            <td style={{ padding: '12px' }}>{formatNum(totalObl, true)}</td>
-                            <td style={{ padding: '12px', borderRight: '1px solid var(--border)', color: totalSaldoIm < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(totalSaldoIm, true)}</td>
-                            
-                            <td colSpan={2} style={{ padding: '12px' }}></td>
-                          </tr>
-                        </>
+                          {nivelDetalle === 'MATRICIAL' && (
+                            <>
+                              <td style={{ padding: '12px 10px', color: 'var(--text-primary)', textAlign: 'left', fontSize: '0.85rem' }}>{row.date}</td>
+                              <td style={{ padding: '12px 10px', color: 'var(--text-primary)', textAlign: 'center', fontSize: '0.85rem' }}>{row.period}</td>
+                              <td style={{ padding: '12px 10px', color: 'var(--text-primary)', textAlign: 'left', fontSize: '0.85rem', fontWeight: 600 }}>{row.unit}</td>
+                              {desglosarUpr && <td style={{ padding: '12px 10px', color: 'var(--text-primary)', textAlign: 'left', fontSize: '0.85rem' }}>{row.upr}</td>}
+                            </>
+                          )}
+                          
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+                            {desc ? desc : row.concept}
+                          </td>
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)' }}>{formatNum(row.energyVentas)}</td>
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)' }}>{formatNum(row.energyCompras)}</td>
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(row.energySaldo)}</td>
+                          
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)' }}>{formatNum(row.costDerechos, true)}</td>
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)' }}>{formatNum(row.costObligaciones, true)}</td>
+                          <td style={{ padding: '12px 10px', color: (row.costSaldo || 0) < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(row.costSaldo, true)}</td>
+                          
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)' }}>{formatNum(prVenta, true)}</td>
+                          <td style={{ padding: '12px 10px', color: 'var(--text-primary)' }}>{formatNum(prCompra, true)}</td>
+                        </tr>
                       );
-                    })()}
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
               <p style={{ color: 'var(--text-muted)' }}>No se encontraron datos para los filtros seleccionados.</p>
             )}
+
+            {/* Pagination Controls */}
+            {nivelDetalle === 'MATRICIAL' && data.pagination && data.pagination.totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '24px' }}>
+                <button 
+                  onClick={() => handleConsultar(page - 1)}
+                  disabled={page === 1 || loading}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-base)',
+                    color: (page === 1 || loading) ? 'var(--text-muted)' : 'var(--text-primary)',
+                    cursor: (page === 1 || loading) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <ChevronLeft size={18} /> Anterior
+                </button>
+                
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  Página <strong>{page}</strong> de {data.pagination.totalPages}
+                </span>
+
+                <button 
+                  onClick={() => handleConsultar(page + 1)}
+                  disabled={page === data.pagination.totalPages || loading}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-base)',
+                    color: (page === data.pagination.totalPages || loading) ? 'var(--text-muted)' : 'var(--text-primary)',
+                    cursor: (page === data.pagination.totalPages || loading) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  Siguiente <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
+            
           </div>
         </div>
       ) : (

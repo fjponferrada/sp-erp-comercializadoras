@@ -60,12 +60,10 @@ export async function POST(req: Request) {
       const lines = content.split('\n');
       
       // Structure to aggregate data:
-      // We need to group by Matricial(unit), UPR, and Total
-      // key: 'TOTAL', 'MATRICIAL', 'UPR'
+      // We need to group by Total (aggregated) and Matricial (raw QH records)
       const recordsMap: Record<string, any> = {
         'TOTAL': { total: true, matricial: false, upr: false, jsonData: {} },
-        'MATRICIAL': { total: false, matricial: true, upr: false, jsonData: {} },
-        'UPR': { total: false, matricial: true, upr: true, jsonData: {} }
+        'MATRICIAL': { total: false, matricial: true, upr: false, jsonData: [] }
       };
 
       for (const line of lines) {
@@ -83,53 +81,48 @@ export async function POST(req: Request) {
         // sometimes the file starts with header lines, check if it's data
         if (!concept || concept === '' || concept.length > 20) continue;
 
-        // helper to add to jsonData
-        const addData = (group: string, key?: string) => {
-          let target = recordsMap[group].jsonData;
-          if (key) {
-            if (!target[key]) target[key] = {};
-            target = target[key];
-          }
-
-          if (!target[concept]) {
-            target[concept] = { 
-              energyVentas: 0, energyCompras: 0, 
-              costDerechos: 0, costObligaciones: 0, 
-              count: 0 
-            };
-          }
-          let stats = target[concept];
-          let signCost = parseFloat(parts[14]) || 1;
-          let signEnergy = parseFloat(parts[15]);
-          if (isNaN(signEnergy) || signEnergy === 0) {
-            signEnergy = signCost;
-          }
-
-          if (signEnergy === 1) {
-            stats.energyVentas += energy;
-          } else {
-            stats.energyCompras += energy;
-          }
-
-          if (signCost === 1) {
-            stats.costDerechos += cost;
-          } else {
-            stats.costObligaciones += cost;
-          }
-          stats.count += 1;
-        };
-
-        // Add to TOTAL
-        addData('TOTAL');
-        
-        // Add to MATRICIAL (Unit level)
-        if (unit) {
-          addData('MATRICIAL', unit);
+        let signCost = parseFloat(parts[14]) || 1;
+        let signEnergy = parseFloat(parts[15]);
+        if (isNaN(signEnergy) || signEnergy === 0) {
+          signEnergy = signCost;
         }
-        
-        // Add to UPR (UPR level)
-        if (upr) {
-          addData('UPR', upr);
+
+        // Add to TOTAL (aggregated)
+        let target = recordsMap['TOTAL'].jsonData;
+        if (!target[concept]) {
+          target[concept] = { 
+            energyVentas: 0, energyCompras: 0, 
+            costDerechos: 0, costObligaciones: 0, 
+            count: 0 
+          };
+        }
+        let stats = target[concept];
+
+        if (signEnergy === 1) {
+          stats.energyVentas += energy;
+        } else {
+          stats.energyCompras += energy;
+        }
+
+        if (signCost === 1) {
+          stats.costDerechos += cost;
+        } else {
+          stats.costObligaciones += cost;
+        }
+        stats.count += 1;
+
+        // Add to MATRICIAL (raw records)
+        if (unit) {
+          recordsMap['MATRICIAL'].jsonData.push({
+            period: parseInt(parts[1]) || 0,
+            unit: unit,
+            upr: upr,
+            concept: concept,
+            energyVentas: signEnergy === 1 ? energy : 0,
+            energyCompras: signEnergy !== 1 ? energy : 0,
+            costDerechos: signCost === 1 ? cost : 0,
+            costObligaciones: signCost !== 1 ? cost : 0,
+          });
         }
       }
 
@@ -138,7 +131,11 @@ export async function POST(req: Request) {
         const rec = recordsMap[key];
         
         // Only save if there's actual data
-        if (Object.keys(rec.jsonData).length === 0) continue;
+        if (Array.isArray(rec.jsonData)) {
+          if (rec.jsonData.length === 0) continue;
+        } else {
+          if (Object.keys(rec.jsonData).length === 0) continue;
+        }
 
         await prisma.reganecuData.upsert({
           where: {
