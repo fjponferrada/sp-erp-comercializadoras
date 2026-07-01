@@ -47,20 +47,7 @@ export async function GET(req: Request) {
       }
     });
 
-    // Deduplicate by date: Prefer 'QH' over 'H' if both exist for the same day
-    const recordsByDate = new Map<string, any>();
-    rawRecords.forEach(rec => {
-      const d = rec.date.toISOString().split('T')[0];
-      if (!recordsByDate.has(d)) {
-        recordsByDate.set(d, rec);
-      } else {
-        const existing = recordsByDate.get(d);
-        if (rec.resolution === 'QH' && existing.resolution !== 'QH') {
-          recordsByDate.set(d, rec);
-        }
-      }
-    });
-    const records = Array.from(recordsByDate.values());
+    const records = rawRecords;
 
     if (!matricial) {
       // TOTAL EMPRESA: Aggregate monthly data by concept
