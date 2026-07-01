@@ -101,6 +101,7 @@ export default function ReganecuViewerClient() {
           <select 
             value={cierre}
             onChange={e => setCierre(e.target.value)}
+            disabled={availableCierres.length === 0}
             style={{
               padding: '8px 12px',
               borderRadius: '6px',
@@ -110,12 +111,10 @@ export default function ReganecuViewerClient() {
               minWidth: '150px'
             }}
           >
-            <option value="C1">C1</option>
-            <option value="C2">C2</option>
-            <option value="C3">C3</option>
-            <option value="C4">C4</option>
-            <option value="C5">C5</option>
-            <option value="C6">C6</option>
+            {availableCierres.length === 0 && <option value="">-</option>}
+            {availableCierres.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
 
