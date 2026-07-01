@@ -375,8 +375,6 @@ export default function ReganecuViewerClient() {
           <p>Selecciona los filtros y haz clic en "Consultar Datos"</p>
         </div>
       )}
-      </div>
-
     </div>
   );
 }
