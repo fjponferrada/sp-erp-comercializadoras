@@ -250,6 +250,7 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
             <thead>
               <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
                 <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Mes</th>
+                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OMIE</th>
                 <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio RESTRICCIONES</th>
                 <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OS</th>
               </tr>
@@ -261,6 +262,7 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
                     <Calendar size={16} color="var(--text-muted)" />
                     {row.month}
                   </td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.omie} €/MWh</td>
                   <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.restricciones} €/MWh</td>
                   <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.os} €/MWh</td>
                 </tr>
