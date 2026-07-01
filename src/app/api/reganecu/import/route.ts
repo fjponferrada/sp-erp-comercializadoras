@@ -78,6 +78,10 @@ export async function POST(req: Request) {
         let cost = parseFloat(parts[7]) || 0;
         let concept = parts[10].trim();
         let upr = parts[12] ? parts[12].trim() : '';
+        let sign = parseFloat(parts[14]) || 1;
+
+        energy = energy * sign;
+        cost = cost * sign;
 
         // sometimes the file starts with header lines, check if it's data
         if (!concept || concept === '' || concept.length > 20) continue;

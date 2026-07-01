@@ -1,7 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
+
+const CONCEPT_MAP: Record<string, string> = {
+  'BS3': 'Banda Secundaria CF',
+  'RAD3': 'Coste a BRP servicio de respuesta activa',
+  'CAD': 'Costes asignados a la demanda',
+  'PC3': 'Pagos capacidad (Financiación)',
+  'DSV': 'Desvíos',
+  'CBM': 'Contratos bilaterales mercado'
+};
 
 export default function ReganecuViewerClient() {
   const [dateStr, setDateStr] = useState<string>('');
@@ -210,6 +219,11 @@ export default function ReganecuViewerClient() {
                         <tr key={row.concept} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
                           <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 600 }}>
                             {row.concept}
+                            {CONCEPT_MAP[row.concept] && (
+                              <span style={{ marginLeft: '8px', fontWeight: 400, color: 'var(--text-secondary)' }}>
+                                - {CONCEPT_MAP[row.concept]}
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding: '16px 20px', color: 'var(--text-primary)' }}>
                             {row.energySum ? row.energySum.toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '0'}
