@@ -73,15 +73,12 @@ export async function POST(req: Request) {
         if (parts.length < 13) continue;
         
         let unit = parts[2].trim();
-        let energy = parseFloat(parts[3]) || 0;
+        let energy = Math.abs(parseFloat(parts[3]) || 0); // Keep positive for separating
         let price = parseFloat(parts[5]) || 0;
-        let cost = parseFloat(parts[7]) || 0;
+        let cost = Math.abs(parseFloat(parts[7]) || 0); // Keep positive
         let concept = parts[10].trim();
         let upr = parts[12] ? parts[12].trim() : '';
         let sign = parseFloat(parts[14]) || 1;
-
-        energy = energy * sign;
-        cost = cost * sign;
 
         // sometimes the file starts with header lines, check if it's data
         if (!concept || concept === '' || concept.length > 20) continue;
@@ -89,11 +86,21 @@ export async function POST(req: Request) {
         // helper to add to jsonData
         const addData = (group: string) => {
           if (!recordsMap[group].jsonData[concept]) {
-            recordsMap[group].jsonData[concept] = { energySum: 0, costSum: 0, count: 0 };
+            recordsMap[group].jsonData[concept] = { 
+              energyVentas: 0, energyCompras: 0, 
+              costDerechos: 0, costObligaciones: 0, 
+              count: 0 
+            };
           }
-          recordsMap[group].jsonData[concept].energySum += energy;
-          recordsMap[group].jsonData[concept].costSum += cost;
-          recordsMap[group].jsonData[concept].count += 1;
+          let stats = recordsMap[group].jsonData[concept];
+          if (sign === 1) {
+            stats.energyVentas += energy;
+            stats.costDerechos += cost;
+          } else {
+            stats.energyCompras += energy;
+            stats.costObligaciones += cost;
+          }
+          stats.count += 1;
         };
 
         // Add to TOTAL

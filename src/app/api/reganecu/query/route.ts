@@ -47,28 +47,41 @@ export async function GET(req: Request) {
     });
 
     // Aggregate monthly data by concept
-    const aggregatedConcepts: Record<string, { energySum: number, costSum: number, count: number }> = {};
+    const aggregatedConcepts: Record<string, { energyVentas: number, energyCompras: number, costDerechos: number, costObligaciones: number, count: number }> = {};
 
     records.forEach(rec => {
-      const data = rec.jsonData as Record<string, { energySum: number, costSum: number, count: number }>;
+      const data = rec.jsonData as Record<string, any>;
       for (const concept of Object.keys(data)) {
         if (!aggregatedConcepts[concept]) {
-          aggregatedConcepts[concept] = { energySum: 0, costSum: 0, count: 0 };
+          aggregatedConcepts[concept] = { energyVentas: 0, energyCompras: 0, costDerechos: 0, costObligaciones: 0, count: 0 };
         }
         
         const vals = data[concept];
-        aggregatedConcepts[concept].energySum += (vals.energySum || 0);
-        aggregatedConcepts[concept].costSum += (vals.costSum || 0);
+        // Handle both old format (energySum, costSum) and new format
+        if (vals.energyVentas !== undefined) {
+          aggregatedConcepts[concept].energyVentas += (vals.energyVentas || 0);
+          aggregatedConcepts[concept].energyCompras += (vals.energyCompras || 0);
+          aggregatedConcepts[concept].costDerechos += (vals.costDerechos || 0);
+          aggregatedConcepts[concept].costObligaciones += (vals.costObligaciones || 0);
+        } else {
+          // Old data logic fallback: Assume everything is Ventas/Derechos just to not crash
+          aggregatedConcepts[concept].energyVentas += (vals.energySum || 0);
+          aggregatedConcepts[concept].costDerechos += (vals.costSum || 0);
+        }
+        
         aggregatedConcepts[concept].count += (vals.count || 0);
       }
     });
 
-    // Prepare table view data
-    const tableData = Object.keys(aggregatedConcepts).map(concept => ({
-      concept,
-      energySum: aggregatedConcepts[concept].energySum,
-      costSum: aggregatedConcepts[concept].costSum,
-      count: aggregatedConcepts[concept].count
+    const tableData = Object.keys(aggregatedConcepts).map(c => ({
+      concept: c,
+      energyVentas: aggregatedConcepts[c].energyVentas,
+      energyCompras: aggregatedConcepts[c].energyCompras,
+      energySaldo: aggregatedConcepts[c].energyVentas - aggregatedConcepts[c].energyCompras,
+      costDerechos: aggregatedConcepts[c].costDerechos,
+      costObligaciones: aggregatedConcepts[c].costObligaciones,
+      costSaldo: aggregatedConcepts[c].costDerechos - aggregatedConcepts[c].costObligaciones,
+      count: aggregatedConcepts[c].count
     })).sort((a, b) => a.concept.localeCompare(b.concept));
 
     return NextResponse.json({ data: tableData, rawRecords: records.length });

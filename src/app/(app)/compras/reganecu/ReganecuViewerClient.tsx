@@ -204,39 +204,103 @@ export default function ReganecuViewerClient() {
             
             {Array.isArray(data.data) && data.data.length > 0 ? (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <thead>
-                    <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', minWidth: '150px' }}>Concepto</th>
-                      <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Energía Sumada (MWh)</th>
-                      <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Importe Sumado (€)</th>
-                      <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Registros Contados</th>
+                    <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                      <th rowSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', minWidth: '250px', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
+                      <th colSpan={3} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Energía (MWh)</th>
+                      <th colSpan={3} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Importe (EUR)</th>
+                      <th colSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', textAlign: 'center' }}>Precio (EUR/MWh)</th>
+                    </tr>
+                    <tr style={{ background: 'rgba(59, 130, 246, 0.05)', borderBottom: '1px solid var(--border)' }}>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Ventas</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Compras</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Derechos de cobro</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Obligaciones de pago</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Venta</th>
+                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Compra</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.data.map((row: any) => {
+                    {(() => {
+                      const REE_ORDER = ['BS3', 'CBM', 'RAD3', 'CAD', 'DSV', 'PC3'];
+                      const orderedData = [...data.data].sort((a, b) => {
+                        const idxA = REE_ORDER.indexOf(a.concept);
+                        const idxB = REE_ORDER.indexOf(b.concept);
+                        if (idxA === -1 && idxB === -1) return a.concept.localeCompare(b.concept);
+                        if (idxA === -1) return 1;
+                        if (idxB === -1) return -1;
+                        return idxA - idxB;
+                      });
+
+                      const formatNum = (num: number | undefined, currency: boolean = false) => {
+                        if (!num || Math.abs(num) < 0.001) return '';
+                        if (currency) return num.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return num.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                      };
+
+                      let totalVentas = 0;
+                      let totalCompras = 0;
+                      let totalSaldoEn = 0;
+                      let totalDer = 0;
+                      let totalObl = 0;
+                      let totalSaldoIm = 0;
+
                       return (
-                        <tr key={row.concept} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
-                          <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 600 }}>
-                            {row.concept}
-                            {CONCEPT_MAP[row.concept] && (
-                              <span style={{ marginLeft: '8px', fontWeight: 400, color: 'var(--text-secondary)' }}>
-                                - {CONCEPT_MAP[row.concept]}
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ padding: '16px 20px', color: 'var(--text-primary)' }}>
-                            {row.energySum ? row.energySum.toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '0'}
-                          </td>
-                          <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                            {row.costSum ? row.costSum.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '0 €'}
-                          </td>
-                          <td style={{ padding: '16px 20px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                            {row.count} líneas proc.
-                          </td>
-                        </tr>
+                        <>
+                          {orderedData.map((row: any) => {
+                            totalVentas += (row.energyVentas || 0);
+                            totalCompras += (row.energyCompras || 0);
+                            totalSaldoEn += (row.energySaldo || 0);
+                            totalDer += (row.costDerechos || 0);
+                            totalObl += (row.costObligaciones || 0);
+                            totalSaldoIm += (row.costSaldo || 0);
+
+                            const prVenta = row.energyVentas ? (row.costDerechos / row.energyVentas) : 0;
+                            const prCompra = row.energyCompras ? (row.costObligaciones / row.energyCompras) : 0;
+
+                            const isDSV = row.concept === 'DSV';
+                            const desc = CONCEPT_MAP[row.concept];
+
+                            return (
+                              <tr key={row.concept} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s', background: row.concept === 'DSV' ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}>
+                                <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid var(--border)' }}>
+                                  {desc ? desc : row.concept}
+                                </td>
+                                <td style={{ padding: '12px' }}>{formatNum(row.energyVentas)}</td>
+                                <td style={{ padding: '12px' }}>{formatNum(row.energyCompras)}</td>
+                                <td style={{ padding: '12px', borderRight: '1px solid var(--border)' }}>{formatNum(row.energySaldo)}</td>
+                                
+                                <td style={{ padding: '12px' }}>{formatNum(row.costDerechos, true)}</td>
+                                <td style={{ padding: '12px' }}>{formatNum(row.costObligaciones, true)}</td>
+                                <td style={{ padding: '12px', borderRight: '1px solid var(--border)', color: (row.costSaldo || 0) < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(row.costSaldo, true)}</td>
+                                
+                                <td style={{ padding: '12px' }}>{formatNum(prVenta, true)}</td>
+                                <td style={{ padding: '12px' }}>{formatNum(prCompra, true)}</td>
+                              </tr>
+                            );
+                          })}
+                          
+                          {/* Total Row */}
+                          <tr style={{ background: 'rgba(255,255,255,0.02)', borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                            <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid var(--border)' }}>
+                              Total
+                            </td>
+                            <td style={{ padding: '12px' }}>{formatNum(totalVentas)}</td>
+                            <td style={{ padding: '12px' }}>{formatNum(totalCompras)}</td>
+                            <td style={{ padding: '12px', borderRight: '1px solid var(--border)' }}>{formatNum(totalSaldoEn)}</td>
+                            
+                            <td style={{ padding: '12px' }}>{formatNum(totalDer, true)}</td>
+                            <td style={{ padding: '12px' }}>{formatNum(totalObl, true)}</td>
+                            <td style={{ padding: '12px', borderRight: '1px solid var(--border)', color: totalSaldoIm < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(totalSaldoIm, true)}</td>
+                            
+                            <td colSpan={2} style={{ padding: '12px' }}></td>
+                          </tr>
+                        </>
                       );
-                    })}
+                    })()}
                   </tbody>
                 </table>
               </div>
