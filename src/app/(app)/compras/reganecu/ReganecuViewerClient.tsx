@@ -1,27 +1,56 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 
 export default function ReganecuViewerClient() {
   const [dateStr, setDateStr] = useState<string>('');
-  const [cierre, setCierre] = useState<string>('C2');
+  const [cierre, setCierre] = useState<string>('');
   const [region, setRegion] = useState<string>('peninsula');
-  const [matricial, setMatricial] = useState<string>('NO');
-  const [total, setTotal] = useState<string>('NO');
-  const [upr, setUpr] = useState<string>('NO');
+  const [nivelDetalle, setNivelDetalle] = useState<string>('TOTAL');
 
+  const [availableCierres, setAvailableCierres] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
+
+  useEffect(() => {
+    if (dateStr) {
+      fetch(`/api/reganecu/cierres?date=${dateStr}`)
+        .then(res => res.json())
+        .then(json => {
+          if (json.cierres && json.cierres.length > 0) {
+            setAvailableCierres(json.cierres);
+            if (!json.cierres.includes(cierre)) {
+              setCierre(json.cierres[0]);
+            }
+          } else {
+            setAvailableCierres([]);
+            setCierre('');
+          }
+        })
+        .catch(err => console.error(err));
+    } else {
+      setAvailableCierres([]);
+      setCierre('');
+    }
+  }, [dateStr]);
 
   const handleConsultar = async () => {
     if (!dateStr) {
       alert('Por favor selecciona un mes');
       return;
     }
+    if (!cierre) {
+      alert('No hay cierres disponibles para el mes seleccionado');
+      return;
+    }
     
     setLoading(true);
     try {
+      const matricial = (nivelDetalle === 'MATRICIAL' || nivelDetalle === 'UPR') ? 'SI' : 'NO';
+      const total = nivelDetalle === 'TOTAL' ? 'SI' : 'NO';
+      const upr = nivelDetalle === 'UPR' ? 'SI' : 'NO';
+
       const res = await fetch(`/api/reganecu/query?date=${dateStr}&cierre=${cierre}&region=${region}&matricial=${matricial}&total=${total}&upr=${upr}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Error al obtener datos');
@@ -113,82 +142,44 @@ export default function ReganecuViewerClient() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Matricial</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Nivel de Detalle</label>
           <select 
-            value={matricial}
-            onChange={e => setMatricial(e.target.value)}
+            value={nivelDetalle}
+            onChange={e => setNivelDetalle(e.target.value)}
             style={{
               padding: '8px 12px',
               borderRadius: '6px',
               border: '1px solid var(--border)',
               background: 'var(--bg-base)',
               color: 'var(--text-primary)',
-              minWidth: '100px'
+              minWidth: '160px'
             }}
           >
-            <option value="NO">NO</option>
-            <option value="SI">SI</option>
+            <option value="TOTAL">Total Empresa</option>
+            <option value="MATRICIAL">Matricial (Por Unidad)</option>
+            <option value="UPR">Por Unidad y UPR</option>
           </select>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Total</label>
-          <select 
-            value={total}
-            onChange={e => setTotal(e.target.value)}
+          <button 
+            onClick={handleConsultar}
+            disabled={loading}
             style={{
-              padding: '8px 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg-base)',
-              color: 'var(--text-primary)',
-              minWidth: '100px'
+              padding: '10px 24px',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'var(--text-primary)',
+              color: 'var(--bg-base)',
+              fontWeight: 600,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginLeft: 'auto'
             }}
           >
-            <option value="NO">NO</option>
-            <option value="SI">SI</option>
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Con UPR</label>
-          <select 
-            value={upr}
-            onChange={e => setUpr(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg-base)',
-              color: 'var(--text-primary)',
-              minWidth: '100px'
-            }}
-          >
-            <option value="NO">NO</option>
-            <option value="SI">SI</option>
-          </select>
-        </div>
-
-        <button
-          onClick={handleConsultar}
-          disabled={loading}
-          style={{
-            padding: '8px 24px',
-            backgroundColor: 'var(--red)', // matching the screenshot red button
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 600,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            opacity: loading ? 0.7 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            height: '38px' // matching inputs
-          }}
-        >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : 'Consultar Datos'}
-        </button>
+            {loading ? <Loader2 size={18} className="animate-spin" /> : 'Consultar Datos'}
+          </button>
 
       </div>
 

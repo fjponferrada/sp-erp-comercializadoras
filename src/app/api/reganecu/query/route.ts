@@ -39,8 +39,7 @@ export async function GET(req: Request) {
         region: region || 'peninsula',
         matricial: matricial,
         total: total,
-        upr: upr,
-        resolution: 'D'
+        upr: upr
       },
       orderBy: {
         date: 'asc'

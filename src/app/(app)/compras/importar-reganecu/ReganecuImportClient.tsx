@@ -58,11 +58,9 @@ export default function ReganecuImportClient() {
 
       setUploadResult({ type: 'success', message: data.message });
       setFile(null);
-      alert('Importación Completada: ' + data.message);
     } catch (err: any) {
       console.error(err);
       setUploadResult({ type: 'error', message: err.message });
-      alert('Error: ' + err.message);
     } finally {
       setIsUploading(false);
     }
