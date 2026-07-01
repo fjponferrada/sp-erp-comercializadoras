@@ -1,20 +1,7 @@
-import Topbar from '@/components/Topbar';
-import PreciosClient from './PreciosClient';
-import { prisma } from '@/lib/prisma';
-
+import { prisma } from './src/lib/prisma';
 import { format } from 'date-fns';
 
-export default async function PreciosComponentesPage() {
-  const componentRecords = await prisma.systemComponentPrice.findMany({
-    distinct: ['component'],
-    select: { component: true },
-    orderBy: { component: 'asc' }
-  });
-  
-  const components = componentRecords.map(r => r.component);
-  if (components.length === 0) components.push('OMIE');
-
-  // Fetch last 12 months of RESTRICCIONES and OS
+async function run() {
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
   twelveMonthsAgo.setDate(1);
@@ -39,6 +26,7 @@ export default async function PreciosComponentesPage() {
       };
     }
     
+    // Average of the 96 values for this day
     const values = row.values as number[];
     if (values && values.length > 0) {
       const dailyAvg = values.reduce((a, b) => a + b, 0) / values.length;
@@ -47,7 +35,7 @@ export default async function PreciosComponentesPage() {
     }
   }
 
-  const monthlyAveragesList = Object.keys(monthlyAverages).sort((a,b) => b.localeCompare(a)).map(month => {
+  const result = Object.keys(monthlyAverages).sort().map(month => {
     const data = monthlyAverages[month];
     return {
       month,
@@ -56,12 +44,6 @@ export default async function PreciosComponentesPage() {
     };
   });
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Topbar title="Precio Componentes" />
-      <div style={{ padding: '24px' }}>
-        <PreciosClient availableComponents={components} monthlyAverages={monthlyAveragesList} />
-      </div>
-    </div>
-  );
+  console.log(result);
 }
+run().finally(() => prisma['$disconnect']());

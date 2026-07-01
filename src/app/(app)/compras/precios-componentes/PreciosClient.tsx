@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Search, Download, BarChart2, Calendar, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 
-export default function PreciosClient({ availableComponents = ['OMIE'] }: { availableComponents?: string[] }) {
+export default function PreciosClient({ availableComponents = ['OMIE'], monthlyAverages = [] }: { availableComponents?: string[], monthlyAverages?: any[] }) {
   const [loading, setLoading] = useState(false);
   const [component, setComponent] = useState(availableComponents[0] || 'OMIE');
   const [startDate, setStartDate] = useState('');
@@ -239,6 +239,36 @@ export default function PreciosClient({ availableComponents = ['OMIE'] }: { avai
           </li>
         </ul>
       </div>
+
+      {monthlyAverages && monthlyAverages.length > 0 && (
+        <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginTop: '8px' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.1)' }}>
+            <BarChart2 size={20} color="var(--lime)" />
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Promedios Mensuales (Últimos 12 meses)</h3>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Mes</th>
+                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio RESTRICCIONES</th>
+                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyAverages.map((row: any) => (
+                <tr key={row.month} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={16} color="var(--text-muted)" />
+                    {row.month}
+                  </td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.restricciones} €/MWh</td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.os} €/MWh</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

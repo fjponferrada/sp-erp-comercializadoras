@@ -88,7 +88,8 @@ const baseNavGroups = [
     items: [
       { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' },
       { href: '/compras/ppas', icon: FileText, label: 'Gestión de PPAs' },
-      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' }
+      { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' },
+      { href: '/compras/reganecu', icon: FileText, label: 'Visor REGANECU' }
     ]
   },
   {
@@ -140,7 +141,8 @@ const baseNavGroups = [
     items: [
       { href: '/ajustes/importador', icon: UploadCloud, label: 'Importar CCH' },
       { href: '/importar-switching', icon: UploadCloud, label: 'Importador XML' },
-      { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' }
+      { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' },
+      { href: '/compras/importar-reganecu', icon: UploadCloud, label: 'Importar REGANECU' }
     ]
   },
   {

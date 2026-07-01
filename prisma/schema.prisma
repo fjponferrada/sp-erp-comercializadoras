@@ -1081,3 +1081,23 @@ model InternalInvoice {
 
   @@unique([invoiceNumber, companyId])
 }
+
+model ReganecuData {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date       // Fecha a la que pertenece (ej. 2026-03-01)
+  cierre      String   // Tipo de cierre: "C1", "C2", "C3", etc.
+  region      String   // Tipo de región: "peninsula", etc.
+  matricial   Boolean  @default(false)
+  total       Boolean  @default(false)
+  upr         Boolean  @default(false)
+  resolution  String   // "QH" (cuartohorario), "H" (horario), "D" (diario - liquidia)
+  
+  jsonData    Json
+  
+  fileName    String?  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date, cierre, region])
+  @@unique([date, cierre, region, matricial, total, upr, resolution])
+}

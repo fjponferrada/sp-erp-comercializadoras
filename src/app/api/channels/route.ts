@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         supportEmail: data.supportEmail,
         autoGenerateContract: data.autoGenerateContract,
         maxRenewalDays: data.maxRenewalDays,
+        commissionTierId: data.commissionTierId || null,
         brandId: user.brandId,
         ...(data.productIds && data.productIds.length > 0 ? { products: { connect: data.productIds.map((pid: string) => ({ id: pid })) } } : {})
       }
