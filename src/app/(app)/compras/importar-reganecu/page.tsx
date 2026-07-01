@@ -95,6 +95,7 @@ export default async function ImportarReganecuPage() {
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
               Subida de Archivos ZIP (REGANECU)
             </h2>
+          </div>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.875rem' }}>
             Sube un archivo ZIP que contenga liquidaciones particulares de REE (ej. C2_liquidacion_AEDEN_202603.1.zip). También puedes subir un ZIP que contenga varios archivos ZIP de liquidaciones en su interior.
           </p>
