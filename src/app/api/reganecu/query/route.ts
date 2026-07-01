@@ -47,7 +47,32 @@ export async function GET(req: Request) {
       }
     });
 
-    const records = rawRecords;
+    const groupedByDate = new Map<string, any[]>();
+    rawRecords.forEach(rec => {
+      const d = rec.date.toISOString().split('T')[0];
+      if (!groupedByDate.has(d)) groupedByDate.set(d, []);
+      groupedByDate.get(d)!.push(rec);
+    });
+
+    const records = Array.from(groupedByDate.values()).map(recs => {
+      const hRec = recs.find(r => r.resolution === 'H');
+      const qhRec = recs.find(r => r.resolution === 'QH');
+
+      if (matricial) {
+        return qhRec || hRec!;
+      } else {
+        if (qhRec && hRec) {
+          return {
+            ...qhRec,
+            jsonData: {
+              ...(hRec.jsonData as any),
+              ...(qhRec.jsonData as any)
+            }
+          };
+        }
+        return qhRec || hRec!;
+      }
+    });
 
     if (!matricial) {
       // TOTAL EMPRESA: Aggregate monthly data by concept
