@@ -34,7 +34,8 @@ import {
   Briefcase,
   Wallet,
   ZapOff,
-  BarChart2
+  BarChart2,
+  Database
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -89,7 +90,8 @@ const baseNavGroups = [
       { href: '/compras', icon: Zap, label: 'Predicción y Auditoría' },
       { href: '/compras/ppas', icon: FileText, label: 'Gestión de PPAs' },
       { href: '/compras/precios-componentes', icon: BarChart2, label: 'Precio Componentes' },
-      { href: '/compras/reganecu', icon: FileText, label: 'Visor REGANECU' }
+      { href: '/compras/reganecu', icon: FileText, label: 'Visor REGANECU' },
+      { href: '/compras/simel', icon: Database, label: 'Visor SIMEL' }
     ]
   },
   {
