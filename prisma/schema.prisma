@@ -1101,3 +1101,14 @@ model ReganecuData {
   @@index([date, cierre, region])
   @@unique([date, cierre, region, matricial, total, upr, resolution])
 }
+
+model PendingEnergySummary {
+  id                      String   @id @default(cuid())
+  month                   String   @unique // format "yyyy-MM"
+  cierre                  String
+  estimatedBcMwh          Float
+  liquidatedMwh           Float
+  pendingMwh              Float
+  estimatedPendingCostEur Float
+  updatedAt               DateTime @updatedAt
+}
