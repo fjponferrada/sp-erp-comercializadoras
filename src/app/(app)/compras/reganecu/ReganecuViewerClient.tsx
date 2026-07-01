@@ -368,12 +368,13 @@ export default function ReganecuViewerClient() {
               <p style={{ color: 'var(--text-muted)' }}>No se encontraron datos para los filtros seleccionados.</p>
             )}
           </div>
-        ) : (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'var(--text-muted)' }}>
-            <Search size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
-            <p>Selecciona los filtros y haz clic en "Consultar Datos"</p>
-          </div>
-        )}
+        </div>
+      ) : (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'var(--text-muted)' }}>
+          <Search size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+          <p>Selecciona los filtros y haz clic en "Consultar Datos"</p>
+        </div>
+      )}
       </div>
 
     </div>
