@@ -3,12 +3,12 @@ import { prisma } from '../lib/prisma';
 import { startOfMonth, subMonths, endOfMonth, format } from 'date-fns';
 
 async function main() {
-  console.log('Iniciando cálculo de energía pendiente...');
+  console.log('Iniciando cálculo de energía pendiente con cálculo horario exacto...');
   const today = new Date();
   const endRange = endOfMonth(today);
   const startRange = startOfMonth(subMonths(today, 11));
 
-  // 1. Fetch ReganecuData for CAD, total: true, matricial: false
+  // 1. Fetch ReganecuData for CAD, total: true, matricial: false to find the latest closure
   const reganecuRecords = await prisma.reganecuData.findMany({
     where: {
       date: { gte: startRange, lte: endRange },
@@ -56,11 +56,11 @@ async function main() {
     }
   }
 
-  // 3. Fetch SystemComponentPrice for Losses, OMIE, OS, RESTRICCIONES
+  // 3. Fetch SystemComponentPrice for Losses
   const prices = await prisma.systemComponentPrice.findMany({
     where: {
       date: { gte: startRange, lte: endRange },
-      component: { in: ['OMIE', 'OS', 'RESTRICCIONES', 'PERD_20TD', 'PERD_30TD', 'PERD_61TD'] }
+      component: { in: ['PERD_20TD', 'PERD_30TD', 'PERD_61TD'] }
     }
   });
 
@@ -83,46 +83,58 @@ async function main() {
       cierreBase = regRecord.cierre;
     }
 
-    // Fetch matricial ReganecuData for this month and this closure to extract DSV prices
+    // Fetch matricial ReganecuData for this month and this closure to extract DSV prices and CAD energy
     const reganecuMatricialRecords = await prisma.reganecuData.findMany({
       where: {
         date: { gte: currentMonthStart, lte: currentMonthEnd },
         cierre: cierreBase,
         matricial: true,
-        resolution: 'H' // Focus on hourly first, maybe fallback later if needed
+        resolution: 'H'
       }
     });
 
     const dsvPriceByDayPeriod = new Map<string, number>();
+    const cadEnergyByDayPeriod = new Map<string, number>();
     
     for (const matRecord of reganecuMatricialRecords) {
       const dayKey = format(matRecord.date, 'yyyy-MM-dd');
       const jData = matRecord.jsonData as any[];
       if (Array.isArray(jData)) {
-        // We aggregate energy and cost by period to get price
-        const aggByPeriod: Record<number, { e: number, c: number }> = {};
+        const aggDsv: Record<number, { e: number, c: number }> = {};
+        const aggCad: Record<number, number> = {};
+        
         for (const item of jData) {
+          const period = item.period;
           if (item.concept === 'DSV' || item.concept === 'DVS') {
-            const period = item.period;
-            if (!aggByPeriod[period]) aggByPeriod[period] = { e: 0, c: 0 };
-            aggByPeriod[period].e += (item.energyVentas || 0) + (item.energyCompras || 0);
-            aggByPeriod[period].c += (item.costDerechos || 0) + (item.costObligaciones || 0);
+            if (!aggDsv[period]) aggDsv[period] = { e: 0, c: 0 };
+            aggDsv[period].e += (item.energyVentas || 0) + (item.energyCompras || 0);
+            aggDsv[period].c += (item.costDerechos || 0) + (item.costObligaciones || 0);
+          } else if (item.concept === 'CAD') {
+            if (!aggCad[period]) aggCad[period] = 0;
+            aggCad[period] += (item.energyVentas || 0) + (item.energyCompras || 0);
           }
         }
-        for (const p of Object.keys(aggByPeriod)) {
+        
+        for (const p of Object.keys(aggDsv)) {
           const period = parseInt(p);
-          const data = aggByPeriod[period];
+          const data = aggDsv[period];
           let price = 0;
           if (data.e > 0) {
             price = data.c / data.e;
           }
           dsvPriceByDayPeriod.set(`${dayKey}_${period}`, price);
         }
+        
+        for (const p of Object.keys(aggCad)) {
+          cadEnergyByDayPeriod.set(`${dayKey}_${p}`, aggCad[parseInt(p)]);
+        }
       }
     }
 
-    let estimatedBcMwh = 0;
-    let estimatedCostEur = 0;
+    let totalEstimatedBcMwh = 0;
+    let totalLiquidatedMwh = 0;
+    let totalPendingMwh = 0;
+    let totalEstimatedPendingCostEur = 0;
 
     for (let d = currentMonthStart.getDate(); d <= currentMonthEnd.getDate(); d++) {
       const dateObj = new Date(currentMonthStart);
@@ -132,9 +144,6 @@ async function main() {
       const consumption = dailyConsumptionBySegment.get(dayKey);
       if (!consumption) continue;
 
-      const omie = pricesByDateComponent.get(`${dayKey}_OMIE`) || Array(24).fill(0);
-      const os = pricesByDateComponent.get(`${dayKey}_OS`) || Array(24).fill(0);
-      const restricciones = pricesByDateComponent.get(`${dayKey}_RESTRICCIONES`) || Array(24).fill(0);
       const perd20 = pricesByDateComponent.get(`${dayKey}_PERD_20TD`) || Array(24).fill(0);
       const perd30 = pricesByDateComponent.get(`${dayKey}_PERD_30TD`) || Array(24).fill(0);
       const perd61 = pricesByDateComponent.get(`${dayKey}_PERD_61TD`) || Array(24).fill(0);
@@ -161,58 +170,41 @@ async function main() {
           }
         }
 
-        estimatedBcMwh += hBcMwh;
-
         const period = h + 1; // reganecu periods are 1-indexed (1-24)
-        const dsvPrice = dsvPriceByDayPeriod.get(`${dayKey}_${period}`) || 0;
+        
+        const hLiquidatedMwh = cadEnergyByDayPeriod.get(`${dayKey}_${period}`) || 0;
+        const hDsvPrice = dsvPriceByDayPeriod.get(`${dayKey}_${period}`) || 0;
+        
+        const hPendingMwh = hBcMwh - hLiquidatedMwh;
+        const hPendingCostEur = hPendingMwh * hDsvPrice;
 
-        const hPrice = (omie[h] || 0) + (os[h] || 0) + (restricciones[h] || 0) + dsvPrice;
-        estimatedCostEur += (hBcMwh * hPrice);
+        totalEstimatedBcMwh += hBcMwh;
+        totalLiquidatedMwh += hLiquidatedMwh;
+        totalPendingMwh += hPendingMwh;
+        totalEstimatedPendingCostEur += hPendingCostEur;
       }
     }
 
-    // 5. Get Liquidated Energy (CAD component) from Reganecu
-    let liquidatedMwh = 0;
-    
-    if (regRecord && regRecord.jsonData) {
-      const jData = regRecord.jsonData as any;
-      
-      // If we have 'CAD' in the aggregated TOTAL records
-      if (jData.CAD && jData.CAD.energyCompras) {
-         liquidatedMwh = jData.CAD.energyCompras + (jData.CAD.energyVentas || 0);
-      } else if (Array.isArray(jData.energia)) {
-         liquidatedMwh = jData.energia.reduce((a: number, b: number) => a + (b || 0), 0);
-      }
-    }
-
-    const pendingMwh = estimatedBcMwh - liquidatedMwh;
-    
-    let estimatedPendingCostEur = 0;
-    if (estimatedBcMwh > 0) {
-      estimatedPendingCostEur = (pendingMwh / estimatedBcMwh) * estimatedCostEur;
-    }
-
-    // Upsert to PendingEnergySummary
     await prisma.pendingEnergySummary.upsert({
       where: { month: monthKey },
       update: {
         cierre: cierreBase,
-        estimatedBcMwh,
-        liquidatedMwh,
-        pendingMwh,
-        estimatedPendingCostEur
+        estimatedBcMwh: totalEstimatedBcMwh,
+        liquidatedMwh: totalLiquidatedMwh,
+        pendingMwh: totalPendingMwh,
+        estimatedPendingCostEur: totalEstimatedPendingCostEur
       },
       create: {
         month: monthKey,
         cierre: cierreBase,
-        estimatedBcMwh,
-        liquidatedMwh,
-        pendingMwh,
-        estimatedPendingCostEur
+        estimatedBcMwh: totalEstimatedBcMwh,
+        liquidatedMwh: totalLiquidatedMwh,
+        pendingMwh: totalPendingMwh,
+        estimatedPendingCostEur: totalEstimatedPendingCostEur
       }
     });
 
-    console.log(`✅ Mes ${monthKey} procesado. Cierre: ${cierreBase}. Pendiente MWh: ${pendingMwh.toFixed(2)}`);
+    console.log(`✅ Mes ${monthKey} procesado. Cierre: ${cierreBase}. Pendiente MWh: ${totalPendingMwh.toFixed(2)} | Coste: ${totalEstimatedPendingCostEur.toFixed(2)}€`);
   }
 
   console.log('Cálculo finalizado exitosamente.');
