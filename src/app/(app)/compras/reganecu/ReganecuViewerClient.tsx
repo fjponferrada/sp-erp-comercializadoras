@@ -384,7 +384,7 @@ export default function ReganecuViewerClient() {
                         <React.Fragment key={c}>
                           <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>{c}</th>
                           {idx > 0 && (
-                            <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{c} - {arr[idx-1]}</th>
+                            <th style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{c} - {arr[idx-1]}</th>
                           )}
                         </React.Fragment>
                       ))}
@@ -401,7 +401,7 @@ export default function ReganecuViewerClient() {
                           <React.Fragment key={c}>
                             <td style={{ padding: '12px 20px', color: val < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(val, true)} €</td>
                             {idx > 0 && (
-                              <td style={{ padding: '12px 20px', color: diff < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(diff, true)} €</td>
+                              <td style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '12px 20px', color: diff < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)', fontWeight: 500 }}>{formatNum(diff, true)} €</td>
                             )}
                           </React.Fragment>
                         );
@@ -417,7 +417,7 @@ export default function ReganecuViewerClient() {
                           <React.Fragment key={c}>
                             <td style={{ padding: '12px 20px', color: val < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(val, true)} €</td>
                             {idx > 0 && (
-                              <td style={{ padding: '12px 20px', color: diff < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(diff, true)} €</td>
+                              <td style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '12px 20px', color: diff < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)', fontWeight: 500 }}>{formatNum(diff, true)} €</td>
                             )}
                           </React.Fragment>
                         );
