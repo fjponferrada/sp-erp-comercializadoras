@@ -12,16 +12,16 @@ export class AggregationService {
 
     // 1. Obtener mapeo de SupplyPoints y quitar el sufijo "0F" para emparejar con LoadCurve
     const sps = await prisma.supplyPoint.findMany({
-      select: { cups: true, segment: true, province: true },
-      where: { segment: { not: null } }
+      select: { cups: true, segment: true, province: true }
     });
 
     const cupsInfo: Record<string, { segment: string, province: string }> = {};
     for (const sp of sps) {
-      if (sp.segment) {
-        const baseCups = sp.cups.length === 22 ? sp.cups.substring(0, 20) : sp.cups;
-        cupsInfo[baseCups] = { segment: sp.segment, province: sp.province };
-      }
+      const baseCups = sp.cups.length === 22 ? sp.cups.substring(0, 20) : sp.cups;
+      cupsInfo[baseCups] = { 
+        segment: sp.segment || '2.0TD',
+        province: sp.province || 'Madrid'
+      };
     }
 
     const today = startOfDay(new Date());

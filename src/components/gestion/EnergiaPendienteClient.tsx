@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Loader2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, AlertCircle, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface MonthlyData {
   month: string;
@@ -60,9 +61,31 @@ export default function EnergiaPendienteClient() {
 
   return (
     <div style={{ background: 'var(--bg-card)', padding: '32px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-      <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
-        Energía Pendiente de Liquidar (REE)
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+          Energía Pendiente de Liquidar (REE)
+        </h2>
+        <button 
+          onClick={async () => {
+            const t = toast.loading('Iniciando recálculo...');
+            try {
+              const res = await fetch('/api/gestion/energia-pendiente/recalculate', { method: 'POST' });
+              const json = await res.json();
+              if (json.success) {
+                toast.success(json.message, { id: t, duration: 5000 });
+              } else {
+                toast.error(json.error || 'Error iniciando recálculo', { id: t });
+              }
+            } catch (err: any) {
+              toast.error(err.message, { id: t });
+            }
+          }}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '0.9rem' }}
+        >
+          <RefreshCw size={16} />
+          Recalcular Ahora
+        </button>
+      </div>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '0.95rem', lineHeight: 1.5 }}>
         Este informe cruza la demanda medida en Barras de Central (curvas de carga + pérdidas) con la energía total liquidada por REE (componente CAD de la última liquidación disponible en REGANECU) para estimar los saldos pendientes de liquidación futura.
       </p>

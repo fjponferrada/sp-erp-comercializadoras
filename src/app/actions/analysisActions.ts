@@ -27,7 +27,7 @@ export async function getEconomicAnalysis() {
         // Importante: Reemplazar comas por puntos antes de castear a NUMERIC
         const results: any[] = await prisma.$queryRaw`
           SELECT 
-            to_char("issueDate", 'YYYY-MM') as month,
+            to_char(COALESCE("billingEnd", "issueDate"), 'YYYY-MM') as month,
             SUM(
               COALESCE(
                 CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA', ''), ',', '.') AS NUMERIC), 
@@ -41,8 +41,8 @@ export async function getEconomicAnalysis() {
             ) as total_mwh,
             SUM(COALESCE("margin", 0)) as margin
           FROM "Invoice"
-          WHERE id IN (${Prisma.join(chunk)}) AND "issueDate" IS NOT NULL
-          GROUP BY to_char("issueDate", 'YYYY-MM')
+          WHERE id IN (${Prisma.join(chunk)}) AND COALESCE("billingEnd", "issueDate") IS NOT NULL
+          GROUP BY to_char(COALESCE("billingEnd", "issueDate"), 'YYYY-MM')
         `;
 
         for (const row of results) {

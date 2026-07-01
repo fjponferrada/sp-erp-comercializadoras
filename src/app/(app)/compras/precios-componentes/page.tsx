@@ -11,7 +11,7 @@ export default async function PreciosComponentesPage() {
     orderBy: { component: 'asc' }
   });
   
-  const components = componentRecords.map(r => r.component);
+  let components = componentRecords.map(r => r.component).filter(c => !c.startsWith('PERD_'));
   if (components.length === 0) components.push('OMIE');
 
   // Fetch last 12 months of RESTRICCIONES and OS

@@ -194,13 +194,17 @@ export class InternalBillingEngine {
     const priceData = await prisma.systemComponentPrice.findMany({
       where: {
         date: { in: datesToQuery.map(d => new Date(d + 'T00:00:00Z')) },
-        component: { in: ['OMIE', 'OS', 'RESTRICCIONES', tariff.includes('2.0') ? 'PERD_20TD' : (tariff.includes('6.1') ? 'PERD_61TD' : 'PERD_30TD')] }
+        component: { in: ['OMIE', 'OS', 'RESTRICCIONES', 'K', tariff.includes('2.0') ? 'PERD_20TD' : (tariff.includes('6.1') ? 'PERD_61TD' : 'PERD_30TD')] }
       }
     });
+
+    const perdidasBOE = await prisma.regulatedCost.findMany({ where: { concept: 'PERDIDAS', tariff: tariff } });
+    const boeRecord = perdidasBOE[0];
 
     const omieMap = new Map<string, number>();
     const osMap = new Map<string, number>();
     const restMap = new Map<string, number>();
+    const kMap = new Map<string, number>();
     const perdMap = new Map<string, number>();
     
     for (const pd of priceData) {
@@ -210,6 +214,7 @@ export class InternalBillingEngine {
         if (pd.component === 'OMIE') omieMap.set(key, pd.values[h] || 0);
         else if (pd.component === 'OS') osMap.set(key, pd.values[h] || 0);
         else if (pd.component === 'RESTRICCIONES') restMap.set(key, pd.values[h] || 0);
+        else if (pd.component === 'K') kMap.set(key, pd.values[h] || 1);
         else perdMap.set(key, pd.values[h] || 0);
       }
     }

@@ -84,8 +84,8 @@ async function smartMergeDB(dates: Date[], compName: string, risk: number): Prom
     const k1 = dt1.toISOString().split('T')[0];
     const k2 = dt2.toISOString().split('T')[0];
     
-    const h1 = dt1.getHours();
-    const h2 = dt2.getHours();
+    const h1 = dt1.getUTCHours();
+    const h2 = dt2.getUTCHours();
 
     const v1 = mapData.get(k1)?.[h1] ?? null;
     const v2 = mapData.get(k2)?.[h2] ?? null;
@@ -93,7 +93,10 @@ async function smartMergeDB(dates: Date[], compName: string, risk: number): Prom
     let validVals = [v1, v2].filter((v): v is number => v !== null && v !== 0);
     
     if (validVals.length === 0) {
-      return compName === 'RESTRICCIONES' ? 5.0 : (compName === 'OS' ? 2.0 : 0.18);
+      if (compName === 'RESTRICCIONES') return 5.0;
+      if (compName === 'OS') return 2.0;
+      if (compName === 'K') return 1.0;
+      return 0.18;
     }
 
     if (risk === 1) return Math.max(...validVals);
@@ -223,10 +226,14 @@ export class PricingEngine {
     // Smart Merge for exact risk parity
     const restriccionesArr = await smartMergeDB(dates, 'RESTRICCIONES', riskLevel);
     const osArr = await smartMergeDB(dates, 'OS', riskLevel);
-    let lossCol = 'PERD_30TD';
-    if (tariff.includes('2.0')) lossCol = 'PERD_20TD';
-    if (tariff.includes('6.1')) lossCol = 'PERD_61TD';
-    const perdArr = await smartMergeDB(dates, lossCol, riskLevel);
+    
+
+    
+    // Fetch K
+    const kArr = await smartMergeDB(dates, 'K', riskLevel);
+    
+    // Fetch BOE Perdidas from regulatedCosts matching tariff
+    const boeRecord = regulated.find(c => c.concept === 'PERDIDAS' && c.tariff === tariff);
 
     let totalEnergyCostEur = 0;
     let totalLossesCostEur = 0;
@@ -291,7 +298,15 @@ export class PricingEngine {
       const unitOs = osArr[i];
       const unitDesvios = deviations;
       
-      let lossPct = perdArr[i];
+      const kFactor = kArr[i] || 1;
+      let lossPct = 0;
+      if (boeRecord) {
+        const periodStr = this.getPeriodo(dt, tariff, false);
+        const pVal = boeRecord[periodStr.toLowerCase() as keyof typeof boeRecord] as number | null;
+        if (pVal !== null && pVal !== undefined) {
+          lossPct = pVal * kFactor;
+        }
+      }
       if (lossPct > 2.0) lossPct /= 100.0;
       const lossF = 1 + lossPct;
 

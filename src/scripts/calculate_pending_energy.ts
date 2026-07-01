@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import { prisma } from '../lib/prisma';
 import { startOfMonth, subMonths, endOfMonth, format } from 'date-fns';
+import { getPeriodoREE } from '../lib/services/InternalBillingEngine';
 
-async function main() {
+export async function runCalculatePendingEnergy() {
   console.log('Iniciando cálculo de energía pendiente con cálculo horario exacto...');
   const today = new Date();
   const endRange = endOfMonth(today);
@@ -60,7 +61,7 @@ async function main() {
   const prices = await prisma.systemComponentPrice.findMany({
     where: {
       date: { gte: startRange, lte: endRange },
-      component: { in: ['OS', 'RESTRICCIONES', 'PERD_20TD', 'PERD_30TD', 'PERD_61TD'] }
+      component: { in: ['OS', 'RESTRICCIONES', 'K', 'PERD_20TD', 'PERD_30TD', 'PERD_61TD'] }
     }
   });
 
@@ -68,6 +69,15 @@ async function main() {
   for (const price of prices) {
     const dayKey = format(price.date, 'yyyy-MM-dd');
     pricesByDateComponent.set(`${dayKey}_${price.component}`, price.values);
+  }
+
+  // Fetch BOE Perdidas from RegulatedCost
+  const perdidasBOE = await prisma.regulatedCost.findMany({
+    where: { concept: 'PERDIDAS' }
+  });
+  const boeByTariff = new Map<string, any>();
+  for (const b of perdidasBOE) {
+    boeByTariff.set(b.tariff, b);
   }
 
   // 4. Calculate for each month
@@ -148,29 +158,49 @@ async function main() {
 
       const os = pricesByDateComponent.get(`${dayKey}_OS`) || Array(24).fill(0);
       const restricciones = pricesByDateComponent.get(`${dayKey}_RESTRICCIONES`) || Array(24).fill(0);
-      const perd20 = pricesByDateComponent.get(`${dayKey}_PERD_20TD`) || Array(24).fill(0);
-      const perd30 = pricesByDateComponent.get(`${dayKey}_PERD_30TD`) || Array(24).fill(0);
-      const perd61 = pricesByDateComponent.get(`${dayKey}_PERD_61TD`) || Array(24).fill(0);
+      const perd20 = pricesByDateComponent.get(`${dayKey}_PERD_20TD`);
+      const perd30 = pricesByDateComponent.get(`${dayKey}_PERD_30TD`);
+      const perd61 = pricesByDateComponent.get(`${dayKey}_PERD_61TD`);
+      const kFactor = pricesByDateComponent.get(`${dayKey}_K`) || Array(24).fill(1);
+      
+      // Helper function to get exact loss percentage for an hour
+      const getLossForHour = (tariff: string, h: number, oldPerdArray: number[] | undefined) => {
+        // Fallback to exactly calculated old PERD if BOE or K is missing
+        const boe = boeByTariff.get(tariff);
+        if (!boe) return oldPerdArray ? oldPerdArray[h] : 0;
+        
+        const dateObjH = new Date(dateObj);
+        dateObjH.setUTCHours(h);
+        const periodStr = getPeriodoREE(dateObjH, tariff); // P1, P2...
+        const pVal = boe[periodStr.toLowerCase() as keyof typeof boe] as number | null;
+        if (pVal === null || pVal === undefined) return oldPerdArray ? oldPerdArray[h] : 0;
+        
+        return pVal * kFactor[h];
+      };
 
       for (let h = 0; h < 24; h++) {
         let hBcMwh = 0;
         
+        const p20 = getLossForHour('2.0TD', h, perd20);
+        const p30 = getLossForHour('3.0TD', h, perd30);
+        const p61 = getLossForHour('6.1TD', h, perd61);
+
         if (consumption['2.0TD'] && consumption['2.0TD'][h]) {
-          hBcMwh += (consumption['2.0TD'][h] / 1000) * (1 + (perd20[h] > 2.0 ? perd20[h]/100 : perd20[h]));
+          hBcMwh += (consumption['2.0TD'][h] / 1000) * (1 + (p20 > 2.0 ? p20/100 : p20));
         }
         if (consumption['3.0TD'] && consumption['3.0TD'][h]) {
-          hBcMwh += (consumption['3.0TD'][h] / 1000) * (1 + (perd30[h] > 2.0 ? perd30[h]/100 : perd30[h]));
+          hBcMwh += (consumption['3.0TD'][h] / 1000) * (1 + (p30 > 2.0 ? p30/100 : p30));
         }
         if (consumption['3.0TDVE'] && consumption['3.0TDVE'][h]) {
-          hBcMwh += (consumption['3.0TDVE'][h] / 1000) * (1 + (perd30[h] > 2.0 ? perd30[h]/100 : perd30[h]));
+          hBcMwh += (consumption['3.0TDVE'][h] / 1000) * (1 + (p30 > 2.0 ? p30/100 : p30));
         }
         if (consumption['6.1TD'] && consumption['6.1TD'][h]) {
-          hBcMwh += (consumption['6.1TD'][h] / 1000) * (1 + (perd61[h] > 2.0 ? perd61[h]/100 : perd61[h]));
+          hBcMwh += (consumption['6.1TD'][h] / 1000) * (1 + (p61 > 2.0 ? p61/100 : p61));
         }
 
         for (const seg of Object.keys(consumption)) {
           if (!['2.0TD', '3.0TD', '3.0TDVE', '6.1TD'].includes(seg) && consumption[seg][h]) {
-            hBcMwh += (consumption[seg][h] / 1000) * (1 + (perd20[h] > 2.0 ? perd20[h]/100 : perd20[h]));
+            hBcMwh += (consumption[seg][h] / 1000) * (1 + (p20 > 2.0 ? p20/100 : p20));
           }
         }
 
@@ -216,11 +246,15 @@ async function main() {
   console.log('Cálculo finalizado exitosamente.');
 }
 
-main()
-  .catch((e) => {
-    console.error('Error calculando:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+
+if (require.main === module) {
+  runCalculatePendingEnergy()
+    .catch((e) => {
+      console.error('Error calculando:', e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
+

@@ -2,6 +2,7 @@ import { prisma } from '../prisma';
 import { getProvinceGeo, PROVINCES_GEO } from './ProvinceService';
 import { addDays, getDay, getMonth, format, subDays, startOfDay, isWeekend } from 'date-fns';
 import { DecisionTreeRegression } from 'ml-cart';
+import { getPeriodoREE } from './InternalBillingEngine';
 
 const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'PYME >50 MWh', 'VE <15 MWh', 'VE >15 MWh', 'VIP'];
 const PROVINCES = Object.values(PROVINCES_GEO).map(p => p.name);
@@ -58,14 +59,23 @@ export async function generateTomorrowForecast() {
       continue;
     }
 
-    // Elevación a barras de central (Pérdidas)
-    const tariff = c.supplyPoint.tariff || '';
-    const lossFactor = tariff.includes('6.1TD') ? 1.08 : 1.17;
-
+    const tariff = c.supplyPoint.tariff || '2.0TD';
     const prov = getProvinceGeo(c.supplyPoint.postalCode).name;
-    const key = `${segment}|${prov}`;
-    currentClients[key] = (currentClients[key] || 0) + lossFactor;
+    const key = `${segment}|${prov}|${tariff}`;
+    currentClients[key] = (currentClients[key] || 0) + 1;
   }
+
+
+  // 1A. Obtener coeficientes de Pérdidas (BOE y K)
+  const regulatedCosts = await prisma.regulatedCost.findMany({
+    where: { concept: 'PERDIDAS' }
+  });
+
+  const sevenDaysAgo = subDays(tomorrow, 364);
+  const kRecords = await prisma.systemComponentPrice.findMany({
+    where: { component: 'K', date: startOfDay(sevenDaysAgo) }
+  });
+  const kArray = kRecords.length > 0 && kRecords[0].values ? (kRecords[0].values as number[]) : new Array(24).fill(1);
 
   // 1. Load Pre-trained AI Model from Database
   const cachedModel = await prisma.forecastModelCache.findFirst({
@@ -129,7 +139,7 @@ export async function generateTomorrowForecast() {
         const cups = c.supplyPoint?.cups || '';
         const baseCups = cups.length >= 20 ? cups.substring(0, 20) : cups;
         const tariff = c.supplyPoint?.tariff || '';
-        const lossFactor = tariff.includes('6.1TD') ? 1.08 : 1.17;
+        const boeRec = regulatedCosts.find(r => r.tariff === tariff);
         
         const history = curvesByCups[baseCups] || [];
         const similarDays = history.filter(r => getDay(new Date(r.date)) === targetDayOfWeek).slice(0, 3);
@@ -145,7 +155,20 @@ export async function generateTomorrowForecast() {
               }
             }
             const avgHour = sum / similarDays.length;
-            const finalVal = avgHour * lossFactor;
+            
+            let lossPct = 0;
+            if (boeRec) {
+              const dtH = new Date(tomorrow);
+              dtH.setUTCHours(h);
+              const pStr = getPeriodoREE(dtH, tariff);
+              const boeVal = (boeRec as any)[pStr.toLowerCase()] as number | null;
+              if (boeVal !== null && boeVal !== undefined) {
+                lossPct = boeVal * kArray[h];
+              }
+            }
+            if (lossPct > 2.0) lossPct /= 100.0; // Security check
+            const finalVal = avgHour * (1 + lossPct);
+            
             vipPredictions[h] += finalVal;
             finalPrediction[h] += finalVal;
             const segKey = c.supplyPoint?.segment || 'VIP';
@@ -161,7 +184,8 @@ export async function generateTomorrowForecast() {
     for (const [key, activeCount] of Object.entries(currentClients)) {
       if (activeCount === 0) continue; 
       
-      const [segment, province] = key.split('|');
+      const [segment, province, tariff] = key.split('|');
+      const boeRec = regulatedCosts.find(r => r.tariff === tariff);
 
       const tomorrowTemps = weatherCache[province] || new Array(24).fill(20.0);
       const tDow = getDay(tomorrow);
@@ -179,7 +203,19 @@ export async function generateTomorrowForecast() {
       const Y_pred = regression.predict(X_test);
 
       for (let h = 0; h < 24; h++) {
-        const clusterPrediction = Math.max(0, Y_pred[h]) * activeCount;
+        let lossPct = 0;
+        if (boeRec) {
+          const dtH = new Date(tomorrow);
+          dtH.setUTCHours(h);
+          const pStr = getPeriodoREE(dtH, tariff);
+          const boeVal = (boeRec as any)[pStr.toLowerCase()] as number | null;
+          if (boeVal !== null && boeVal !== undefined) {
+            lossPct = boeVal * kArray[h];
+          }
+        }
+        if (lossPct > 2.0) lossPct /= 100.0;
+        
+        const clusterPrediction = Math.max(0, Y_pred[h]) * activeCount * (1 + lossPct);
         finalPrediction[h] += clusterPrediction;
         if (segmentBreakdown[segment]) segmentBreakdown[segment][h] += clusterPrediction;
       }
