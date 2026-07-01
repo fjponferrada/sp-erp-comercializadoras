@@ -79,7 +79,7 @@ export async function POST(req: Request) {
         let sign = parseFloat(parts[14]) || 1;
 
         // sometimes the file starts with header lines, check if it's data
-        if (!concept || concept === '' || concept.length > 20) continue;
+        if (!concept || concept === '' || concept.length > 80) continue;
 
         let signCost = parseFloat(parts[14]) || 1;
         let signEnergy = parseFloat(parts[15]);

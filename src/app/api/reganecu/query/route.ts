@@ -87,16 +87,48 @@ export async function GET(req: Request) {
         }
       });
 
-      const tableData = Object.keys(aggregatedData).map(c => ({
-        concept: c,
-        energyVentas: aggregatedData[c].energyVentas,
-        energyCompras: aggregatedData[c].energyCompras,
-        energySaldo: aggregatedData[c].energyVentas - aggregatedData[c].energyCompras,
-        costDerechos: aggregatedData[c].costDerechos,
-        costObligaciones: aggregatedData[c].costObligaciones,
-        costSaldo: aggregatedData[c].costDerechos - aggregatedData[c].costObligaciones,
-        count: aggregatedData[c].count
-      })).sort((a, b) => a.concept.localeCompare(b.concept));
+      let totalVentas = 0;
+      let totalCompras = 0;
+      let totalDer = 0;
+      let totalOblig = 0;
+
+      const ORDER = ['BS3', 'CBM', 'RAD3', 'CAD', 'DSV', 'PC3'];
+
+      const tableData = Object.keys(aggregatedData).map(c => {
+        totalVentas += aggregatedData[c].energyVentas;
+        totalCompras += aggregatedData[c].energyCompras;
+        totalDer += aggregatedData[c].costDerechos;
+        totalOblig += aggregatedData[c].costObligaciones;
+        
+        return {
+          concept: c,
+          energyVentas: aggregatedData[c].energyVentas,
+          energyCompras: aggregatedData[c].energyCompras,
+          energySaldo: aggregatedData[c].energyVentas - aggregatedData[c].energyCompras,
+          costDerechos: aggregatedData[c].costDerechos,
+          costObligaciones: aggregatedData[c].costObligaciones,
+          costSaldo: aggregatedData[c].costDerechos - aggregatedData[c].costObligaciones,
+          count: aggregatedData[c].count
+        };
+      }).sort((a, b) => {
+        const idxA = ORDER.indexOf(a.concept);
+        const idxB = ORDER.indexOf(b.concept);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.concept.localeCompare(b.concept);
+      });
+
+      tableData.push({
+        concept: 'Total',
+        energyVentas: totalVentas,
+        energyCompras: totalCompras,
+        energySaldo: totalVentas - totalCompras,
+        costDerechos: totalDer,
+        costObligaciones: totalOblig,
+        costSaldo: totalDer - totalOblig,
+        count: 0
+      });
 
       return NextResponse.json({ data: tableData, rawRecords: records.length });
     } else {
