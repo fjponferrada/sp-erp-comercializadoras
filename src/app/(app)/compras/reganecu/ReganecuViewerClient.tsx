@@ -22,6 +22,7 @@ export default function ReganecuViewerClient() {
   const [availableCierres, setAvailableCierres] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
+  const [summaryData, setSummaryData] = useState<any>(null);
   
   // Pagination state
   const [page, setPage] = useState<number>(1);
@@ -53,6 +54,7 @@ export default function ReganecuViewerClient() {
   useEffect(() => {
     setPage(1);
     setData(null);
+    setSummaryData(null);
   }, [dateStr, cierre, region, nivelDetalle, desglosarUpr]);
 
   const handleConsultar = async (targetPage: number = page) => {
@@ -76,6 +78,15 @@ export default function ReganecuViewerClient() {
       
       setData(json);
       setPage(targetPage);
+
+      // Fetch summary table data
+      if (targetPage === 1) {
+        const sumRes = await fetch(`/api/reganecu/summary?date=${dateStr}&region=${region}`);
+        if (sumRes.ok) {
+          const sumJson = await sumRes.json();
+          setSummaryData(sumJson.summary || null);
+        }
+      }
     } catch (err: any) {
       console.error(err);
       alert('Error: ' + err.message);
@@ -358,6 +369,62 @@ export default function ReganecuViewerClient() {
                 >
                   Siguiente <ChevronRight size={18} />
                 </button>
+              </div>
+            )}
+            
+            {/* SUMMARY TABLE */}
+            {summaryData && Object.keys(summaryData).length > 0 && (
+              <div style={{ marginTop: '40px', overflowX: 'auto' }}>
+                <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '16px' }}>Evolución Liquidaciones</h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '2px solid rgba(59, 130, 246, 0.3)' }}>
+                      <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
+                      {Object.keys(summaryData).sort().map((c, idx, arr) => (
+                        <React.Fragment key={c}>
+                          <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>{c}</th>
+                          {idx > 0 && (
+                            <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{c} - {arr[idx-1]}</th>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>Total Base Imponible</td>
+                      {Object.keys(summaryData).sort().map((c, idx, arr) => {
+                        const val = summaryData[c];
+                        const prevVal = idx > 0 ? summaryData[arr[idx-1]] : null;
+                        const diff = prevVal !== null ? val - prevVal : 0;
+                        return (
+                          <React.Fragment key={c}>
+                            <td style={{ padding: '12px 20px', color: val < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(val, true)} €</td>
+                            {idx > 0 && (
+                              <td style={{ padding: '12px 20px', color: diff < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(diff, true)} €</td>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>Total con IVA (21%)</td>
+                      {Object.keys(summaryData).sort().map((c, idx, arr) => {
+                        const val = summaryData[c] * 1.21;
+                        const prevVal = idx > 0 ? summaryData[arr[idx-1]] * 1.21 : null;
+                        const diff = prevVal !== null ? val - prevVal : 0;
+                        return (
+                          <React.Fragment key={c}>
+                            <td style={{ padding: '12px 20px', color: val < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(val, true)} €</td>
+                            {idx > 0 && (
+                              <td style={{ padding: '12px 20px', color: diff < 0 ? 'var(--danger)' : 'var(--text-primary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatNum(diff, true)} €</td>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
             
