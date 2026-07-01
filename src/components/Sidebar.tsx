@@ -144,7 +144,8 @@ const baseNavGroups = [
       { href: '/ajustes/importador', icon: UploadCloud, label: 'Importar CCH' },
       { href: '/importar-switching', icon: UploadCloud, label: 'Importador XML' },
       { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' },
-      { href: '/compras/importar-reganecu', icon: UploadCloud, label: 'Importar REGANECU' }
+      { href: '/compras/importar-reganecu', icon: UploadCloud, label: 'Importar REGANECU' },
+      { href: '/compras/importar-omie', icon: UploadCloud, label: 'Importar OMIE' }
     ]
   },
   {
