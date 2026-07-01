@@ -46,45 +46,81 @@ export async function GET(req: Request) {
       }
     });
 
-    // Aggregate monthly data by concept
-    const aggregatedConcepts: Record<string, { energyVentas: number, energyCompras: number, costDerechos: number, costObligaciones: number, count: number }> = {};
+    // If matricial or upr, the jsonData has { [unit]: { [concept]: data } }
+    // If total, the jsonData has { [concept]: data }
+    const isGrouped = matricial || upr;
+
+    // Aggregate monthly data by concept or by unit->concept
+    const aggregatedData: Record<string, any> = {};
 
     records.forEach(rec => {
       const data = rec.jsonData as Record<string, any>;
-      for (const concept of Object.keys(data)) {
-        if (!aggregatedConcepts[concept]) {
-          aggregatedConcepts[concept] = { energyVentas: 0, energyCompras: 0, costDerechos: 0, costObligaciones: 0, count: 0 };
+      
+      if (isGrouped) {
+        for (const unit of Object.keys(data)) {
+          if (!aggregatedData[unit]) aggregatedData[unit] = {};
+          for (const concept of Object.keys(data[unit])) {
+            if (!aggregatedData[unit][concept]) {
+              aggregatedData[unit][concept] = { energyVentas: 0, energyCompras: 0, costDerechos: 0, costObligaciones: 0, count: 0 };
+            }
+            
+            const vals = data[unit][concept];
+            if (vals.energyVentas !== undefined) {
+              aggregatedData[unit][concept].energyVentas += (vals.energyVentas || 0);
+              aggregatedData[unit][concept].energyCompras += (vals.energyCompras || 0);
+              aggregatedData[unit][concept].costDerechos += (vals.costDerechos || 0);
+              aggregatedData[unit][concept].costObligaciones += (vals.costObligaciones || 0);
+            } else {
+              aggregatedData[unit][concept].energyVentas += (vals.energySum || 0);
+              aggregatedData[unit][concept].costDerechos += (vals.costSum || 0);
+            }
+            aggregatedData[unit][concept].count += (vals.count || 0);
+          }
         }
-        
-        const vals = data[concept];
-        // Handle both old format (energySum, costSum) and new format
-        if (vals.energyVentas !== undefined) {
-          aggregatedConcepts[concept].energyVentas += (vals.energyVentas || 0);
-          aggregatedConcepts[concept].energyCompras += (vals.energyCompras || 0);
-          aggregatedConcepts[concept].costDerechos += (vals.costDerechos || 0);
-          aggregatedConcepts[concept].costObligaciones += (vals.costObligaciones || 0);
-        } else {
-          // Old data logic fallback: Assume everything is Ventas/Derechos just to not crash
-          aggregatedConcepts[concept].energyVentas += (vals.energySum || 0);
-          aggregatedConcepts[concept].costDerechos += (vals.costSum || 0);
+      } else {
+        for (const concept of Object.keys(data)) {
+          if (!aggregatedData[concept]) {
+            aggregatedData[concept] = { energyVentas: 0, energyCompras: 0, costDerechos: 0, costObligaciones: 0, count: 0 };
+          }
+          
+          const vals = data[concept];
+          if (vals.energyVentas !== undefined) {
+            aggregatedData[concept].energyVentas += (vals.energyVentas || 0);
+            aggregatedData[concept].energyCompras += (vals.energyCompras || 0);
+            aggregatedData[concept].costDerechos += (vals.costDerechos || 0);
+            aggregatedData[concept].costObligaciones += (vals.costObligaciones || 0);
+          } else {
+            aggregatedData[concept].energyVentas += (vals.energySum || 0);
+            aggregatedData[concept].costDerechos += (vals.costSum || 0);
+          }
+          aggregatedData[concept].count += (vals.count || 0);
         }
-        
-        aggregatedConcepts[concept].count += (vals.count || 0);
       }
     });
 
-    const tableData = Object.keys(aggregatedConcepts).map(c => ({
-      concept: c,
-      energyVentas: aggregatedConcepts[c].energyVentas,
-      energyCompras: aggregatedConcepts[c].energyCompras,
-      energySaldo: aggregatedConcepts[c].energyVentas - aggregatedConcepts[c].energyCompras,
-      costDerechos: aggregatedConcepts[c].costDerechos,
-      costObligaciones: aggregatedConcepts[c].costObligaciones,
-      costSaldo: aggregatedConcepts[c].costDerechos - aggregatedConcepts[c].costObligaciones,
-      count: aggregatedConcepts[c].count
-    })).sort((a, b) => a.concept.localeCompare(b.concept));
+    const formatTableData = (aggObj: Record<string, any>) => {
+      return Object.keys(aggObj).map(c => ({
+        concept: c,
+        energyVentas: aggObj[c].energyVentas,
+        energyCompras: aggObj[c].energyCompras,
+        energySaldo: aggObj[c].energyVentas - aggObj[c].energyCompras,
+        costDerechos: aggObj[c].costDerechos,
+        costObligaciones: aggObj[c].costObligaciones,
+        costSaldo: aggObj[c].costDerechos - aggObj[c].costObligaciones,
+        count: aggObj[c].count
+      })).sort((a, b) => a.concept.localeCompare(b.concept));
+    };
 
-    return NextResponse.json({ data: tableData, rawRecords: records.length });
+    if (isGrouped) {
+      const unitsData: Record<string, any> = {};
+      for (const unit of Object.keys(aggregatedData)) {
+        unitsData[unit] = formatTableData(aggregatedData[unit]);
+      }
+      return NextResponse.json({ units: unitsData, rawRecords: records.length });
+    } else {
+      const tableData = formatTableData(aggregatedData);
+      return NextResponse.json({ data: tableData, rawRecords: records.length });
+    }
   } catch (error: any) {
     console.error('Error fetching Reganecu data:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });

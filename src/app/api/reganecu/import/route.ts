@@ -84,15 +84,21 @@ export async function POST(req: Request) {
         if (!concept || concept === '' || concept.length > 20) continue;
 
         // helper to add to jsonData
-        const addData = (group: string) => {
-          if (!recordsMap[group].jsonData[concept]) {
-            recordsMap[group].jsonData[concept] = { 
+        const addData = (group: string, key?: string) => {
+          let target = recordsMap[group].jsonData;
+          if (key) {
+            if (!target[key]) target[key] = {};
+            target = target[key];
+          }
+
+          if (!target[concept]) {
+            target[concept] = { 
               energyVentas: 0, energyCompras: 0, 
               costDerechos: 0, costObligaciones: 0, 
               count: 0 
             };
           }
-          let stats = recordsMap[group].jsonData[concept];
+          let stats = target[concept];
           let signCost = parseFloat(parts[14]) || 1;
           let signEnergy = parseFloat(parts[15]);
           if (isNaN(signEnergy) || signEnergy === 0) {
@@ -118,12 +124,12 @@ export async function POST(req: Request) {
         
         // Add to MATRICIAL (Unit level)
         if (unit) {
-          addData('MATRICIAL');
+          addData('MATRICIAL', unit);
         }
         
         // Add to UPR (UPR level)
         if (upr) {
-          addData('UPR');
+          addData('UPR', upr);
         }
       }
 

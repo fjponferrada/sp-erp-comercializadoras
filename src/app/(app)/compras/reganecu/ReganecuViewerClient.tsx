@@ -21,6 +21,9 @@ export default function ReganecuViewerClient() {
   const [availableCierres, setAvailableCierres] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
+  
+  // New state for selecting a unit when in MATRICIAL or UPR mode
+  const [selectedUnit, setSelectedUnit] = useState<string>('');
 
   useEffect(() => {
     if (dateStr) {
@@ -65,6 +68,14 @@ export default function ReganecuViewerClient() {
       if (!res.ok) throw new Error(json.error || 'Error al obtener datos');
       
       setData(json);
+      if (json.units) {
+        const keys = Object.keys(json.units);
+        if (keys.length > 0) {
+          setSelectedUnit(keys[0]);
+        } else {
+          setSelectedUnit('');
+        }
+      }
     } catch (err: any) {
       console.error(err);
       alert('Error: ' + err.message);
@@ -72,6 +83,23 @@ export default function ReganecuViewerClient() {
       setLoading(false);
     }
   };
+
+  // Determine what data to show in the table
+  let tableDataToShow: any[] = [];
+  let showUnitSelector = false;
+  let availableUnits: string[] = [];
+
+  if (data) {
+    if (data.units) {
+      showUnitSelector = true;
+      availableUnits = Object.keys(data.units).sort();
+      if (selectedUnit && data.units[selectedUnit]) {
+        tableDataToShow = data.units[selectedUnit];
+      }
+    } else if (data.data) {
+      tableDataToShow = data.data;
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -188,51 +216,79 @@ export default function ReganecuViewerClient() {
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : 'Consultar Datos'}
           </button>
-
       </div>
 
-      {/* DATA VIEW */}
-      <div style={{ background: 'var(--bg-card)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border)', minHeight: '300px' }}>
-        {data ? (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 600 }}>Resultados del Mes</h3>
-              <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                Se han procesado {data.rawRecords !== undefined ? data.rawRecords : '?'} ficheros diarios para este filtro.
-              </span>
-            </div>
+      {/* RESULTS AREA */}
+      {data ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ 
+            background: 'var(--bg-card)', 
+            padding: '24px', 
+            borderRadius: '12px', 
+            border: '1px solid var(--border)' 
+          }}>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', color: 'var(--text-primary)' }}>Resultados del mes</h2>
             
-            {Array.isArray(data.data) && data.data.length > 0 ? (
+            {showUnitSelector && availableUnits.length > 0 && (
+              <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  Seleccionar {nivelDetalle === 'UPR' ? 'UPR' : 'Unidad de Programación'}:
+                </label>
+                <select 
+                  value={selectedUnit}
+                  onChange={e => setSelectedUnit(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-base)',
+                    color: 'var(--text-primary)',
+                    minWidth: '250px'
+                  }}
+                >
+                  {availableUnits.map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {Array.isArray(tableDataToShow) && tableDataToShow.length > 0 ? (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right' }}>
                   <thead>
                     <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                      <th rowSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', minWidth: '250px', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
-                      <th colSpan={3} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Energía (MWh)</th>
-                      <th colSpan={3} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Importe (EUR)</th>
-                      <th colSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-primary)', textTransform: 'uppercase', textAlign: 'center' }}>Precio (EUR/MWh)</th>
+                      <th rowSpan={2} style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
+                      <th colSpan={3} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Energía (MWh)</th>
+                      <th colSpan={3} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Importe (EUR)</th>
+                      <th colSpan={2} style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Precio Medio (EUR/MWh)</th>
                     </tr>
-                    <tr style={{ background: 'rgba(59, 130, 246, 0.05)', borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Ventas</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Compras</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Derechos de cobro</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Obligaciones de pago</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Venta</th>
-                      <th style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, textAlign: 'right' }}>Compra</th>
+                    <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '2px solid rgba(59, 130, 246, 0.3)' }}>
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Ventas</th>
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Compras</th>
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
+                      
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Derechos Cobro</th>
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Obligaciones Pago</th>
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Saldo</th>
+                      
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Venta</th>
+                      <th style={{ padding: '8px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Compra</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
-                      const REE_ORDER = ['BS3', 'CBM', 'RAD3', 'CAD', 'DSV', 'PC3'];
-                      const orderedData = [...data.data].sort((a, b) => {
-                        const idxA = REE_ORDER.indexOf(a.concept);
-                        const idxB = REE_ORDER.indexOf(b.concept);
-                        if (idxA === -1 && idxB === -1) return a.concept.localeCompare(b.concept);
-                        if (idxA === -1) return 1;
-                        if (idxB === -1) return -1;
-                        return idxA - idxB;
+                      // Order specific concepts to appear first if they exist
+                      const conceptOrder = ['BS3', 'CBM', 'RAD3', 'CAD', 'DSV', 'PC3'];
+                      
+                      const orderedData = [...tableDataToShow].sort((a, b) => {
+                        const aIdx = conceptOrder.indexOf(a.concept);
+                        const bIdx = conceptOrder.indexOf(b.concept);
+                        
+                        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                        if (aIdx !== -1) return -1;
+                        if (bIdx !== -1) return 1;
+                        return a.concept.localeCompare(b.concept);
                       });
 
                       const formatNum = (num: number | undefined, currency: boolean = false) => {
