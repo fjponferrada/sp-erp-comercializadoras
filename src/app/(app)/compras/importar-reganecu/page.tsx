@@ -70,36 +70,31 @@ export default async function ImportarReganecuPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Topbar title="Importar Liquidaciones REGANECU" />
-      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <Topbar 
+        title="Importar Liquidaciones REGANECU" 
+        subtitle="Carga de archivo con las liquidaciones de REE. El sistema procesará los datos para el análisis de desvíos."
+        showSearch={false}
+      />
+      <div style={{ padding: '24px 32px', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <a 
+            href="https://participa.esios.ree.es" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="btn-primary"
+            style={{ textDecoration: 'none' }}
+          >
+            <ExternalLink size={16} style={{ marginRight: '8px' }} />
+            Acceder a ESIOS Participa
+          </a>
+        </div>
+
         <div style={{ background: 'var(--bg-card)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+          <div style={{ marginBottom: '16px' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
               Subida de Archivos ZIP (REGANECU)
             </h2>
-            <a 
-              href="https://participa.esios.ree.es" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                background: 'var(--text-primary)',
-                color: 'var(--bg-base)',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                textDecoration: 'none',
-                transition: 'opacity 0.2s'
-              }}
-            >
-              <ExternalLink size={16} />
-              Acceder a ESIOS Participa
-            </a>
-          </div>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.875rem' }}>
             Sube un archivo ZIP que contenga liquidaciones particulares de REE (ej. C2_liquidacion_AEDEN_202603.1.zip). También puedes subir un ZIP que contenga varios archivos ZIP de liquidaciones en su interior.
           </p>
