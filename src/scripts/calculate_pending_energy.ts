@@ -56,11 +56,11 @@ async function main() {
     }
   }
 
-  // 3. Fetch SystemComponentPrice for Losses
+  // 3. Fetch SystemComponentPrice for Losses, OS, RESTRICCIONES
   const prices = await prisma.systemComponentPrice.findMany({
     where: {
       date: { gte: startRange, lte: endRange },
-      component: { in: ['PERD_20TD', 'PERD_30TD', 'PERD_61TD'] }
+      component: { in: ['OS', 'RESTRICCIONES', 'PERD_20TD', 'PERD_30TD', 'PERD_61TD'] }
     }
   });
 
@@ -89,8 +89,8 @@ async function main() {
         date: { gte: currentMonthStart, lte: currentMonthEnd },
         cierre: cierreBase,
         matricial: true,
-        resolution: 'H'
-      }
+        resolution: { in: ['H', 'QH'] }
+      },
     });
 
     const dsvPriceByDayPeriod = new Map<string, number>();
@@ -99,7 +99,9 @@ async function main() {
     for (const matRecord of reganecuMatricialRecords) {
       const dayKey = format(matRecord.date, 'yyyy-MM-dd');
       const jData = matRecord.jsonData as any[];
-      if (Array.isArray(jData)) {
+      if (!Array.isArray(jData)) continue;
+
+      if (matRecord.resolution === 'H' || matRecord.resolution === 'QH') {
         const aggDsv: Record<number, { e: number, c: number }> = {};
         const aggCad: Record<number, number> = {};
         
@@ -144,6 +146,8 @@ async function main() {
       const consumption = dailyConsumptionBySegment.get(dayKey);
       if (!consumption) continue;
 
+      const os = pricesByDateComponent.get(`${dayKey}_OS`) || Array(24).fill(0);
+      const restricciones = pricesByDateComponent.get(`${dayKey}_RESTRICCIONES`) || Array(24).fill(0);
       const perd20 = pricesByDateComponent.get(`${dayKey}_PERD_20TD`) || Array(24).fill(0);
       const perd30 = pricesByDateComponent.get(`${dayKey}_PERD_30TD`) || Array(24).fill(0);
       const perd61 = pricesByDateComponent.get(`${dayKey}_PERD_61TD`) || Array(24).fill(0);
@@ -173,10 +177,12 @@ async function main() {
         const period = h + 1; // reganecu periods are 1-indexed (1-24)
         
         const hLiquidatedMwh = cadEnergyByDayPeriod.get(`${dayKey}_${period}`) || 0;
-        const hDsvPrice = dsvPriceByDayPeriod.get(`${dayKey}_${period}`) || 0;
+        const hDsvPrice = dsvPriceByDayPeriod.get(`${dayKey}_${period}`) || dsvPriceByDayPeriod.get(`${dayKey}_0`) || 0;
         
         const hPendingMwh = hBcMwh - hLiquidatedMwh;
-        const hPendingCostEur = hPendingMwh * hDsvPrice;
+        // Cost incorporates OS and RESTRICCIONES along with DSV price
+        const hPrice = hDsvPrice + (os[h] || 0) + (restricciones[h] || 0);
+        const hPendingCostEur = hPendingMwh * hPrice;
 
         totalEstimatedBcMwh += hBcMwh;
         totalLiquidatedMwh += hLiquidatedMwh;
