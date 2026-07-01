@@ -93,11 +93,21 @@ export async function POST(req: Request) {
             };
           }
           let stats = recordsMap[group].jsonData[concept];
-          if (sign === 1) {
+          let signCost = parseFloat(parts[14]) || 1;
+          let signEnergy = parseFloat(parts[15]);
+          if (isNaN(signEnergy) || signEnergy === 0) {
+            signEnergy = signCost;
+          }
+
+          if (signEnergy === 1) {
             stats.energyVentas += energy;
-            stats.costDerechos += cost;
           } else {
             stats.energyCompras += energy;
+          }
+
+          if (signCost === 1) {
+            stats.costDerechos += cost;
+          } else {
             stats.costObligaciones += cost;
           }
           stats.count += 1;

@@ -241,6 +241,8 @@ export default function ReganecuViewerClient() {
                         return num.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
                       };
 
+                      const HIDE_ENERGY_CONCEPTS = ['BS3', 'RAD3', 'CAD', 'PC3'];
+
                       let totalVentas = 0;
                       let totalCompras = 0;
                       let totalSaldoEn = 0;
@@ -248,37 +250,42 @@ export default function ReganecuViewerClient() {
                       let totalObl = 0;
                       let totalSaldoIm = 0;
 
+                      orderedData.forEach(row => {
+                        if (!HIDE_ENERGY_CONCEPTS.includes(row.concept)) {
+                          totalVentas += (row.energyVentas || 0);
+                          totalCompras += (row.energyCompras || 0);
+                          totalSaldoEn += (row.energySaldo || 0);
+                        }
+                        totalDer += (row.costDerechos || 0);
+                        totalObl += (row.costObligaciones || 0);
+                        totalSaldoIm += (row.costSaldo || 0);
+                      });
+
                       return (
                         <>
                           {orderedData.map((row: any) => {
-                            totalVentas += (row.energyVentas || 0);
-                            totalCompras += (row.energyCompras || 0);
-                            totalSaldoEn += (row.energySaldo || 0);
-                            totalDer += (row.costDerechos || 0);
-                            totalObl += (row.costObligaciones || 0);
-                            totalSaldoIm += (row.costSaldo || 0);
-
                             const prVenta = row.energyVentas ? (row.costDerechos / row.energyVentas) : 0;
                             const prCompra = row.energyCompras ? (row.costObligaciones / row.energyCompras) : 0;
 
                             const isDSV = row.concept === 'DSV';
                             const desc = CONCEPT_MAP[row.concept];
+                            const hideEnergy = HIDE_ENERGY_CONCEPTS.includes(row.concept);
 
                             return (
                               <tr key={row.concept} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s', background: row.concept === 'DSV' ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}>
                                 <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid var(--border)' }}>
                                   {desc ? desc : row.concept}
                                 </td>
-                                <td style={{ padding: '12px' }}>{formatNum(row.energyVentas)}</td>
-                                <td style={{ padding: '12px' }}>{formatNum(row.energyCompras)}</td>
-                                <td style={{ padding: '12px', borderRight: '1px solid var(--border)' }}>{formatNum(row.energySaldo)}</td>
+                                <td style={{ padding: '12px' }}>{hideEnergy ? '' : formatNum(row.energyVentas)}</td>
+                                <td style={{ padding: '12px' }}>{hideEnergy ? '' : formatNum(row.energyCompras)}</td>
+                                <td style={{ padding: '12px', borderRight: '1px solid var(--border)' }}>{hideEnergy ? '' : formatNum(row.energySaldo)}</td>
                                 
                                 <td style={{ padding: '12px' }}>{formatNum(row.costDerechos, true)}</td>
                                 <td style={{ padding: '12px' }}>{formatNum(row.costObligaciones, true)}</td>
                                 <td style={{ padding: '12px', borderRight: '1px solid var(--border)', color: (row.costSaldo || 0) < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{formatNum(row.costSaldo, true)}</td>
                                 
-                                <td style={{ padding: '12px' }}>{formatNum(prVenta, true)}</td>
-                                <td style={{ padding: '12px' }}>{formatNum(prCompra, true)}</td>
+                                <td style={{ padding: '12px' }}>{hideEnergy ? '' : formatNum(prVenta, true)}</td>
+                                <td style={{ padding: '12px' }}>{hideEnergy ? '' : formatNum(prCompra, true)}</td>
                               </tr>
                             );
                           })}
