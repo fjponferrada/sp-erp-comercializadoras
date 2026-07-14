@@ -324,7 +324,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = "Se recibió un paso 10 (Anulación de cambio), pero no se encontró un contrato ACTIVO para este CUPS.";
       }
-    } else if ((procesoBase === 'B1' || procesoBase === 'B2') && paso === '05') {
+    } else if ((procesoBase === 'B1' || procesoBase === 'B2' || procesoBase === 'E1') && paso === '05') {
       const activeContract = await prisma.contract.findFirst({
         where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] } },
         include: { supplyPoint: true },
@@ -334,7 +334,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPoint = activeContract.supplyPoint;
         supplyPointId = supplyPoint.id;
         contractId = activeContract.id;
-        if (procesoBase === 'B1' || procesoBase === 'B2') {
+        if (procesoBase === 'B1' || procesoBase === 'B2' || procesoBase === 'E1') {
           await prisma.contract.update({
             where: { id: activeContract.id },
             data: { 
@@ -461,7 +461,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_TRAMITANDO";
         warning = "Se recibió un paso 05 (Alta), pero no se encontró un contrato TRAMITANDO para este CUPS.";
       }
-    } else if ((procesoBase === 'B1' || procesoBase === 'B2') && paso === '02') {
+    } else if ((procesoBase === 'B1' || procesoBase === 'B2' || procesoBase === 'E1') && paso === '02') {
       const activeContract = await prisma.contract.findFirst({
         where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] } },
         include: { supplyPoint: true },
@@ -473,7 +473,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         contractId = activeContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
           const updateData: any = { fechaAceptacion: parsedData.fechaAR || new Date() };
-          if (procesoBase === 'B1') {
+          if (procesoBase === 'B1' || procesoBase === 'E1') {
             updateData.suspendido = true;
           }
           await prisma.contract.update({
@@ -491,6 +491,27 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       } else {
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = `Se recibió Aceptación/Rechazo de proceso ${procesoBase}, pero no se encontró un contrato ACTIVO para este CUPS.`;
+      }
+    } else if (procesoBase === 'E1' && paso === '04') {
+      const contract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active', 'FINALIZADO', 'Finalizado'] } },
+        include: { supplyPoint: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (contract) {
+        supplyPointId = contract.supplyPointId;
+        contractId = contract.id;
+        await prisma.contract.update({
+          where: { id: contract.id },
+          data: { 
+            internalComments: parsedData.observaciones ? `[Rechazo E1] ${parsedData.observaciones}\n${contract.internalComments || ''}` : contract.internalComments
+          }
+        });
+        tipoError = "E1_RECHAZADO";
+        warning = "Rechazo de Desistimiento (E1_04) recibido. Revisar los comentarios internos del contrato.";
+      } else {
+        tipoError = "CONTRATO_NO_ACTIVO_NI_FINALIZADO";
+        warning = "Se recibió un Rechazo de Desistimiento (E1_04), pero no se encontró un contrato ACTIVO o FINALIZADO.";
       }
     } else if ((paso === '02' || paso === '04') && procesoBase !== 'R1') {
       const tramitandoContract = await prisma.contract.findFirst({
@@ -610,6 +631,83 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = "CONTRATO_NO_ACTIVO";
         warning = "Se recibió un paso 01 de D1 (Notificación), pero no se encontró un contrato ACTIVO para este CUPS.";
       }
+    } else if (procesoBase === 'E1' && paso === '01') {
+      const activeContract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] } },
+        include: { supplyPoint: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (activeContract) {
+        supplyPoint = activeContract.supplyPoint;
+        supplyPointId = supplyPoint.id;
+        contractId = activeContract.id;
+        
+        await prisma.contract.update({
+          where: { id: activeContract.id },
+          data: { 
+            internalComments: `[Aviso] Se ha enviado solicitud de Desistimiento (E1) a la distribuidora.\n${activeContract.internalComments || ''}`
+          }
+        });
+      } else {
+        tipoError = "CONTRATO_NO_ACTIVO";
+        warning = "Se envió un Desistimiento (E1_01), pero no se encontró un contrato ACTIVO para este CUPS.";
+      }
+    } else if (procesoBase === 'E1' && paso === '11') {
+      const lastFinalizedContract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds }, status: { in: ['FINALIZADO', 'Finalizado'] } },
+        orderBy: { terminationDate: 'desc' }
+      });
+      if (lastFinalizedContract) {
+        supplyPointId = lastFinalizedContract.supplyPointId;
+        const { 
+          id, createdAt, updatedAt, 
+          airtableId, previousContractId, docusignEnvelopeId,
+          terminationDate,
+          ...cloneData 
+        } = lastFinalizedContract;
+        
+        const maxVersionContract = await prisma.contract.findFirst({
+          where: { contractCode: lastFinalizedContract.contractCode, brandId: lastFinalizedContract.brandId },
+          orderBy: { version: 'desc' }
+        });
+        const newVersion = maxVersionContract ? (maxVersionContract.version || 0) + 1 : (lastFinalizedContract.version || 0) + 1;
+        
+        const newContract = await prisma.contract.create({
+          data: {
+            ...cloneData as any,
+            status: 'TRAMITANDO',
+            version: newVersion,
+            fechaPrevistaActivacion: parsedData.fechaPrevActivacion || new Date(),
+            internalComments: `[Aviso] Contrato clonado automáticamente por E1_11 (Aceptación de desistimiento para recuperar cliente).\n${lastFinalizedContract.internalComments || ''}`
+          }
+        });
+        contractId = newContract.id;
+        warning = "Aceptación de Desistimiento (E1_11) recibida. Se ha clonado el último contrato finalizado y puesto en TRAMITANDO.";
+      } else {
+        tipoError = "CONTRATO_FINALIZADO_NO_ENCONTRADO";
+        warning = "Se recibió un E1_11, pero no se encontró un contrato FINALIZADO para clonar.";
+      }
+    } else if (procesoBase === 'E1' && paso === '06') {
+      const tramitandoContract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds }, status: 'TRAMITANDO' },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (tramitandoContract) {
+        supplyPointId = tramitandoContract.supplyPointId;
+        await prisma.contract.update({
+          where: { id: tramitandoContract.id },
+          data: { 
+            status: 'ACTIVO',
+            activationDate: parsedData.fechaActivacionAlta || new Date(),
+            internalComments: `[Aviso] Activación por Desistimiento (E1_06). Cliente recuperado.\n${tramitandoContract.internalComments || ''}`
+          }
+        });
+        contractId = tramitandoContract.id;
+        warning = "Activación por Desistimiento (E1_06) recibida. El contrato en TRAMITANDO ha pasado a ACTIVO.";
+      } else {
+        tipoError = "CONTRATO_TRAMITANDO_NO_ENCONTRADO";
+        warning = "Se recibió un E1_06, pero no se encontró el contrato TRAMITANDO previo (E1_11).";
+      }
     } else if (procesoBase === 'E2' && paso !== '05' && paso !== '02') {
       // Pasos del proceso de Reposición que no se auto-tramitan (01, 04, 06, 14, 15)
       const anyContract = await prisma.contract.findFirst({
@@ -620,6 +718,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       if (anyContract) {
         supplyPoint = anyContract.supplyPoint;
         supplyPointId = supplyPoint.id;
+        supplyPointId = anyContract.supplyPointId;
         contractId = anyContract.id;
       }
       
@@ -633,6 +732,44 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         tipoError = `E2_PASO_${paso}`;
         warning = `Aviso de Reposición (paso ${paso}) recibido y pendiente de revisión.`;
       }
+    } else if (procesoBase === 'E1' && ['03', '13'].includes(paso!)) {
+      const contract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds }, status: { notIn: ['FINALIZADO', 'Finalizado'] } },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (contract) {
+        supplyPointId = contract.supplyPointId;
+        contractId = contract.id;
+      }
+      tipoError = `E1_INCIDENCIA_${paso}`;
+      warning = `Incidencia recibida en proceso de Desistimiento (paso ${paso}). Por favor, revisar manualmente.`;
+    } else if (procesoBase === 'E1' && ['08', '09', '10'].includes(paso!)) {
+      const contract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds } },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (contract) {
+        supplyPointId = contract.supplyPointId;
+        contractId = contract.id;
+        if (contract.status === 'TRAMITANDO') {
+          await prisma.contract.update({
+            where: { id: contract.id },
+            data: { 
+              status: 'ANULADO',
+              internalComments: `[Aviso] El proceso de recuperación por desistimiento ha sido ANULADO (paso ${paso}).\n${contract.internalComments || ''}`
+            }
+          });
+        } else if (contract.suspendido) {
+          await prisma.contract.update({
+            where: { id: contract.id },
+            data: { 
+              suspendido: false,
+              internalComments: `[Aviso] El proceso de desistimiento ha sido ANULADO (paso ${paso}). Se levanta la suspensión.\n${contract.internalComments || ''}`
+            }
+          });
+        }
+      }
+      warning = `Anulación de proceso de Desistimiento (paso ${paso}) procesada.`;
     } else {
       // Fallback genérico para otros pasos
       const anyContract = await prisma.contract.findFirst({
@@ -642,7 +779,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       });
       if (anyContract) {
         supplyPoint = anyContract.supplyPoint;
-        supplyPointId = supplyPoint.id;
+        supplyPointId = anyContract.supplyPointId;
         contractId = anyContract.id;
       } else {
         warning = "No se encontró un contrato reciente para asignar este evento.";

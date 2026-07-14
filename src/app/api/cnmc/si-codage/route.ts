@@ -40,7 +40,7 @@ export async function GET(request: Request) {
           lt: endDate,
         },
         procesoBase: {
-          in: ['C1', 'C2'] 
+          in: ['C1', 'C2', 'A3', 'T1', 'E1', 'E2'] 
         }
       },
       include: {
@@ -93,9 +93,16 @@ export async function GET(request: Request) {
     };
 
     const mapProceso = (procesoBase: string) => {
-      if (procesoBase === 'C1') return 'C1';
-      if (procesoBase === 'C2') return 'C2';
-      return 'C1';
+      // C1/C2/E2 (Switching/Reposición) -> C3
+      if (procesoBase === 'C1' || procesoBase === 'C2' || procesoBase === 'E2') return 'C3';
+      // A3 (Altas) -> C4
+      if (procesoBase === 'A3') return 'C4';
+      // T1 (Traspasos) -> C5
+      if (procesoBase === 'T1') return 'C5';
+      // E1 (Desistimientos) -> C6
+      if (procesoBase === 'E1') return 'C6';
+      
+      return 'C3'; // fallback
     };
 
     // First group events by `codigoSolicitud` since one request can have multiple steps (pasos)
@@ -110,13 +117,17 @@ export async function GET(request: Request) {
     // Process each 'solicitud' as a single entity
     for (const [codSol, pasos] of Object.entries(solicitudes)) {
       // Find the initial step to determine metadata
-      const pasoInicial = pasos.find(p => p.paso === '01') || pasos[0];
+      // Si no hay paso 01, significa que el trámite no lo iniciamos nosotros 
+      // (ej. es una notificación de baja C1_05). No debemos reportarlo.
+      const pasoInicial = pasos.find(p => p.paso === '01');
+      if (!pasoInicial) continue;
+
       const sp = pasoInicial.supplyPoint;
       
       const provincia = sp?.postalCode ? sp.postalCode.substring(0, 2) + '000' : '28000';
       const distribuidor = mapDistribuidor(sp);
       const comerEntrante = codigoAgente;
-      const comerSaliente = '0';
+      const comerSaliente = pasoInicial.procesoBase === 'A3' ? '0' : '0'; // A3 is definitely 0, for C3 it could be populated if known, but 0 is safe
       const tipoCambio = mapProceso(pasoInicial.procesoBase);
       const tipoPunto = '5';
       const tarifaAtr = mapTariff(sp?.tariff);
@@ -144,22 +155,28 @@ export async function GET(request: Request) {
       }
 
       const g = groupedData[key];
-      g.TotalSolicitudesEnviadas++;
+      
+      if (pasoInicial.procesoBase === 'E2') {
+        g.Reposiciones++;
+      } else {
+        g.TotalSolicitudesEnviadas++;
+      }
 
-      // Evaluate states based on steps
-      const isAnulada = pasos.some(p => p.isAnnulled);
+      // Evaluate states based on steps (only for non-E2 processes, or E2 if you track them)
+      if (pasoInicial.procesoBase !== 'E2') {
+        const isAnulada = pasos.some(p => p.isAnnulled);
       if (isAnulada) {
         g.SolicitudesAnuladas++;
       }
 
-      const pasoAceptado = pasos.find(p => p.paso === '02' && p.estadoAR === 'ACEPTADO' || (p.paso === '02' && !p.tipoError));
+      const pasoAceptado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR === 'ACEPTADO' || ((p.paso === '02' || p.paso === '04') && !p.tipoError));
       if (pasoAceptado && pasoAceptado.fechaAR && pasoInicial.fechaSolicitud) {
         const diffDays = Math.max(0, (pasoAceptado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24));
         g.aceptadas.sum += diffDays;
         g.aceptadas.count++;
       }
 
-      const pasoRechazado = pasos.find(p => p.paso === '02' && p.estadoAR === 'RECHAZADO' || p.tipoError);
+      const pasoRechazado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR === 'RECHAZADO' || p.tipoError);
       if (pasoRechazado && pasoInicial.fechaSolicitud) {
         const diffDays = pasoRechazado.fechaAR ? Math.max(0, (pasoRechazado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)) : 0;
         
@@ -211,6 +228,7 @@ export async function GET(request: Request) {
         g.activadas.sum += diffDays;
         g.activadas.count++;
       }
+      } // End of if (pasoInicial.procesoBase !== 'E2')
     }
 
     // Prepare XML Object
