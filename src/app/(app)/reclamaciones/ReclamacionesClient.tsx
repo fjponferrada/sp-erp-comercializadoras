@@ -1,0 +1,191 @@
+'use client';
+
+import Topbar from '@/components/Topbar';
+
+import React, { useState } from 'react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { FileWarning, Search, RefreshCcw, Download } from 'lucide-react';
+import { getClaimsAction, ClaimSummary } from '@/app/actions/claimsActions';
+import toast from 'react-hot-toast';
+
+interface ReclamacionesClientProps {
+  initialClaims: ClaimSummary[];
+  initialTotalCount: number;
+  userRole: string;
+}
+
+export default function ReclamacionesClient({
+  initialClaims,
+  initialTotalCount,
+  userRole
+}: ReclamacionesClientProps) {
+  const [claims, setClaims] = useState(initialClaims);
+  const [totalCount, setTotalCount] = useState(initialTotalCount);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+
+  const fetchClaims = async (resetPage = false, newSearchTerm = searchTerm) => {
+    setLoading(true);
+    const currentPage = resetPage ? 1 : page + 1;
+    const result = await getClaimsAction(undefined, currentPage, 50, newSearchTerm);
+    if (result.success) {
+      if (resetPage) {
+        setClaims(result.data);
+        setPage(1);
+      } else {
+        setClaims([...claims, ...result.data]);
+        setPage(currentPage);
+      }
+      if ('totalCount' in result) setTotalCount(result.totalCount);
+    } else {
+      toast.error('Error recargando reclamaciones');
+    }
+    setLoading(false);
+  };
+
+  const formatDate = (dateString: Date | string | null | undefined) => {
+    if (!dateString) return '-';
+    try {
+      return format(new Date(dateString), 'dd/MM/yyyy HH:mm', { locale: es });
+    } catch (e) {
+      return '-';
+    }
+  };
+
+  
+  return (
+    <div className="min-h-screen relative outline-none flex flex-col" style={{ background: 'var(--bg-base)' }}>
+      <Topbar 
+        title="Reclamaciones"
+        subtitle={`Listado general de procesos de reclamación (R1). Total: ${totalCount}`}
+        customActions={
+          <div className="flex gap-3 w-full md:w-auto items-center">
+            <div className="relative flex-1 md:w-64">
+              <input
+                type="text"
+                placeholder="Buscar CUPS, nombre..."
+                className="w-full pl-9 pr-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg focus:ring-1 focus:ring-[var(--lime)] focus:border-[var(--lime)] text-sm text-gray-200 placeholder-gray-500"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (e.target.value === '') {
+                    fetchClaims(true, '');
+                  }
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && fetchClaims(true)}
+              />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+            </div>
+            <button
+              onClick={() => fetchClaims(true)}
+              disabled={loading}
+              className="flex items-center justify-center p-2 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] text-gray-400 transition-colors"
+              title="Recargar"
+            >
+              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <a
+              href="/reclamaciones/generar"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--lime)] text-[var(--bg-base)] font-semibold rounded-lg hover:bg-[#c9f07a] transition-colors"
+            >
+              Generar Reclamación
+            </a>
+          </div>
+        }
+      />
+      <div className="p-6 w-full mx-auto space-y-6 flex-1">
+
+        {/* TABLE */}
+        <div className="bg-[var(--bg-elevated)] rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">
+          <div className="overflow-x-auto pb-4">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-[rgba(255,255,255,0.02)] border-b border-[var(--border)] text-xs text-gray-400 font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="px-5 py-4">Código Solicitud</th>
+                  <th className="px-5 py-4">CUPS</th>
+                  <th className="px-5 py-4">Tipo / Subtipo</th>
+                  <th className="px-5 py-4 text-center">Estado</th>
+                  <th className="px-5 py-4 text-center">Días</th>
+                  <th className="px-5 py-4">Paso 01</th>
+                  <th className="px-5 py-4">Paso 02</th>
+                  <th className="px-5 py-4">Resolución</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)] text-gray-300">
+                {claims.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-gray-500">
+                      No se encontraron reclamaciones.
+                    </td>
+                  </tr>
+                )}
+                {claims.map((claim) => (
+                    <tr key={claim.codigoSolicitud} className="hover:bg-[rgba(255,255,255,0.01)] transition-colors">
+                      <td className="px-5 py-4 font-mono text-gray-400">
+                        <div className="flex items-center gap-2">
+                          {claim.codigoSolicitud}
+                          {claim.paso01?.xmlUrl && (
+                            <a href={claim.paso01.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 01" className="text-gray-500 hover:text-[var(--lime)]">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 font-mono text-gray-400">{claim.cups || '-'}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-gray-300">{claim.tipoReclamacion || 'Genérica'}</span>
+                          <span className="text-xs text-gray-500">{claim.subtipoReclamacion || claim.codigoReclamacion || '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          claim.estadoIntegrado === 'Cerrada' ? 'bg-gray-800 text-gray-300 border border-gray-600' :
+                          claim.estadoIntegrado === 'Rechazada' ? 'bg-red-900/30 text-red-400 border border-red-800' :
+                          claim.estadoIntegrado === 'Aceptada' ? 'bg-green-900/30 text-green-400 border border-green-800' :
+                          claim.estadoIntegrado === 'En Proceso' ? 'bg-blue-900/30 text-blue-400 border border-blue-800' :
+                          'bg-gray-800 text-gray-400'
+                        }`}>
+                          {claim.estadoIntegrado}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 font-bold text-center">
+                        {claim.diasAbierta !== null ? claim.diasAbierta : '-'}
+                      </td>
+                      <td className="px-5 py-4 text-gray-400">
+                         {formatDate(claim.paso01?.fecha)}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2 text-gray-400">
+                          {formatDate(claim.paso02?.fecha)}
+                          {claim.paso02?.xmlUrl && (
+                            <a href={claim.paso02.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 02" className="text-gray-500 hover:text-[var(--lime)]">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-gray-400">
+                        <div className="flex flex-col gap-2">
+                          <div className="max-w-xs truncate text-sm" title={claim.paso05?.comentario || claim.paso03?.comentario || '-'}>
+                            {claim.paso05?.comentario || claim.paso03?.comentario || '-'}
+                          </div>
+                          {(claim.paso05?.xmlUrl || claim.paso03?.xmlUrl) && (
+                            <a href={claim.paso05?.xmlUrl || claim.paso03?.xmlUrl || ''} target="_blank" rel="noreferrer" title="Descargar XML Resolución" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,100 @@
+Tabla 1: 1 Código REE empresa
+Tabla 2: 2 Código de Proceso
+Tabla 3: 3 Código del Paso
+Tabla 6: 6 Tipo de Identificador
+Tabla 7: 7 Tipo de Modificación Contractual
+Tabla 8: 8 Indicativo de activación
+Tabla 9: 9 Tipo de Contrato de ATR
+Tabla 10: 10 Motivo de Baja
+Tabla 11: 11 Dirección Fiscal
+Tabla 12: 12 Tipo de Vía
+Tabla 13: 13 Escalera
+Tabla 14: 14 Piso
+Tabla 15: 15 Puerta
+Tabla 16: 16 Tipo de Aclarador de Finca
+Tabla 17: 17 Tarifa ATR
+Tabla 20: 20 Propiedad Equipo
+Tabla 22: 22 Tipo de Equipo de Medida
+Tabla 23: 23 Dirección Correspondencia
+Tabla 24: 24 Tipo de Aparato
+Tabla 25: 25 Marca
+Tabla 26: 26 Indicativo SI/No
+Tabla 27: 27 Motivos de Rechazo
+Tabla 28: 28 Motivo de Incidencia en campo
+Tabla 30: 30 Tipo de Punto de Medida
+Tabla 31: 31 Tipo de Movimiento del Aparato
+Tabla 32: 32 Tipo de Propiedad del Aparato
+Tabla 33: 33 Función del Aparato
+Tabla 35: 35 Tipo de Discriminación Horaria del Equipo de Medida
+Tabla 36: 36 Indicativo de lectura directa no acumulativa
+Tabla 37: 37 Tipo de Movimiento Punto de Medida
+Tabla 38: 38 Modo de Lectura del Punto de Medida
+Tabla 39: 39 Estado del Punto de Medida
+Tabla 40: 40 Función del Punto de Medida
+Tabla 41: 41 Estado del Teléfono
+Tabla 42: 42 Código Período Discriminación Horaria
+Tabla 43: 43 Magnitud Integrador
+Tabla 44: 44 Procedencia
+Tabla 45: 45 Código de Anomalía
+Tabla 50: 50 Modo Medida de Potencia
+Tabla 51: 51 Modo Control Potencia
+Tabla 53: 53 Tipo de Solicitud Administrativa
+Tabla 55: 55 Tipo de Activación prevista
+Tabla 61: 61 Tipos de Documentación
+Tabla 62: 62 Tipos de suministro CIE
+Tabla 63: 63 Código Motivo Anomalía/Fraude
+Tabla 64: 64 Tensiones de suministro CIE y APM
+Tabla 65: 65 Ámbito de Validez de CIE
+Tabla 66: 66 CNAE
+Tabla 73: 73 Detalle Resultado
+Tabla 74: 74 Tipo de Intervención
+Tabla 75: 75 Resultado Intervención
+Tabla 76: 76 Variables Aportación Información
+Tabla 77: 77 Tipos de conceptos facturados
+Tabla 79: 79 Parámetros contratación
+Tabla 80: 80 Resultado de la reclamación
+Tabla 81: 81 Tipo de Reclamación o Petición
+Tabla 82: 82 Subtipo de Reclamación o Petición
+Tabla 83: 83 Tipo Reclamante
+Tabla 84: 84 Tipo de Comunicación intermedia
+Tabla 85: 85 Tipo de Información Adicional
+Tabla 86: 86 Tipos de Incidencia en equipos de medida
+Tabla 87: 87 Atención incorrecta
+Tabla 101: 101 Motivo de facturación
+Tabla 102: 102 Tipo Factura
+Tabla 103: 103 Tipo Concepto
+Tabla 104: 104 Tipo Moneda
+Tabla 106: 106 Código Motivo Ajuste
+Tabla 107: 107 Código Tarifa
+Tabla 108: 108 Periodicidad de Facturación
+Tabla 109: 109 Motivo Cambio ATR Desde Distribuidora
+Tabla 110: 110 Indicativo Curva de Carga
+Tabla 111: 111 Tipo de Telegestion
+Tabla 113: 113 Tipo de Autoconsumo
+Tabla 114: 114 Tipo Impuesto
+Tabla 115: 115 Tipo de Persona
+Tabla 116: 116 Tipo de Bono Social
+Tabla 117: 117 Solicitud Tensión
+Tabla 118: 118 Resultado de la activación del desistimiento
+Tabla 119: 119 Motivo posible traspaso COR
+Tabla 120: 120 Motivo Comunicación Baja Unidireccional
+Tabla 121: 121 Contestación Incidencia
+Tabla 122: 122 Tipo de Desistimiento
+Tabla 123: 123 Motivo No Contratable
+Tabla 124: 124 Solicitud de Contratación
+Tabla 125: 125 Código Motivo Acometida
+Tabla 126: 126 Tipo Instalación generación   (Clasificación según el Art. 2 RD 413/2014)
+Tabla 127: 127 Sección Registro
+Tabla 128: 128 Sección del Registro administrativo de autoconsumo.
+Tabla 129: 129 Tipo de instalación.
+Tabla 130: 130 Esquema/Configuración Equipo de Medida (EdM) de la Generación
+Tabla 131: 131 Tipo CUPS
+Tabla 132: 132 Tipo de cargo
+Tabla 133: 133 Subsección Autoconsumo
+Tabla 134: 134 Resultado de la activación de la reposición
+Tabla 135: 135 Tipo de reposición
+Tabla 136: 136 Motivo Comunicación Modificación Unidireccional
+Tabla 137: 137 Tipo esencialidad
+Tabla 138: 138 Indicativo validación cliente
+Tabla 139: 139 Tipo de disconformidad de autoconsumo facturado
+Tabla 140: 140 Motivo consulta

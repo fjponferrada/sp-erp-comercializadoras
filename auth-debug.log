@@ -1,0 +1,393 @@
+[2026-06-07T10:44:38.674Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:38.676Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:39.450Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:39.452Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:39.992Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:39.995Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:40.210Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:40.213Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:40.402Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:40.405Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:40.589Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:40.591Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:40.760Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:40.763Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:40.938Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:40.940Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:41.160Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:41.162Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:41.353Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:41.355Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:44:53.010Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:44:53.012Z] Prisma error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\.next\dev\server\chunks\[root-of-the-server]__05yf8b4._.js:208:170
+
+  205 if (!credentials?.email || !credentials?.password) return null;
+  206 const cleanEmail = credentials.email.trim();
+  207 const cleanPassword = credentials.password.trim();
+→ 208 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          email: "fjponferrada@sp-energia.com"
+        },
+        include: {
+          brand: {
+            include: {
+              company: true
+            }
+          },
+          assignedBrands: {
+          ~~~~~~~~~~~~~~
+            include: {
+              company: true
+            }
+          },
+      ?   channel?: true,
+      ?   leads?: true,
+      ?   contracts?: true
+        }
+      })
+
+Unknown field `assignedBrands` for include statement on model `User`. Available options are marked with ?.
+[2026-06-07T10:46:45.349Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:46:45.855Z] Returning user object for: fjponferrada@sp-energia.com
+[2026-06-07T10:51:19.700Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T10:51:20.192Z] Returning user object for: fjponferrada@sp-energia.com
+[2026-06-07T15:17:37.754Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T15:17:38.551Z] Password mismatch
+[2026-06-07T15:17:43.909Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T15:17:44.133Z] Password mismatch
+[2026-06-07T15:18:02.539Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T15:18:03.618Z] Returning user object for: fjponferrada@sp-energia.com
+[2026-06-07T15:19:42.300Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T15:19:43.064Z] Returning user object for: fjponferrada@sp-energia.com
+[2026-06-07T15:21:42.428Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T15:21:43.235Z] Returning user object for: fjponferrada@sp-energia.com
+[2026-06-07T15:26:19.858Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-07T15:26:20.436Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)
+[2026-06-09T00:17:14.630Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:17:15.487Z] Returning user object for: pabloremacha@aenergetica.es (Role: CANAL, Brands: 1)
+[2026-06-09T00:32:55.478Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:32:56.469Z] Password mismatch
+[2026-06-09T00:33:02.730Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:33:02.956Z] Password mismatch
+[2026-06-09T00:33:13.188Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:33:13.844Z] Password mismatch
+[2026-06-09T00:34:18.664Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:34:19.740Z] Password mismatch
+[2026-06-09T00:34:40.793Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:34:41.598Z] Returning user object for: pabloremacha@aenergetica.es (Role: CANAL, Brands: 1)
+[2026-06-09T00:34:50.761Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:34:51.093Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)
+[2026-06-09T00:41:02.401Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:41:03.234Z] Returning user object for: pabloremacha@aenergetica.es (Role: CANAL, Brands: 1)
+[2026-06-09T00:42:18.988Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:42:19.934Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)
+[2026-06-09T00:49:32.782Z] Login attempt for: gestion@energytricolor.com
+[2026-06-09T00:49:33.609Z] Returning user object for: gestion@energytricolor.com (Role: CANAL, Brands: 1)
+[2026-06-09T00:50:00.394Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:50:00.721Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)
+[2026-06-09T00:51:55.564Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:51:56.265Z] User has no allowed brands: pabloremacha@aenergetica.es
+[2026-06-09T00:52:02.598Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:52:02.836Z] User has no allowed brands: pabloremacha@aenergetica.es
+[2026-06-09T00:52:07.012Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:52:07.365Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)
+[2026-06-09T00:54:41.481Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:54:42.335Z] User has no allowed brands: pabloremacha@aenergetica.es
+[2026-06-09T00:54:47.689Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:54:48.010Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)
+[2026-06-09T00:55:06.372Z] Login attempt for: pabloremacha@aenergetica.es
+[2026-06-09T00:55:07.159Z] Returning user object for: pabloremacha@aenergetica.es (Role: CANAL, Brands: 1)
+[2026-06-09T00:55:19.368Z] Login attempt for: fjponferrada@sp-energia.com
+[2026-06-09T00:55:20.548Z] Returning user object for: fjponferrada@sp-energia.com (Role: SUPERADMIN, Brands: 1)

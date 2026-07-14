@@ -1,0 +1,8 @@
+
+Invalid `prisma.lead.findFirst()` invocation in
+C:\Users\Administrator\sp-erp-comercializadoras\test_prisma3.ts:9:33
+
+  6 
+  7 async function run() {
+  8   try {
+→ 9     const l = await prisma.lead.findFirst(

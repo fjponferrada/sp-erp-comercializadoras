@@ -1,0 +1,694 @@
+diff --git a/src/app/(app)/facturacion/interna/FacturacionClient.tsx b/src/app/(app)/facturacion/interna/FacturacionClient.tsx
+index 9393bc1..13d6fb9 100644
+--- a/src/app/(app)/facturacion/interna/FacturacionClient.tsx
++++ b/src/app/(app)/facturacion/interna/FacturacionClient.tsx
+@@ -1,7 +1,7 @@
+ 'use client';
+ 
+ import { useState } from 'react';
+-import { Calculator, CheckCircle, FileText, AlertCircle, RefreshCw, Eye, Wrench, Trash2, Download } from 'lucide-react';
++import { Calculator, CheckCircle, FileText, AlertCircle, RefreshCw, Eye, Wrench, Trash2, Download, Table } from 'lucide-react';
+ import { useRouter } from 'next/navigation';
+ import { toast } from 'react-hot-toast';
+ 
+@@ -96,6 +96,28 @@ export default function FacturacionClient({ pendingF1s, drafts }: { pendingF1s:
+     }
+   };
+ 
++  const handleRecalculateSingle = async (draftId: string) => {
++    setIsRecalculating(true);
++    try {
++      const res = await fetch('/api/facturacion/interna/recalculate', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ draftIds: [draftId] })
++      });
++      if (res.ok) {
++        toast.success(`Cálculo actualizado correctamente`);
++        router.refresh();
++      } else {
++        const body = await res.json();
++        toast.error(body.message || 'Error al recalcular');
++      }
++    } catch (e) {
++      toast.error('Error de red');
++    } finally {
++      setIsRecalculating(false);
++    }
++  };
++
+   const handleConfirm = async () => {
+     if (selectedDrafts.length === 0) return;
+     setIsConfirming(true);
+@@ -295,6 +317,9 @@ export default function FacturacionClient({ pendingF1s, drafts }: { pendingF1s:
+                             <Download size={16} />
+                           </a>
+                         )}
++                        <a href={`/api/facturacion/interna/export-excel/${draft.id}`} target="_blank" rel="noreferrer" className="text-[var(--text-secondary)] hover:text-white inline-flex items-center" title="Descargar Desglose Excel">
++                          <Table size={16} />
++                        </a>
+                         <a href={`/api/facturacion/interna/proforma/${draft.id}`} target="_blank" rel="noreferrer" className="text-[var(--text-secondary)] hover:text-white inline-flex items-center" title="Descargar PDF Proforma">
+                           <FileText size={16} />
+                         </a>
+@@ -375,11 +400,17 @@ export default function FacturacionClient({ pendingF1s, drafts }: { pendingF1s:
+                     </td>
+                     <td className="px-4 py-3 text-right">
+                       <div className="flex justify-end gap-2">
++                        <button onClick={() => handleRecalculateSingle(draft.id)} className="text-[var(--text-secondary)] hover:text-white inline-flex items-center" title="Recalcular Borrador">
++                          <RefreshCw size={16} />
++                        </button>
+                         {draft.f1Invoice?.xmlUrl && (
+                           <a href={draft.f1Invoice.xmlUrl} target="_blank" rel="noreferrer" className="text-[var(--text-secondary)] hover:text-white inline-flex items-center" title="Descargar XML F1 original">
+                             <Download size={16} />
+                           </a>
+                         )}
++                        <a href={`/api/facturacion/interna/export-excel/${draft.id}`} target="_blank" rel="noreferrer" className="text-[var(--text-secondary)] hover:text-[#217346] inline-flex items-center" title="Descargar Desglose Excel">
++                          <Table size={16} />
++                        </a>
+                         <a href={`/api/facturacion/interna/proforma/${draft.id}`} target="_blank" rel="noreferrer" className="text-[var(--text-secondary)] hover:text-white inline-flex items-center" title="Descargar PDF Proforma">
+                           <FileText size={16} />
+                         </a>
+diff --git a/src/app/(app)/productos/ProductosClient.tsx b/src/app/(app)/productos/ProductosClient.tsx
+index 823c3f5..3cc4468 100644
+--- a/src/app/(app)/productos/ProductosClient.tsx
++++ b/src/app/(app)/productos/ProductosClient.tsx
+@@ -128,15 +128,15 @@ export default function ProductosClient({ initialProducts }: { initialProducts:
+                   </td>
+                   <td>
+                     <span className={`badge ${
+-                      product.type === 'Indexado' ? 'badge-draft' : 'badge-active'
+-                    }`} style={product.type === 'Indexado' ? { color: 'var(--warning)', borderColor: 'var(--warning)' } : {}}>
+-                      {product.type === 'Indexado' ? 'Indexado' : 'Fijo'}
++                      product.pricingModel === 'INDEXED' ? 'badge-draft' : 'badge-active'
++                    }`} style={product.pricingModel === 'INDEXED' ? { color: 'var(--warning)', borderColor: 'var(--warning)' } : {}}>
++                      {product.pricingModel === 'INDEXED' ? 'Indexado' : 'Fijo'}
+                     </span>
+                   </td>
+                   <td style={{ textAlign: 'center' }}>
+                     <div 
+                       className="inline-flex items-center justify-center p-2 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition-colors relative group/tooltip"
+-                      title={product.type === 'Indexado' 
++                      title={product.pricingModel === 'INDEXED' 
+                         ? `Fee: ${product.fee ?? 0} €/MWh\nIP: ${product.airtableData?.['IP'] || '-'}\nFC: ${product.airtableData?.['FC'] || '-'}\nExcedentes: ${product.pexc ?? '-'}`
+                         : `Energía:\nP1: ${product.p1e ?? '-'}, P2: ${product.p2e ?? '-'}, P3: ${product.p3e ?? '-'}, P4: ${product.p4e ?? '-'}, P5: ${product.p5e ?? '-'}, P6: ${product.p6e ?? '-'}\n\nPotencia:\nP1: ${product.p1p ?? '-'}, P2: ${product.p2p ?? '-'}, P3: ${product.p3p ?? '-'}, P4: ${product.p4p ?? '-'}, P5: ${product.p5p ?? '-'}, P6: ${product.p6p ?? '-'}`
+                       }
+diff --git a/src/app/actions/f1Ingest.ts b/src/app/actions/f1Ingest.ts
+index 8e260d9..124f377 100644
+--- a/src/app/actions/f1Ingest.ts
++++ b/src/app/actions/f1Ingest.ts
+@@ -5,6 +5,7 @@ import { auth } from '@/auth';
+ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+ import { XMLParser } from 'fast-xml-parser';
+ import AdmZip from 'adm-zip';
++import { fromZonedTime } from 'date-fns-tz';
+ 
+ const r2 = new S3Client({
+   region: 'auto',
+@@ -203,9 +204,16 @@ async function ingestF1Core(file: File) {
+         // Parse YYYY-MM-DD into exact midnight in Madrid for the NEXT day
+         const parts = dStr.split('-');
+         if (parts.length === 3) {
+-          const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 1, 0, 0, 0);
+-          // Set TZ to Europe/Madrid for the string formatter to get the correct UTC output
+-          return new Date(dt.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }));
++          const y = parseInt(parts[0]);
++          const m = parseInt(parts[1]);
++          const d = parseInt(parts[2]) + 1; // shift 1 day forward
++          
++          // Use a UTC Date constructor just to handle month/year overflow natively
++          const overflowDate = new Date(Date.UTC(y, m - 1, d));
++          const dateStr = overflowDate.toISOString().substring(0, 10) + 'T00:00:00';
++          
++          // Use fromZonedTime to get the exact UTC moment of that local Madrid time
++          return fromZonedTime(dateStr, 'Europe/Madrid');
+         }
+         return undefined;
+       };
+diff --git a/src/app/api/debug2/route.ts b/src/app/api/debug2/route.ts
+deleted file mode 100644
+index 9873546..0000000
+--- a/src/app/api/debug2/route.ts
++++ /dev/null
+@@ -1,28 +0,0 @@
+-import { NextResponse } from 'next/server';
+-import { prisma } from '@/lib/prisma';
+-
+-export async function GET() {
+-  const f1s = await prisma.internalInvoice.findMany({
+-    where: {
+-      contract: {
+-        supplyPoint: {
+-          cups: { in: ['ES0021000042259265YM', 'ES00210000422921635Z', 'ES0031105643312001CL0F'] }
+-        }
+-      }
+-    },
+-    include: {
+-      contract: { include: { product: true } },
+-      f1Invoice: true
+-    }
+-  });
+-
+-  const res = f1s.map(f => ({
+-    cups: f.contract?.cups || 'none',
+-    pricingModel: f.contract?.pricingModel,
+-    productType: f.contract?.product?.type,
+-    airtableFijoIndex: (f.f1Invoice?.jsonData as any)?.['AirTable FIJO/INDEX'],
+-    f1JsonData: f.f1Invoice?.jsonData
+-  }));
+-
+-  return NextResponse.json(res);
+-}
+diff --git a/src/app/api/debug3/route.ts b/src/app/api/debug3/route.ts
+deleted file mode 100644
+index 526c415..0000000
+--- a/src/app/api/debug3/route.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-import { NextResponse } from 'next/server';
+-import { prisma } from '@/lib/prisma';
+-
+-export async function GET() {
+-  const products = await prisma.product.findMany({
+-    select: { id: true, name: true, type: true, pricingModel: true }
+-  });
+-  return NextResponse.json(products);
+-}
+diff --git a/src/app/api/facturacion/interna/calculate/route.ts b/src/app/api/facturacion/interna/calculate/route.ts
+index 3df1f8a..6133fe9 100644
+--- a/src/app/api/facturacion/interna/calculate/route.ts
++++ b/src/app/api/facturacion/interna/calculate/route.ts
+@@ -65,6 +65,9 @@ export async function POST(req: Request) {
+               powerCost: result.powerCost,
+               peajesDistribuidora: result.peajesDistribuidora,
+               cargosDistribuidora: result.cargosDistribuidora,
++              alquilerEquipo: result.alquilerEquipo,
++              bonoSocial: result.bonoSocial,
++              taxElectric: result.taxElectric,
+               periods: result.periods
+             } as any
+           }
+diff --git a/src/app/api/facturacion/interna/recalculate/route.ts b/src/app/api/facturacion/interna/recalculate/route.ts
+index ffc0ada..5b60d7e 100644
+--- a/src/app/api/facturacion/interna/recalculate/route.ts
++++ b/src/app/api/facturacion/interna/recalculate/route.ts
+@@ -62,6 +62,9 @@ export async function POST(req: Request) {
+               powerCost: result.powerCost,
+               peajesDistribuidora: result.peajesDistribuidora,
+               cargosDistribuidora: result.cargosDistribuidora,
++              alquilerEquipo: result.alquilerEquipo,
++              bonoSocial: result.bonoSocial,
++              taxElectric: result.taxElectric,
+               periods: result.periods
+             } as any
+           }
+diff --git a/src/components/pdf/InvoicePdfTemplate.tsx b/src/components/pdf/InvoicePdfTemplate.tsx
+index 9b8ad6d..ed97318 100644
+--- a/src/components/pdf/InvoicePdfTemplate.tsx
++++ b/src/components/pdf/InvoicePdfTemplate.tsx
+@@ -1,40 +1,41 @@
+ import React from 'react';
+ import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
+ 
+-const BRAND_COLOR = '#ff6b00'; // AED-like orange
+-const TEXT_DARK = '#333333';
+-const TEXT_LIGHT = '#666666';
++const BRAND_COLOR = '#005478'; 
++const TEXT_DARK = '#1a1a1a';
++const TEXT_LIGHT = '#4a4a4a';
++const BORDER_COLOR = '#d1d5db';
+ 
+ const styles = StyleSheet.create({
+   page: { padding: 40, fontFamily: 'Helvetica', fontSize: 9, color: TEXT_DARK },
+-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+-  companyBlock: { width: '45%' },
+-  invoiceTitleBlock: { width: '50%', alignItems: 'flex-end' },
+-  companyName: { fontSize: 16, fontWeight: 'bold', color: BRAND_COLOR, marginBottom: 5 },
+-  invoiceTitle: { fontSize: 24, fontWeight: 'bold', color: BRAND_COLOR, marginBottom: 10 },
++  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 },
++  companyBlock: { width: '50%' },
++  invoiceTitleBlock: { width: '45%', alignItems: 'flex-end' },
++  companyName: { fontSize: 18, fontWeight: 'bold', color: BRAND_COLOR, marginBottom: 5 },
++  invoiceTitle: { fontSize: 26, fontWeight: 'bold', color: BRAND_COLOR, marginBottom: 12 },
+   
+-  boxRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+-  box: { width: '48%', border: '1 solid #e0e0e0', borderRadius: 4, padding: 10 },
+-  boxTitle: { fontSize: 10, fontWeight: 'bold', color: BRAND_COLOR, marginBottom: 5, borderBottom: '1 solid #e0e0e0', paddingBottom: 2 },
++  boxRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
++  box: { width: '48%', border: `1 solid ${BORDER_COLOR}`, borderRadius: 6, padding: 12, backgroundColor: '#f9fafb' },
++  boxTitle: { fontSize: 11, fontWeight: 'bold', color: BRAND_COLOR, marginBottom: 8, borderBottom: `1 solid ${BORDER_COLOR}`, paddingBottom: 4 },
+   
+-  textRow: { flexDirection: 'row', marginBottom: 2 },
+-  label: { width: 120, fontWeight: 'bold', color: TEXT_LIGHT },
+-  value: { flex: 1 },
++  textRow: { flexDirection: 'row', marginBottom: 4 },
++  label: { width: 130, fontWeight: 'bold', color: TEXT_LIGHT },
++  value: { flex: 1, color: TEXT_DARK },
+ 
+-  detailsSection: { marginTop: 10 },
+-  sectionTitle: { fontSize: 12, fontWeight: 'bold', color: BRAND_COLOR, backgroundColor: '#f9f9f9', padding: 5, marginBottom: 5 },
++  detailsSection: { marginTop: 15 },
++  sectionTitle: { fontSize: 13, fontWeight: 'bold', color: 'white', backgroundColor: BRAND_COLOR, padding: 6, marginBottom: 10, borderRadius: 4 },
+   
+-  tableRow: { flexDirection: 'row', borderBottom: '1 solid #eeeeee', paddingVertical: 4 },
+-  tableHeader: { flexDirection: 'row', borderBottom: '2 solid #cccccc', paddingVertical: 4, fontWeight: 'bold' },
+-  colConcept: { flex: 3 },
++  tableRow: { flexDirection: 'row', borderBottom: `1 solid ${BORDER_COLOR}`, paddingVertical: 6 },
++  tableHeader: { flexDirection: 'row', borderBottom: `2 solid ${BRAND_COLOR}`, paddingVertical: 6, fontWeight: 'bold', backgroundColor: '#f3f4f6' },
++  colConcept: { flex: 4, paddingLeft: 4 },
+   colCalc: { flex: 2, textAlign: 'right' },
+-  colTotal: { flex: 1, textAlign: 'right', fontWeight: 'bold' },
++  colTotal: { flex: 1.5, textAlign: 'right', paddingRight: 4, fontWeight: 'bold' },
+ 
+-  summaryBox: { marginTop: 15, border: '1 solid #e0e0e0', borderRadius: 4, padding: 10, width: '50%', alignSelf: 'flex-end' },
+-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5, paddingTop: 5, borderTop: '2 solid #333', fontWeight: 'bold', fontSize: 12 },
++  summaryBox: { marginTop: 20, border: `2 solid ${BRAND_COLOR}`, borderRadius: 6, padding: 15, width: '55%', alignSelf: 'flex-end', backgroundColor: '#f0f9ff' },
++  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, fontSize: 10 },
++  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: `2 solid ${BRAND_COLOR}`, fontWeight: 'bold', fontSize: 14, color: BRAND_COLOR },
+ 
+-  cnmcBox: { marginTop: 30, padding: 10, border: '1 solid #ccc', backgroundColor: '#f5f5f5', fontSize: 7, color: TEXT_LIGHT }
++  cnmcBox: { marginTop: 40, padding: 12, border: `1 solid ${BORDER_COLOR}`, borderRadius: 4, backgroundColor: '#f9fafb', fontSize: 8, color: TEXT_LIGHT, textAlign: 'justify' }
+ });
+ 
+ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+@@ -57,14 +58,14 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+           <View style={styles.companyBlock}>
+             <Text style={styles.companyName}>Nuestra Comercializadora S.L.</Text>
+             <Text>NIF: B-00000000</Text>
+-            <Text>Calle Ejemplo 123, 28001 Madrid</Text>
+-            <Text>Tel: 900 000 000 | info@comercializadora.com</Text>
++            <Text>Calle de la Energía 1, 28001 Madrid</Text>
++            <Text>Tel: 900 123 456 | info@comercializadora.com</Text>
+           </View>
+           <View style={styles.invoiceTitleBlock}>
+-            <Text style={styles.invoiceTitle}>FACTURA DE LUZ</Text>
+-            <View style={styles.textRow}><Text style={{...styles.label, width: 80, textAlign: 'right', marginRight: 10}}>Nº Factura:</Text><Text style={{fontWeight: 'bold'}}>{invoiceNumber || 'Borrador'}</Text></View>
+-            <View style={styles.textRow}><Text style={{...styles.label, width: 80, textAlign: 'right', marginRight: 10}}>Fecha Emisión:</Text><Text>{formatDate(issueDate)}</Text></View>
+-            <View style={styles.textRow}><Text style={{...styles.label, width: 80, textAlign: 'right', marginRight: 10}}>Periodo:</Text><Text>{formatDate(billingStart)} - {formatDate(billingEnd)}</Text></View>
++            <Text style={styles.invoiceTitle}>FACTURA PROFORMA</Text>
++            <View style={styles.textRow}><Text style={{...styles.label, width: 90, textAlign: 'right', marginRight: 10}}>Nº Factura:</Text><Text style={{fontWeight: 'bold', flex: 1}}>{invoiceNumber || 'Borrador'}</Text></View>
++            <View style={styles.textRow}><Text style={{...styles.label, width: 90, textAlign: 'right', marginRight: 10}}>Fecha Emisión:</Text><Text style={{flex: 1}}>{formatDate(issueDate)}</Text></View>
++            <View style={styles.textRow}><Text style={{...styles.label, width: 90, textAlign: 'right', marginRight: 10}}>Periodo:</Text><Text style={{flex: 1}}>{formatDate(billingStart)} - {formatDate(billingEnd)}</Text></View>
+           </View>
+         </View>
+ 
+@@ -79,14 +80,14 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+           <View style={styles.box}>
+             <Text style={styles.boxTitle}>DATOS DEL PUNTO DE SUMINISTRO</Text>
+             <View style={styles.textRow}><Text style={styles.label}>CUPS:</Text><Text style={styles.value}>{cups}</Text></View>
+-            <View style={styles.textRow}><Text style={styles.label}>Peaje de Acceso:</Text><Text style={styles.value}>{tariff}</Text></View>
++            <View style={styles.textRow}><Text style={styles.label}>Tarifa de Acceso:</Text><Text style={styles.value}>{tariff}</Text></View>
+             <View style={styles.textRow}><Text style={styles.label}>Potencia (P1):</Text><Text style={styles.value}>{contractedPower ? contractedPower.toFixed(3) + ' kW' : '-'}</Text></View>
+           </View>
+         </View>
+ 
+         {/* DETALLE DE FACTURACION */}
+         <View style={styles.detailsSection}>
+-          <Text style={styles.sectionTitle}>DETALLE DE LA FACTURACIÓN</Text>
++          <Text style={styles.sectionTitle}>DESGLOSE DE FACTURACIÓN</Text>
+           
+           <View style={styles.tableHeader}>
+             <Text style={styles.colConcept}>Concepto</Text>
+@@ -97,8 +98,8 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+           {/* Potencia */}
+           {powerDetails.map((p: any, i: number) => (
+             <View style={styles.tableRow} key={`pow-${i}`}>
+-              <Text style={styles.colConcept}>Potencia Facturada {p.period}</Text>
+-              <Text style={styles.colCalc}>{p.kw?.toFixed(3)} kW x {p.days?.toFixed(0)} días x {p.price?.toFixed(5)} €/kW/día</Text>
++              <Text style={styles.colConcept}>Término de Potencia {p.period}</Text>
++              <Text style={styles.colCalc}>{p.kw?.toFixed(3)} kW x {p.days?.toFixed(0)} días</Text>
+               <Text style={styles.colTotal}>{p.total?.toFixed(2)} €</Text>
+             </View>
+           ))}
+@@ -106,7 +107,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+           {/* Energia ATR */}
+           {energyAtrDetails.map((e: any, i: number) => (
+             <View style={styles.tableRow} key={`atr-${i}`}>
+-              <Text style={styles.colConcept}>Término Energía ATR {e.period}</Text>
++              <Text style={styles.colConcept}>Peajes y Cargos (ATR) {e.period}</Text>
+               <Text style={styles.colCalc}>{e.kwh?.toFixed(0)} kWh x {e.price?.toFixed(6)} €/kWh</Text>
+               <Text style={styles.colTotal}>{e.total?.toFixed(2)} €</Text>
+             </View>
+@@ -115,7 +116,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+           {/* Energia Mercado */}
+           {energyMarketDetails.map((e: any, i: number) => (
+             <View style={styles.tableRow} key={`mkt-${i}`}>
+-              <Text style={styles.colConcept}>Término Energía Activa {e.period} (Mercado + Fee)</Text>
++              <Text style={styles.colConcept}>Energía Mercado (incluye FEE y FNEE) {e.period}</Text>
+               <Text style={styles.colCalc}>{e.kwh?.toFixed(0)} kWh x {e.price?.toFixed(6)} €/kWh</Text>
+               <Text style={styles.colTotal}>{e.total?.toFixed(2)} €</Text>
+             </View>
+@@ -132,7 +133,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+           
+           {taxElectric > 0 && (
+             <View style={styles.tableRow}>
+-              <Text style={styles.colConcept}>Impuesto Especial sobre la Electricidad</Text>
++              <Text style={styles.colConcept}>Impuesto Especial Eléctrico (IEE)</Text>
+               <Text style={styles.colCalc}></Text>
+               <Text style={styles.colTotal}>{taxElectric.toFixed(2)} €</Text>
+             </View>
+@@ -150,8 +151,8 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+         {/* TOTALES */}
+         <View style={styles.summaryBox}>
+           <View style={styles.summaryRow}>
+-            <Text>Base Imponible:</Text>
+-            <Text>{subtotal1?.toFixed(2) || '0.00'} €</Text>
++            <Text style={{fontWeight: 'bold'}}>Base Imponible:</Text>
++            <Text style={{fontWeight: 'bold'}}>{subtotal1?.toFixed(2) || '0.00'} €</Text>
+           </View>
+           <View style={styles.summaryRow}>
+             <Text>IVA ({taxPercentage}%):</Text>
+@@ -165,7 +166,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+ 
+         {/* REGULATORY TEXT */}
+         <View style={styles.cnmcBox}>
+-          <Text style={{fontWeight: 'bold', marginBottom: 4}}>ORIGEN DE LA ELECTRICIDAD Y AVISOS LEGALES</Text>
++          <Text style={{fontWeight: 'bold', marginBottom: 6, color: BRAND_COLOR}}>ORIGEN DE LA ELECTRICIDAD Y AVISOS LEGALES</Text>
+           <Text>
+             La energía suministrada por esta comercializadora es 100% de origen renovable. De acuerdo con la normativa vigente, la CNMC pone a disposición de los consumidores herramientas para verificar sus ofertas y el impacto ambiental. 
+             El importe correspondiente a los peajes y cargos del sistema se liquida a la empresa distribuidora de la zona.
+@@ -177,3 +178,4 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
+     </Document>
+   );
+ };
++
+diff --git a/src/lib/services/InternalBillingEngine.ts b/src/lib/services/InternalBillingEngine.ts
+index 35d5f6f..d0bd79c 100644
+--- a/src/lib/services/InternalBillingEngine.ts
++++ b/src/lib/services/InternalBillingEngine.ts
+@@ -30,6 +30,7 @@ export interface BillingCalculationResult {
+   totalAmount: number;
+   alquilerEquipo?: number;
+   taxElectric?: number;
++  hourlyDetails?: any[];
+   repairData?: any;
+   
+   powerDetails?: any[];
+@@ -71,7 +72,8 @@ export class InternalBillingEngine {
+   
+   static async calculate(
+     f1Id: string, 
+-    forceRepair: boolean = false
++    forceRepair: boolean = false,
++    returnHourlyDetails: boolean = false
+   ): Promise<BillingCalculationResult> {
+     
+     const f1 = await prisma.f1Invoice.findUnique({
+@@ -122,62 +124,65 @@ export class InternalBillingEngine {
+       where: {
+         cups: { startsWith: baseCups },
+         date: {
+-          gte: new Date(startDate.toISOString().split('T')[0] + 'T00:00:00Z'),
+-          lte: new Date(actualEndDate.toISOString().split('T')[0] + 'T23:59:59Z')
++          gte: new Date(startDate.getTime() - 24 * 3600 * 1000),
++          lte: new Date(actualEndDate.getTime() + 24 * 3600 * 1000)
+         }
+       },
+       orderBy: { date: 'asc' }
+     });
+ 
+-    const cchHourlyMWh: { date: Date, mwh: number, period: string }[] = [];
++    const cchHourlyMWh: { date: Date, mwh: number, period: string, isQuarterHour: boolean }[] = [];
+     let totalCchMWh = 0;
+ 
+     for (const lc of loadCurves) {
+       if (lc.date < startDate || lc.date >= endDate) continue;
+       
+-      const isHourly = lc.readings.length === 24;
+       const isQuarter = lc.readings.length === 96;
+       
+-      for (let h = 0; h < 24; h++) {
+-        const hourDate = new Date(lc.date);
+-        hourDate.setUTCHours(h);
+-        
+-        let mwh = 0;
+-        if (isHourly) {
+-          mwh = lc.readings[h] / 1000.0;
+-        } else if (isQuarter) {
+-          mwh = (lc.readings[h*4] + lc.readings[h*4+1] + lc.readings[h*4+2] + lc.readings[h*4+3]) / 1000.0;
++      if (isQuarter) {
++        for (let q = 0; q < 96; q++) {
++          const qDate = new Date(lc.date);
++          qDate.setUTCHours(Math.floor(q / 4), (q % 4) * 15);
++          const mwh = (lc.readings[q] || 0) / 1000.0;
++          const period = getPeriodoREE(qDate, tariff);
++          cchHourlyMWh.push({ date: qDate, mwh, period, isQuarterHour: true });
++          totalCchMWh += mwh;
++        }
++      } else {
++        // Fallback: Si la curva viene en formato horario (24 lecturas), 
++        // la dividimos en 4 cuartos de hora iguales para que el excel cuadre con 2880.
++        for (let h = 0; h < 24; h++) {
++          const mwhHour = (lc.readings[h] || 0) / 1000.0;
++          const mwhQuarter = mwhHour / 4.0;
++          for (let q = 0; q < 4; q++) {
++            const hourDate = new Date(lc.date);
++            hourDate.setUTCHours(h, q * 15);
++            const period = getPeriodoREE(hourDate, tariff);
++            cchHourlyMWh.push({ date: hourDate, mwh: mwhQuarter, period, isQuarterHour: true });
++            totalCchMWh += mwhQuarter;
++          }
+         }
+-        
+-        const period = getPeriodoREE(hourDate, tariff);
+-        cchHourlyMWh.push({ date: hourDate, mwh, period });
+-        totalCchMWh += mwh;
+       }
+     }
+ 
+     // 3. Evaluar descuadre
+     const originalCchMWh = totalCchMWh;
+-    let hasMismatch = false;
+-    let mismatchReason = undefined;
+-    const allowedEnergyMargin = 0.001; // 1 kWh tolerance
+-
++    const allowedEnergyMargin = 0.001; 
+     const uniqueDates = new Set(loadCurves.map(c => {
+-      const d = new Date(c.date);
+-      d.setHours(d.getHours() + 2); // Aprox a hora local para agrupar por día
+-      return d.toISOString().split('T')[0];
++      return new Date(c.date).toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+     })).size;
+     const foundDays = uniqueDates;
+     const expectedDays = Math.round((actualEndDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+-    const missingDaysStr = foundDays < expectedDays ? ` (Faltan ~${expectedDays - foundDays} días de curva)` : '';
++    
++    let hasMismatch = Math.abs(totalF1MWh - totalCchMWh) > allowedEnergyMargin;
++    let mismatchReason = undefined;
++    if (hasMismatch) {
++      mismatchReason = `Descuadre de volumen: F1 dice ${(totalF1MWh*1000).toFixed(0)} kWh pero la Curva suma ${(totalCchMWh*1000).toFixed(0)} kWh`;
++    }
+     
+     if (loadCurves.length === 0) {
+       hasMismatch = true;
+       mismatchReason = 'Sin datos de curva de carga (CCH) en la BD para estas fechas.';
+-    } else {
+-      if (Math.abs(totalF1MWh - totalCchMWh) > allowedEnergyMargin) {
+-        hasMismatch = true;
+-        mismatchReason = `Descuadre de volumen: F1 dice ${(totalF1MWh*1000).toFixed(0)} kWh pero la Curva suma ${(totalCchMWh*1000).toFixed(0)} kWh${missingDaysStr}`;
+-      }
+     }
+ 
+     if (hasMismatch && !forceRepair) {
+@@ -199,22 +204,22 @@ export class InternalBillingEngine {
+     if ((hasMismatch && forceRepair) || cchHourlyMWh.length === 0) {
+       cchHourlyMWh.length = 0; 
+       const ms = endDate.getTime() - startDate.getTime();
+-      const totalHours = Math.ceil(ms / (1000 * 60 * 60)) || 1; 
++      const totalQuarters = Math.ceil(ms / (1000 * 60 * 15)) || 1; 
+       
+       const counts: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+-      const tempHours: { date: Date, period: string }[] = [];
++      const tempQuarters: { date: Date, period: string }[] = [];
+       
+-      for (let i = 0; i < totalHours; i++) {
+-        const d = new Date(startDate.getTime() + i * 3600 * 1000);
++      for (let i = 0; i < totalQuarters; i++) {
++        const d = new Date(startDate.getTime() + i * 15 * 60 * 1000);
+         const p = getPeriodoREE(d, tariff);
+         counts[p]++;
+-        tempHours.push({ date: d, period: p });
++        tempQuarters.push({ date: d, period: p });
+       }
+       
+-      for (const th of tempHours) {
+-        const targetMWhPeriod = f1VolumesByPeriod[th.period] || 0;
+-        const mwh = counts[th.period] > 0 ? (targetMWhPeriod / counts[th.period]) : 0;
+-        cchHourlyMWh.push({ date: th.date, mwh, period: th.period });
++      for (const tq of tempQuarters) {
++        const targetMWhPeriod = f1VolumesByPeriod[tq.period] || 0;
++        const mwh = counts[tq.period] > 0 ? (targetMWhPeriod / counts[tq.period]) : 0;
++        cchHourlyMWh.push({ date: tq.date, mwh, period: tq.period, isQuarterHour: true });
+       }
+       
+       totalCchMWh = totalF1MWh;
+@@ -237,13 +242,31 @@ export class InternalBillingEngine {
+     
+     for (const pd of priceData) {
+       const dateKey = pd.date.toISOString().split('T')[0];
+-      for (let h = 0; h < 24; h++) {
+-        const key = `${dateKey}_${h}`;
+-        if (pd.component === 'OMIE') omieMap.set(key, pd.values[h] || 0);
+-        else if (pd.component === 'OS') osMap.set(key, pd.values[h] || 0);
+-        else if (pd.component === 'RESTRICCIONES') restMap.set(key, pd.values[h] || 0);
+-        else if (pd.component === 'K') kMap.set(key, pd.values[h] || 1);
+-        else perdMap.set(key, pd.values[h] || 0);
++      const isQuarterly = pd.values.length >= 96;
++      
++      const numVals = isQuarterly ? 96 : 24;
++      for (let i = 0; i < numVals; i++) {
++        if (isQuarterly) {
++          const h = Math.floor(i / 4);
++          const m = (i % 4) * 15;
++          const key = `${dateKey}_${h}_${m}`;
++          const val = pd.values[i] || 0;
++          if (pd.component === 'OMIE') omieMap.set(key, val);
++          else if (pd.component === 'OS') osMap.set(key, val);
++          else if (pd.component === 'RESTRICCIONES') restMap.set(key, val);
++          else if (pd.component === 'K') kMap.set(key, pd.values[i] || 1);
++          else perdMap.set(key, val);
++        } else {
++          const val = pd.values[i] || 0;
++          for (let q = 0; q < 4; q++) {
++            const key = `${dateKey}_${i}_${q * 15}`;
++            if (pd.component === 'OMIE') omieMap.set(key, val);
++            else if (pd.component === 'OS') osMap.set(key, val);
++            else if (pd.component === 'RESTRICCIONES') restMap.set(key, val);
++            else if (pd.component === 'K') kMap.set(key, pd.values[i] || 1);
++            else perdMap.set(key, val);
++          }
++        }
+       }
+     }
+ 
+@@ -307,17 +330,13 @@ export class InternalBillingEngine {
+     } else if (pm === 'INDEXADO' || pm === 'INDEX' || pm === 'INDEXED') {
+       isFixed = false;
+     }
+-    // 2. Heuristics on product name (Very common in their DB)
+-    else if (prodName.includes('INDEX') || prodName.includes(' IP ') || prodName.endsWith(' IP') || prodName.includes('BOE')) {
+-      isFixed = false;
+-    }
+-    // 3. Fallback to product type string
++    // 2. Fallback to product type string
+     else if (prodType.includes('index') || prodType.includes('pass-through')) {
+       isFixed = false;
+     } else if (prodType.includes('fijo')) {
+       isFixed = true;
+     }
+-    // 4. Fallback to Airtable legacy
++    // 3. Fallback to Airtable legacy
+     else {
+       const airFijo = airData && typeof airData['FIJO / INDEX'] === 'string' ? airData['FIJO / INDEX'].toUpperCase() : '';
+       isFixed = (airFijo === 'F' || airFijo === 'FIJO');
+@@ -345,13 +364,19 @@ export class InternalBillingEngine {
+     let totalEnergyCost = 0;
+     let totalPeajesEnergiaBOE = 0;
+     let totalCargosEnergiaBOE = 0;
++    let totalF1MWhCalc = 0;
++    
++    const hourlyDetails: any[] = [];
+ 
+     for (const hData of cchHourlyMWh) {
+-      const dateKey = hData.date.toISOString().split('T')[0];
+-      const hour = hData.date.getUTCHours();
+-      const key = `${dateKey}_${hour}`;
++      // Use Madrid local time to match DB structure
++      const localStr = hData.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });
++      const localDateKey = localStr.substring(0, 10);
++      const localHour = parseInt(localStr.substring(11, 13), 10);
++      const localMinute = parseInt(localStr.substring(14, 16), 10);
++      const key = `${localDateKey}_${localHour}_${localMinute}`;
++
+       const mwh = hData.mwh;
+-      if (mwh <= 0) continue;
+ 
+       const p = hData.period;
+       if (!periodsBreakdown[p]) continue; 
+@@ -387,13 +412,16 @@ export class InternalBillingEngine {
+       if (Math.abs(pctPerd) > 2.0) pctPerd /= 100.0;
+       const lossFactor = 1 + pctPerd;
+ 
+-      // Formula: Ph = [[(OMIEh + SSAAh + PC + ROM + ROS + DSV)*(1+Perd) + FNEE + FEE] * 1/0,985 + ATR]
++      // Formula: Ph = [[(OMIEh + SSAAh + PC + ROM + ROS + DSV)*(1+Perd) + FNEE + FEE] * 1/0,985]
+       // Note: SSAAh is represented by (OS + RESTRICCIONES)
+       
+       const shadowBase = (omie + os + rest + pc + rom + ros + 2 /* DSV shadow */) * lossFactor;
+-      const shadowPh = (shadowBase + fneeCost + 0 /* FEE shadow */) * (1 / 0.985) + atr;
++      const shadowPh = (shadowBase + fneeCost + 0 /* FEE shadow */) * (1 / 0.985);
+       totalShadowIndexedCost += shadowPh * mwh;
+ 
++      let ph = 0;
++      let hCost = 0;
++
+       if (isFixed) {
+         const pNum = parseInt(p.replace('P', '')) || 1;
+         let fixedPrice = (contract as any)[`p${pNum}e`];
+@@ -401,20 +429,41 @@ export class InternalBillingEngine {
+         if (!fixedPrice) fixedPrice = (getAirVal(`P${pNum}E`) || getAirVal(`P${pNum} E`)) * 1000;
+         if (!fixedPrice) throw new Error(`Contrato Fijo sin precio configurado para energía (P${pNum}E).`);
+         
+-        const hCost = fixedPrice * mwh;
++        ph = fixedPrice;
++        hCost = ph * mwh;
+         totalEnergyCost += hCost;
+         periodsBreakdown[p].energyCostEur += hCost;
+       } else {
+         const dsv = contract.deviationCost || 0;
+         const base = (omie + os + rest + pc + rom + ros + dsv) * lossFactor;
+-        const ph = (base + fneeCost + feeValue) * (1 / 0.985) + atr;
+-        const hCost = ph * mwh;
++        ph = (base + fneeCost + feeValue) * (1 / 0.985);
++        hCost = ph * mwh;
+         
+         totalEnergyCost += hCost;
+         periodsBreakdown[p].energyCostEur += hCost;
+       }
+       
+       periodsBreakdown[p].regulatedCostEur += (atr * mwh);
++
++      if (returnHourlyDetails) {
++        hourlyDetails.push({
++          date: hData.date.toISOString(),
++          period: p,
++          mwh,
++        omie,
++        os,
++        rest,
++        dsv: contract.deviationCost || 0,
++        k: kMap.get(key) || 1,
++        pctPerd,
++        lossFactor,
++        atr,
++        fnee: fneeCost,
++        fee: feeValue,
++        ph,
++        hCost
++      });
++      }
+     }
+ 
+     // Power Term
+@@ -495,12 +544,12 @@ export class InternalBillingEngine {
+         energyAtrDetails.push({ period: p, kwh, price: atrPeaje + atrCargo, total: atrTotalEur });
+         
+         // Market part is the rest
+-        const marketTotalEur = totalEur - atrTotalEur;
++        const marketTotalEur = totalEur;
+         energyMarketDetails.push({ period: p, kwh, price: marketTotalEur / kwh, total: marketTotalEur });
+       }
+     }
+ 
+-    let totalBase = totalEnergyCost + powerCost + alquilerEquipo + bonoSocial;
++    let totalBase = totalEnergyCost + totalPeajesEnergiaBOE + totalCargosEnergiaBOE + powerCost + alquilerEquipo + bonoSocial;
+ 
+     // Impuesto Eléctrico (IEE)
+     const ieeRate = (contract as any).taxElectric || 5.11269;
+@@ -534,6 +583,7 @@ export class InternalBillingEngine {
+       energyMarketDetails,
+       energyMargin,
+       powerMargin,
++      hourlyDetails,
+       repairData: hasMismatch ? { issue: mismatchReason, f1Volume: totalF1MWh, cchVolume: originalCchMWh } : null
+     };
+   }

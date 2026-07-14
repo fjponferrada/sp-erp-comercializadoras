@@ -1,0 +1,1 @@
+import 'dotenv/config'; import { prisma } from '../src/lib/prisma'; prisma.invoice.findFirst({where: {invoiceNumber: 'A260615477'}}).then(r => console.log(JSON.stringify(r, null, 2))).finally(() => prisma.$disconnect());

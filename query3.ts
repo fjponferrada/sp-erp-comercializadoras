@@ -1,0 +1,1 @@
+import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); async function main() { const c = await prisma.client.findFirst({where: {vatNumber: 'B05482310'}}); console.log(JSON.stringify(c, null, 2)); } main();

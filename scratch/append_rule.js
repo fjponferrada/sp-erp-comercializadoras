@@ -1,0 +1,5 @@
+const fs = require('fs');
+const ruleText = `
+169. **Regla 169 (Compatibilidad Híbrida de Precios de Mercado ESIOS - Horario vs Cuartohorario)**: Desde la adaptación del mercado a liquidaciones cuarto-horarias, el operador (ESIOS/OMIE) puede devolver arrays de 24 valores (horarios) o 96 valores (cuarto-horarios). Es obligatorio que la tabla \`SystemComponentPrice\` almacene la matriz cruda tal cual viene. El motor de facturación (\`InternalBillingEngine\`) **debe implementar una lectura adaptativa por hora y minuto local**: si el array tiene 96 elementos, cada valor se mapeará estrictamente a su \`Hora_Minuto\` correspondiente (ej. el índice 40 corresponde a las 10:00). Si el array tiene 24 valores, el motor replicará el precio de cada hora para rellenar los 4 cuartos de hora subyacentes. Bajo ningún concepto se utilizará la 'hora local' pura (0-23) como índice directo sobre un array de mercado sin evaluar primero su longitud, para evitar el arrastre anómalo de precios de madrugada a horas diurnas.
+`;
+fs.appendFileSync('C:/Users/Administrator/sp-erp-comercializadoras/docs/BUSINESS_RULES.md', ruleText, 'utf8');

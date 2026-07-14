@@ -1,0 +1,523 @@
+import { prisma } from '@/lib/prisma';
+
+export interface BillingPeriodBreakdown {
+  period: string;
+  cchConsumptionMWh: number;
+  f1ConsumptionMWh: number;
+  energyCostEur: number; // Coste OMIE + OS + RESTRICCIONES * PERDIDAS
+  regulatedCostEur: number; // Capacidad + FNEE
+}
+
+export interface BillingCalculationResult {
+  hasMismatch: boolean;
+  mismatchReason?: string;
+  totalCchMWh: number;
+  totalF1MWh: number;
+  periods: Record<string, BillingPeriodBreakdown>;
+  
+  energyCost: number; // Sum of hourly (OMIE + OS + RESTRICCIONES) * PERDIDAS * MWh
+  feeCost: number; // Margin
+  capacityCost: number;
+  fneeCost: number;
+  bonoSocial: number;
+  
+  powerCost: number; // Término de potencia facturado al cliente
+  peajesDistribuidora: number; // Peajes reales del F1 (solo informativo, no se suma al total)
+  cargosDistribuidora: number; // Cargos reales del F1 (solo informativo, no se suma al total)
+  
+  totalBase: number;
+  taxAmount: number;
+  totalAmount: number;
+  alquilerEquipo?: number;
+  taxElectric?: number;
+  repairData?: any;
+  
+  powerDetails?: any[];
+  energyAtrDetails?: any[];
+  energyMarketDetails?: any[];
+}
+
+export function getPeriodoREE(dt: Date, tariff: string): string {
+  const m = dt.getUTCMonth() + 1;
+  const h = dt.getUTCHours();
+  const w = dt.getUTCDay(); 
+  const isWeekend = (w === 0 || w === 6);
+  const isHol = isWeekend; 
+  
+  if (tariff.includes('2.0TD')) {
+    if (isHol || (h >= 0 && h < 8)) return 'P3';
+    if ([8, 9, 14, 15, 16, 17, 22, 23].includes(h)) return 'P2';
+    return 'P1';
+  }
+  
+  if (isHol || (h >= 0 && h < 8)) return 'P6';
+  if ([1, 2, 7, 12].includes(m)) return (h >= 9 && h < 14) || (h >= 18 && h < 22) ? 'P1' : 'P2';
+  if ([3, 11].includes(m)) return (h >= 9 && h < 14) || (h >= 18 && h < 22) ? 'P2' : 'P3';
+  if ([6, 8, 9].includes(m)) return (h >= 9 && h < 14) || (h >= 18 && h < 22) ? 'P3' : 'P4';
+  return (h >= 9 && h < 14) || (h >= 18 && h < 22) ? 'P4' : 'P5';
+}
+
+function getArray(val: any) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return [val];
+}
+
+export class InternalBillingEngine {
+  
+  static async calculate(
+    f1Id: string, 
+    forceRepair: boolean = false
+  ): Promise<BillingCalculationResult> {
+    
+    const f1 = await prisma.f1Invoice.findUnique({
+      where: { id: f1Id },
+      include: { contract: true, supplyPoint: true }
+    });
+    
+    if (!f1 || !f1.contract || !f1.supplyPoint) {
+      throw new Error("F1 must have contract and supply point");
+    }
+    
+    const contract = f1.contract;
+    const tariff = f1.supplyPoint.tariff || '3.0TD';
+    const startDate = f1.fechaInicio || new Date();
+    const endDate = f1.fechaFin || new Date();
+    
+    // 1. Obtener los volúmenes del F1
+    const jsonData = f1.jsonData as any;
+    const pEnergia = getArray(jsonData?.EnergiaActiva?.TerminoEnergiaActiva?.Periodo);
+    
+    const f1VolumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+    let totalF1MWh = 0;
+    
+    if (pEnergia && pEnergia.length > 0) {
+      for (let idx = 0; idx < pEnergia.length; idx++) {
+        const p = pEnergia[idx];
+        const pName = p.Periodo || p.periodo || `P${idx + 1}`; // P1, P2, etc.
+        const valorStr = p.ValorEnergiaActiva || p.valorEnergiaActiva || '0';
+        // F1 viene en kWh, lo convertimos a MWh
+        const valorMWh = parseFloat(valorStr.toString().replace(',', '.')) / 1000.0;
+        if (f1VolumesByPeriod[pName] !== undefined) {
+          f1VolumesByPeriod[pName] += valorMWh;
+        }
+        totalF1MWh += valorMWh;
+      }
+    } else {
+      throw new Error("El fichero F1 (XML) no contiene desgloses de Energía Activa o es ilegible.");
+    }
+
+    // 2. Obtener la Curva de Carga Horaria (CCH)
+    // Usamos los primeros 20 caracteres del CUPS para evitar problemas con sufijos (ej: 1P, 1F)
+    const baseCups = f1.supplyPoint.cups.substring(0, 20);
+    
+    // La fechaFin del F1 es exclusiva (00:00 del día indicado). 
+    // Por tanto, el último día real de consumo es el día anterior.
+    const actualEndDate = new Date(endDate.getTime() - 1000);
+
+    const loadCurves = await prisma.loadCurve.findMany({
+      where: {
+        cups: { startsWith: baseCups },
+        date: {
+          gte: new Date(startDate.toISOString().split('T')[0] + 'T00:00:00Z'),
+          lte: new Date(actualEndDate.toISOString().split('T')[0] + 'T23:59:59Z')
+        }
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    const cchHourlyMWh: { date: Date, mwh: number, period: string }[] = [];
+    let totalCchMWh = 0;
+
+    for (const lc of loadCurves) {
+      // Nos aseguramos de estar en rango (endDate es exclusivo, usamos < en lugar de <=)
+      if (lc.date < startDate || lc.date >= endDate) continue;
+      
+      const isHourly = lc.readings.length === 24;
+      const isQuarter = lc.readings.length === 96;
+      
+      for (let h = 0; h < 24; h++) {
+        const hourDate = new Date(lc.date);
+        hourDate.setUTCHours(h);
+        
+        let mwh = 0;
+        if (isHourly) {
+          mwh = lc.readings[h] / 1000.0;
+        } else if (isQuarter) {
+          mwh = (lc.readings[h*4] + lc.readings[h*4+1] + lc.readings[h*4+2] + lc.readings[h*4+3]) / 1000.0;
+        }
+        
+        const period = getPeriodoREE(hourDate, tariff);
+        cchHourlyMWh.push({ date: hourDate, mwh, period });
+        totalCchMWh += mwh;
+      }
+    }
+
+    // 3. Evaluar descuadre
+    let hasMismatch = false;
+    let mismatchReason = undefined;
+    
+    if (loadCurves.length === 0) {
+      hasMismatch = true;
+      mismatchReason = 'Sin datos de curva de carga (CCH) en la BD para estas fechas.';
+    } else {
+      // Diferencia > 1 kWh (0.001 MWh)
+      if (Math.abs(totalF1MWh - totalCchMWh) > 0.001) {
+        hasMismatch = true;
+        mismatchReason = `Descuadre de volumen: F1 dice ${(totalF1MWh*1000).toFixed(0)} kWh pero la Curva suma ${(totalCchMWh*1000).toFixed(0)} kWh`;
+      }
+    }
+
+    // Si fuerza reparación o es CCH nulo, generamos un CCH sintético/reparado basado en F1 y un perfil plano
+    const originalCchMWh = totalCchMWh; // Guardamos el valor original para el reporte de descuadre
+
+    if ((hasMismatch && forceRepair) || cchHourlyMWh.length === 0) {
+      cchHourlyMWh.length = 0; 
+      const ms = endDate.getTime() - startDate.getTime();
+      const totalHours = Math.ceil(ms / (1000 * 60 * 60)) || 1; 
+      
+      const counts: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+      const tempHours: { date: Date, period: string }[] = [];
+      
+      for (let i = 0; i < totalHours; i++) {
+        const d = new Date(startDate.getTime() + i * 3600 * 1000);
+        const p = getPeriodoREE(d, tariff);
+        counts[p]++;
+        tempHours.push({ date: d, period: p });
+      }
+      
+      // Asignar MWh equitativamente por periodo (Reparación plana)
+      for (const th of tempHours) {
+        const targetMWhPeriod = f1VolumesByPeriod[th.period] || 0;
+        const mwh = counts[th.period] > 0 ? (targetMWhPeriod / counts[th.period]) : 0;
+        cchHourlyMWh.push({ date: th.date, mwh, period: th.period });
+      }
+      
+      totalCchMWh = totalF1MWh;
+    }
+
+    // 4. Obtener precios de mercado (SystemComponentPrice y RegulatedCost)
+    const datesToQuery = Array.from(new Set(cchHourlyMWh.map(c => c.date.toISOString().split('T')[0])));
+    const priceData = await prisma.systemComponentPrice.findMany({
+      where: {
+        date: { in: datesToQuery.map(d => new Date(d + 'T00:00:00Z')) },
+        component: { in: ['OMIE', 'OS', 'RESTRICCIONES', 'K', tariff.includes('2.0') ? 'PERD_20TD' : (tariff.includes('6.1') ? 'PERD_61TD' : 'PERD_30TD')] }
+      }
+    });
+
+    const perdidasBOE = await prisma.regulatedCost.findMany({ where: { concept: 'PERDIDAS', tariff: tariff } });
+    const boeRecord = perdidasBOE[0];
+
+    const omieMap = new Map<string, number>();
+    const osMap = new Map<string, number>();
+    const restMap = new Map<string, number>();
+    const kMap = new Map<string, number>();
+    const perdMap = new Map<string, number>();
+    
+    for (const pd of priceData) {
+      const dateKey = pd.date.toISOString().split('T')[0];
+      for (let h = 0; h < 24; h++) {
+        const key = `${dateKey}_${h}`;
+        if (pd.component === 'OMIE') omieMap.set(key, pd.values[h] || 0);
+        else if (pd.component === 'OS') osMap.set(key, pd.values[h] || 0);
+        else if (pd.component === 'RESTRICCIONES') restMap.set(key, pd.values[h] || 0);
+        else if (pd.component === 'K') kMap.set(key, pd.values[h] || 1);
+        else perdMap.set(key, pd.values[h] || 0);
+      }
+    }
+
+    const regCosts = await prisma.regulatedCost.findMany({
+      where: {
+        OR: [{ tariff }, { tariff: 'TODAS' }],
+        validFrom: { lte: endDate },
+        validTo: { gte: startDate }
+      }
+    });
+
+    let fneeCost = 0;
+    let capCost = 0;
+    for (const reg of regCosts) {
+      if (reg.concept === 'FNEE') fneeCost = reg.singleValue || 0;
+      if (reg.concept === 'CAPACIDAD') capCost = reg.singleValue || 0;
+    }
+
+    // 5. Motor de cálculo horario
+    let totalEnergyCost = 0;
+    let totalCapacityCost = 0;
+    let totalFneeCost = 0;
+    const periodsBreakdown: Record<string, BillingPeriodBreakdown> = {
+      P1: { period: 'P1', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P1']||0, energyCostEur: 0, regulatedCostEur: 0 },
+      P2: { period: 'P2', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P2']||0, energyCostEur: 0, regulatedCostEur: 0 },
+      P3: { period: 'P3', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P3']||0, energyCostEur: 0, regulatedCostEur: 0 },
+      P4: { period: 'P4', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P4']||0, energyCostEur: 0, regulatedCostEur: 0 },
+      P5: { period: 'P5', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P5']||0, energyCostEur: 0, regulatedCostEur: 0 },
+      P6: { period: 'P6', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P6']||0, energyCostEur: 0, regulatedCostEur: 0 }
+    };
+
+    let airData: any = null;
+    if ((contract as any).airtableData) {
+      airData = typeof (contract as any).airtableData === 'string' 
+        ? JSON.parse((contract as any).airtableData) 
+        : (contract as any).airtableData;
+    }
+    const getAirVal = (key: string) => {
+      if (!airData) return 0;
+      return Number(airData[key] || airData[`${key} (from PRODUCTOS)`] || airData[`PRECIO ${key}`]) || 0;
+    };
+
+    const isFixed = contract.pricingModel === 'FIJO' || contract.pricingModel === 'Fijo' || contract.pricingModel === 'FIXED' || (airData && (airData['FIJO / INDEX'] === 'F' || airData['FIJO / INDEX'] === 'FIJO'));
+
+    for (const hData of cchHourlyMWh) {
+      const dateKey = hData.date.toISOString().split('T')[0];
+      const hour = hData.date.getUTCHours();
+      const key = `${dateKey}_${hour}`;
+      
+      const mwh = hData.mwh;
+      if (mwh <= 0) continue;
+
+      const p = hData.period;
+      if (!periodsBreakdown[p]) continue; // Seguridad
+      
+      periodsBreakdown[p].cchConsumptionMWh += mwh;
+
+      if (isFixed) {
+        const pNum = parseInt(p.replace('P', '')) || 1;
+        
+        let fixedPrice = (contract as any)[`p${pNum}e`];
+        if (fixedPrice !== null && fixedPrice !== undefined && fixedPrice < 5) {
+          fixedPrice *= 1000;
+        }
+        if (!fixedPrice) {
+          fixedPrice = (getAirVal(`P${pNum}E`) || getAirVal(`P${pNum} E`)) * 1000;
+        }
+        if (!fixedPrice) {
+          throw new Error(`Contrato Fijo sin precio configurado para energía (P${pNum}E).`);
+        }
+        
+        const hCost = fixedPrice * mwh;
+        totalEnergyCost += hCost;
+        periodsBreakdown[p].energyCostEur += hCost;
+      } else {
+        const omie = omieMap.get(key);
+        if (omie === undefined) throw new Error(`Falta precio de mercado OMIE para la hora ${key}.`);
+        
+        const os = osMap.get(key);
+        if (os === undefined) throw new Error(`Falta precio de Operador del Sistema (OS) para la hora ${key}.`);
+        
+        const rest = restMap.get(key) || 0; // Restricciones a veces es 0
+        const desvio = contract.deviationCost || 0;
+        
+        // Cálculo de pérdidas: BOE * K (según periodo REE horario)
+        let pctPerd = 0;
+        if (boeRecord) {
+          const dateObjH = new Date(hData.date);
+          dateObjH.setUTCHours(hour);
+          const periodStr = getPeriodoREE(dateObjH, tariff);
+          const pVal = boeRecord[periodStr.toLowerCase() as keyof typeof boeRecord] as number | null;
+          if (pVal !== null && pVal !== undefined) {
+             const k = kMap.get(key) || 1;
+             pctPerd = pVal * k;
+          } else {
+             const val = perdMap.get(key);
+             if (val === undefined) throw new Error(`Faltan coeficientes de pérdidas normativas (PERD) para la hora ${key}.`);
+             pctPerd = val;
+          }
+        } else {
+          const val = perdMap.get(key);
+          if (val === undefined) throw new Error(`Faltan coeficientes de pérdidas normativas (PERD) para la hora ${key}.`);
+          pctPerd = val;
+        }
+
+        if (Math.abs(pctPerd) > 2.0) pctPerd /= 100.0;
+        const lossFactor = 1 + pctPerd;
+
+        const basePrecioUnit = (omie + os + rest + desvio) * lossFactor;
+        const hEnergyCost = basePrecioUnit * mwh;
+
+        totalEnergyCost += hEnergyCost;
+        periodsBreakdown[p].energyCostEur += hEnergyCost;
+        
+        const regUnit = capCost + fneeCost; 
+        const hRegCost = regUnit * mwh;
+        totalCapacityCost += (capCost * mwh);
+        totalFneeCost += (fneeCost * mwh);
+        periodsBreakdown[p].regulatedCostEur += hRegCost;
+      }
+    }
+
+
+
+    // Cálculo Término de Potencia con precios pactados en contrato
+    const billingDays = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
+    
+    const p1c = f1.supplyPoint.p1c || getAirVal('P1C') || 0;
+    const p2c = f1.supplyPoint.p2c || getAirVal('P2C') || 0;
+    const p3c = f1.supplyPoint.p3c || getAirVal('P3C') || 0;
+    const p4c = f1.supplyPoint.p4c || getAirVal('P4C') || 0;
+    const p5c = f1.supplyPoint.p5c || getAirVal('P5C') || 0;
+    const p6c = f1.supplyPoint.p6c || getAirVal('P6C') || 0;
+
+    const baseP1p = contract.p1p || getAirVal('P1P') || getAirVal('P1 P');
+    if (!baseP1p) throw new Error("Contrato sin precio de Término de Potencia (P1P) configurado.");
+    
+    const p1p = baseP1p;
+    const p2p = contract.p2p || getAirVal('P2P') || getAirVal('P2 P') || p1p;
+    const p3p = contract.p3p || getAirVal('P3P') || getAirVal('P3 P') || p1p;
+    const p4p = contract.p4p || getAirVal('P4P') || getAirVal('P4 P') || p1p;
+    const p5p = contract.p5p || getAirVal('P5P') || getAirVal('P5 P') || p1p;
+    const p6p = contract.p6p || getAirVal('P6P') || getAirVal('P6 P') || p1p;
+
+    const isYearlyPower = p1p > 2; // Si es mayor de 2€, asumimos €/kW/año
+    const daysMultiplier = isYearlyPower ? (billingDays / 365.0) : billingDays;
+
+    const powerDetails = [];
+    let powerCost = 0;
+    
+    if (p1c && p1p) {
+      const t = p1c * p1p * daysMultiplier;
+      powerCost += t;
+      powerDetails.push({ period: 'P1', kw: p1c, days: billingDays, price: p1p, total: t });
+    }
+    if (p2c && p2p) {
+      const t = p2c * p2p * daysMultiplier;
+      powerCost += t;
+      powerDetails.push({ period: 'P2', kw: p2c, days: billingDays, price: p2p, total: t });
+    }
+    if (p3c && p3p) {
+      const t = p3c * p3p * daysMultiplier;
+      powerCost += t;
+      powerDetails.push({ period: 'P3', kw: p3c, days: billingDays, price: p3p, total: t });
+    }
+    if (p4c && p4p) {
+      const t = p4c * p4p * daysMultiplier;
+      powerCost += t;
+      powerDetails.push({ period: 'P4', kw: p4c, days: billingDays, price: p4p, total: t });
+    }
+    if (p5c && p5p) {
+      const t = p5c * p5p * daysMultiplier;
+      powerCost += t;
+      powerDetails.push({ period: 'P5', kw: p5c, days: billingDays, price: p5p, total: t });
+    }
+    if (p6c && p6p) {
+      const t = p6c * p6p * daysMultiplier;
+      powerCost += t;
+      powerDetails.push({ period: 'P6', kw: p6c, days: billingDays, price: p6p, total: t });
+    }
+
+    // 6. Consolidación de costes
+    // El FEE solo aplica a indexados. Los fijos ya tienen el margen en el precio pactado.
+    let feeCost = 0;
+    let peajesEnergia = 0;
+    let cargosEnergia = 0;
+
+    if (!isFixed) {
+      let feeValue = contract.fee;
+      if (feeValue === null || feeValue === undefined) {
+        feeValue = getAirVal('FEE_P') || getAirVal('FEE Index Personalizado') || getAirVal('FEE');
+      }
+      if (feeValue === undefined || feeValue === null) {
+        throw new Error("Contrato Indexado sin Margen de Comercialización (FEE) configurado.");
+      }
+      feeCost = feeValue * totalCchMWh;
+
+      // Para evitar el doble cobro de la Potencia (puesto que el powerCost ya se calcula con p1p, p2p, etc.),
+      // debemos extraer solo los Peajes y Cargos de ENERGÍA del ATR (f1.jsonData).
+      if (f1.jsonData && (f1.jsonData as any).EnergiaActiva) {
+        peajesEnergia = parseFloat((f1.jsonData as any).EnergiaActiva.ImporteTotalEnergiaActiva || '0');
+      } else {
+        peajesEnergia = f1.totalPeajes || 0; // Fallback peligroso (doble cobro)
+      }
+
+      if (f1.jsonData && (f1.jsonData as any).Cargos && Array.isArray((f1.jsonData as any).Cargos.Cargo)) {
+        const cargoE = (f1.jsonData as any).Cargos.Cargo.find((c: any) => c.TipoCargo === 2);
+        cargosEnergia = parseFloat(cargoE?.TotalImporteTipoCargo || '0');
+      } else {
+        cargosEnergia = f1.totalCargos || 0; // Fallback
+      }
+    }
+    
+    // Solo informativos    // Peajes y cargos (Simplificación)
+    let peajesDistribuidora = peajesEnergia;
+    let cargosDistribuidora = cargosEnergia;
+
+    // Alquiler
+    let alquilerEquipo = 0;
+    if (f1.jsonData && (f1.jsonData as any).Alquileres) {
+      alquilerEquipo = parseFloat((f1.jsonData as any).Alquileres.ImporteFacturacionAlquileres || '0');
+    }
+
+    // Financiación Bono Social (Orden TED/1487/2024: ~0.019121 €/día)
+    const bonoSocial = billingDays * 0.019121;
+
+    // Preparar detalles de energía para el PDF
+    const energyAtrDetails = [];
+    if (f1.jsonData && (f1.jsonData as any).EnergiaActiva && (f1.jsonData as any).EnergiaActiva.TerminoEnergiaActiva) {
+      const pAtr = getArray((f1.jsonData as any).EnergiaActiva.TerminoEnergiaActiva.Periodo);
+      for (const p of pAtr) {
+        const kwh = parseFloat(p.ValorEnergiaActiva?.toString().replace(',','.') || '0');
+        const price = parseFloat(p.PrecioEnergiaActiva?.toString().replace(',','.') || '0');
+        const total = parseFloat(p.ImporteEnergiaActiva?.toString().replace(',','.') || '0');
+        const pName = p.Periodo || p.periodo || 'P?';
+        if (kwh > 0 || total > 0) {
+          energyAtrDetails.push({ period: pName, kwh, price, total });
+        }
+      }
+    }
+
+    const energyMarketDetails = [];
+    for (const p of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']) {
+      const b = periodsBreakdown[p];
+      if (b && b.f1ConsumptionMWh > 0) {
+        const kwh = b.f1ConsumptionMWh * 1000;
+        const totalEur = b.energyCostEur + (b.regulatedCostEur) + (feeCost * (b.cchConsumptionMWh / totalCchMWh || 0)); // Aproximar fee por periodo
+        const price = totalEur / kwh;
+        energyMarketDetails.push({ period: p, kwh, price, total: totalEur });
+      }
+    }
+
+    let totalBase = totalEnergyCost + totalCapacityCost + totalFneeCost + powerCost + alquilerEquipo + bonoSocial;
+
+    if (!isFixed) {
+      // Para contratos indexados, el costo de energía es solo el mercado (OMIE).
+      // Sumamos los Peajes de Energía y Cargos de Energía. (El FEE comercial también se suma).
+      totalBase += peajesDistribuidora + cargosDistribuidora + feeCost;
+
+      const tasaMunicPercentage = 1.5;
+      // Tasa municipal = 1.5% del importe de la energía. Solo aplica en INDEXADO.
+      totalBase = totalBase * (1 + (tasaMunicPercentage / 100));
+    }
+
+    // Impuesto Eléctrico (IEE)
+    const ieeRate = (contract as any).taxElectric || 5.11269;
+    const taxElectric = totalBase * (ieeRate / 100.0);
+    totalBase += taxElectric;
+
+    const taxAmount = totalBase * 0.21; // IVA 21%
+    const totalAmount = totalBase + taxAmount;
+
+    return {
+      hasMismatch,
+      mismatchReason,
+      totalCchMWh,
+      totalF1MWh,
+      periods: periodsBreakdown,
+      energyCost: totalEnergyCost,
+      feeCost,
+      capacityCost: totalCapacityCost,
+      fneeCost: totalFneeCost,
+      powerCost,
+      peajesDistribuidora,
+      cargosDistribuidora,
+      alquilerEquipo,
+      bonoSocial,
+      taxElectric,
+      totalBase,
+      taxAmount,
+      totalAmount,
+      powerDetails,
+      energyAtrDetails,
+      energyMarketDetails,
+      repairData: hasMismatch ? { issue: mismatchReason, f1Volume: totalF1MWh, cchVolume: originalCchMWh } : null
+    };
+  }
+}

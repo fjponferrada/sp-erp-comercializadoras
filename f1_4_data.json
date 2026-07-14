@@ -1,0 +1,319 @@
+{
+  "baseImponible": 0,
+  "totalPeajes": 0,
+  "totalCargos": 0,
+  "contract_p1e": 0.139999,
+  "contract_p1p": 28.814069,
+  "jsonData": {
+    "IVA": {
+      "Importe": 2.6,
+      "Porcentaje": 21,
+      "BaseImponible": 12.36
+    },
+    "Cargos": {
+      "Cargo": [
+        {
+          "TipoCargo": 1,
+          "TerminoCargo": {
+            "Periodo": [
+              {
+                "Potencia": 3300,
+                "PrecioCargo": 0.000011999
+              },
+              {
+                "Potencia": 3300,
+                "PrecioCargo": 7.72e-7
+              },
+              {
+                "Potencia": 0,
+                "PrecioCargo": 0
+              },
+              {
+                "Potencia": 0,
+                "PrecioCargo": 0
+              },
+              {
+                "Potencia": 0,
+                "PrecioCargo": 0
+              },
+              {
+                "Potencia": 0,
+                "PrecioCargo": 0
+              }
+            ],
+            "FechaDesde": "2026-05-16",
+            "FechaHasta": "2026-06-17"
+          },
+          "TotalImporteTipoCargo": 1.35
+        },
+        {
+          "TipoCargo": 2,
+          "TerminoCargo": {
+            "Periodo": [
+              {
+                "Energia": 25,
+                "PrecioCargo": 0.064292
+              },
+              {
+                "Energia": 24,
+                "PrecioCargo": 0.012858
+              },
+              {
+                "Energia": 45,
+                "PrecioCargo": 0.003215
+              },
+              {
+                "Energia": 0,
+                "PrecioCargo": 0
+              },
+              {
+                "Energia": 0,
+                "PrecioCargo": 0
+              },
+              {
+                "Energia": 0,
+                "PrecioCargo": 0
+              }
+            ],
+            "FechaDesde": "2026-05-16",
+            "FechaHasta": "2026-06-17"
+          },
+          "TotalImporteTipoCargo": 2.06
+        }
+      ],
+      "TotalImporteCargos": 3.41
+    },
+    "Medidas": {
+      "CodPM": "ES0022000007079663DC1P",
+      "ModeloAparato": {
+        "TipoDHEdM": 9,
+        "Integrador": [
+          {
+            "Magnitud": "AE",
+            "LecturaDesde": {
+              "Fecha": "2026-05-16",
+              "Lectura": 13469,
+              "Procedencia": 60
+            },
+            "LecturaHasta": {
+              "Fecha": "2026-06-17",
+              "Lectura": 13494,
+              "Procedencia": 60
+            },
+            "CodigoPeriodo": 91,
+            "ConsumoCalculado": 25,
+            "NumeroRuedasEnteras": 8,
+            "NumeroRuedasDecimales": 0,
+            "ConstanteMultiplicadora": 1
+          },
+          {
+            "Magnitud": "AE",
+            "LecturaDesde": {
+              "Fecha": "2026-05-16",
+              "Lectura": 9964,
+              "Procedencia": 60
+            },
+            "LecturaHasta": {
+              "Fecha": "2026-06-17",
+              "Lectura": 9988,
+              "Procedencia": 60
+            },
+            "CodigoPeriodo": 92,
+            "ConsumoCalculado": 24,
+            "NumeroRuedasEnteras": 8,
+            "NumeroRuedasDecimales": 0,
+            "ConstanteMultiplicadora": 1
+          },
+          {
+            "Magnitud": "AE",
+            "LecturaDesde": {
+              "Fecha": "2026-05-16",
+              "Lectura": 4276,
+              "Procedencia": 60
+            },
+            "LecturaHasta": {
+              "Fecha": "2026-06-17",
+              "Lectura": 4321,
+              "Procedencia": 60
+            },
+            "CodigoPeriodo": 93,
+            "ConsumoCalculado": 45,
+            "NumeroRuedasEnteras": 8,
+            "NumeroRuedasDecimales": 0,
+            "ConstanteMultiplicadora": 1
+          }
+        ],
+        "NumeroSerie": 42731536,
+        "TipoAparato": "CC",
+        "MarcaAparato": 132
+      }
+    },
+    "Potencia": {
+      "TerminoPotencia": {
+        "Periodo": [
+          {
+            "PrecioPotencia": 0.000063904,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 3300,
+            "PotenciaContratada": 3300,
+            "PotenciaMaxDemandada": 0
+          },
+          {
+            "PrecioPotencia": 0.000001216,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 3300,
+            "PotenciaContratada": 3300,
+            "PotenciaMaxDemandada": 0
+          },
+          {
+            "PrecioPotencia": 0,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 0,
+            "PotenciaContratada": 0,
+            "PotenciaMaxDemandada": 0
+          },
+          {
+            "PrecioPotencia": 0,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 0,
+            "PotenciaContratada": 0,
+            "PotenciaMaxDemandada": 0
+          },
+          {
+            "PrecioPotencia": 0,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 0,
+            "PotenciaContratada": 0,
+            "PotenciaMaxDemandada": 0
+          },
+          {
+            "PrecioPotencia": 0,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 0,
+            "PotenciaContratada": 0,
+            "PotenciaMaxDemandada": 0
+          }
+        ],
+        "FechaDesde": "2026-05-16",
+        "FechaHasta": "2026-06-17"
+      },
+      "PenalizacionNoICP": "N",
+      "ImporteTotalTerminoPotencia": 6.88
+    },
+    "Alquileres": {
+      "PrecioDiarioAlquiler": {
+        "PrecioDia": 0.026630137,
+        "NumeroDias": 32
+      },
+      "ImporteFacturacionAlquileres": 0.85
+    },
+    "EnergiaActiva": {
+      "TerminoEnergiaActiva": {
+        "Periodo": [
+          {
+            "PrecioEnergia": 0.033261,
+            "ValorEnergiaActiva": 25
+          },
+          {
+            "PrecioEnergia": 0.016409,
+            "ValorEnergiaActiva": 24
+          },
+          {
+            "PrecioEnergia": 0.000077,
+            "ValorEnergiaActiva": 45
+          },
+          {
+            "PrecioEnergia": 0,
+            "ValorEnergiaActiva": 0
+          },
+          {
+            "PrecioEnergia": 0,
+            "ValorEnergiaActiva": 0
+          },
+          {
+            "PrecioEnergia": 0,
+            "ValorEnergiaActiva": 0
+          }
+        ],
+        "FechaDesde": "2026-05-16",
+        "FechaHasta": "2026-06-17"
+      },
+      "ImporteTotalEnergiaActiva": 1.22
+    },
+    "ImpuestoElectrico": {
+      "Importe": 0,
+      "Porcentaje": 0,
+      "BaseImponible": 0
+    },
+    "InformacionAlConsumidor": {
+      "Periodo": [
+        {
+          "PotenciaMaxDemandadaAnioMovil": 2948
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 2952
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 0
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 0
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 0
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 0
+        }
+      ],
+      "FechaInicioAnioMovil": "2024-09-11"
+    },
+    "DatosGeneralesFacturaATR": {
+      "Cliente": {
+        "Identificador": "B10915544",
+        "TipoIdentificador": "NI"
+      },
+      "CodContrato": 1004774160,
+      "DatosFacturaATR": {
+        "TipoPM": 5,
+        "Periodo": {
+          "NumeroDias": 32,
+          "FechaDesdeFactura": "2026-05-16",
+          "FechaHastaFactura": "2026-06-17"
+        },
+        "FechaBOE": "2025-12-22",
+        "TipoCUPS": 1,
+        "PeriodoCCH": {
+          "FechaDesdeCCH": "2026-05-16",
+          "FechaHastaCCH": "2026-06-17"
+        },
+        "TarifaATRFact": 18,
+        "DuracionInfAnio": "N",
+        "TipoAutoconsumo": 0,
+        "ModoControlPotencia": 1,
+        "IndicativoCurvaCarga": 1,
+        "MarcaMedidaConPerdidas": "N"
+      },
+      "DireccionSuministro": {
+        "Pais": "ESPAÑA",
+        "Calle": "SANTO CRISTO",
+        "TipoVia": "CL",
+        "CodPostal": 13330,
+        "Municipio": 13092,
+        "Poblacion": 13092000000,
+        "Provincia": 13,
+        "NumeroFinca": 9,
+        "DuplicadorFinca": "DU"
+      },
+      "DatosGeneralesFactura": {
+        "TipoMoneda": 2,
+        "TipoFactura": "N",
+        "FechaFactura": "2026-06-18",
+        "MotivoFacturacion": 1,
+        "CodigoFiscalFactura": "J826003793949",
+        "ImporteTotalFactura": 14.96,
+        "IdentificadorEmisora": "A63222533"
+      }
+    }
+  }
+}

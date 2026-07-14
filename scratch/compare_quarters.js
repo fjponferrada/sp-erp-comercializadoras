@@ -1,0 +1,115 @@
+const fs = require('fs');
+const xlsx = require('xlsx');
+const { parse } = require('csv-parse/sync');
+
+const excelPath = "Z:\\Documentos\\Escritorio\\Desglose_Horario_ES0031405446869086QD0F_cmrf7f (3).xlsx";
+const csvPath = "Z:\\Documentos\\Escritorio\\2026-07-08_ES0031405446869086QD0F_2026-06-01_2026-06-30_CF 171261N079680097_ACTIVA_INDEX.csv";
+
+const workbook = xlsx.readFile(excelPath, { cellDates: true });
+const sheetName = workbook.SheetNames[0];
+const excelData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, raw: false, dateNF: 'dd/mm/yyyy' });
+
+const headerRowIndex = 4;
+const excelHeader = excelData[headerRowIndex];
+let excelDataRows = excelData.slice(headerRowIndex + 1).filter(r => r[0] && r[0].length > 0 && r[0] !== 'Fecha' && r[0] !== 'TOTALES');
+
+const csvContent = fs.readFileSync(csvPath, 'utf8');
+const csvData = parse(csvContent, { delimiter: ';', relax_column_count: true });
+let csvHeaderRow = csvData[0];
+let fechaIdx = csvHeaderRow.indexOf('Fecha');
+let horaIdx = csvHeaderRow.indexOf('Hora');
+
+let csvDataRows = csvData.slice(1).filter(r => r[fechaIdx] && r[fechaIdx].includes('/2026'));
+
+function normDate(d) {
+  if (typeof d !== 'string') return d;
+  let parts = d.split('/');
+  if (parts.length === 3) {
+    return parts[0].padStart(2, '0') + '/' + parts[1].padStart(2, '0') + '/' + parts[2];
+  }
+  return d;
+}
+
+function getColIdx(headerArray, colName) {
+    for (let i=0; i<headerArray.length; i++) {
+        if (headerArray[i] && headerArray[i].includes(colName)) return i;
+    }
+    return -1;
+}
+
+const excelMap = new Map();
+for (let row of excelDataRows) {
+  const fecha = normDate(row[0]);
+  const time = row[1];
+  if (!time || !time.includes(':')) continue;
+  
+  const key = `${fecha}_${time}`; // e.g. 01/06/2026_00:15
+  
+  const comps = ['RT3', 'RT6', 'CT2', 'CT3', 'BS3', 'RAD3', 'RAD1X', 'BALX', 'EXD', 'IN7', 'CFP'];
+  let sumAjustes = 0;
+  for (const c of comps) {
+      const idx = getColIdx(excelHeader, c);
+      if (idx !== -1) {
+          sumAjustes += parseFloat((row[idx] || '0').toString().replace(',', '.'));
+      }
+  }
+
+  excelMap.set(key, { 
+    Fecha: fecha, 
+    Time: time, 
+    Consumo: parseFloat((row[getColIdx(excelHeader, 'Consumo')] || '0').toString().replace(',', '.')),
+    OMIE: parseFloat((row[getColIdx(excelHeader, 'OMIE')] || '0').toString().replace(',', '.')),
+    SumaAjustes: sumAjustes,
+    Capacidad: parseFloat((row[getColIdx(excelHeader, 'Capacidad')] || '0').toString().replace(',', '.'))
+  });
+}
+
+const csvMap = new Map();
+let dateHourCount = {};
+
+for (let row of csvDataRows) {
+  const fecha = normDate(row[fechaIdx]);
+  const providerHora = parseInt(row[horaIdx], 10);
+  if (isNaN(providerHora)) continue;
+  
+  const dhKey = `${fecha}_${providerHora}`;
+  if (!dateHourCount[dhKey]) dateHourCount[dhKey] = 0;
+  
+  const q = dateHourCount[dhKey];
+  dateHourCount[dhKey]++;
+  
+  const hStr = providerHora.toString().padStart(2, '0');
+  const mStr = (q * 15).toString().padStart(2, '0');
+  const time = `${hStr}:${mStr}`;
+  
+  const key = `${fecha}_${time}`;
+  
+  csvMap.set(key, {
+    Fecha: fecha,
+    Time: time,
+    OMIE: parseFloat((row[csvHeaderRow.indexOf('OMIE')]||"0").replace(',', '.')),
+    Servicio: parseFloat((row[csvHeaderRow.indexOf('servicio')]||"0").replace(',', '.')),
+    Capacidad: parseFloat((row[csvHeaderRow.indexOf('peninsula_3_0TDVECapacidad')]||"0").replace(',', '.'))
+  });
+}
+
+let commonKeys = Array.from(excelMap.keys()).filter(k => csvMap.has(k));
+let selected = [];
+for (let i = 0; i < 5; i++) {
+  if (commonKeys.length === 0) break;
+  let rIdx = Math.floor(Math.random() * commonKeys.length);
+  selected.push(commonKeys[rIdx]);
+  commonKeys.splice(rIdx, 1);
+}
+
+console.log("# Comparativa de Ajustes para 5 cuartos de hora\\n");
+console.log("| Fecha | Cuarto Hora | OMIE Prov | OMIE ERP | Servicio Prov | Suma 11 Ajustes ERP | Capacidad ERP | Prov (Servicio + PC3) | ERP (Ajustes + PC3) |");
+console.log("|---|---|---|---|---|---|---|---|---|");
+
+for (let k of selected) {
+  const erp = excelMap.get(k);
+  const prov = csvMap.get(k);
+  const provSum = prov.Servicio + prov.Capacidad;
+  const erpSum = erp.SumaAjustes + erp.Capacidad;
+  console.log(`| ${erp.Fecha} | ${erp.Time} | ${prov.OMIE.toFixed(3)} | ${erp.OMIE.toFixed(3)} | ${prov.Servicio.toFixed(3)} | ${erp.SumaAjustes.toFixed(3)} | ${erp.Capacidad.toFixed(3)} | ${provSum.toFixed(3)} | ${erpSum.toFixed(3)} |`);
+}

@@ -1,0 +1,61 @@
+'use server';
+
+import { executeFtpSync } from '@/app/api/cron/ftp-sync/route';
+import { prisma } from '@/lib/prisma';
+
+import { auth } from '@/auth';
+
+export async function triggerFtpSyncManually(daysBack?: number) {
+  try {
+    const session = await auth();
+    if (!session?.user?.companyId) {
+      return { success: false, message: 'No tienes una comercializadora asignada.' };
+    }
+    const companyId = session.user.companyId;
+    const configs = await prisma.distributor.findMany({
+      where: { ftpActive: true }
+    });
+
+    if (configs.length === 0) {
+      return { success: false, message: 'No hay configuraciones FTP activas.' };
+    }
+
+    if (daysBack && daysBack > 0) {
+      const pastDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+      await prisma.distributor.updateMany({
+        where: { ftpActive: true },
+        data: { ftpLastSyncAt: pastDate }
+      });
+    }
+
+    // 1. Create the job in Prisma
+    const job = await prisma.syncJob.create({
+      data: {
+        type: 'FTP_SYNC',
+        status: 'PENDING',
+        companyId: companyId
+      }
+    });
+
+    return { success: true, message: 'Sincronización FTP iniciada en segundo plano', jobId: job.id };
+  } catch (error: any) {
+    console.error("Error triggering FTP sync:", error);
+    return { success: false, message: error.message || "Error desconocido al sincronizar FTP" };
+  }
+}
+
+export async function getDistributorSyncStatus() {
+  try {
+    const session = await auth();
+    if (!session?.user?.companyId) return [];
+    
+    const configs = await prisma.distributor.findMany({
+      where: { ftpActive: true },
+      select: { name: true, ftpLastSyncAt: true }
+    });
+    return configs;
+  } catch (error) {
+    console.error("Error fetching sync status:", error);
+    return [];
+  }
+}

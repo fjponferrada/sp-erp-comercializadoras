@@ -1,0 +1,1982 @@
+[
+  [
+    "Nombre Airtable",
+    "Descripción / Significado",
+    "Campo Equivalente PostgreSQL"
+  ],
+  [
+    "¿Facturas papel?",
+    "SI o NO quiere las facturas por correo postal además de por e-mail",
+    "client.paperInvoice"
+  ],
+  [
+    "Abonar",
+    "Pendiente de definir por el usuario",
+    "contract.abonar"
+  ],
+  [
+    "Actualizar consumo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Adicional Instalación",
+    "texto adicional al domicilio del punto de suministro no especificado en campo anteriores",
+    "supplyPoint.addressAddition"
+  ],
+  [
+    "Adicional Titular",
+    "texto adicional al domicilio del titular no especificado en campo anteriores",
+    "client.billingAddressAddition"
+  ],
+  [
+    "AjustePen",
+    "Pendiente de definir por el usuario",
+    "contract.ajustePen"
+  ],
+  [
+    "ALTA (from CONTRATO PREVIO)",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "ALTA COMERCIALIZADORA",
+    "Fecha clave: Transiciona el estado del contrato a Activo automáticamente",
+    "contract.activationDate"
+  ],
+  [
+    "Año firma",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "APELLIDOS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Apellidos Contacto",
+    "apellidos del representante  / apoderado de la empresa",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "ATR COMER",
+    "Pendiente de definir por el usuario",
+    "contract.aTRCOMER"
+  ],
+  [
+    "Autoconsumo",
+    "tipo autoconsumo legalizado en distribuidora",
+    "contract.autoconsumo"
+  ],
+  [
+    "AUTOCONSUMO FIJO / INDEX",
+    "F si el cliente quiere que se le pague un precio fijo por sus excedentes fotovoltaicos o I si quiere que se le paguen a precio de mercado variable",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "B2B",
+    "Si el cliente es autónomo o empresa, se marca este checkbox",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "BAJA COMERCIALIZADORA",
+    "Fecha clave: Transiciona el estado del contrato a Finalizado automáticamente",
+    "contract.terminationDate"
+  ],
+  [
+    "BAJA POR M1 R E1",
+    "Pendiente de definir por el usuario",
+    "contract.bAJAPORM1RE1"
+  ],
+  [
+    "Bajas Glide",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "BIMENSUAL",
+    "checkbox que marcamos manualmente cuando la toma de lectura por parte de distribuidora se realiza de forma bimensual y no mensual",
+    "contract.bIMENSUAL"
+  ],
+  [
+    "BIPen",
+    "Pendiente de definir por el usuario",
+    "contract.bIPen"
+  ],
+  [
+    "BOLSILLO SOLAR",
+    "SI o NO se asocia cups al bolsillo solar del cif",
+    "contract.bOLSILLOSOLAR"
+  ],
+  [
+    "Borrador contrato",
+    "pdf del borrador de contrato generado, que también se aloja en tabla contratos",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "BUSCADOR",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CA (from PROV LINK)",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CALCULO MES ALTA",
+    "Pendiente de definir por el usuario",
+    "contract.cALCULOMESALTA"
+  ],
+  [
+    "CALCULO MES BAJA",
+    "Pendiente de definir por el usuario",
+    "contract.cALCULOMESBAJA"
+  ],
+  [
+    "Calle Instalación",
+    "calle del punto de suministro",
+    "supplyPoint.street"
+  ],
+  [
+    "Calle Titular",
+    "calle del titular del contrato",
+    "client.billingStreet"
+  ],
+  [
+    "CANAL",
+    "canal comercial a través del cual se ha captado el contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CAPTACION CLIENTE",
+    "Modo de captación del cliente",
+    "contract.cAPTACIONCLIENTE"
+  ],
+  [
+    "Certificado IBAN",
+    "documento que certifica titularidad del iban por parte del titular",
+    "client.iban"
+  ],
+  [
+    "CG",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CG BOLSILLO SOLAR",
+    "coste de gestión por activar bolsillo solar en el cups",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CIE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CIERRE",
+    "Pendiente de definir por el usuario",
+    "contract.cIERRE"
+  ],
+  [
+    "CIF",
+    "nif titular del punto de suministro",
+    "client.vatNumber"
+  ],
+  [
+    "CIF link",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CNAE",
+    "código cnae del punto de suministro, según actividad allí desarrollada",
+    "supplyPoint.cnae"
+  ],
+  [
+    "COD REE DISTRI LINK",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Código Canal",
+    "codigo del canal a través del cual se ha captado el contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Código comercial",
+    "código del comercial a través del cual se ha captado el contrato, cada comercial está vinculado a un canal",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Código CUPS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Código Postal Instalación",
+    "codigo postal del punto de suministro",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CODIGO REE DISTRIBUIDORA",
+    "código distribuidora a efectos de switching",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Código Tarifa",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Comentario AED",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Comercial",
+    "comercial a través del cual se ha captado el contrato, cada comercial está vinculado a un canal",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION (from COMISIONES)",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION 50%",
+    "Pendiente de definir por el usuario",
+    "contract.cOMISION50"
+  ],
+  [
+    "COMISION FINAL",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Comisión Revisable",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION SI BAJA HOY",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION VARIABLE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION_ACTIVA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISION_ESTIMADA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "COMISIONES",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CONSUMO ANUAL",
+    "consumo anual total estimado en MWh",
+    "supplyPoint.annualConsumption"
+  ],
+  [
+    "CONSUMO ANUAL KWH",
+    "Consumo anual total estimado",
+    "lead.estimatedMWh"
+  ],
+  [
+    "CONSUMO COMISION",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CONSUMO_REAL/ESTIMADO",
+    "Pendiente de definir por el usuario",
+    "contract.cONSUMOREALESTIMADO"
+  ],
+  [
+    "CONTRATO",
+    "Código único de contrato",
+    "contract.contractCode"
+  ],
+  [
+    "Contrato .PDF",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Contrato enviado",
+    "Control de automatización (Make): Indica si el contrato ya se envió a Docusign",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Contrato firmado",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CONTRATO_PREVIO",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CONTRATO2",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CONTROLSAGE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Copia de CIF link",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Copia de FACTURAS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CP SOC",
+    "codigo postal del titular del punto de suministro",
+    "client.billingPostalCode"
+  ],
+  [
+    "CP_CONT",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "CUPS",
+    "Código Universal del Punto de Suministro",
+    "supplyPoint.cups"
+  ],
+  [
+    "DECOMISION",
+    "Pendiente de definir por el usuario",
+    "contract.dECOMISION"
+  ],
+  [
+    "DECOMISION 50%",
+    "Pendiente de definir por el usuario",
+    "contract.dECOMISION50"
+  ],
+  [
+    "Demanda Abril",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Agosto",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Diciembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Enero",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Julio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Junio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Marzo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Noviembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Octubre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda BC Septiembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda Febrero",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Abril",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Agosto",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Diciembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Enero",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Febrero",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Julio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Junio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Marzo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Mayo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Noviembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Octubre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda MANUAL Septiembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Demanda Mayo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DEMANDA REAL/PREVISTA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DerechosExtension",
+    "Pendiente de definir por el usuario",
+    "contract.derechosExtension"
+  ],
+  [
+    "DESCUENTO CIE",
+    "Pendiente de definir por el usuario",
+    "contract.dESCUENTOCIE"
+  ],
+  [
+    "Día Actual",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DIAS CONTRATO",
+    "Pendiente de definir por el usuario",
+    "contract.dIASCONTRATO"
+  ],
+  [
+    "DIAS FACTURADOS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DIAS PAGO",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DIAS VIDA CLIENTE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DIAS_RENOV_MAX",
+    "Pendiente de definir por el usuario",
+    "contract.dIASRENOVMAX"
+  ],
+  [
+    "DISTRIBUIDORA",
+    "distribuidora asociada al cups, la que distribuye la energía hasta allí",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DNI Apoderado",
+    "dni del apoderado/representante legal de la empresa titular del contrato (pdf o jpg)",
+    "client.fileRepresentativeId"
+  ],
+  [
+    "DNI/NIF Titular",
+    "dni del titular del contrato (pdf o jpg)",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DOMICILIO PS",
+    "domicilio del punto de suministro",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DOMICILIO PS COMPLETO",
+    "domicilio completo del punto de suministro",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DOMICILIO SOC",
+    "domicilio del titular del contrato",
+    "client.billingAddress"
+  ],
+  [
+    "Domicilio Titular Completo",
+    "domicilio completo del titular del contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DOMICILIO_CONT",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DSV Index (from PRODUCTOS)",
+    "coste desvío de producto indexado",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DURACION",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "DURACION SVA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EFACTURA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EMAIL",
+    "Dirección de correo electrónico",
+    "client.contactEmail"
+  ],
+  [
+    "Email Admin Canal",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Email AtCliente",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EMAIL COMER",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Email Comercial",
+    "Dirección de correo electrónico",
+    "No migrar (roles)"
+  ],
+  [
+    "Email Contacto",
+    "Email de comunicación",
+    "client.contactEmail / lead.email"
+  ],
+  [
+    "Email Contacto 2",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Email Contacto 3",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EMAIL FACTURA",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Email Gerente",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Email Sup Canal",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EMAIL_4",
+    "Dirección de correo electrónico",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EMPRESA",
+    "código de la comercializadora",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EN CALIDAD DE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "ENERGIA FACTURADA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Energía Pte Mes -1",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Energía Pte Mes -2",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Energía Pte Mes 0 Hasta FIN MES",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Energía Pte Mes 0 Hasta HOY",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Enlace Wp",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Envío de factura",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "EQUIPO DISTRIB",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Estado",
+    "Estado del registro (Activo, Baja, etc)",
+    "contract.status / lead.status"
+  ],
+  [
+    "ESTADO (from CONTRATO PREVIO)",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Abril",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Agosto",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Dic",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Ene",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Feb",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Julio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Junio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Abril",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Agosto",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Diciembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Enero",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Febrero",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Julio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Junio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Marzo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Mayo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Noviembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Octubre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes MANUAL Septiembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Marzo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Mayo",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Noviembre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Octubre",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Excedentes Sept",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Factura en papel",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FACTURA SI / NO",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FacturarPen",
+    "Pendiente de definir por el usuario",
+    "contract.facturarPen"
+  ],
+  [
+    "FACTURAS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FACTURAS 2",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FC",
+    "Pendiente de definir por el usuario",
+    "contract.fC"
+  ],
+  [
+    "Fecha Aceptación",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Activación",
+    "Campo de fecha/timestamp",
+    "contract.activationDate"
+  ],
+  [
+    "Fecha Actual",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Borrador",
+    "fecha en la que se genera el contrato en tabla contratos en estado borrador y se genera pdf para enviar al cliente",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha firma",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha firma contrato",
+    "Fecha clave: Transiciona el estado del contrato a Aceptado",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Incidencia",
+    "Campo de fecha/timestamp",
+    "contract.fechaIncidencia"
+  ],
+  [
+    "FECHA INICIO SVA",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Prevista Activación",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Proceso",
+    "Campo de fecha/timestamp",
+    "contract.fechaProceso"
+  ],
+  [
+    "Fecha Rechazo",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Registro",
+    "fecha en la que se registra el lead",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Renovación Calculada",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Solicitud",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha Vencimiento Calculada",
+    "Campo de fecha/timestamp",
+    "contract.fechaVencimientoCalculada"
+  ],
+  [
+    "FECHA_BAJA_ESTIMADA",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fecha_prevista",
+    "Campo de fecha/timestamp",
+    "contract.fechaprevista"
+  ],
+  [
+    "FECHA_RENOV_PREVISTA",
+    "Campo de fecha/timestamp",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FechaFacturaPenalizacion",
+    "Campo de fecha/timestamp",
+    "contract.fechaFacturaPenalizacion"
+  ],
+  [
+    "Fee Excedentes (from PRODUCTOS)",
+    "fee €/MWh que se descuenta de precio omie a la hora de pagar excedentes fotovoltaicos si el cliente quiere precio indexado variable",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fee Index (from PRODUCTOS)",
+    "fee que el cliente pagará soobre el precio de mercado de la energía si contrata suministro con producto indexado",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FEE Index Personalizado",
+    "fee indexado cuando se introduce manualmente al generar el contrato y no esstá predefinido para un producto concreto",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FEE_P",
+    "Pendiente de definir por el usuario",
+    "contract.fEEP"
+  ],
+  [
+    "Field 198",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "FIJO / INDEX",
+    "F si cliente quiere suministro con producto de precio fijo o I indexado",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fin Mes -1",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fin Mes -2",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Fin Mes 0",
+    "Pendiente de definir por el usuario",
+    "contract.finMes0"
+  ],
+  [
+    "Firma manuscrita",
+    "si el cliente no quiere envío por docusign o similar",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Firma_Man_Renov",
+    "Pendiente de definir por el usuario",
+    "contract.firmaManRenov"
+  ],
+  [
+    "Forma de pago",
+    "pago por domiciliación o transferencia bancaria",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "From field: ALTA_CONTRATO_ACTUAL",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "From field: Contrato Original",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "GAS INCLUIDO",
+    "Pendiente de definir por el usuario",
+    "contract.gASINCLUIDO"
+  ],
+  [
+    "Generar Anexo M1",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Generar Borrador",
+    "Trigger: Botón/Checkbox que dispara el webhook de Make para generar el contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Hora Actual",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "HORAS_USO_DIARIOS",
+    "Pendiente de definir por el usuario",
+    "contract.hORASUSODIARIOS"
+  ],
+  [
+    "IBAN",
+    "Número de cuenta bancaria",
+    "client.iban"
+  ],
+  [
+    "ID",
+    "Pendiente de definir por el usuario",
+    "contract.iD"
+  ],
+  [
+    "ID Google Drive PDF",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Inicio Mes -1",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Inicio Mes -2",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Inicio Mes 0",
+    "Pendiente de definir por el usuario",
+    "contract.inicioMes0"
+  ],
+  [
+    "INICIO PROCESO",
+    "Pendiente de definir por el usuario",
+    "contract.iNICIOPROCESO"
+  ],
+  [
+    "INICIO_PERMANENCIA",
+    "fecha de inicio del compromiso minimo de permanencia del contrato",
+    "contract.permanenceStartDate"
+  ],
+  [
+    "INSTALACIONES_LINK",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IP",
+    "Pendiente de definir por el usuario",
+    "contract.iP"
+  ],
+  [
+    "IP P1",
+    "€/kW/año que se incrementa la potencia en periodo P1 sobre el precio BOE regulado en caso de productos personalizados donde el usuario puede introducir el margen que quiera",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IP P2",
+    "mismo pero para período P2",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IP P3",
+    "mismo pero p3",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IP P4",
+    "mismo pero p4",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IP P5",
+    "mismo pero p5",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IP P6",
+    "mismo pero p6",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "IVAPen",
+    "Pendiente de definir por el usuario",
+    "contract.iVAPen"
+  ],
+  [
+    "LEADS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "LEADS copy",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "LINK TIPOS TARIFA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "M1 Activado",
+    "Pendiente de definir por el usuario",
+    "contract.m1Activado"
+  ],
+  [
+    "M1 Rechazado",
+    "Pendiente de definir por el usuario",
+    "contract.m1Rechazado"
+  ],
+  [
+    "M1N_SOLICITADO",
+    "Pendiente de definir por el usuario",
+    "contract.m1NSOLICITADO"
+  ],
+  [
+    "M1S_SOLICITADO",
+    "Pendiente de definir por el usuario",
+    "contract.m1SSOLICITADO"
+  ],
+  [
+    "Mail Activacion Enviado",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Mail Bienvenida Enviado",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "MANDATO DOBLE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "MARCA",
+    "código de la marca de la comercializadora, puede haber varias marcas dentro de un mismo cif de comercializadora",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Mensaje Distribuidora",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Mes Actual",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "MES ALTA",
+    "Pendiente de definir por el usuario",
+    "contract.mESALTA"
+  ],
+  [
+    "MES BAJA",
+    "Pendiente de definir por el usuario",
+    "contract.mESBAJA"
+  ],
+  [
+    "Meses Permanencia",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Min Actual",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Modalidad Autoconsumo (from Producto)",
+    "fijo o indexado para pago de excedentes",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Modalidad de contrato",
+    "fijo o indexado para venta de energía a cliente",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "MODIFICACIONES",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "N Solicitud",
+    "Pendiente de definir por el usuario",
+    "contract.nSolicitud"
+  ],
+  [
+    "NIF Contacto",
+    "nif del apoderado o representante de la empresa en caso de cliente persona juridica",
+    "client.contactVat"
+  ],
+  [
+    "Nº CIE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Nombre completo Titular",
+    "Nombre o Razón social del cliente",
+    "client.businessName / lead.businessName"
+  ],
+  [
+    "Nombre Contacto",
+    "nombre del apoderado o representante de la empresa en caso de cliente persona juridica sin incluir apellidos",
+    "client.contactName"
+  ],
+  [
+    "Nombre Distribuidora",
+    "nombre distribuidora que distribuye energia al cups",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Nombre Instalación",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Nombre Wp",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "NOMBRE Y APELLIDOS",
+    "nombre y apellidos del apoderado o representante",
+    "client.contactName"
+  ],
+  [
+    "NOMBRERAZON SOCIAL",
+    "nombre sin apellidos de persona física o razon oscial en caso de personas juridicas",
+    "client.businessName"
+  ],
+  [
+    "Número Instalación",
+    "campo número de la dirección dl punto de suministro",
+    "supplyPoint.streetNumber"
+  ],
+  [
+    "Número Titular",
+    "campo número de la dirección del titular del contrato, domicilio social",
+    "client.billingNumber"
+  ],
+  [
+    "NumFacturaPenalizacion",
+    "Pendiente de definir por el usuario",
+    "contract.numFacturaPenalizacion"
+  ],
+  [
+    "Observaciones",
+    "observaciones introducidas manualmente por backoffice en el contrato para seguimiento",
+    "contract.internalComments"
+  ],
+  [
+    "OCULTAR_RENOVACION",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "ODOO",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "OWNERS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1C",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P1",
+    "supplyPoint.p1c"
+  ],
+  [
+    "P1C W",
+    "Datos de potencia o precios por periodo",
+    "Ignorado (Fórmula)"
+  ],
+  [
+    "P1E (from PRODUCTOS)",
+    "precio de energía en período p1",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1P",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P1",
+    "supplyPoint.p1p / contract.customP1P"
+  ],
+  [
+    "P1P (from PRODUCTOS)",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P1",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P1PM copy copy copy copy copy copy copy copy copy copy copy copy copy copy copy copy",
+    "Datos de potencia o precios por periodo",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P2C",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P2",
+    "supplyPoint.p2c"
+  ],
+  [
+    "P2C W",
+    "Datos de potencia o precios por periodo",
+    "Ignorado (Fórmula)"
+  ],
+  [
+    "P2E (from PRODUCTOS)",
+    "idem que p1 pero para este período",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P2P",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P2",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P2P (from PRODUCTOS)",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P2",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P3C",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P3",
+    "supplyPoint.p3c"
+  ],
+  [
+    "P3C W",
+    "Pendiente de definir por el usuario",
+    "Ignorado (Fórmula)"
+  ],
+  [
+    "P3E (from PRODUCTOS)",
+    "idem que p1 pero para este período",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P3P",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P3",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P3P (from PRODUCTOS)",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P3",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P4C",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P4",
+    "supplyPoint.p4c"
+  ],
+  [
+    "P4C W",
+    "Pendiente de definir por el usuario",
+    "Ignorado (Fórmula)"
+  ],
+  [
+    "P4E (from PRODUCTOS)",
+    "idem que p1 pero para este período",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P4P",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P4",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P4P (from PRODUCTOS)",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P4",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P5C",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P5",
+    "supplyPoint.p5c"
+  ],
+  [
+    "P5C W",
+    "Pendiente de definir por el usuario",
+    "Ignorado (Fórmula)"
+  ],
+  [
+    "P5E (from PRODUCTOS)",
+    "idem que p1 pero para este período",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P5P",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P5",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P5P (from PRODUCTOS)",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P5",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P6C",
+    "POTENCIA CONTRATADA  A LA GENERACION ED CONTRATO EN PERÍODO P6",
+    "supplyPoint.p6c"
+  ],
+  [
+    "P6C W copy",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P6E (from PRODUCTOS)",
+    "idem que p1 pero para este período",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P6P",
+    "PRECIO POTENCIA A LA GENERACIÓN DE CONTRATO EN PERIODO P6",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "P6P (from PRODUCTOS)",
+    "PRECIO POTENCIA DEL PRODUCTO A DÍA DE HOY EN PERIODO P6",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "País Titular",
+    "país del titular del contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PDF Anexo firmado",
+    "FICHERO PDF DEL ANEXO FIRMADO POR EL CLIENTE",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PDF Borrador Verificado",
+    "Control de automatización: Confirmación de borrador de contrato correcto",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PDF Contrato firmado",
+    "FICHERO PDF DEL CONTRATO FIRMADO POR EL CLIENTE",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PDF Contrato Verificado",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PEN 2.0TD RESID",
+    "Pendiente de definir por el usuario",
+    "contract.pEN20TDRESID"
+  ],
+  [
+    "PEN 2.0TD RESID HOY",
+    "Pendiente de definir por el usuario",
+    "contract.pEN20TDRESIDHOY"
+  ],
+  [
+    "PEN NO RESID",
+    "Pendiente de definir por el usuario",
+    "contract.pENNORESID"
+  ],
+  [
+    "PENALIZACION",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PENALIZACION ESTIMADA",
+    "Pendiente de definir por el usuario",
+    "contract.pENALIZACIONESTIMADA"
+  ],
+  [
+    "Penalizacion Facturada",
+    "Pendiente de definir por el usuario",
+    "contract.penalizacionFacturada"
+  ],
+  [
+    "PENALIZACION_HOY",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Peticion_cliente_c2",
+    "Pendiente de definir por el usuario",
+    "contract.peticionclientec2"
+  ],
+  [
+    "PExc",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PExc (from PRODUCTOS)",
+    "precio excednte del producto aplicado al lead",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PLUS",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Población Instalación",
+    "población del punto de suministro",
+    "supplyPoint.city"
+  ],
+  [
+    "POBLACION SOC",
+    "población del titular del contrato",
+    "client.billingCity"
+  ],
+  [
+    "POBLACION_CONT",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "POTENCIA BOE",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "POTENCIAS DISTRI",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Precio (from SERVICIOS)",
+    "precio del servicio asignado al lead",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Primer Apellido",
+    "primer apellido del titular del contrato si es persona física",
+    "client.firstName"
+  ],
+  [
+    "Producto",
+    "producto seleccionado para el lead",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Producto y Servicio",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PRODUCTO_RENOVACION",
+    "Pendiente de definir por el usuario",
+    "contract.pRODUCTORENOVACION"
+  ],
+  [
+    "ProductoLINK",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PROV LINK",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Provincia Instalación",
+    "provincia del punto de suministro",
+    "supplyPoint.province"
+  ],
+  [
+    "PROVINCIA SOC",
+    "provincia del titular del contrato",
+    "client.billingProvince"
+  ],
+  [
+    "PROVINCIA_CONT",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "PROYECCION_ANUAL",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Record ID",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "ref_cat",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "RENOVACION",
+    "Pendiente de definir por el usuario",
+    "contract.rENOVACION"
+  ],
+  [
+    "RENOVACION_SOLICITADA",
+    "Pendiente de definir por el usuario",
+    "contract.rENOVACIONSOLICITADA"
+  ],
+  [
+    "RENOVACION_TRAMITADA",
+    "Pendiente de definir por el usuario",
+    "contract.rENOVACIONTRAMITADA"
+  ],
+  [
+    "Renovar",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "RETRASO",
+    "Pendiente de definir por el usuario",
+    "contract.rETRASO"
+  ],
+  [
+    "Segundo Apellido",
+    "segundo apellido del titular del contrato si es persona física",
+    "client.lastName"
+  ],
+  [
+    "Servicio",
+    "servicio asignado al lead",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "SERVICIO_RENOVACION",
+    "Pendiente de definir por el usuario",
+    "contract.sERVICIORENOVACION"
+  ],
+  [
+    "SIN COMISION",
+    "Pendiente de definir por el usuario",
+    "contract.sINCOMISION"
+  ],
+  [
+    "SIN DECOMISION",
+    "Pendiente de definir por el usuario",
+    "contract.sINDECOMISION"
+  ],
+  [
+    "SIN PENALIZACION",
+    "Pendiente de definir por el usuario",
+    "contract.sINPENALIZACION"
+  ],
+  [
+    "Softr Tlfn",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "SUSPENDIDO",
+    "Pendiente de definir por el usuario",
+    "contract.sUSPENDIDO"
+  ],
+  [
+    "SVA AÑADIDO TERA",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "SWIFT",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tarifa",
+    "Tarifa de acceso (ej. 2.0TD)",
+    "supplyPoint.tariff"
+  ],
+  [
+    "Teléfono Contacto",
+    "teléfoo de contacto del titular del contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Telegestion",
+    "Pendiente de definir por el usuario",
+    "contract.telegestion"
+  ],
+  [
+    "Tipo",
+    "código del tipo de tramitación a realizar si se firma el contrato: R, A3, C1, C2, M1, …",
+    "contract.tipo"
+  ],
+  [
+    "Tipo de firma",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo de numeración Instalación",
+    "tipo de numeración del punto de suministro, por ejemplo NUM, KM, S/N, etc",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo de numeración Titular",
+    "tipo de numeración de la dirección del titular del contrato, por ejemplo NUM, KM, S/N, etc",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo de persona",
+    "F física o J jurídica",
+    "client.clientType"
+  ],
+  [
+    "Tipo de producto",
+    "fijo, index, etc… según seleccione el usuario al crear el lead",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo de producto (from Producto)",
+    "fijo, index, etc… del producto seleccionado para generar contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo de vía Instalación",
+    "tipo de vía de la dirección del punto de suministro: calle, avenida, etc…",
+    "supplyPoint.streetType"
+  ],
+  [
+    "Tipo de vía Titular",
+    "tipo de vía de la dirección del titular del contrato: calle, avenida, etc…",
+    "client.billingStreetType"
+  ],
+  [
+    "Tipo Identificador",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo Sol Admin",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "TIpo_c2",
+    "si el tipo es M1, aquí se indica si se trata de modificación administrativa (S), técnica (N) o ambas (A)",
+    "contract.tIpoc2"
+  ],
+  [
+    "Tipo_de_cliente",
+    "F persona física o J persona jurídica",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tipo_entrada",
+    "Pendiente de definir por el usuario",
+    "contract.tipoentrada"
+  ],
+  [
+    "TIPO_ENVIO_FACTURA_RENOV",
+    "Pendiente de definir por el usuario",
+    "contract.tIPOENVIOFACTURARENOV"
+  ],
+  [
+    "Tipo_Sop",
+    "enlaza tipo con tipo_c2para tener visión completa del tipode tramitación realizada con el contrato",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "TipoPM",
+    "Pendiente de definir por el usuario",
+    "contract.tipoPM"
+  ],
+  [
+    "TLF",
+    "teléfoo de contacto del titular del contrato",
+    "client.contactPhone"
+  ],
+  [
+    "TLF COMER",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "TLF_2",
+    "teléfoo de contacto del titular del contrato",
+    "client.contactPhone2"
+  ],
+  [
+    "TLF_3",
+    "teléfoo de contacto del titular del contrato",
+    "client.contactPhone3"
+  ],
+  [
+    "Tramitación a realizar",
+    "tipo de tramitación a realizar si se firma el contrato: alta nueva, cambio de comercializadora, modificación, etc…",
+    "contract.tramitationType"
+  ],
+  [
+    "Tramitación LINK",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "Tramitar",
+    "Pendiente de definir por el usuario",
+    "contract.airtableData (JSON)"
+  ],
+  [
+    "transferencia",
+    "Pendiente de definir por el usuario",
+    "contract.transferencia"
+  ],
+  [
+    "ULT DIA A FACTURAR",
+    "Pendiente de definir por el usuario",
+    "contract.uLTDIAAFACTURAR"
+  ],
+  [
+    "ULT DIA FACT",
+    "Pendiente de definir por el usuario",
+    "contract.uLTDIAFACT"
+  ],
+  [
+    "ULTIMO DIA FACTURADO",
+    "Pendiente de definir por el usuario",
+    "contract.uLTIMODIAFACTURADO"
+  ],
+  [
+    "UN PRECIO",
+    "Pendiente de definir por el usuario",
+    "contract.uNPRECIO"
+  ],
+  [
+    "Version",
+    "Pendiente de definir por el usuario",
+    "contract.version"
+  ]
+]

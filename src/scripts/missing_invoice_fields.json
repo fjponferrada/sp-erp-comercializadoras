@@ -1,0 +1,1462 @@
+[
+  {
+    "name": "Importe Bono Social CORR",
+    "propName": "importeBonoSocialCORR",
+    "desc": "(IA) Financiación del Bono Social Eléctrico aplicado al cliente aplicando corrección para facturas tipo abono"
+  },
+  {
+    "name": "Importe IVA",
+    "propName": "importeIVA",
+    "desc": "(IA) Importe correspondiente al Impuesto sobre el Valor Añadido (21%, 10% o 5% según legislación vigente)"
+  },
+  {
+    "name": "Importe IVA 10",
+    "propName": "importeIVA10",
+    "desc": "(IA) Importe correspondiente al Impuesto sobre el Valor Añadido (solo IVA aplicado al 10%)"
+  },
+  {
+    "name": "Importe IVA 21",
+    "propName": "importeIVA21",
+    "desc": "(IA) Importe correspondiente al Impuesto sobre el Valor Añadido (solo IVA aplicado al 21%)"
+  },
+  {
+    "name": "Importe IVA 5",
+    "propName": "importeIVA5",
+    "desc": "(IA) Importe correspondiente al Impuesto sobre el Valor Añadido (solo IVA aplicado al 5%)"
+  },
+  {
+    "name": "Importe Potencia ATR",
+    "propName": "importePotenciaATR",
+    "desc": "(IA) Importe total facturado por el término fijo de potencia sin incluir margen comercializadora, solo peajes y cargos regulados (suma de todos los periodos)"
+  },
+  {
+    "name": "Importe Energia ATR",
+    "propName": "importeEnergiaATR",
+    "desc": "(IA) Importe total facturado por peajes y cargos regulados por el término variable de energía consumida (suma de periodos)"
+  },
+  {
+    "name": "Base Imponible IVA",
+    "propName": "baseImponibleIVA",
+    "desc": "base imponible sujeta a iva total"
+  },
+  {
+    "name": "Base Imponible IVA CORR",
+    "propName": "baseImponibleIVACORR",
+    "desc": "base imponible sujeta a iva total corregida cuando se trata de facturas tipo abono, pues el proveedor no pone correctamente el signo (aplica esto a todos los campos que pone CORR)"
+  },
+  {
+    "name": "BI Subtotal 1 CORR",
+    "propName": "bISubtotal1CORR",
+    "desc": "calculo parcial de base imponible corregida en tipo abono"
+  },
+  {
+    "name": "Fecha Cobro",
+    "propName": "fechaCobro",
+    "desc": "Campo de fecha/timestamp"
+  },
+  {
+    "name": "FechaFtra_NumFtra",
+    "propName": "fechaFtraNumFtra",
+    "desc": "Campo de fecha/timestamp"
+  },
+  {
+    "name": "Codigo Contrato",
+    "propName": "codigoContrato",
+    "desc": "código del contrato existnte entre titular del cups y distribuidora (contrato atr)"
+  },
+  {
+    "name": "Contrato",
+    "propName": "contrato",
+    "desc": "contrato asociado a la factura emitida"
+  },
+  {
+    "name": "Contrato2",
+    "propName": "contrato2",
+    "desc": "contrato asociado a la factura emitida"
+  },
+  {
+    "name": "Importe AE P1",
+    "propName": "importeAEP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe AE P2",
+    "propName": "importeAEP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Exceso PM P1",
+    "propName": "importeExcesoPMP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Exceso PM P2",
+    "propName": "importeExcesoPMP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe PM P1",
+    "propName": "importePMP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe PM P2",
+    "propName": "importePMP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado ATR Energia P1",
+    "propName": "importePonderadoATREnergiaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado ATR Energia P2",
+    "propName": "importePonderadoATREnergiaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado ATR Potencia P1",
+    "propName": "importePonderadoATRPotenciaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado ATR Potencia P2",
+    "propName": "importePonderadoATRPotenciaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia P1",
+    "propName": "importePonderadoCargosEnergiaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia P2",
+    "propName": "importePonderadoCargosEnergiaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia P1",
+    "propName": "importePonderadoCargosPotenciaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia P2",
+    "propName": "importePonderadoCargosPotenciaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia P1",
+    "propName": "importePonderadoPeajesEnergiaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia P2",
+    "propName": "importePonderadoPeajesEnergiaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia P1",
+    "propName": "importePonderadoPeajesPotenciaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia P2",
+    "propName": "importePonderadoPeajesPotenciaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Desde AE P1",
+    "propName": "lecturaDesdeAEP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Desde AE P2",
+    "propName": "lecturaDesdeAEP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Desde R1 P1",
+    "propName": "lecturaDesdeR1P1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Desde R1 P2",
+    "propName": "lecturaDesdeR1P2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Hasta AE P1",
+    "propName": "lecturaHastaAEP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Hasta AE P2",
+    "propName": "lecturaHastaAEP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Hasta R1 P1",
+    "propName": "lecturaHastaR1P1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Lectura Hasta R1 P2",
+    "propName": "lecturaHastaR1P2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "P1EM",
+    "propName": "p1EM",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "P1PM",
+    "propName": "p1PM",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "P2EM",
+    "propName": "p2EM",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "P2P",
+    "propName": "p2P",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "P2PM",
+    "propName": "p2PM",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado ATR Energia P1",
+    "propName": "precioPonderadoATREnergiaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado ATR Energia P2",
+    "propName": "precioPonderadoATREnergiaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado ATR Potencia P1",
+    "propName": "precioPonderadoATRPotenciaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado ATR Potencia P2",
+    "propName": "precioPonderadoATRPotenciaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Cargos Energia P1",
+    "propName": "precioPonderadoCargosEnergiaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Cargos Energia P2",
+    "propName": "precioPonderadoCargosEnergiaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Cargos Potencia P1",
+    "propName": "precioPonderadoCargosPotenciaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Cargos Potencia P2",
+    "propName": "precioPonderadoCargosPotenciaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Peajes Energia P1",
+    "propName": "precioPonderadoPeajesEnergiaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Peajes Energia P2",
+    "propName": "precioPonderadoPeajesEnergiaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Peajes Potencia P1",
+    "propName": "precioPonderadoPeajesPotenciaP1",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Precio Ponderado Peajes Potencia P2",
+    "propName": "precioPonderadoPeajesPotenciaP2",
+    "desc": "Datos de potencia o precios por periodo"
+  },
+  {
+    "name": "Dias",
+    "propName": "dias",
+    "desc": "diastotales facturados en el ciclo"
+  },
+  {
+    "name": "Dias CORR",
+    "propName": "diasCORR",
+    "desc": "diastotales facturados en el ciclo aplicando corrección para facturas tipo abono"
+  },
+  {
+    "name": "DOMICILIO PS COMPLETO",
+    "propName": "dOMICILIOPSCOMPLETO",
+    "desc": "dirección completa del punto de suministro"
+  },
+  {
+    "name": "Email AtCliente",
+    "propName": "emailAtCliente",
+    "desc": "Dirección de correo electrónico"
+  },
+  {
+    "name": "Email Contacto 2",
+    "propName": "emailContacto2",
+    "desc": "Dirección de correo electrónico"
+  },
+  {
+    "name": "Email Contacto 3",
+    "propName": "emailContacto3",
+    "desc": "Dirección de correo electrónico"
+  },
+  {
+    "name": "Email Emisora",
+    "propName": "emailEmisora",
+    "desc": "Dirección de correo electrónico"
+  },
+  {
+    "name": "DOMICILIO PS",
+    "propName": "dOMICILIOPS",
+    "desc": "dirección del punto de suministro"
+  },
+  {
+    "name": "DOMICILIO SOC",
+    "propName": "dOMICILIOSOC",
+    "desc": "dirección del titular del contrato"
+  },
+  {
+    "name": "E-mail envío de la factura",
+    "propName": "eMailEnvODeLaFactura",
+    "desc": "email al que debe enviarse la factura"
+  },
+  {
+    "name": "Email Contacto",
+    "propName": "client.contactEmail / lead.email",
+    "desc": "Email de comunicación"
+  },
+  {
+    "name": "Reactiva Total Consumida",
+    "propName": "reactivaTotalConsumida",
+    "desc": "energía reactiva total consumida según distribuidora en suma de todos los períodos"
+  },
+  {
+    "name": "Fecha factura rectificada",
+    "propName": "fechaFacturaRectificada",
+    "desc": "Fecha de emisión de la factura que se rectifica en caso de que se trate de rectificativa"
+  },
+  {
+    "name": "Fecha Fin Contrato",
+    "propName": "fechaFinContrato",
+    "desc": "fecha en que finaliza el contrato asociado a la factura emitida"
+  },
+  {
+    "name": "Hasta(EA)",
+    "propName": "hastaEA",
+    "desc": "fecha final del ciclo facturado a efectos de energía consumida"
+  },
+  {
+    "name": "Hasta",
+    "propName": "hasta",
+    "desc": "fecha final del ciclo facturado a efectos de potencia contratada"
+  },
+  {
+    "name": "Desde(EA)",
+    "propName": "desdeEA",
+    "desc": "fecha inicial del ciclo facturado a efectos de energía consumida"
+  },
+  {
+    "name": "Desde",
+    "propName": "desde",
+    "desc": "fecha inicial del ciclo facturado a efectos de potencia contratada"
+  },
+  {
+    "name": "BaseImponibleF1 CORR",
+    "propName": "baseImponibleF1CORR",
+    "desc": "idem pero corregido en caso de abono"
+  },
+  {
+    "name": "Total CORR",
+    "propName": "totalCORR",
+    "desc": "Importe total a pagar aplicando corrección en caso de rectificativa"
+  },
+  {
+    "name": "P1C",
+    "propName": "supplyPoint.p1c",
+    "desc": "kW potencia contratada facturdos en período p1"
+  },
+  {
+    "name": "P2C",
+    "propName": "p2C",
+    "desc": "kW potencia contratada facturdos en período p2"
+  },
+  {
+    "name": "P3C",
+    "propName": "p3C",
+    "desc": "kW potencia contratada facturdos en período p3"
+  },
+  {
+    "name": "P4C",
+    "propName": "p4C",
+    "desc": "kW potencia contratada facturdos en período p4"
+  },
+  {
+    "name": "P5C",
+    "propName": "p5C",
+    "desc": "kW potencia contratada facturdos en período p5"
+  },
+  {
+    "name": "P6C",
+    "propName": "p6C",
+    "desc": "kW potencia contratada facturdos en período p6"
+  },
+  {
+    "name": "Cantidad Energía Total Consumida CORR",
+    "propName": "cantidadEnergATotalConsumidaCORR",
+    "desc": "kWh consumidos en el periodo aplicando corrección en tipo abono"
+  },
+  {
+    "name": "NOMBRE COMPLETO",
+    "propName": "nOMBRECOMPLETO",
+    "desc": "nombre completo del titular del contrato al que se factura"
+  },
+  {
+    "name": "DISTRIBUIDORA",
+    "propName": "dISTRIBUIDORA",
+    "desc": "nombre distribuidora asociada al cups facturado"
+  },
+  {
+    "name": "NOMBRE/RAZON SOCIAL",
+    "propName": "nOMBRERAZONSOCIAL",
+    "desc": "nombre sin apellidos o razón social del titular del contrato al que se factura"
+  },
+  {
+    "name": "IBAN",
+    "propName": "client.iban / lead.iban",
+    "desc": "Número de cuenta bancaria"
+  },
+  {
+    "name": "PDF",
+    "propName": "pDF",
+    "desc": "pdf con la factura del cliente"
+  },
+  {
+    "name": "Importe Total Excesos ATR",
+    "propName": "importeTotalExcesosATR",
+    "desc": "penalizacióna plicada por distribuidora por los excesos de potencia demandada sobre contratada"
+  },
+  {
+    "name": "BOLSILLO SOLAR",
+    "propName": "bOLSILLOSOLAR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "BUSCADOR",
+    "propName": "bUSCADOR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "CALCULO MES-AÑO",
+    "propName": "cALCULOMESAO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "CANAL",
+    "propName": "cANAL",
+    "desc": "canala sociado al contrato facturado"
+  },
+  {
+    "name": "CG",
+    "propName": "cG",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "CGM",
+    "propName": "cGM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "CIF",
+    "propName": "cIF",
+    "desc": "cif receptor fatura"
+  },
+  {
+    "name": "CIF Emisora",
+    "propName": "cIFEmisora",
+    "desc": "cif emisor factura, comercializadora"
+  },
+  {
+    "name": "Ciudad",
+    "propName": "ciudad",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "CNAE",
+    "propName": "cNAE",
+    "desc": "cnae del cups"
+  },
+  {
+    "name": "Codigo REE",
+    "propName": "codigoREE",
+    "desc": "codigo red eléctrica de distirbuidora asociada al cups"
+  },
+  {
+    "name": "Comercializadora",
+    "propName": "comercializadora",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Concepto Repercutible 1 Numero",
+    "propName": "conceptoRepercutible1Numero",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Concepto Repercutible 2 Numero",
+    "propName": "conceptoRepercutible2Numero",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Concepto Repercutible 3 Numero",
+    "propName": "conceptoRepercutible3Numero",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Concepto SVA",
+    "propName": "conceptoSVA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Costes de Gestión",
+    "propName": "costesDeGestiN",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "CP Emisora",
+    "propName": "cPEmisora",
+    "desc": "codigo postal de emisor factura"
+  },
+  {
+    "name": "CP PS",
+    "propName": "cPPS",
+    "desc": "codigo postal punto de suministro"
+  },
+  {
+    "name": "CP SOC",
+    "propName": "cPSOC",
+    "desc": "codigo postal titular del contrato"
+  },
+  {
+    "name": "Cuota Importe Impuesto CORR",
+    "propName": "cuotaImporteImpuestoCORR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Derechos Garantía",
+    "propName": "derechosGarantA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Desde(ER)",
+    "propName": "desdeER",
+    "desc": "fecha inicio ciclo facturado a efectos de energia reactiva"
+  },
+  {
+    "name": "Desde(P)",
+    "propName": "desdeP",
+    "desc": "fecha inicio ciclo facturado a efectos de potencia"
+  },
+  {
+    "name": "DIAS PAGO",
+    "propName": "dIASPAGO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Días SVA",
+    "propName": "dAsSVA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Direccion Emisora",
+    "propName": "direccionEmisora",
+    "desc": "dirección fiscal de emisor factura, comercializadora"
+  },
+  {
+    "name": "DSV",
+    "propName": "dSV",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "DSVM",
+    "propName": "dSVM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Empresa Emisora",
+    "propName": "empresaEmisora",
+    "desc": "empresa emisora factura, comercializadora"
+  },
+  {
+    "name": "Estado CONTRATO",
+    "propName": "estadoCONTRATO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "FACTURA RECTIFICADA",
+    "propName": "fACTURARECTIFICADA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "FEE",
+    "propName": "fEE",
+    "desc": "fee aplicado en caso de contato indexado"
+  },
+  {
+    "name": "FEEM",
+    "propName": "fEEM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "FIJO / INDEX",
+    "propName": "fIJOINDEX",
+    "desc": "producto fijo o indexado facturado"
+  },
+  {
+    "name": "From field: FACTURA RECTIFICADA",
+    "propName": "fromFieldFACTURARECTIFICADA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "GAP AUTOCONSUMO",
+    "propName": "gAPAUTOCONSUMO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "GAS INCLUIDO",
+    "propName": "gASINCLUIDO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Hasta(ER)",
+    "propName": "hastaER",
+    "desc": "fecha fin ciclo facturado a efectos de energia reactiva"
+  },
+  {
+    "name": "Hasta(P)",
+    "propName": "hastaP",
+    "desc": "fecha fin ciclo facturado a efectos de potencia"
+  },
+  {
+    "name": "ID Google Drive PDF",
+    "propName": "iDGoogleDrivePDF",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "ID Google Drive XML",
+    "propName": "iDGoogleDriveXML",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "IE Odoo",
+    "propName": "iEOdoo",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe AE P3",
+    "propName": "importeAEP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe AE P4",
+    "propName": "importeAEP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe AE P5",
+    "propName": "importeAEP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe AE P6",
+    "propName": "importeAEP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Devolución",
+    "propName": "importeDevoluciN",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Exceso PM P3",
+    "propName": "importeExcesoPMP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Exceso PM P4",
+    "propName": "importeExcesoPMP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Exceso PM P5",
+    "propName": "importeExcesoPMP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Exceso PM P6",
+    "propName": "importeExcesoPMP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe factura rectificada",
+    "propName": "importeFacturaRectificada",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Impuesto",
+    "propName": "importeImpuesto",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Impuesto CORR",
+    "propName": "importeImpuestoCORR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Indemnización",
+    "propName": "importeIndemnizaciN",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Peajes AE",
+    "propName": "importePeajesAE",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Peajes PM",
+    "propName": "importePeajesPM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe PM P3",
+    "propName": "importePMP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe PM P4",
+    "propName": "importePMP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe PM P5",
+    "propName": "importePMP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe PM P6",
+    "propName": "importePMP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Energia P3",
+    "propName": "importePonderadoATREnergiaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Energia P4",
+    "propName": "importePonderadoATREnergiaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Energia P5",
+    "propName": "importePonderadoATREnergiaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Energia P6",
+    "propName": "importePonderadoATREnergiaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Potencia P3",
+    "propName": "importePonderadoATRPotenciaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Potencia P4",
+    "propName": "importePonderadoATRPotenciaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Potencia P5",
+    "propName": "importePonderadoATRPotenciaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado ATR Potencia P6",
+    "propName": "importePonderadoATRPotenciaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia",
+    "propName": "importePonderadoCargosEnergia",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia P3",
+    "propName": "importePonderadoCargosEnergiaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia P4",
+    "propName": "importePonderadoCargosEnergiaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia P5",
+    "propName": "importePonderadoCargosEnergiaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Energia P6",
+    "propName": "importePonderadoCargosEnergiaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia",
+    "propName": "importePonderadoCargosPotencia",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia P3",
+    "propName": "importePonderadoCargosPotenciaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia P4",
+    "propName": "importePonderadoCargosPotenciaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia P5",
+    "propName": "importePonderadoCargosPotenciaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Cargos Potencia P6",
+    "propName": "importePonderadoCargosPotenciaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia",
+    "propName": "importePonderadoPeajesEnergia",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia P3",
+    "propName": "importePonderadoPeajesEnergiaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia P4",
+    "propName": "importePonderadoPeajesEnergiaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia P5",
+    "propName": "importePonderadoPeajesEnergiaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Energia P6",
+    "propName": "importePonderadoPeajesEnergiaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia",
+    "propName": "importePonderadoPeajesPotencia",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia P3",
+    "propName": "importePonderadoPeajesPotenciaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia P4",
+    "propName": "importePonderadoPeajesPotenciaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia P5",
+    "propName": "importePonderadoPeajesPotenciaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Ponderado Peajes Potencia P6",
+    "propName": "importePonderadoPeajesPotenciaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Total AE ATR",
+    "propName": "importeTotalAEATR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Total Excesos ATR F1",
+    "propName": "importeTotalExcesosATRF1",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Total PM ATR",
+    "propName": "importeTotalPMATR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Importe Total R ATR",
+    "propName": "importeTotalRATR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Impuesto (%)",
+    "propName": "impuesto",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "INSTALACIONES",
+    "propName": "iNSTALACIONES",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde AE P3",
+    "propName": "lecturaDesdeAEP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde AE P4",
+    "propName": "lecturaDesdeAEP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde AE P5",
+    "propName": "lecturaDesdeAEP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde AE P6",
+    "propName": "lecturaDesdeAEP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde R1 P3",
+    "propName": "lecturaDesdeR1P3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde R1 P4",
+    "propName": "lecturaDesdeR1P4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde R1 P5",
+    "propName": "lecturaDesdeR1P5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Desde R1 P6",
+    "propName": "lecturaDesdeR1P6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta AE P3",
+    "propName": "lecturaHastaAEP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta AE P4",
+    "propName": "lecturaHastaAEP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta AE P5",
+    "propName": "lecturaHastaAEP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta AE P6",
+    "propName": "lecturaHastaAEP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta R1 P3",
+    "propName": "lecturaHastaR1P3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta R1 P4",
+    "propName": "lecturaHastaR1P4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta R1 P5",
+    "propName": "lecturaHastaR1P5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Lectura Hasta R1 P6",
+    "propName": "lecturaHastaR1P6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "MARCA",
+    "propName": "mARCA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "MARGEN FACTURA CORR",
+    "propName": "mARGENFACTURACORR",
+    "desc": "margen calculado por proveedor de facturacion para la factura emitida total"
+  },
+  {
+    "name": "MARGEN FACTURA DASHBOARD",
+    "propName": "mARGENFACTURADASHBOARD",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "MARGEN FTRA RECTIFICADA",
+    "propName": "mARGENFTRARECTIFICADA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "MES-AÑO",
+    "propName": "mESAO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Modo Control Potencia",
+    "propName": "modoControlPotencia",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Motivo Factura",
+    "propName": "motivoFactura",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Numero factura rectificada",
+    "propName": "numeroFacturaRectificada",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Numero Serie",
+    "propName": "numeroSerie",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "OMIE Promedio MAH",
+    "propName": "oMIEPromedioMAH",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "output_pdf",
+    "propName": "outputPdf",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P3EM",
+    "propName": "p3EM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P3P",
+    "propName": "p3P",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P3PM",
+    "propName": "p3PM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P4EM",
+    "propName": "p4EM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P4P",
+    "propName": "p4P",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P4PM",
+    "propName": "p4PM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P5EM",
+    "propName": "p5EM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P5P",
+    "propName": "p5P",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P5PM",
+    "propName": "p5PM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P6EM",
+    "propName": "p6EM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P6P",
+    "propName": "p6P",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P6PM",
+    "propName": "p6PM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "PATH",
+    "propName": "pATH",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "pdf_co_output",
+    "propName": "pdfCoOutput",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Penalizacion No ICP",
+    "propName": "penalizacionNoICP",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "PEX",
+    "propName": "pEX",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "POBLACION PS",
+    "propName": "pOBLACIONPS",
+    "desc": "población del punto de suministro"
+  },
+  {
+    "name": "POBLACION SOC",
+    "propName": "pOBLACIONSOC",
+    "desc": "población del punto de titular de contrato"
+  },
+  {
+    "name": "Porcetaje Reduccion Cargos",
+    "propName": "porcetajeReduccionCargos",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "POTENCIA BOE",
+    "propName": "pOTENCIABOE",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "POTENCIAS DISTRI",
+    "propName": "pOTENCIASDISTRI",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Energia P3",
+    "propName": "precioPonderadoATREnergiaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Energia P4",
+    "propName": "precioPonderadoATREnergiaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Energia P5",
+    "propName": "precioPonderadoATREnergiaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Energia P6",
+    "propName": "precioPonderadoATREnergiaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Potencia P3",
+    "propName": "precioPonderadoATRPotenciaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Potencia P4",
+    "propName": "precioPonderadoATRPotenciaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Potencia P5",
+    "propName": "precioPonderadoATRPotenciaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado ATR Potencia P6",
+    "propName": "precioPonderadoATRPotenciaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Energia P3",
+    "propName": "precioPonderadoCargosEnergiaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Energia P4",
+    "propName": "precioPonderadoCargosEnergiaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Energia P5",
+    "propName": "precioPonderadoCargosEnergiaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Energia P6",
+    "propName": "precioPonderadoCargosEnergiaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Potencia P3",
+    "propName": "precioPonderadoCargosPotenciaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Potencia P4",
+    "propName": "precioPonderadoCargosPotenciaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Potencia P5",
+    "propName": "precioPonderadoCargosPotenciaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Cargos Potencia P6",
+    "propName": "precioPonderadoCargosPotenciaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Energia P3",
+    "propName": "precioPonderadoPeajesEnergiaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Energia P4",
+    "propName": "precioPonderadoPeajesEnergiaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Energia P5",
+    "propName": "precioPonderadoPeajesEnergiaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Energia P6",
+    "propName": "precioPonderadoPeajesEnergiaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Potencia P3",
+    "propName": "precioPonderadoPeajesPotenciaP3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Potencia P4",
+    "propName": "precioPonderadoPeajesPotenciaP4",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Potencia P5",
+    "propName": "precioPonderadoPeajesPotenciaP5",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio Ponderado Peajes Potencia P6",
+    "propName": "precioPonderadoPeajesPotenciaP6",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Precio unitario SVA",
+    "propName": "precioUnitarioSVA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Provincia",
+    "propName": "provincia",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "PROVINCIA PS",
+    "propName": "pROVINCIAPS",
+    "desc": "provincia del punto de suministro"
+  },
+  {
+    "name": "PROVINCIA SOC",
+    "propName": "pROVINCIASOC",
+    "desc": "provincia del titular del contrato"
+  },
+  {
+    "name": "SISTEMA ELECTRICO",
+    "propName": "sISTEMAELECTRICO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "SUBIDA_FACE",
+    "propName": "sUBIDAFACE",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Tarifa ATR",
+    "propName": "tarifaATR",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Telefono",
+    "propName": "telefono",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Telefono Emisora",
+    "propName": "telefonoEmisora",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Tipo Aparato",
+    "propName": "tipoAparato",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Tipo Autoconsumo",
+    "propName": "tipoAutoconsumo",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Tipo de cliente",
+    "propName": "tipoDeCliente",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Tipo DHEdM",
+    "propName": "tipoDHEdM",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Tipo Producto",
+    "propName": "tipoProducto",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Total SVA",
+    "propName": "totalSVA",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Uds Concept Repercutible 1",
+    "propName": "udsConceptRepercutible1",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Uds Concept Repercutible 2",
+    "propName": "udsConceptRepercutible2",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "Uds Concept Repercutible 3",
+    "propName": "udsConceptRepercutible3",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "UN PRECIO",
+    "propName": "uNPRECIO",
+    "desc": "Pendiente de definir por el usuario"
+  },
+  {
+    "name": "P1P",
+    "propName": "supplyPoint.p1p / contract.customP1P",
+    "desc": "Potencia contratada P1"
+  },
+  {
+    "name": "P1E",
+    "propName": "contract.customP1E",
+    "desc": "Precio energía P1"
+  },
+  {
+    "name": "P2E",
+    "propName": "p2E",
+    "desc": "Precio energía P2"
+  },
+  {
+    "name": "P3E",
+    "propName": "p3E",
+    "desc": "Precio energía P3"
+  },
+  {
+    "name": "P4E",
+    "propName": "p4E",
+    "desc": "Precio energía P4"
+  },
+  {
+    "name": "P5E",
+    "propName": "p5E",
+    "desc": "Precio energía P5"
+  },
+  {
+    "name": "P6E",
+    "propName": "p6E",
+    "desc": "Precio energía P6"
+  },
+  {
+    "name": "Primer Apellido",
+    "propName": "primerApellido",
+    "desc": "primer apellido del titular del contrato al que se factura"
+  },
+  {
+    "name": "Procedencia Hasta",
+    "propName": "procedenciaHasta",
+    "desc": "procedencia de la lectura del final  del ciclo facturado: telegestión, visual, estimada, …. Según haya comunicado distribuidora"
+  },
+  {
+    "name": "Procedencia Desde",
+    "propName": "procedenciaDesde",
+    "desc": "procedencia de la lectura del inicio del ciclo facturado: telegestión, visual, estimada, …. Según haya comunicado distribuidora"
+  },
+  {
+    "name": "Segundo Apellido",
+    "propName": "segundoApellido",
+    "desc": "segundo apellido del titular del contrato al que se factura"
+  },
+  {
+    "name": "Tipo Factura",
+    "propName": "tipoFactura",
+    "desc": "tipo de factura: normal, abono, rectificativa, regularizadora… (viene determinado por el f1 remitido por distribuidora)"
+  },
+  {
+    "name": "IVA",
+    "propName": "iVA",
+    "desc": "tipo de IVA aplicado en factura"
+  },
+  {
+    "name": "XML",
+    "propName": "xML",
+    "desc": "xml con la factura electrónica del cliente"
+  }
+]

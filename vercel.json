@@ -1,0 +1,28 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/activate-renewals",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/ftp-sync",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/aggregate-history",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/train-forecast",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/update-portfolio",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/sync-esios",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}

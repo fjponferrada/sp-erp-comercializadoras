@@ -1,0 +1,2 @@
+*El primer dígito del código corresponde con el valor que aplica de la tabla 35 en cada caso.
+NOTA: Se deja esta tabla que solo aplica al formato F1 para poder refacturar tarifas de acceso no vigentes.

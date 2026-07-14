@@ -1,0 +1,241 @@
+{
+  "baseImponible": 0,
+  "totalPeajes": 0,
+  "totalCargos": 0,
+  "jsonData": {
+    "IVA": {
+      "Importe": 23.85,
+      "Porcentaje": 21,
+      "BaseImponible": 113.55
+    },
+    "Cargos": {
+      "Cargo": [
+        {
+          "TipoCargo": 1,
+          "TerminoCargo": {
+            "Periodo": [
+              {
+                "Potencia": 14900,
+                "PrecioCargo": 0.000011999
+              },
+              {
+                "Potencia": 14900,
+                "PrecioCargo": 7.72e-7
+              }
+            ],
+            "FechaDesde": "2026-05-14",
+            "FechaHasta": "2026-06-14"
+          },
+          "TotalImporteTipoCargo": 5.9
+        },
+        {
+          "TipoCargo": 2,
+          "TerminoCargo": {
+            "Periodo": [
+              {
+                "Energia": 570,
+                "PrecioCargo": 0.064292
+              },
+              {
+                "Energia": 567,
+                "PrecioCargo": 0.012858
+              },
+              {
+                "Energia": 1211,
+                "PrecioCargo": 0.003215
+              }
+            ],
+            "FechaDesde": "2026-05-14",
+            "FechaHasta": "2026-06-14"
+          },
+          "TotalImporteTipoCargo": 47.83
+        }
+      ],
+      "TotalImporteCargos": 53.73
+    },
+    "Medidas": {
+      "CodPM": "ES0021000042307396MC0P",
+      "ModeloAparato": {
+        "TipoDHEdM": 9,
+        "Integrador": [
+          {
+            "Magnitud": "AE",
+            "LecturaDesde": {
+              "Fecha": "2026-05-14",
+              "Lectura": 17270,
+              "Procedencia": 60
+            },
+            "LecturaHasta": {
+              "Fecha": "2026-06-14",
+              "Lectura": 18481,
+              "Procedencia": 60
+            },
+            "CodigoPeriodo": 93,
+            "ConsumoCalculado": 1211,
+            "NumeroRuedasEnteras": 6,
+            "NumeroRuedasDecimales": 0,
+            "ConstanteMultiplicadora": 1
+          },
+          {
+            "Magnitud": "AE",
+            "LecturaDesde": {
+              "Fecha": "2026-05-14",
+              "Lectura": 8036,
+              "Procedencia": 60
+            },
+            "LecturaHasta": {
+              "Fecha": "2026-06-14",
+              "Lectura": 8603,
+              "Procedencia": 60
+            },
+            "CodigoPeriodo": 92,
+            "ConsumoCalculado": 567,
+            "NumeroRuedasEnteras": 6,
+            "NumeroRuedasDecimales": 0,
+            "ConstanteMultiplicadora": 1
+          },
+          {
+            "Magnitud": "AE",
+            "LecturaDesde": {
+              "Fecha": "2026-05-14",
+              "Lectura": 9165,
+              "Procedencia": 60
+            },
+            "LecturaHasta": {
+              "Fecha": "2026-06-14",
+              "Lectura": 9735,
+              "Procedencia": 60
+            },
+            "CodigoPeriodo": 91,
+            "ConsumoCalculado": 570,
+            "NumeroRuedasEnteras": 6,
+            "NumeroRuedasDecimales": 0,
+            "ConstanteMultiplicadora": 1
+          }
+        ],
+        "NumeroSerie": 37851924,
+        "TipoAparato": "TG",
+        "MarcaAparato": 132
+      }
+    },
+    "Potencia": {
+      "TerminoPotencia": {
+        "Periodo": [
+          {
+            "PrecioPotencia": 0.000063904,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 14900,
+            "PotenciaContratada": 14900,
+            "PotenciaMaxDemandada": 0
+          },
+          {
+            "PrecioPotencia": 0.000001216,
+            "RecargoInfAnio": 0,
+            "PotenciaAFacturar": 14900,
+            "PotenciaContratada": 14900,
+            "PotenciaMaxDemandada": 0
+          }
+        ],
+        "FechaDesde": "2026-05-14",
+        "FechaHasta": "2026-06-14"
+      },
+      "ImporteTotalTerminoPotencia": 30.08
+    },
+    "Alquileres": {
+      "PrecioDiarioAlquiler": {
+        "PrecioDia": 0.044712,
+        "NumeroDias": 31
+      },
+      "ImporteFacturacionAlquileres": 1.39
+    },
+    "EnergiaActiva": {
+      "TerminoEnergiaActiva": {
+        "Periodo": [
+          {
+            "PrecioEnergia": 0.033261,
+            "ValorEnergiaActiva": 570
+          },
+          {
+            "PrecioEnergia": 0.016409,
+            "ValorEnergiaActiva": 567
+          },
+          {
+            "PrecioEnergia": 0.000077,
+            "ValorEnergiaActiva": 1211
+          }
+        ],
+        "FechaDesde": "2026-05-14",
+        "FechaHasta": "2026-06-14"
+      },
+      "ImporteTotalEnergiaActiva": 28.35
+    },
+    "ImpuestoElectrico": {
+      "Importe": 0,
+      "Porcentaje": 0,
+      "BaseImponible": 0
+    },
+    "InformacionAlConsumidor": {
+      "Periodo": [
+        {
+          "PotenciaMaxDemandadaAnioMovil": 15324
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 15968
+        },
+        {
+          "PotenciaMaxDemandadaAnioMovil": 18192
+        }
+      ],
+      "ValorEnergiaMediaCP": 207.14,
+      "FechaInicioAnioMovil": "2025-06-14"
+    },
+    "DatosGeneralesFacturaATR": {
+      "Cliente": {
+        "Identificador": "B10915544",
+        "TipoIdentificador": "NI"
+      },
+      "CodContrato": 897287903,
+      "DatosFacturaATR": {
+        "TipoPM": 5,
+        "Periodo": {
+          "NumeroDias": 31,
+          "FechaDesdeFactura": "2026-05-14",
+          "FechaHastaFactura": "2026-06-14"
+        },
+        "FechaBOE": "2025-12-22",
+        "TipoCUPS": 1,
+        "VAsTrafo": 0,
+        "PeriodoCCH": {
+          "FechaDesdeCCH": "2026-05-14",
+          "FechaHastaCCH": "2026-06-14"
+        },
+        "TarifaATRFact": 18,
+        "DuracionInfAnio": "N",
+        "TipoAutoconsumo": 0,
+        "PorcentajePerdidas": 0,
+        "ModoControlPotencia": 1,
+        "IndicativoCurvaCarga": 1,
+        "MarcaMedidaConPerdidas": "N"
+      },
+      "DireccionSuministro": {
+        "Pais": "ESPA�A",
+        "Calle": "NUEVE",
+        "CodPostal": 46701,
+        "Municipio": 46131,
+        "Provincia": 46,
+        "NumeroFinca": 225
+      },
+      "DatosGeneralesFactura": {
+        "TipoMoneda": 2,
+        "Comentarios": "Impto. Electricidad no devengado, cliente en r�gimen suspensivo(Ley 38/1992)",
+        "TipoFactura": "N",
+        "FechaFactura": "2026-06-15",
+        "SaldoFactura": 137.4,
+        "MotivoFacturacion": 1,
+        "CodigoFiscalFactura": 3260615030491975,
+        "ImporteTotalFactura": 137.4,
+        "IdentificadorEmisora": "A95075578"
+      }
+    }
+  }
+}

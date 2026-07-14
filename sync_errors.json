@@ -1,0 +1,393 @@
+[
+  {
+    "airtableId": "recn005s4rlXO8jge",
+    "error": "\nInvalid `prisma.invoice.create()` invocation in\nC:\\Users\\Administrator\\sp-erp-comercializadoras\\scripts\\sync-missing.ts:535:32\n\n  532   pdfUrl = pdfs[0].url;\n  533 }\n  534 \n→ 535 await prisma.invoice.create({\n        data: {\n          invoiceNumber: \"A25-10-18116\",\n          invoiceType: \"Normal\",\n          clientId: \"cmqinydgf0002qw41aupb20xv\",\n          contractId: \"cmqio52i10002gg41e59qpjdl\",\n          supplyPointId: \"cmqinydkh0003qw41dbbqb2z0\",\n          issueDate: new Date(\"2025-10-06T00:00:00.000Z\"),\n          totalAmount: 700.6,\n          subtotal1: 540.35,\n          totalMWh: 3221,\n          billingStart: new Date(\"2025-09-01T00:00:00.000Z\"),\n          billingEnd: new Date(\"2025-09-30T00:00:00.000Z\"),\n          desde: \"2025-09-01\",\n          ~~~~~\n          hasta: \"2025-09-30\",\n          desdeEA: \"2025-09-01\",\n          hastaEA: \"2025-09-30\",\n          origin: \"Visual\",\n          pdfUrl: \"https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/bdyP-3Kfh5LlDjHUFY5liw/4zVcQIi2va9gQjLbbtztDSu0aepYOvmwSdlmwHwSBRmAKr28diWI-6uQrypuSPPH66CZqdUAMnRKZmSzzce39jGOgB7Jp9ezTBQ_6mA-OiXNrxwVjTJd_YZH8Kj1XeZOFZzaWUpjyR36LcXU5G4qsWTX0hjqpRoNViCLRW2fTL4/aNEnlL2h04oxW1QgvIhxm5P62xmEv9n9zoK6I-_fR6Q\",\n          invoiceData: {\n            Importe Impuesto: 27.63,\n            Importe Peajes AE: \"5.5\",\n            Importe Ponderado Peajes Energia P3: \"3.82\",\n            Importe Ponderado Peajes Potencia P6: \"0.73\",\n            Concepto Repercutible: 0,\n            Tarifa ATR: \"3.0TD\",\n            Comision Total: \"0\",\n            Hasta(P): \"2025-09-30\",\n            OMIE Promedio MAH: 68.44,\n            Dias CORR: 30,\n            P3E: 0.139999,\n            P5P: 0.017338,\n            Lectura Desde AE P4: 24044,\n            Importe Ajuste Gas: 0,\n            Precio Ponderado Peajes Potencia P2: \"0.02132\",\n            Estado CONTRATO: [\n              \"Activo\"\n            ],\n            BaseImponibleF1 CORR: 92.06,\n            PATH: \"O:/ISM/Comercializadora/Switching/Facturacion/ArchivosDatosF1/202510/20251004/Facturas20251004-09-07-42_AED.csv\",\n            Precio Ponderado Cargos Potencia P4: \"0.004916\",\n            P2P: 0.039045,\n            Precio Dia Alquiler 1: 0.355068,\n            P5 Potencia Contratada: 16.6,\n            Segundo Apellido: \"ALBENDIN\",\n            IBAN: \"ES8321002042860200251119\",\n            Energía Total Consumida: 3221,\n            Importe Ponderado Cargos Potencia P3: \"2.45\",\n            Margen Energia: 120.65,\n            FIJO / INDEX: \"Fijo\",\n            P3 Potencia Max Demanda: 13,\n            P1P: 0.064818,\n            Lectura Hasta AE P1: 17640,\n            Precio Ponderado Peajes Energia P5: \"0\",\n            Lectura Desde R1 P6: 39962,\n            Importe Ponderado ATR Potencia P3: 5.82,\n            Importe Impuesto CORR: 27.63,\n            Penalizacion No ICP: \"N\",\n            Fecha Fin Contrato: \"2026-08-27\",\n            Numero Serie: 300047432,\n            Importe R1 P3: 0,\n            P2E: 0,\n            Lectura Desde AE P2: 30875,\n            Importe Ponderado ATR Energia P2: 0,\n            Importe AE P5: 0,\n            PExcedentes: {\n              specialValue: \"NaN\"\n            },\n            Lectura Hasta AE P3: 24507,\n            CP SOC: 14850,\n            FechaFtra_NumFtra: \"2025-10-06T00:00:00.000ZA25-10-18116\",\n            P4E: 0.139999,\n            Importe Energia sin Margen: \"330.29\",\n            P2 Precio Energia Reactiva: 0,\n            FEE: 0,\n            Importe Ponderado Cargos Potencia P5: \"2.45\",\n            Precio Ponderado ATR Energia P6: \"0.002631\",\n            Ciudad: \"Córdoba\",\n            Precio Ponderado ATR Potencia P5: \"0.006379\",\n            Numero Factura .pdf: \"A25-10-18116.pdf\",\n            Comision Potencia Canal: \"0\",\n            ID Google Drive XML: \"1lmqVExA9PNH2YLpL-JZ795FvCIidtpdg\",\n            Duracion: 12,\n            Precio Ponderado ATR Energia P1: \"0\",\n            CALCULO MES-AÑO: \"2025-09\",\n            RecargoInfAnio: \"NO\",\n            Importe Ponderado Peajes Potencia P2: \"10.62\",\n            Importe R1 P1: 0,\n            Email AtCliente: [\n              \"albamunoz@energia-aljaval.com\",\n              \"albamunoz@energia-aljaval.com\"\n            ],\n            Importe PM P6: 7.31,\n            Importe Ponderado ATR Energia P1: 0,\n            TotalImporteCargos: \"37.8\",\n            P3 Potencia Contratada: 16.6,\n            Margen Estimado: 169.43,\n            Precio Ponderado Peajes Potencia P4: \"0.005171\",\n            Importe Ponderado Cargos Potencia P6: \"1.12\",\n            Subtotal Otros Concepto: 0,\n            DISTRIBUIDORA: \"EDISTRIBUCIÓN REDES DIGITALES S.L.U.\",\n            E-mail envío de la factura: [\n              \"jelcasti@hotmail.com\"\n            ],\n            INSTALACIONES: [\n              \"recJieVdMxBKywQzd\"\n            ],\n            Precio Ponderado Peajes Energia P1: \"0\",\n            POTENCIAS DISTRI: \"SI\",\n            Importe Ponderado Cargos Energia: \"19.23\",\n            Base 560: \"540.35\",\n            Importe AE P2: 0,\n            Minimo Importe IE Superado: \"1\",\n            Hasta: \"2025-09-30\",\n            Comision Semiindexado Anual: 0,\n            Importe Ponderado Cargos Energia P2: \"0\",\n            TotalImportePeajes: \"43.61\",\n            Importe Ponderado Peajes Energia P6: \"0.06\",\n            Comercializadora: \"AED\",\n            Precio Ponderado ATR Energia P2: \"0\",\n            Precio Ponderado Peajes Potencia P6: \"0.001463\",\n            Precio Ponderado Peajes Energia P2: \"0\",\n            Precio Ponderado Cargos Potencia P1: \"0.013521\",\n            CUPS: \"ES0031104480225001QL0F\",\n            Total Softr: \"700.6 €\",\n            P2 Potencia Contratada: 16.6,\n            Costes de Gestion Bolsillo Solar: \"0\",\n            Potencia a Facturar P6: 16.6,\n            Precio Ponderado Cargos Energia P2: \"0\",\n            P3PM: \"0.011678\",\n            Lectura Hasta AE P6: 96996,\n            CIF Emisora: \"B10915544\",\n            Codigo Fiscal: \"CF 171251N115937150\",\n            Precio Ponderado ATR Potencia P4: \"0.010087\",\n            Importe PM P1: 32.28,\n            P2C: 16.6,\n            P1C: 16.6,\n            Mostrar_Web: \"SI\",\n            Direccion Emisora: \"Calle del Brezo, número 6,\",\n            Importe Ponderado ATR Potencia P1: 26.82,\n            Precio Ponderado Cargos Energia P4: \"0.006501\",\n            Subtotal 2: 579.01,\n            Telefono: \"900850840\",\n            Cuota Importe Impuesto CORR: 27.63,\n            Importe Ponderado ATR Potencia P5: 3.18,\n            Importe Ponderado Peajes Energia P5: \"0\",\n            P4 Energia Activa Consumida: 603,\n            Mail enviado: true,\n            BOLSILLO SOLAR: \"NO\",\n            Exc/Total: 0,\n            Precio Ponderado Cargos Energia P1: \"0\",\n            MARGEN FACTURA CORR: 153.38,\n            Importe Energia ATR: \"24.73\",\n            Desde(P): \"2025-09-01\",\n            Codigo REE: \"1713\",\n            Importe Potencia Factura: 89.41,\n            P5 Energia Activa Consumida: 0,\n            Fecha Cobro: \"2025-10-07\",\n            Reactiva Total Consumida: 0,\n            Precio Ponderado ATR Energia P4: \"0.009183\",\n            Importe Ponderado Peajes Energia P4: \"1.62\",\n            Importe Total PM ATR: 56.68,\n            Importe PM P5: 8.63,\n            Comision Gap Autoconsumo: \"0\",\n            Motivo Factura: \"De ciclo\",\n            P6 Potencia Contratada: 16.6,\n            Lectura Desde AE P5: 21730,\n            CIF: \"14561690E\",\n            Importe R1 P4: 0,\n            Lectura Hasta R1 P1: 7350,\n            P6PM: \"0.003716\",\n            Potencia a Facturar P3: 16.6,\n            CANAL: \"Pablo Remacha\",\n            Numero Factura: \"A25-10-18116\",\n            Lectura Desde R1 P3: 10820,\n            Lectura Desde AE P6: 95196,\n            DIAS PAGO: 1,\n            DSV: \"0\",\n            Lectura Desde R1 P4: 10052,\n            P1 Energia Activa Consumida: 0,\n            Impuesto (%): 5.112696,\n            Precio Ponderado Cargos Potencia P6: \"0.002253\",\n            Precio Ponderado Peajes Energia P6: \"3.10E-05\",\n            Importe R1 P6: 0,\n            Precio Ponderado ATR Potencia P6: \"0.003716\",\n            Tasa Municipal: 6.88,\n            Importe PM P4: 10.48,\n            NOMBRE COMPLETO: \"JOSE SANTIAGO CASTILLO ALBENDIN\",\n            Nombre Producto (from Contrato): [\n              \"recYJ6AqwueEyjr1D\",\n              \"recYJ6AqwueEyjr1D\"\n            ],\n            Primer Apellido: \"CASTILLO\",\n            Importe AE P4: 84.42,\n            Importe Aplicable Compensacion Excedentes: \"458.94\",\n            Base Imponible Tasa Municipal: 458.94,\n            Importe Ponderado Peajes Energia P2: \"0\",\n            Importe IVA: 121.59,\n            P5E: 0,\n            Importe Ponderado Cargos Energia P1: \"0\",\n            Importe PM P2: 19.44,\n            Cantidad Energía Total Consumida CORR: 3221,\n            Base Imponible IVA: 579.01,\n            Procedencia Hasta: \"Visual\",\n            Precio Ponderado ATR Potencia P2: \"0.028086\",\n            Importe Ponderado ATR Energia P5: 0,\n            Numero Factura .xml: \"A25-10-18116.xml\",\n            Precio Ponderado Peajes Energia P4: \"0.002682\",\n            P2 Energia Activa Consumida: 0,\n            DOMICILIO PS: \"Calle FRAY MANUEL RIVAS Y ARRABAL NÚM 2 ASADOR LOC\",\n            Importe Ponderado Peajes Potencia P4: \"2.57\",\n            POBLACION SOC: \"BAENA\",\n            Lectura Hasta AE P5: 21730,\n            Importe Ponderado ATR Energia P3: 14.46,\n            P6E: 0.139999,\n            Margen Excesos: \"0\",\n            Lectura Hasta R1 P4: 10357,\n            Domicilio Titular: [\n              \"Calle FERNANDO VAZQUEZ OCAÑA NÚM 10  14850 BAENA Córdoba\"\n            ],\n            MES-AÑO: [\n              \"rec06OGafi7ZPO3Z7\"\n            ],\n            Modo Control Potencia: \"Maximetro\",\n            Importe Ponderado Cargos Energia P3: \"10.63\",\n            GAS INCLUIDO: \"NO\",\n            P1PM: \"0.053859\",\n            Telefono Contacto: [\n              \"620536691\"\n            ],\n            Importe Ponderado Peajes Energia P1: \"0\",\n            Provincia: \"Córdoba\",\n            Precio Ponderado ATR Energia P5: \"0\",\n            Comision Volumen Energia: \"0\",\n            P6P: 0.014675,\n            Importe Ponderado ATR Potencia P2: 13.99,\n            Margen Factura: 153.38,\n            P1E: 0,\n            Potencia a Facturar P1: 16.6,\n            Importe Ponderado ATR Energia P4: 5.54,\n            IE Odoo: \"0x10\",\n            Lectura Desde R1 P5: 5896,\n            Comision Importe Excedentario: 0,\n            SISTEMA ELECTRICO: \"peninsula\",\n            Hasta(EA): \"2025-09-30\",\n            P1 Potencia Max Demanda: 0,\n            Telefono Emisora: \"900525826\",\n            P4P: 0.021046,\n            Tipo Producto: \"PERSONALIZADO\",\n            P3 Precio Energia Reactiva: 0,\n            Desde: \"2025-09-01\",\n            Contrato2: [\n              \"recMhNGFeGCXaJlQ7\",\n              \"recn005s4rlXO8jge\"\n            ],\n            Importe AE P1: 0,\n            Lectura Hasta AE P2: 30875,\n            PROVINCIA PS: \"Córdoba\",\n            BI Subtotal 1 CORR: 540.35,\n            Contrato: \"PRPR25827117QL0F\",\n            Importe IVA 5: \"0\",\n            Total sin Descuento: 700.6,\n            Precio Ponderado Cargos Energia P6: \"0.0026\",\n            Importe Bono Social: 0.38,\n            ID Google Drive PDF: \"1da9jP8X9QH2QLRbWeKngk3rL6sXtetpz\",\n            Lectura Desde AE P1: 17640,\n            Precio Ponderado ATR Potencia P1: \"0.053859\",\n            Importe R1 P2: 0,\n            Fecha Factura: \"2025-10-06\",\n            CP PS: \"14850\",\n            Email Contacto: [\n              \"jelcasti@hotmail.com\",\n              \"mtvmudarra@gmail.com\"\n            ],\n            PROVINCIA SOC: \"Córdoba\",\n            Importe Ponderado ATR Energia P6: 4.74,\n            P6 Precio Energia Reactiva: 0,\n            P5C: 16.6,\n            Suplemento Territorial: 0,\n            Base Imponible Ayuntamiento: 458.94,\n            Margen Potencia: \"32.73\",\n            POBLACION PS: \"BAENA\",\n            Importe Ponderado Cargos Potencia P1: \"6.73\",\n            CG: \"0\",\n            Tipo Aparato: \"Contador de telegestion\",\n            Lectura Desde R1 P1: 7350,\n            P4PM: \"0.010087\",\n            Total CORR: 700.6,\n            MARCA: \"AED\",\n            Comision Precio Fijo Energia: 0,\n            Margen Rel Ingebau: 37.45731139397702,\n            Importe Ponderado ATR Potencia P6: 1.85,\n            Precio Ponderado ATR Energia P3: \"0.017674\",\n            P5PM: \"0.006379\",\n            Email Comercial (from Contrato): [\n              \"pabloremacha@aenergetica.es\",\n              \"pabloremacha@aenergetica.es\"\n            ],\n            Potencia a Facturar P5: 16.6,\n            Precio Ponderado Peajes Energia P3: \"0.004673\",\n            Importe Total AE ATR: 24.73,\n            P5 Potencia Max Demanda: 0,\n            Lectura Desde AE P3: 23689,\n            Subtotal 1: 540.35,\n            Empresa Emisora: \"AED Energia,SL\",\n            P3C: 16.6,\n            Lectura Hasta R1 P3: 11232,\n            Tipo DHEdM: \"Seis periodos\",\n            Precio Ponderado Cargos Potencia P2: \"0.006766\",\n            Dias: 30,\n            Potencia a Facturar P4: 16.6,\n            Costes de Gestión: 0,\n            Importe Potencia ATR: \"56.68\",\n            POTENCIA BOE: \"NO\",\n            Precio Ponderado Cargos Potencia P3: \"0.004916\",\n            Precio Ponderado Cargos Energia P5: \"0\",\n            P2 Potencia Max Demanda: 0,\n            Propiedad Excedentes: \"cliente\",\n            Precio Ponderado Peajes Potencia P1: \"0.040338\",\n            Comision Precio Energia: \"0\",\n            Lectura Hasta R1 P2: 11396,\n            IVA: 21,\n            Importe Peajes PM: \"38.11\",\n            P4 Potencia Max Demanda: 10,\n            Lectura Desde R1 P2: 11396,\n            Precio Ponderado Cargos Potencia P5: \"0.004916\",\n            Importe Ponderado Cargos Potencia: \"18.57\",\n            Importe Cargo Potencia Total: \"18.57\",\n            Importe Ponderado Cargos Potencia P4: \"2.45\",\n            Lectura Hasta AE P4: 24647,\n            Numero Dias Alquiler 1: 30,\n            XML: [\n              {\n                id: \"att7eF2aj9mbcdxJM\",\n                url: \"https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/A17TXZ_x4y5ADplQ27wOsQ/8l8M7YNzgU_9kFxkFoyAdkffGFDCaI_9yXJsYVdr55xVOz58Me2WphLRLynk6Mn2gdwob6ssQxa-sb0bOrO3C12_awyJF4mi09z-XwSDI7e_G56PHp0lqH5M9SRLORBgElgBea6M8o0mNVob_4GCXmmODu8LGsZQUuhrKXXM2oY/sgrxap_u95buNkxTxBK95BwIYkXusm87I7FJcHCyn9c\",\n                filename: \"A25-10-18116.xml\",\n                size: 182606,\n                type: \"text/xml\"\n              }\n            ],\n            Lectura Hasta R1 P5: 5896,\n            Importe R1 P5: 0,\n            Alquiler Equipo de Medida: 10.65,\n            Potencia a Facturar P2: 16.6,\n            P2PM: \"0.028086\",\n            Importe AE P6: 252,\n            Tipo de cliente: \"F\",\n            Importe Ponderado Cargos Potencia P2: \"3.37\",\n            Importe Ponderado Cargos Energia P5: \"0\",\n            P4 Precio Energia Reactiva: 0,\n            P3 Energia Activa Consumida: 818,\n            MARGEN FACTURA DASHBOARD: 153.38,\n            Clase Factura: \"OO\",\n            Procedencia Desde: \"Visual\",\n            Precio Ponderado Peajes Potencia P3: \"0.006762\",\n            Importe AE P3: 114.52,\n            Email Gerente (from Contrato): [\n              \"fjponferrada@aed-energia.com\",\n              \"fjponferrada@aed-energia.com\"\n            ],\n            Email Sup Canal (from Contrato): [\n              \"pabloremacha@aenergetica.es\",\n              \"pabloremacha@aenergetica.es\"\n            ],\n            Importe Ponderado ATR Potencia P4: 5.02,\n            CP Emisora: 14012,\n            P1 Precio Energia Reactiva: 0,\n            Importe PM P3: 11.27,\n            Importe Ponderado Peajes Potencia P5: \"0.73\",\n            P1 Potencia Contratada: 16.6,\n            Total: 700.6,\n            Importe Ponderado Peajes Potencia: \"38.11\",\n            P6 Potencia Max Demanda: 13,\n            Base Imponible 21: 579.01,\n            Importe Ponderado Cargos Energia P6: \"4.68\",\n            NOMBRE/RAZON SOCIAL: \"JOSE SANTIAGO\",\n            Importe Ponderado Peajes Energia: \"5.5\",\n            Base Imponible IVA CORR: 579.01,\n            P4 Potencia Contratada: 16.6,\n            Codigo Contrato: \"CC 500017251657\",\n            Importe Cargo Energia Total: \"19.23\",\n            Nombre Completo Titular: [\n              \"MARIA TERESA VILLA MUDARRA\"\n            ],\n            Base Imponible 10: \"0\",\n            Base Imponible 0: 0,\n            DOMICILIO PS COMPLETO: \"Calle FRAY MANUEL RIVAS Y ARRABAL NÚM 2 ASADOR LOC 14850 BAENA Córdoba\",\n            Precio Ponderado Cargos Energia P3: \"0.013001\",\n            Importe Ponderado Peajes Potencia P1: \"20.09\",\n            CNAE: 4722,\n            BaseImponibleF1: 92.06,\n            BUSCADOR: \"ES0031104480225001QL0FPRPR25827117QL0F14561690EMARIA TERESA VILLA MUDARRA900850840A25-10-18116700.6\",\n            Tipo Autoconsumo Distribuidora: \"0\",\n            PDF: [\n              {\n                id: \"attGBSO3ezeYPZ7nu\",\n                url: \"https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/bdyP-3Kfh5LlDjHUFY5liw/4zVcQIi2va9gQjLbbtztDSu0aepYOvmwSdlmwHwSBRmAKr28diWI-6uQrypuSPPH66CZqdUAMnRKZmSzzce39jGOgB7Jp9ezTBQ_6mA-OiXNrxwVjTJd_YZH8Kj1XeZOFZzaWUpjyR36LcXU5G4qsWTX0hjqpRoNViCLRW2fTL4/aNEnlL2h04oxW1QgvIhxm5P62xmEv9n9zoK6I-_fR6Q\",\n                filename: \"A25-10-18116.pdf\",\n                size: 125097,\n                type: \"application/pdf\",\n                thumbnails: {\n                  small: {\n                    url: \"https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/mS98OYGtHWUF3-Uy84H0Tg/bWYdO9iPmnpIi2Q8XvJWRsgXtXsHhz4Nl583LInY223CpXIRk_bP35BspgNpkwK70MlnjOQtzFoaCQ1FW2tyAQJjgSPlFHdqg2DQZbqqCVf_cxF3UIYTrfuVVYW9vr5G7cshVX5u-0OE955REz20dA/wZROYUw_id2IhyZ6NjmQdBz3QX2J6G7lUBsFf40rj-E\",\n                    width: 25,\n                    height: 35\n                  },\n                  large: {\n                    url: \"https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/gvEcf5KfWa_RXBQ2aeQwRw/HxznxFyL4GXkLofdM3JGKXRaMaz4mbpQnK1WgRwN9B-N5c-9kml6qXu-DKhK54aohNtdJNOIfGLWfxRcWpjz5IlYI4aonj5YjjPF8ZJweDFcrwSDV2M1k4c2xFiUi6XMe9Hwti37lMQ1ZEKbjDkKRw/5fIl6t2pi1fhWWXoSPyR9x5gigpJZ9aNKQJ9ZMLTWuY\",\n                    width: 512,\n                    height: 724\n                  }\n                }\n              }\n            ],\n            Importe Ponderado Peajes Potencia P3: \"3.37\",\n            Precio Ponderado Peajes Potencia P5: \"0.001463\",\n            Comision Costes de Gestion: \"0\",\n            P4C: 16.6,\n            P5 Precio Energia Reactiva: 0,\n            Precio Ponderado ATR Potencia P3: \"0.011678\",\n            Importe Bono Social CORR: 0.38,\n            Desde(EA): \"2025-09-01\",\n            Importe Energia Factura: 450.94,\n            Importe IVA 10: \"0\",\n            Importe IVA 21: \"121.59\",\n            P6 Energia Activa Consumida: 1800,\n            Email Emisora: \"clientes@aed-energia.com\",\n            P3P: 0.022637,\n            UN PRECIO: \"NO\",\n            Base Imponible 5: \"0\",\n            Lectura Hasta R1 P6: 40648,\n            P6C: 16.6,\n            Tasa Municipal Form: 6.8841,\n            Importe Ponderado Cargos Energia P4: \"3.92\",\n            Tipo Factura: \"Normal\",\n            DOMICILIO SOC: \"Calle FERNANDO VAZQUEZ OCANA NÚM 10\"\n          },\n      ?   id?: String,\n      ?   companyId?: String | Null,\n      ?   rectifiedInvoiceId?: String | Null,\n      ?   paymentDate?: DateTime | Null,\n      ?   taxPercentage?: Float | Null,\n      ?   taxAmount?: Float | Null,\n      ?   margin?: Float | Null,\n      ?   communicatedAt?: DateTime | Null,\n      ?   createdAt?: DateTime,\n      ?   otherInvoices?: InvoiceUncheckedCreateNestedManyWithoutInvoiceInput\n        }\n      })\n\nUnknown argument `desde`. Available options are marked with ?.",
+    "fields": {
+      "P5P (from PRODUCTOS)": [
+        6.513851
+      ],
+      "Producto": [
+        "AED 24h IP 24"
+      ],
+      "Demanda Mayo": 3.0351456011588995,
+      "Nombre Distribuidora": [
+        "0031"
+      ],
+      "P4P": 7.681551,
+      "DURACION SVA": "120",
+      "Firma manuscrita": true,
+      "Tipo de vía Instalación": "Calle",
+      "Contrato enviado": true,
+      "Excedentes Sept": 0,
+      "P1C": 16.6,
+      "P6C W copy": "16600",
+      "Energía Pte Mes 0 Hasta FIN MES": 2802.5753424657532,
+      "Fecha Actual": "2026-06-17",
+      "PEN NO RESID": 92.9914657705,
+      "Demanda BC Diciembre": 3.1511154752627992,
+      "Demanda BC Noviembre": 3.065630612881799,
+      "Borrador contrato": [
+        {
+          "id": "attQUkxdKcr7cyRXt",
+          "url": "https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/UCc78d37nsiae1rIZomHQw/KDUz2Z2iIlT_KZ94L_F6OK5j4jIEMTaDKXAEoHVCfZdhW-xnQQipgGJYzi5u9CDLVBYk5oggQqYlZh0t9C3zGdzofYBtVnKkoMITG6M9c5MstCkG7XB85m-_K8lvxgPpYhHGwRpPd592sfL73LQWMeIUStIAZva7CZpvQi-i5mw/jJ-rUeRvloTCny69bSX3jIGrZnNf5IKgS2aBX3DWM5g",
+          "filename": "PRPR25827117QL0F",
+          "size": 369320,
+          "type": "application/pdf",
+          "thumbnails": {
+            "small": {
+              "url": "https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/LNYcuiiF68s4nL4cunN96w/WC7gO-J-RIr5fQiNzwQ29GsQIb9Cv0j2McJn4cbIE4VQ9p3x7Vjix0zRZEO9-CdyZ0_Ga5gT0oLG3Ez4Q6CZ6ahiLuARW9WKX1I8y289X3wK7z3CoaYDmB9T2I1gk86XBSjnf2u9tysDhA00CXyDdQ/-59FL5Q7LHimjPVfMO7IXXijTmWJX-8caB4sJbKErnI",
+              "width": 25,
+              "height": 35
+            },
+            "large": {
+              "url": "https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/UiZkjrPaMMSCXc8V5H6UhQ/m1YdukN4bL-CWriPJxON4foZ4BSK5ZnSbQVGUmak2UlriLMmBjkXhU2wUtUQK58atkRypB7xgHqpHhcuenegBPQwifGf6M436nmcCVsFoZBvvQ1WvjwKxcb67ZhshwpjSMGGAJ4DQMuPyY430lge9g/g5dOIgjd1sPJL2SVzdgDSRYaawKbfyGRKVAF8IVWNKI",
+              "width": 512,
+              "height": 724
+            }
+          }
+        }
+      ],
+      "CUPS": "ES0031104480225001QL0F",
+      "Tipo de producto": "Precio fijo único",
+      "POTENCIA BOE": "NO",
+      "País Titular": "España",
+      "Nombre Instalación": "JOSE SANTIAGO CASTILLO ALBENDIN",
+      "Excedentes Octubre": 0,
+      "CONSUMO_REAL/ESTIMADO": 0.6780163059416975,
+      "P3C W": "16600",
+      "INICIO_PERMANENCIA": "2025-09-01",
+      "EMPRESA": "AED",
+      "Version": 1,
+      "Tipo Sol Admin": "T",
+      "OWNERS": "mtvmudarra@gmail.commtvmudarra@gmail.compabloremacha@aenergetica.espabloremacha@aenergetica.esfjponferrada@aed-energia.comgemacarrillo@aenergetica.esalbamunoz@energia-aljaval.com",
+      "Teléfono Contacto": "620536691",
+      "Fin Mes 0": "2026-06-30",
+      "LEADS": [
+        "reckl1a3KOH7bCpqC"
+      ],
+      "Tramitación LINK": [
+        "recaOnpCxdbkzPQ2Z"
+      ],
+      "EFACTURA": "SI",
+      "Email Sup Canal": [
+        "pabloremacha@aenergetica.es"
+      ],
+      "SUSPENDIDO": "NO",
+      "ProductoLINK": [
+        "recYJ6AqwueEyjr1D"
+      ],
+      "P1E (from PRODUCTOS)": 0.139999,
+      "POBLACION SOC": "BAENA",
+      "P5P": 6.328167,
+      "Bajas Glide": 0,
+      "ATR COMER": "SI",
+      "PROVINCIA SOC": "Córdoba",
+      "COMISIONES": [
+        "recWtyyID0xgsy1fI"
+      ],
+      "P6E (from PRODUCTOS)": 0.139999,
+      "BUSCADOR": "ES0031104480225001QL0FPRPR25827117QL0F26970272N620536691MARIA TERESA VILLA MUDARRA",
+      "DEMANDA REAL/PREVISTA": 0.9065053174678372,
+      "Tipo_Sop": "M1S",
+      "ESTADO (from CONTRATO PREVIO)": [
+        "Aceptado"
+      ],
+      "CIF": "26970272N",
+      "Demanda BC Agosto": 3.583411220101499,
+      "FECHA_RENOV_PREVISTA": "2026-09-01",
+      "DIAS_RENOV_MAX": [
+        120
+      ],
+      "Enlace Wp": "https://wa.me/34620536691?text=Hola%20MARIA TERESA!!",
+      "PEN 2.0TD RESID": 0,
+      "P3P": 8.262536,
+      "Tipo de numeración Instalación": "NÚM",
+      "DOMICILIO SOC": "Calle FERNANDO VAZQUEZ OCAÑA NÚM 10 ",
+      "Tramitación a realizar": [
+        "Modificación de datos administrativos"
+      ],
+      "APELLIDOS": "VILLA MUDARRA",
+      "ALTA (from CONTRATO PREVIO)": [
+        "2025-09-01"
+      ],
+      "CNAE": "4722",
+      "Demanda BC Enero": 3.503188662847799,
+      "DECOMISION": {
+        "specialValue": "NaN"
+      },
+      "EMAIL": "mtvmudarra@gmail.com",
+      "DISTRIBUIDORA": [
+        "EDISTRIBUCION REDES DIGITALES SL."
+      ],
+      "Día Actual": "17",
+      "Inicio Mes 0": "2026-06-01",
+      "P3E (from PRODUCTOS)": 0.139999,
+      "PROV LINK": [
+        "recJKNjDrTK2pLIy3"
+      ],
+      "Fecha Renovación Calculada": "2026-09-01",
+      "Calle Titular": "FERNANDO VAZQUEZ OCAÑA",
+      "EMAIL COMER": "clientes@aed-energia.com",
+      "Segundo Apellido": "MUDARRA",
+      "DIAS VIDA CLIENTE": 289,
+      "ID Google Drive PDF": "1OKN2LboRwGofq77ZjbUTS4tDylOl19GJ",
+      "Forma de pago": "Domiciliación",
+      "¿Facturas papel?": "NO",
+      "Producto y Servicio": "AED 24h IP 24 ",
+      "CANAL": [
+        "Pablo Remacha"
+      ],
+      "P6P (from PRODUCTOS)": [
+        5.442287
+      ],
+      "CONSUMO ANUAL KWH": 34098,
+      "Demanda BC Junio": 3.6026427751148997,
+      "Excedentes Julio": 0,
+      "Autoconsumo": "00",
+      "COMISION FINAL": {
+        "specialValue": "NaN"
+      },
+      "Email Comercial": [
+        "pabloremacha@aenergetica.es"
+      ],
+      "NOMBRERAZON SOCIAL": "MARIA TERESA",
+      "CIF link": [
+        "recDQaNLWssZQOGzQ"
+      ],
+      "P2P": 14.251651,
+      "Fecha Borrador": "2026-06-16",
+      "Mes Actual": "06",
+      "Comercial": [
+        "rec3fxKOf4kKpcbds"
+      ],
+      "P2C": 16.6,
+      "Tipo Identificador": "NI",
+      "Tipo_de_cliente": [
+        "F"
+      ],
+      "PROYECCION_ANUAL": 30910.01831501831,
+      "Tarifa": "3.0TD",
+      "GAS INCLUIDO": "NO",
+      "P2E (from PRODUCTOS)": 0.139999,
+      "From field: ALTA_CONTRATO_ACTUAL": [
+        "recn005s4rlXO8jge"
+      ],
+      "P6P": 5.356394,
+      "Excedentes Junio": 0,
+      "Población Instalación": "BAENA",
+      "Excedentes Marzo": 0,
+      "P6C": 16.6,
+      "MARCA": "AED",
+      "INSTALACIONES_LINK": [
+        "recJieVdMxBKywQzd"
+      ],
+      "P3P (from PRODUCTOS)": [
+        8.481534
+      ],
+      "LINK TIPOS TARIFA": [
+        "recCe7M5IO7NNfcXl"
+      ],
+      "DURACION": "12",
+      "PDF Contrato firmado": [
+        {
+          "id": "attAu3AtyetW2joZh",
+          "url": "https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/KZdytNDE8gYSjF9zopPA-w/Ni-ZgEPXPCZrs7KOHjcCP13_8aZwSIJRwHOL5sraG2gjTE7BoHXSsrR9W4VQjRg1yMXhM1qI-S0nYxjXqIGpPAtLZfMjj0H5JfS9euP1hYwYlVShk7M7EsZAT3xHn6gDmog_Cflb8avCh5mmNPgBN7qzFTt7-o9nA7NqTND77iq6nSfodY5gTpIuheMW05DeXiB2eGDxj_QhwQ5XPtUthQ/VKuTP9CyVsV66aqhDwOBtJkczO61QCYA4-aB-Ei7ILc",
+          "filename": "CONTRATO FIRMADO JOSE SANTIAGO CASTILLO ALBENDIN.pdf",
+          "size": 795347,
+          "type": "application/pdf",
+          "thumbnails": {
+            "small": {
+              "url": "https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/rwpObSpJlIxWdE6s_T7XJw/ztYWfkCMAzd7V-XDZa55DLdF1gKm6J4SiAgr4SJbJPk5yfTxpGxc1Ki0MIfKZUqRA058c5Ubeq9v6peekMJrFMZgnU60cEH1-C5AUw6KegAGoABLTYVRzjqtrRMGVpZdLdBcR5aPOUQJ6cb4T__IXQ/SK1gk4XTVjj7CKB2gCyRptQNGb6viRb63yw8GycjgKA",
+              "width": 25,
+              "height": 35
+            },
+            "large": {
+              "url": "https://v5.airtableusercontent.com/v3/u/54/54/1781748000000/KEgEK1BmsJlUIR_jU6aHAw/vaNTmshn9qAgL83DbNnQRqLvzAzUEFBLOgOCjgRBQ86k0cDYOYJvzYxPIOcNLCVHHX_XpCIgc-l7BWSLHKUXyXqOgBkLoikkepSih2JlxqUfoKPcQaMd6wPNYT2wdsciaCCeE-PJph4NkdgD7k5N2A/vr3z7cUrz0DSF60obBnz_13K0qaJDoOqeJ6rzBPY_GA",
+              "width": 512,
+              "height": 724
+            }
+          }
+        }
+      ],
+      "BOLSILLO SOLAR": "NO",
+      "Contrato .PDF": "PRPR25827117QL0F.pdf",
+      "Calle Instalación": "FRAY MANUEL RIVAS Y ARRABAL",
+      "Excedentes Ene": 0,
+      "Nombre Wp": "MARIA TERESA",
+      "Demanda BC Marzo": 3.1761623913243,
+      "DOMICILIO PS COMPLETO": "Calle FRAY MANUEL RIVAS Y ARRABAL NÚM 2 ASADOR LOC 14850 BAENA Córdoba",
+      "TLF_2": "620536691",
+      "Adicional Instalación": "ASADOR LOC",
+      "IVAPen": 0,
+      "PENALIZACION ESTIMADA": {
+        "specialValue": "NaN"
+      },
+      "Excedentes Abril": 0,
+      "Provincia Instalación": "Córdoba",
+      "P1P": 23.658495,
+      "DIAS PAGO": "2",
+      "Fecha firma contrato": "2025-08-27",
+      "Código comercial": [
+        "PR"
+      ],
+      "EMAIL FACTURA": "mtvmudarra@gmail.com",
+      "IBAN": "ES79 2100 2042 8102 00419343",
+      "PENALIZACION": 0,
+      "Softr Tlfn": "tel:620536691",
+      "FEE_P": 0,
+      "Número Instalación": 2,
+      "Año firma": 2026,
+      "FECHA INICIO SVA": "2026-06-16",
+      "P5C W": "16600",
+      "P5C": 16.6,
+      "UN PRECIO": "NO",
+      "Tipo de producto (from Producto)": [
+        "Precio fijo único"
+      ],
+      "Demanda BC Julio": 3.6604080230150995,
+      "FACTURAS": [
+        "recxz3S2AJ3b8jJeL",
+        "recrkmgLZUqr3oTda",
+        "recCpUYPaBELNBwXX",
+        "recMI3pGUgWUYjoxv",
+        "rectm5eWuUuUd2daF",
+        "recprxCQsxGFJGT7w",
+        "rec6h4mNR1mN1oVvY",
+        "recESTNo1lYdeBeE0",
+        "rechq3DgyiZ5PDT5V"
+      ],
+      "Hora Actual": "23",
+      "ULT DIA A FACTURAR": "2026-06-17",
+      "Record ID": "recn005s4rlXO8jge",
+      "Excedentes Dic": 0,
+      "Tipo de vía Titular": "Calle",
+      "Fecha Solicitud": "2026-06-17T10:47:07",
+      "COMISION SI BAJA HOY": 598.7858301369862,
+      "CONTRATO": "PRPR25827117QL0F",
+      "Fecha firma": "2025-08-27",
+      "CAPTACION CLIENTE": "R",
+      "Inicio Mes -1": "2026-05-01",
+      "CONTRATO2": "PRPR25827117",
+      "Modalidad Autoconsumo (from Producto)": [
+        "No aplica"
+      ],
+      "CONTRATO_PREVIO": [
+        "recn005s4rlXO8jge"
+      ],
+      "Demanda BC Septiembre": 3.2527664398346996,
+      "CONSUMO COMISION": 34.098,
+      "PEN 2.0TD RESID HOY": 117.20448091183235,
+      "Fecha Registro": "2026-06-16T10:06:45.000Z",
+      "Fin Mes -1": "2026-05-31",
+      "PENALIZACION_HOY": 92.9914657705,
+      "PExc (from PRODUCTOS)": 0,
+      "Tipo_entrada": "A",
+      "Estado": "Aceptado",
+      "Meses Permanencia": 12,
+      "Demanda BC Octubre": 3.0728173988996996,
+      "BIPen": 0,
+      "Email AtCliente": [
+        "albamunoz@energia-aljaval.com"
+      ],
+      "Excedentes Feb": 0,
+      "P4P (from PRODUCTOS)": [
+        7.886333
+      ],
+      "HORAS_USO_DIARIOS": 5.627661330252517,
+      "P4E (from PRODUCTOS)": 0.139999,
+      "PDF Borrador Verificado": true,
+      "COD REE DISTRI LINK": [
+        "recaNMx57NEtNqIyY"
+      ],
+      "Excedentes Mayo": 0,
+      "TLF": "620536691",
+      "Primer Apellido": "VILLA",
+      "FACTURA SI / NO": "SI",
+      "Excedentes Noviembre": 0,
+      "FIJO / INDEX": "F",
+      "CODIGO REE DISTRIBUIDORA": "0031",
+      "CONTROLSAGE": "A26970272N9343",
+      "CA (from PROV LINK)": [
+        "AN"
+      ],
+      "COMISION 50%": 378.126,
+      "Demanda Abril": 2.9057326723901995,
+      "P4C W": "16600",
+      "COMISION_ACTIVA": 130.53116712328767,
+      "RETRASO": 17,
+      "Email Gerente": [
+        "fjponferrada@aed-energia.com"
+      ],
+      "Domicilio Titular Completo": "Calle FERNANDO VAZQUEZ OCAÑA NÚM 10  14850 BAENA Córdoba",
+      "Demanda Febrero": 3.2165286113201996,
+      "POTENCIAS DISTRI": "SI",
+      "Código Tarifa": [
+        "019"
+      ],
+      "CP SOC": "14850",
+      "CONSUMO ANUAL": 34.098,
+      "DECOMISION 50%": {
+        "specialValue": "NaN"
+      },
+      "ENERGIA FACTURADA": 23119,
+      "Tipo de persona": [
+        "rec8HjER62nWOalEJ"
+      ],
+      "Tipo de numeración Titular": "NÚM",
+      "Excedentes Agosto": 0,
+      "P4C": 16.6,
+      "EMAIL_4": "mtvmudarra@gmail.com",
+      "P3C": 16.6,
+      "NOMBRE Y APELLIDOS": " ",
+      "P5E (from PRODUCTOS)": 0.139999,
+      "Email Contacto": "mtvmudarra@gmail.com",
+      "DOMICILIO PS": "Calle FRAY MANUEL RIVAS Y ARRABAL NÚM 2 ASADOR LOC",
+      "P1C W": "16600",
+      "TLF_3": "620536691",
+      "Energía Pte Mes 0 Hasta HOY": 1588.1260273972603,
+      "Número Titular": 10,
+      "Código Canal": [
+        "PR"
+      ],
+      "EQUIPO DISTRIB": "SI",
+      "DIAS CONTRATO": 0,
+      "Energía Pte Mes -1": 0,
+      "Fin Mes -2": "2026-04-30",
+      "Código Postal Instalación": "14850",
+      "Min Actual": "47",
+      "Energía Pte Mes -2": 0,
+      "Fecha Vencimiento Calculada": {
+        "error": "#ERROR"
+      },
+      "RENOVACION": 1,
+      "DIAS FACTURADOS": 273,
+      "TIpo_c2": [
+        "S"
+      ],
+      "ULTIMO DIA FACTURADO": "2026-05-31",
+      "P2P (from PRODUCTOS)": [
+        14.617621
+      ],
+      "COMISION (from COMISIONES)": [
+        756.252
+      ],
+      "Copia de CIF link": "14561690E",
+      "Tipo": [
+        "M1"
+      ],
+      "P2C W": "16600",
+      "Email Admin Canal": [
+        "gemacarrillo@aenergetica.es"
+      ],
+      "P1P (from PRODUCTOS)": [
+        24.376927
+      ],
+      "Nombre completo Titular": "MARIA TERESA VILLA MUDARRA",
+      "CG BOLSILLO SOLAR": 0,
+      "PDF Contrato Verificado": true,
+      "ULT DIA FACT": "2026-05-31T00:00:00.000Z",
+      "Inicio Mes -2": "2026-04-01",
+      "TLF COMER": "900525826"
+    }
+  }
+]
