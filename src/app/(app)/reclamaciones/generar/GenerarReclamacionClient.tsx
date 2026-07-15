@@ -68,6 +68,8 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       setComentarios('Solicitamos el envío de lecturas para facturar a este cliente y que se realice la recepción de facturas en plazo. Si existe algún problema para la suspensión del proceso de facturación para este cliente, rogamos lo comuniquen a nosotros y al cliente.');
     } else if (motivo.startsWith('02') && submotivo.includes('036')) {
       setComentarios('El cliente no está de acuerdo con las lecturas facturadas en este periodo. Aportamos sus lecturas del contador');
+    } else if (motivo.startsWith('05') && submotivo.includes('039')) {
+      setComentarios('Solicitud informe / certificado sobre incidencias por averías técnicas en las redes de distribución eléctrica en el periodo indicado en la solicitud');
     }
   }, [mode, submotivo, motivo]);
 
