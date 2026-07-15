@@ -373,7 +373,7 @@ export async function generateClaim(data: any) {
 <Prioritario>S</Prioritario>
 </DatosSolicitud>
 <VariablesDetalleReclamacion>
-<VariableDetalleReclamacion>${dynamicFieldsXml}${numFacturaAtrXml}${lecturasXml}
+<VariableDetalleReclamacion>
 <Contacto>
 <PersonaDeContacto>${companyContact}</PersonaDeContacto>
 <Telefono>
@@ -382,7 +382,7 @@ export async function generateClaim(data: any) {
 </Telefono>
 <CorreoElectronico>${companyEmail}</CorreoElectronico>
 </Contacto>
-</VariableDetalleReclamacion>
+${dynamicFieldsXml}${numFacturaAtrXml}${lecturasXml}</VariableDetalleReclamacion>
 </VariablesDetalleReclamacion>
 <Cliente>
 <IdCliente>
