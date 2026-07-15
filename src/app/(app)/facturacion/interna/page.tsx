@@ -6,21 +6,55 @@ import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function FacturacionInternaPage() {
+export default async function FacturacionInternaPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const session = await auth();
   if (!session) {
     redirect('/login');
   }
 
+  const params = await searchParams;
+  const searchQ = params?.q || '';
+  const pendingWhere: any = {
+    internalInvoices: {
+      none: {}
+    },
+    contractId: { not: null } // Solo podemos facturar si está enlazado a un contrato
+  };
+
+  if (searchQ) {
+    const qUpper = searchQ.toUpperCase();
+    
+    // Heurística para evitar ORs masivos entre tablas (que hunden el rendimiento en Prisma/Postgres)
+    if (qUpper.startsWith('ES')) {
+      // Es un CUPS seguro
+      pendingWhere.contract = {
+        ...pendingWhere.contract,
+        supplyPoint: { cups: { startsWith: qUpper } }
+      };
+    } else if (/\d/.test(searchQ) && searchQ.length < 15) {
+      // Si tiene números y es corto, suele ser el Nº de Factura o el NIF
+      pendingWhere.OR = [
+        { numeroFactura: { contains: searchQ, mode: 'insensitive' } },
+        { contract: { client: { vatNumber: { contains: searchQ, mode: 'insensitive' } } } }
+      ];
+    } else {
+      // Si es texto normal, buscamos por Razón Social o Nombre
+      pendingWhere.contract = {
+        ...pendingWhere.contract,
+        client: {
+          OR: [
+            { businessName: { contains: searchQ, mode: 'insensitive' } },
+            { name: { contains: searchQ, mode: 'insensitive' } }
+          ]
+        }
+      };
+    }
+  }
+
   // Obtenemos los F1 pendientes de facturar internamente (aquellos que no tienen InternalInvoices asociados)
   // Limitamos a 50 para la demo/UI rápida. En producción se debería paginar.
   const pendingF1s = await prisma.f1Invoice.findMany({
-    where: {
-      internalInvoices: {
-        none: {}
-      },
-      contractId: { not: null } // Solo podemos facturar si está enlazado a un contrato
-    },
+    where: pendingWhere,
     include: {
       contract: {
         include: {
