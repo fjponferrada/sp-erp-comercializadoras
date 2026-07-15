@@ -543,7 +543,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
               data: { 
                 status: 'Rechazo Distribuidora', 
                 fechaRechazo: parsedData.fechaAR,
-                internalComments: parsedData.observaciones || tramitandoContract.internalComments 
+                internalComments: parsedData.observaciones ? `[Rechazo ${procesoBase}] ${parsedData.observaciones}\n${tramitandoContract.internalComments || ''}` : tramitandoContract.internalComments 
               }
             });
           }

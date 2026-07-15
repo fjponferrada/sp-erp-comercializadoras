@@ -208,10 +208,9 @@ export async function GET(request: Request) {
           } catch(e) {} // Si no es JSON, ignora
         }
         
-        // Si no se encontró el código oficial pero hay tipoError interno, intentamos mapearlo o acortarlo
-        if (motivo === '99' && pasoRechazado.tipoError) {
-           motivo = pasoRechazado.tipoError.substring(0, 2);
-        }
+        // Si no se encontró un código oficial en el XML de la distribuidora,
+        // lo dejamos como '99' (Otros motivos) que es el estándar de las Tablas Maestras.
+        // No debemos inyectar códigos internos como 'CO' o 'ES'.
 
         // Must be short CNMC code, e.g. "01", "B7"
         motivo = String(motivo).substring(0, 2);
