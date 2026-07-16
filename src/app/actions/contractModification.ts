@@ -187,6 +187,7 @@ export async function createContractModificationAction(
         tipoC2: isSubrogation ? 'S' : 'N',
         tramitationType: isSubrogation ? 'Modificación de datos administrativos' : 'Modificación de datos técnicos',
         status: 'BORRADOR',
+        signatureDate: oldContract.signatureDate,
         permanenceStartDate: oldContract.permanenceStartDate,
         airtableData: newContractData,
         p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,

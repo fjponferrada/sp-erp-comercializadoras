@@ -263,7 +263,7 @@ export default function ContractDetailClient({
                 <span className="hidden md:inline">{isGeneratingXml ? 'Generando...' : 'Generar XML'}</span>
               </button>
             )}
-            {isAdmin && initialContract.status === 'ACTIVO' && (
+            {isAdmin && initialContract.status === 'ACTIVO' && (!versions || versions.length === 0 || initialContract.id === versions[0].id) && (
               <button 
                 onClick={() => setShowModModal(true)}
                 className="btn-secondary flex items-center gap-2"
@@ -460,7 +460,7 @@ export default function ContractDetailClient({
                     <DataItem label="Tipo Tramitación" value={initialContract.tramitationType || 'Alta'} />
                     <DataItem label="Duración (Meses)" value={initialContract.duration || initialContract.product?.permanenceMonths || '12'} />
                     
-                    <DataItem label="Fecha Firma" value={initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato ? formatDateUTC(initialContract.signatureDate || initialContract.fechafirma || initialContract.fechafirmacontrato) : '-'} />
+                    <DataItem label="Fecha Firma" value={initialContract.signatureDate || airtableData['Fecha firma'] || airtableData.fechafirma || airtableData.fechafirmacontrato || airtableData['Fecha de firma de contrato'] ? formatDateUTC(initialContract.signatureDate || airtableData['Fecha firma'] || airtableData.fechafirma || airtableData.fechafirmacontrato || airtableData['Fecha de firma de contrato']) : '-'} />
                     <DataItem label="Fecha Prev. Activación" value={initialContract.fechaPrevistaActivacion ? formatDateUTC(initialContract.fechaPrevistaActivacion) : '-'} />
                     <DataItem label="Fecha Activación" value={initialContract.activationDate ? formatDateUTC(initialContract.activationDate) : '-'} />
                     <DataItem label="Inicio Permanencia" value={initialContract.permanenceStartDate ? formatDateUTC(initialContract.permanenceStartDate) : '-'} />
