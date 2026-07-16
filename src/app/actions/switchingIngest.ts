@@ -400,12 +400,12 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           // Activar el autoconsumo en el CUPS y actualizar datos técnicos del contrato tramitado
           const contractData = tramitandoContract.airtableData as any;
           const updateSpData: any = {
-            p1c: tramitandoContract.p1c,
-            p2c: tramitandoContract.p2c,
-            p3c: tramitandoContract.p3c,
-            p4c: tramitandoContract.p4c,
-            p5c: tramitandoContract.p5c,
-            p6c: tramitandoContract.p6c,
+            p1c: parsedData.potenciasContratadas?.[0] ?? tramitandoContract.p1c,
+            p2c: parsedData.potenciasContratadas?.[1] ?? tramitandoContract.p2c,
+            p3c: parsedData.potenciasContratadas?.[2] ?? tramitandoContract.p3c,
+            p4c: parsedData.potenciasContratadas?.[3] ?? tramitandoContract.p4c,
+            p5c: parsedData.potenciasContratadas?.[4] ?? tramitandoContract.p5c,
+            p6c: parsedData.potenciasContratadas?.[5] ?? tramitandoContract.p6c,
             p1p: tramitandoContract.p1p,
             p2p: tramitandoContract.p2p,
             p3p: tramitandoContract.p3p,
@@ -414,7 +414,9 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             p6p: tramitandoContract.p6p
           };
 
-          if (tramitandoContract.product?.tariff) {
+          if (parsedData.tarifaATR) {
+            updateSpData.tariff = parsedData.tarifaATR;
+          } else if (tramitandoContract.product?.tariff) {
             updateSpData.tariff = tramitandoContract.product.tariff;
           }
 

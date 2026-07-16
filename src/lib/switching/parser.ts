@@ -20,6 +20,9 @@ export interface ParsedSwitchingData {
   codigoReclamacion?: string;
   tipoReclamacion?: string;
   subtipoReclamacion?: string;
+  // Campos M1 / C1 (Datos Técnicos)
+  tarifaATR?: string;
+  potenciasContratadas?: number[];
   // Campos F1
   numeroFactura?: string;
   fechaEmision?: Date;
@@ -247,6 +250,14 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
     const fechaActivacion = findKeyRecursively(datosActivacion || root, 'Fecha') || findKeyRecursively(root, 'FechaActivacion');
     if (fechaActivacion) {
       result.fechaActivacionAlta = new Date(fechaActivacion);
+    }
+    const tarifaATR = findKeyRecursively(datosActivacion || root, 'TarifaATR');
+    if (tarifaATR) result.tarifaATR = String(tarifaATR);
+    
+    const potenciasNode = findKeyRecursively(datosActivacion || root, 'PotenciasContratadas');
+    if (potenciasNode && potenciasNode.Potencia) {
+      const p = Array.isArray(potenciasNode.Potencia) ? potenciasNode.Potencia : [potenciasNode.Potencia];
+      result.potenciasContratadas = p.map((val: any) => parseFloat(val?.PotenciaContratada || val)).filter((n: number) => !isNaN(n));
     }
   } else if (paso === '11' || paso === '06') {
     // Baja
