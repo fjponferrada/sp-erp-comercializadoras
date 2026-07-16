@@ -20,22 +20,30 @@ export async function POST(req: Request) {
     }
 
     const currentYear = new Date().getFullYear().toString().slice(-2); // '26'
-    const prefix = `INT-${currentYear}-`;
+    const prefixNorm = `INT-${currentYear}-`;
+    const prefixAbono = `AB-${currentYear}-`;
 
-    // 1. Encontramos el último número de factura para este prefijo
-    const lastInvoice = await prisma.internalInvoice.findFirst({
-      where: {
-        invoiceNumber: { startsWith: prefix }
-      },
+    // 1. Encontramos el último número de factura para cada prefijo
+    const lastNorm = await prisma.internalInvoice.findFirst({
+      where: { invoiceNumber: { startsWith: prefixNorm } },
       orderBy: { invoiceNumber: 'desc' }
     });
 
-    let currentNumber = 0;
-    if (lastInvoice && lastInvoice.invoiceNumber) {
-      const parts = lastInvoice.invoiceNumber.split('-');
-      if (parts.length === 3) {
-        currentNumber = parseInt(parts[2], 10);
-      }
+    const lastAbono = await prisma.internalInvoice.findFirst({
+      where: { invoiceNumber: { startsWith: prefixAbono } },
+      orderBy: { invoiceNumber: 'desc' }
+    });
+
+    let currentNormNumber = 0;
+    if (lastNorm && lastNorm.invoiceNumber) {
+      const parts = lastNorm.invoiceNumber.split('-');
+      if (parts.length === 3) currentNormNumber = parseInt(parts[2], 10) || 0;
+    }
+
+    let currentAbonoNumber = 0;
+    if (lastAbono && lastAbono.invoiceNumber) {
+      const parts = lastAbono.invoiceNumber.split('-');
+      if (parts.length === 3) currentAbonoNumber = parseInt(parts[2], 10) || 0;
     }
 
     // 2. Procesamos en transacción para asegurar la correlatividad
@@ -57,8 +65,14 @@ export async function POST(req: Request) {
       });
 
       for (const draft of draftsToConfirm) {
-        currentNumber++;
-        const newInvoiceNumber = `${prefix}${currentNumber.toString().padStart(4, '0')}`; // INT-26-0001
+        let newInvoiceNumber = '';
+        if (draft.totalAmount < 0) {
+          currentAbonoNumber++;
+          newInvoiceNumber = `${prefixAbono}${currentAbonoNumber.toString().padStart(4, '0')}`;
+        } else {
+          currentNormNumber++;
+          newInvoiceNumber = `${prefixNorm}${currentNormNumber.toString().padStart(4, '0')}`;
+        }
         
         const updated = await tx.internalInvoice.update({
           where: { id: draft.id },
@@ -82,6 +96,7 @@ export async function POST(req: Request) {
       try {
         const templateData = {
           invoiceNumber: invoice.invoiceNumber,
+          invoiceType: invoice.invoiceType,
           issueDate: invoice.issueDate,
           clientName: invoice.client?.businessName || 'Desconocido',
           clientNif: invoice.client?.vatNumber || 'S/N',

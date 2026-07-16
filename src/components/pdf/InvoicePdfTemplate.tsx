@@ -179,6 +179,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
     excedentesAutoconsumo = 0, maxExcedentes = 0, bolsilloSolarLlenado = 0, excedentesKwh = 0,
     f1Readings = null, svaCost = 0, svaConcept = '',
     subtotal1 = 0, taxPercentage = 21, taxAmount = 0, totalAmount = 0,
+    invoiceType = 'Normal',
   } = data;
 
   const fmtDate = (d: string | Date) => d ? new Date(d).toLocaleDateString('es-ES') : '-';
@@ -232,7 +233,11 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
             <Text style={styles.companyTagline}>Energía transparente y sostenible para tus negocios</Text>
           </View>
           <View style={styles.invoiceBadge}>
-            <Text style={styles.invoiceBadgeText}>FACTURA PROFORMA</Text>
+            <Text style={styles.invoiceBadgeText}>
+              {invoiceType?.toUpperCase() === 'RECTIFICADORA' ? 'FACTURA RECTIFICADORA' : 
+               invoiceType?.toUpperCase() === 'ABONO' ? 'FACTURA DE ABONO' : 
+               (invoiceNumber ? 'FACTURA' : 'FACTURA PROFORMA')}
+            </Text>
             <Text style={styles.invoiceBadgeSub}>{invoiceNumber || 'BORRADOR'}</Text>
           </View>
         </View>
@@ -259,7 +264,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
             </View>
             <View style={styles.infoBoxBody}>
               <View style={styles.infoRow}><Text style={styles.infoLabel}>Nº Factura:</Text><Text style={styles.infoValueRight}>{invoiceNumber || 'Borrador'}</Text></View>
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Tipo:</Text><Text style={styles.infoValueRight}>Normal</Text></View>
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Tipo:</Text><Text style={styles.infoValueRight}>{invoiceType}</Text></View>
               <View style={styles.infoRow}><Text style={styles.infoLabel}>Período:</Text><Text style={styles.infoValueRight}>{fmtDate(billingStart)} – {fmtDate(billingEnd)}</Text></View>
               <View style={styles.infoRow}><Text style={styles.infoLabel}>Total días:</Text><Text style={styles.infoValueRight}>{days}</Text></View>
               <View style={styles.infoRow}><Text style={styles.infoLabel}>Fecha emisión:</Text><Text style={styles.infoValueRight}>{fmtDate(issueDate)}</Text></View>
@@ -463,7 +468,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
             <Text style={styles.ghRight}></Text>
           </View>
 
-          {taxElectric > 0 && (
+          {taxElectric !== 0 && (
             <View style={styles.extraRow}>
               <View style={styles.erConcept}>
                 <Text>Impuesto Eléctrico</Text>
@@ -476,7 +481,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
             </View>
           )}
 
-          {bonoSocial > 0 && (
+          {bonoSocial !== 0 && (
             <View style={styles.extraRow}>
               <View style={styles.erConcept}><Text>Financiación del Bono Social (Orden TED/1487/2024)</Text></View>
               <Text style={styles.erCenter}></Text>
@@ -486,7 +491,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
             </View>
           )}
 
-          {alquilerEquipo > 0 && (
+          {alquilerEquipo !== 0 && (
             <View style={styles.extraRow}>
               <View style={styles.erConcept}><Text>Alquiler equipo de Medida</Text></View>
               <Text style={styles.erCenter}></Text>
@@ -504,7 +509,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
             <Text style={styles.erRight}>0.00</Text>
           </View>
 
-          {svaCost > 0 && (
+          {svaCost !== 0 && (
             <View style={[styles.extraRow, { marginTop: 10, borderTop: 0 }]}>
               <View style={styles.erConcept}><Text>Otros*</Text></View>
               <Text style={styles.erCenter}></Text>

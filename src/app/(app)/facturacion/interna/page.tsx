@@ -13,7 +13,7 @@ export default async function FacturacionInternaPage({ searchParams }: { searchP
   }
 
   const params = await searchParams;
-  const searchQ = params?.q || '';
+  const searchQ = (params?.q || '').trim();
   const pendingWhere: any = {
     internalInvoices: {
       none: {}
@@ -31,7 +31,7 @@ export default async function FacturacionInternaPage({ searchParams }: { searchP
         ...pendingWhere.contract,
         supplyPoint: { cups: { startsWith: qUpper } }
       };
-    } else if (/\d/.test(searchQ) && searchQ.length < 15) {
+    } else if (/\d/.test(searchQ) && searchQ.length <= 30) {
       // Si tiene números y es corto, suele ser el Nº de Factura o el NIF
       pendingWhere.OR = [
         { numeroFactura: { contains: searchQ, mode: 'insensitive' } },
@@ -44,7 +44,8 @@ export default async function FacturacionInternaPage({ searchParams }: { searchP
         client: {
           OR: [
             { businessName: { contains: searchQ, mode: 'insensitive' } },
-            { name: { contains: searchQ, mode: 'insensitive' } }
+            { firstName: { contains: searchQ, mode: 'insensitive' } },
+            { lastName: { contains: searchQ, mode: 'insensitive' } }
           ]
         }
       };
@@ -62,7 +63,7 @@ export default async function FacturacionInternaPage({ searchParams }: { searchP
           supplyPoint: true
         }
       },
-      invoices: { select: { id: true, pdfUrl: true, totalAmount: true } }
+      invoices: { select: { id: true, pdfUrl: true, totalAmount: true, invoiceType: true } }
     },
     orderBy: {
       fechaEmision: 'desc'
@@ -84,12 +85,27 @@ export default async function FacturacionInternaPage({ searchParams }: { searchP
       },
       f1Invoice: {
         include: {
-          invoices: { select: { id: true, pdfUrl: true, totalAmount: true } }
+          invoices: { select: { id: true, pdfUrl: true, totalAmount: true, invoiceType: true } }
         }
       }
     },
-    orderBy: {
-      createdAt: 'desc'
+    orderBy: [
+      { billingEnd: 'desc' },
+      { createdAt: 'desc' }
+    ]
+  });
+
+  // Fetch confirmed internal invoices for duplicate prevention logic
+  const historicalInvoices = await prisma.internalInvoice.findMany({
+    where: {
+      status: { in: ['EMITIDA', 'ABONO'] }
+    },
+    select: {
+      id: true,
+      billingStart: true,
+      billingEnd: true,
+      contract: { select: { supplyPointId: true } },
+      invoiceType: true,
     }
   });
 
@@ -104,6 +120,7 @@ export default async function FacturacionInternaPage({ searchParams }: { searchP
         <FacturacionClient 
           pendingF1s={JSON.parse(JSON.stringify(pendingF1s))} 
           drafts={JSON.parse(JSON.stringify(drafts))} 
+          historicalInvoices={JSON.parse(JSON.stringify(historicalInvoices))}
         />
       </div>
     </div>

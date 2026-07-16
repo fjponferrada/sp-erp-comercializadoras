@@ -29,6 +29,7 @@ export function generateInvoiceXml(data: any): string {
 <FacturaElectronica>
   <Cabecera>
     <NumeroFactura>${data.invoiceNumber || 'BORRADOR'}</NumeroFactura>
+    <TipoFactura>${data.invoiceType || 'NORMAL'}</TipoFactura>
     <FechaEmision>${data.issueDate ? new Date(data.issueDate).toISOString().split('T')[0] : ''}</FechaEmision>
   </Cabecera>
   <Vendedor>

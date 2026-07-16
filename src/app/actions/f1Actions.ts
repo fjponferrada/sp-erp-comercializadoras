@@ -133,7 +133,7 @@ export async function getPendingF1EnergyAction(
     const whereSql = Prisma.join(conditions, ' AND ');
 
     const result = await prisma.$queryRaw<any[]>`
-      SELECT SUM((p->>'ValorEnergiaActiva')::numeric) as total_energia
+      SELECT SUM(REPLACE(p->>'ValorEnergiaActiva', ',', '.')::numeric) as total_energia
       FROM "F1Invoice" f
       CROSS JOIN jsonb_array_elements(
         CASE 

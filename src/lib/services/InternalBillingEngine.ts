@@ -113,6 +113,130 @@ export class InternalBillingEngine {
     // startDate and endDate are calculated below
     // 1. Obtener los volúmenes del F1
     const jsonData = f1.jsonData as any;
+    
+    let isAbono = false;
+    let isAbonoAproximado = false;
+    const datosGen = jsonData?.DatosGeneralesFacturaATR?.DatosGeneralesFactura || jsonData?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura || jsonData?.DatosGeneralesFactura;
+    if (datosGen && datosGen.TipoFactura) {
+       const t = Array.isArray(datosGen.TipoFactura) ? datosGen.TipoFactura[0] : datosGen.TipoFactura;
+       if (t === 'S' || t === 'AR' || t === 'A') {
+         isAbono = true;
+         // --- REVERSE ENGINEERING FOR AR / A INVOICES ---
+         // Instead of recalculating from CCH curves, we find the original N invoice
+         // and clone its calculation, inverting all mathematical signs to guarantee 0% error.
+         
+         let originalNCode: string | null = null;
+         
+         if (t === 'A') {
+            originalNCode = datosGen.CodigoFacturaRectificadaAnulada;
+         } else {
+            const allR = await prisma.f1Invoice.findMany({
+              where: { supplyPointId: f1.supplyPointId, jsonData: { not: Array.isArray([]) ? [] : {} } }
+            });
+            
+            for (const r of allR) {
+              const rGen = (r.jsonData as any)?.DatosGeneralesFacturaATR?.DatosGeneralesFactura 
+                        || (r.jsonData as any)?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura 
+                        || (r.jsonData as any)?.DatosGeneralesFactura;
+              const rOriginalCode = rGen?.CodigoFacturaRectificadaAnulada;
+              const codAbono = rGen?.CodigoFacturaAbono || (rOriginalCode ? `AR-${rOriginalCode}` : undefined);
+              if (codAbono === f1.numeroFactura) {
+                 originalNCode = rOriginalCode;
+                 break;
+              }
+            }
+         }
+         
+         if (originalNCode) {
+            const originalF1 = await prisma.f1Invoice.findFirst({ where: { numeroFactura: String(originalNCode) } });
+            if (originalF1) {
+               let originalResult: BillingCalculationResult | null = null;
+               const internalInvoice = await prisma.internalInvoice.findFirst({ where: { f1InvoiceId: originalF1.id } });
+               if (internalInvoice && internalInvoice.invoiceData) {
+                  originalResult = internalInvoice.invoiceData as unknown as BillingCalculationResult;
+                  // Inject root-level properties that might not be saved in older invoiceData JSON blobs
+                  originalResult.totalBase = originalResult.totalBase ?? internalInvoice.subtotal1 ?? 0;
+                  originalResult.taxAmount = originalResult.taxAmount ?? internalInvoice.taxAmount ?? 0;
+                  originalResult.totalAmount = originalResult.totalAmount ?? internalInvoice.totalAmount ?? 0;
+                  originalResult.totalF1MWh = originalResult.totalF1MWh ?? internalInvoice.totalMWh ?? 0;
+                  originalResult.feeCost = originalResult.feeCost ?? internalInvoice.margin ?? 0;
+               }
+               
+               if (originalResult) {
+                 const clone = JSON.parse(JSON.stringify(originalResult)) as BillingCalculationResult;
+                 const invert = (val: number | undefined) => val !== undefined && val !== null ? -val : undefined;
+                 clone.totalAmount = invert(clone.totalAmount) as number;
+                 clone.totalBase = invert(clone.totalBase) as number;
+                 clone.taxAmount = invert(clone.taxAmount) as number;
+                 clone.powerMargin = invert(clone.powerMargin);
+                 clone.energyMargin = invert(clone.energyMargin);
+                 clone.energyCost = invert(clone.energyCost) as number;
+                 clone.feeCost = invert(clone.feeCost) as number;
+                 clone.capacityCost = invert(clone.capacityCost) as number;
+                 clone.fneeCost = invert(clone.fneeCost) as number;
+                 clone.bonoSocial = invert(clone.bonoSocial) as number;
+                 clone.peajesDistribuidora = invert(clone.peajesDistribuidora) as number;
+                 clone.cargosDistribuidora = invert(clone.cargosDistribuidora) as number;
+                 clone.alquilerEquipo = invert(clone.alquilerEquipo);
+                 clone.taxElectric = invert(clone.taxElectric);
+                 clone.excesosPotencia = invert(clone.excesosPotencia);
+                 clone.excedentesAutoconsumo = invert(clone.excedentesAutoconsumo);
+                 clone.powerCost = invert(clone.powerCost) as number;
+                 clone.reactiveEnergyCost = invert(clone.reactiveEnergyCost) as number;
+                 clone.maxExcedentes = invert(clone.maxExcedentes);
+                 clone.bolsilloSolarLlenado = invert(clone.bolsilloSolarLlenado);
+                 clone.totalF1MWh = invert(clone.totalF1MWh) as number;
+                 clone.totalCchMWh = invert(clone.totalCchMWh) as number;
+                 
+                 if (clone.repairData) {
+                   clone.repairData.f1Volume = invert(clone.repairData.f1Volume);
+                   clone.repairData.cchVolume = invert(clone.repairData.cchVolume);
+                 }
+                 if (clone.periods) {
+                   for (const p in clone.periods) {
+                     clone.periods[p].energyCostEur = invert(clone.periods[p].energyCostEur) as number;
+                     clone.periods[p].regulatedCostEur = invert(clone.periods[p].regulatedCostEur) as number;
+                     clone.periods[p].cchConsumptionMWh = invert(clone.periods[p].cchConsumptionMWh) as number;
+                     clone.periods[p].f1ConsumptionMWh = invert(clone.periods[p].f1ConsumptionMWh) as number;
+                   }
+                 }
+                 if (clone.hourlyDetails) {
+                   for (const h of clone.hourlyDetails) {
+                     h.omieCost = invert(h.omieCost);
+                     h.regulatedCost = invert(h.regulatedCost);
+                     h.totalCost = invert(h.totalCost);
+                     h.fnee = invert(h.fnee);
+                   }
+                 }
+                 if (clone.energyMarketDetails) {
+                   for (const m of clone.energyMarketDetails) {
+                     m.totalEur = invert(m.totalEur);
+                   }
+                 }
+                 if (clone.energyAtrDetails) {
+                   for (const m of clone.energyAtrDetails) {
+                     m.totalEur = invert(m.totalEur);
+                   }
+                 }
+                 if (clone.powerDetails) {
+                   for (const m of clone.powerDetails) {
+                     m.totalEur = invert(m.totalEur);
+                   }
+                 }
+                 
+                 return clone;
+               } else {
+                 isAbonoAproximado = true;
+               }
+            } else {
+              isAbonoAproximado = true;
+            }
+         } else {
+           isAbonoAproximado = true;
+         }
+       }
+    }
+
     const termActiva = getArray(jsonData?.EnergiaActiva?.TerminoEnergiaActiva);
     const pEnergia = termActiva.flatMap((t: any) => getArray(t?.Periodo));
     
@@ -127,7 +251,8 @@ export class InternalBillingEngine {
         const p = pEnergia[idx];
         const pName = p.Periodo || p.periodo || `P${idx + 1}`;
         const valorStr = p.ValorEnergiaActiva || p.valorEnergiaActiva || '0';
-        const kwh = parseFloat(valorStr.toString().replace(',', '.'));
+        let kwh = parseFloat(valorStr.toString().replace(',', '.'));
+        if (isAbono) kwh = Math.abs(kwh);
         const valorMWh = kwh / 1000.0;
         if (f1VolumesByPeriod[pName] !== undefined) {
           f1VolumesByPeriod[pName] += valorMWh;
@@ -151,7 +276,8 @@ export class InternalBillingEngine {
         const p = pExcedentaria[idx];
         const pName = p.Periodo || p.periodo || `P${idx + 1}`;
         const valorStr = p.ValorEnergiaExcedentaria || p.valorEnergiaExcedentaria || '0';
-        const kwh = parseFloat(valorStr.toString().replace(',', '.'));
+        let kwh = parseFloat(valorStr.toString().replace(',', '.'));
+        if (isAbono) kwh = Math.abs(kwh);
         const valorMWh = kwh / 1000.0;
         if (f1SurplusVolumesByPeriod[pName] !== undefined) {
           f1SurplusVolumesByPeriod[pName] += valorMWh;
@@ -166,7 +292,9 @@ export class InternalBillingEngine {
       for (const p of pReactiva) {
         const pName = p.Periodo || p.periodo;
         if (pName && f1Readings[pName]) {
-          f1Readings[pName].reactCons = parseFloat((p.ValorEnergiaReactiva || p.valorEnergiaReactiva || '0').toString().replace(',', '.'));
+          let val = parseFloat((p.ValorEnergiaReactiva || p.valorEnergiaReactiva || '0').toString().replace(',', '.'));
+          if (isAbono) val = Math.abs(val);
+          f1Readings[pName].reactCons = val;
         }
       }
     }
@@ -177,7 +305,9 @@ export class InternalBillingEngine {
       for (const p of pMax) {
         const pName = p.Periodo || p.periodo;
         if (pName && f1Readings[pName]) {
-          f1Readings[pName].max = parseFloat((p.PotenciaMaxDemandada || p.potenciaMaxDemandada || p.PotenciaMaxima || p.potenciaMaxima || '0').toString().replace(',', '.'));
+          let val = parseFloat((p.PotenciaMaxDemandada || p.potenciaMaxDemandada || p.PotenciaMaxima || p.potenciaMaxima || '0').toString().replace(',', '.'));
+          if (isAbono) val = Math.abs(val);
+          f1Readings[pName].max = val;
         }
       }
     }
@@ -209,15 +339,25 @@ export class InternalBillingEngine {
             if (mag === 'AE' || mag === '1') {
                if (lDesde !== undefined) f1Readings[pName].actIni = lDesde.toString();
                if (lHasta !== undefined) f1Readings[pName].actFin = lHasta.toString();
-               if (consCalc !== undefined) f1Readings[pName].actCons = parseFloat(consCalc.toString());
+               if (consCalc !== undefined) {
+                 let val = parseFloat(consCalc.toString());
+                 if (isAbono) val = Math.abs(val);
+                 f1Readings[pName].actCons = val;
+               }
             } else if (mag === 'R1' || mag === '2') {
                if (lDesde !== undefined) f1Readings[pName].reactIni = lDesde.toString();
                if (lHasta !== undefined) f1Readings[pName].reactFin = lHasta.toString();
-               if (consCalc !== undefined) f1Readings[pName].reactCons = parseFloat(consCalc.toString());
+               if (consCalc !== undefined) {
+                 let val = parseFloat(consCalc.toString());
+                 if (isAbono) val = Math.abs(val);
+                 f1Readings[pName].reactCons = val;
+               }
             } else if (mag === 'PM' || mag === '3') {
                let val = 0;
                if (consCalc !== undefined) val = parseFloat(consCalc.toString());
                else if (lHasta !== undefined) val = parseFloat(lHasta.toString());
+               
+               if (isAbono) val = Math.abs(val);
                
                if (val > 1000) val = val / 1000.0;
                
@@ -383,6 +523,11 @@ export class InternalBillingEngine {
     if (consumptionCurves.length === 0) {
       hasMismatch = true;
       mismatchReason = mismatchReason ? mismatchReason + ' | Sin datos de curva de consumo (CCH) en BD.' : 'Sin datos de curva de consumo (CCH) en BD.';
+    }
+
+    if (isAbonoAproximado) {
+       const msg = "⚠️ ABONO APROXIMADO: Factura original no encontrada en BD. Cálculo por aproximación.";
+       mismatchReason = mismatchReason ? mismatchReason + " | " + msg : msg;
     }
 
     let originalMismatchReason = mismatchReason;
@@ -578,8 +723,9 @@ export class InternalBillingEngine {
       where: {
         OR: [{ tariff }, { tariff: 'TODAS' }],
         validFrom: { lte: endDate },
-        validTo: { gte: startDate }
-      }
+        validTo: { gt: startDate }
+      },
+      orderBy: { validFrom: 'asc' }
     });
 
     let refDate = contract.signatureDate;
@@ -613,8 +759,9 @@ export class InternalBillingEngine {
       where: {
         OR: [{ tariff }, { tariff: 'TODAS' }],
         validFrom: { lte: refDate },
-        validTo: { gte: refDate }
-      }
+        validTo: { gt: refDate }
+      },
+      orderBy: { validFrom: 'asc' }
     });
 
     // Extract BOE values from RegulatedCost
@@ -955,19 +1102,19 @@ export class InternalBillingEngine {
     // Alquiler
     let alquilerEquipo = 0;
     if (f1.jsonData && (f1.jsonData as any).Alquileres) {
-      alquilerEquipo = parseFloat(((f1.jsonData as any).Alquileres.ImporteFacturacionAlquileres || '0').toString().replace(',', '.'));
+      alquilerEquipo = Math.abs(parseFloat(((f1.jsonData as any).Alquileres.ImporteFacturacionAlquileres || '0').toString().replace(',', '.')));
     }
 
     // Excesos de Potencia
     let excesosPotencia = 0;
     if (f1.jsonData && (f1.jsonData as any)['Importe Total Excesos ATR']) {
-      excesosPotencia = parseFloat(((f1.jsonData as any)['Importe Total Excesos ATR']).toString().replace(',', '.'));
+      excesosPotencia = Math.abs(parseFloat(((f1.jsonData as any)['Importe Total Excesos ATR']).toString().replace(',', '.')));
     } else if (f1.jsonData && (f1.jsonData as any)['Importe Excesos Potencia']) {
-      excesosPotencia = parseFloat(((f1.jsonData as any)['Importe Excesos Potencia']).toString().replace(',', '.'));
+      excesosPotencia = Math.abs(parseFloat(((f1.jsonData as any)['Importe Excesos Potencia']).toString().replace(',', '.')));
     } else if (f1.jsonData && (f1.jsonData as any)['Importe Total Excesos ATR F1']) {
-      excesosPotencia = parseFloat(((f1.jsonData as any)['Importe Total Excesos ATR F1']).toString().replace(',', '.'));
+      excesosPotencia = Math.abs(parseFloat(((f1.jsonData as any)['Importe Total Excesos ATR F1']).toString().replace(',', '.')));
     } else if (f1.jsonData && (f1.jsonData as any).ExcesoPotencia && (f1.jsonData as any).ExcesoPotencia.ImporteTotalExcesos) {
-      excesosPotencia = parseFloat(((f1.jsonData as any).ExcesoPotencia.ImporteTotalExcesos).toString().replace(',', '.'));
+      excesosPotencia = Math.abs(parseFloat(((f1.jsonData as any).ExcesoPotencia.ImporteTotalExcesos).toString().replace(',', '.')));
     }
 
     // Excedentes Autoconsumo
@@ -976,7 +1123,7 @@ export class InternalBillingEngine {
     let pexc: number | null = contract.pexc !== undefined && contract.pexc !== null ? Number(contract.pexc) : null;
     
     if (f1.jsonData && (f1.jsonData as any)['Importe Excedentes Autoconsumo']) {
-      excedentesAutoconsumo = parseFloat(((f1.jsonData as any)['Importe Excedentes Autoconsumo']).toString().replace(',', '.'));
+      excedentesAutoconsumo = Math.abs(parseFloat(((f1.jsonData as any)['Importe Excedentes Autoconsumo']).toString().replace(',', '.')));
     } else if (f1.jsonData && (f1.jsonData as any).Autoconsumo && (f1.jsonData as any).Autoconsumo.EnergiaExcedentaria && (f1.jsonData as any).Autoconsumo.EnergiaExcedentaria.ValorTotalEnergiaExcedentaria) {
       const surplusKwh = parseFloat(((f1.jsonData as any).Autoconsumo.EnergiaExcedentaria.ValorTotalEnergiaExcedentaria).toString().replace(',', '.'));
       surplusKwhForOutput = surplusKwh;
@@ -1318,7 +1465,7 @@ export class InternalBillingEngine {
     const taxAmount = totalBase * 0.21; // IVA 21%
     const totalAmount = totalBase + taxAmount;
 
-    return {
+    const result: any = {
       hasMismatch,
       mismatchReason,
       totalCchMWh,
@@ -1357,5 +1504,75 @@ export class InternalBillingEngine {
       reactiveDetails,
       repairData: originalMismatchReason ? { issue: originalMismatchReason, f1Volume: totalF1MWh, cchVolume: originalCchMWh } : null
     };
+
+    if (isAbono) {
+      const invert = (val: number | undefined) => val !== undefined && val !== null ? -val : undefined;
+      result.totalAmount = invert(result.totalAmount) as number;
+      result.totalBase = invert(result.totalBase) as number;
+      result.taxAmount = invert(result.taxAmount) as number;
+      result.powerMargin = invert(result.powerMargin) as number;
+      result.energyMargin = invert(result.energyMargin) as number;
+      result.energyCost = invert(result.energyCost) as number;
+      result.feeCost = invert(result.feeCost) as number;
+      result.capacityCost = invert(result.capacityCost) as number;
+      result.fneeCost = invert(result.fneeCost) as number;
+      result.bonoSocial = invert(result.bonoSocial) as number;
+      result.peajesDistribuidora = invert(result.peajesDistribuidora) as number;
+      result.cargosDistribuidora = invert(result.cargosDistribuidora) as number;
+      result.alquilerEquipo = invert(result.alquilerEquipo);
+      result.taxElectric = invert(result.taxElectric);
+      result.excesosPotencia = invert(result.excesosPotencia);
+      result.excedentesAutoconsumo = invert(result.excedentesAutoconsumo);
+      result.powerCost = invert(result.powerCost) as number;
+      result.reactiveEnergyCost = invert(result.reactiveEnergyCost) as number;
+      result.maxExcedentes = invert(result.maxExcedentes);
+      result.bolsilloSolarLlenado = invert(result.bolsilloSolarLlenado);
+      result.totalBase = invert(result.totalBase);
+      
+      // Invert volumes for UI
+      result.totalF1MWh = invert(result.totalF1MWh) as number;
+      result.totalCchMWh = invert(result.totalCchMWh) as number;
+      
+      if (result.repairData) {
+        result.repairData.f1Volume = invert(result.repairData.f1Volume);
+        result.repairData.cchVolume = invert(result.repairData.cchVolume);
+      }
+      
+      if (result.periods) {
+        for (const p in result.periods) {
+          result.periods[p].energyCostEur = invert(result.periods[p].energyCostEur);
+          result.periods[p].regulatedCostEur = invert(result.periods[p].regulatedCostEur);
+        }
+      }
+      if (result.hourlyDetails) {
+        for (const h of result.hourlyDetails) {
+          h.omieCost = invert(h.omieCost);
+          h.regulatedCost = invert(h.regulatedCost);
+          h.totalCost = invert(h.totalCost);
+          h.fnee = invert(h.fnee);
+        }
+      }
+      if (result.energyMarketDetails) {
+        for (const m of result.energyMarketDetails) {
+          m.total = invert(m.total) as number;
+        }
+      }
+      if (result.energyAtrDetails) {
+        for (const m of result.energyAtrDetails) {
+          m.total = invert(m.total) as number;
+          m.cargoEur = invert(m.cargoEur) as number;
+          m.peajeEur = invert(m.peajeEur) as number;
+        }
+      }
+      if (result.powerDetails) {
+        for (const m of result.powerDetails) {
+          m.total = invert(m.total) as number;
+          m.cargoEur = invert(m.cargoEur) as number;
+          m.peajeEur = invert(m.peajeEur) as number;
+        }
+      }
+    }
+
+    return result as BillingCalculationResult;
   }
 }

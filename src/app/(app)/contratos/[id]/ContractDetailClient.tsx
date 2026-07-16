@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import Topbar from '@/components/Topbar';
-import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery, BarChart2 } from 'lucide-react';
+import { ChevronLeft, FileText, CheckCircle, Clock, Ban, CalendarDays, Wallet, Building, Search, Banknote, MapPin, Zap, RefreshCw, Download, FileCheck, Power, Send, User, Settings, AlertTriangle, FileSpreadsheet, Battery, BarChart2, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { formatDateUTC } from '@/lib/utils/date';
 import { updateContractDatesAction, sendContractToDocuSignAction, deleteLatestVersionAction } from '@/app/actions/contractActions';
@@ -11,6 +11,7 @@ import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
 import ConsumosTab from './ConsumosTab';
 import ModificationModal from './ModificationModal';
 import HistoricalChart from './HistoricalChart';
+import EditContractModal from '../EditContractModal';
 
 export default function ContractDetailClient({ 
   initialContract, 
@@ -38,6 +39,7 @@ export default function ContractDetailClient({
   const [isActivating, setIsActivating] = useState(false);
   const [isGeneratingXml, setIsGeneratingXml] = useState(false);
   const [isDeletingVersion, setIsDeletingVersion] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Forms state
   const formatDateForInput = (isoDate: Date | string | null | undefined) => {
@@ -129,6 +131,10 @@ export default function ContractDetailClient({
   const downloadContract = async () => { /* ... */ };
   const handleSaveDates = async () => { /* ... */ };
   const handleRequestMod = async () => { /* ... */ };
+
+  const displayTariff = typeof (initialContract.airtableData as any)?.tarifa === 'string' 
+    ? (initialContract.airtableData as any)?.tarifa 
+    : (Array.isArray((initialContract.airtableData as any)?.Tarifa) ? (initialContract.airtableData as any)?.Tarifa[0] : (initialContract.airtableData as any)?.Tarifa) || supplyPoint?.tariff || lead?.tariff;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -266,6 +272,15 @@ export default function ContractDetailClient({
                 <Settings size={16} /> <span className="hidden md:inline">Modificar</span>
               </button>
             )}
+            {isAdmin && (
+              <button 
+                onClick={() => setShowEditModal(true)}
+                className="btn-secondary flex items-center gap-2"
+                title="Editar datos del contrato"
+              >
+                <Pencil size={16} /> <span className="hidden md:inline">Editar</span>
+              </button>
+            )}
             {initialContract.status === 'BORRADOR' && (
               <button 
                 onClick={async () => {
@@ -357,6 +372,17 @@ export default function ContractDetailClient({
             router.push(`/contratos/${newId}`);
           }}
           submitAction={createContractModificationAction}
+        />
+      )}
+      {showEditModal && (
+        <EditContractModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          contract={initialContract}
+          onSuccess={() => {
+            setShowEditModal(false);
+            router.refresh();
+          }}
         />
       )}
         {/* TAB CONTENT */}
@@ -455,9 +481,7 @@ export default function ContractDetailClient({
                 <SectionCard title="Datos Técnicos del Punto de Suministro" icon={Zap} delay={0}>
                   <DataItem highlight label="CUPS" value={<span className="font-mono tracking-widest">{supplyPoint.cups || lead.cups}</span>} />
                   <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">
-                    {typeof (initialContract.airtableData as any)?.tarifa === 'string' 
-                      ? (initialContract.airtableData as any)?.tarifa 
-                      : (Array.isArray((initialContract.airtableData as any)?.Tarifa) ? (initialContract.airtableData as any)?.Tarifa[0] : (initialContract.airtableData as any)?.Tarifa) || supplyPoint.tariff || lead.tariff}
+                    {displayTariff}
                   </span>} />
                   <DataItem label="Consumo Anual Estimado (MWh)" value={lead.estimatedMWh} />
                   <DataItem label="Distribuidora" value={supplyPoint.distributorName ? supplyPoint.distributorName.replace(/^\[.*?\]\s*/, '') : (supplyPoint.distributor ? supplyPoint.distributor.replace(/^\[.*?\]\s*/, '') : 'EDISTRIBUCION')} />
@@ -494,7 +518,7 @@ export default function ContractDetailClient({
                     <DataItem label="P1E" value={getPricesFromLead(lead).p1E} />
                     <DataItem label="P2E" value={getPricesFromLead(lead).p2E} />
                     <DataItem label="P3E" value={getPricesFromLead(lead).p3E} />
-                    {(initialContract.product?.tariff !== '2.0TD' && supplyPoint?.tariff !== '2.0TD') && (
+                    {displayTariff !== '2.0TD' && displayTariff !== '2.0 A' && (
                       <>
                         <DataItem label="P4E" value={getPricesFromLead(lead).p4E} />
                         <DataItem label="P5E" value={getPricesFromLead(lead).p5E} />
@@ -506,7 +530,7 @@ export default function ContractDetailClient({
                   <SectionCard title="Precios de Potencia (€/kW/año)" icon={Zap} delay={50}>
                     <DataItem label="P1P" value={getPricesFromLead(lead).p1P} />
                     <DataItem label="P2P" value={getPricesFromLead(lead).p2P} />
-                    {(initialContract.product?.tariff !== '2.0TD' && supplyPoint?.tariff !== '2.0TD') && (
+                    {displayTariff !== '2.0TD' && displayTariff !== '2.0 A' && (
                       <>
                         <DataItem label="P3P" value={getPricesFromLead(lead).p3P} />
                         <DataItem label="P4P" value={getPricesFromLead(lead).p4P} />

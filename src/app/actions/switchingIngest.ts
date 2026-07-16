@@ -373,7 +373,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     } else if (paso === '05' && procesoBase !== 'R1') {
       const tramitandoContract = await prisma.contract.findFirst({
         where: { supplyPointId: { in: possibleSpIds }, status: { in: ['TRAMITANDO', 'Tramitando'] } },
-        include: { supplyPoint: true },
+        include: { supplyPoint: true, product: true },
         orderBy: { createdAt: 'desc' }
       });
       if (tramitandoContract) {
@@ -397,14 +397,35 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             }
           });
 
-          // Activar el autoconsumo en el CUPS si el contrato tramitado lo requería
+          // Activar el autoconsumo en el CUPS y actualizar datos técnicos del contrato tramitado
           const contractData = tramitandoContract.airtableData as any;
-          if (contractData?.isAutoconsumoModification || contractData?.selfConsumptionType || supplyPoint.selfConsumptionType) {
-            await prisma.supplyPoint.update({
-              where: { id: supplyPoint.id },
-              data: { hasSelfConsumption: true }
-            });
+          const updateSpData: any = {
+            p1c: tramitandoContract.p1c,
+            p2c: tramitandoContract.p2c,
+            p3c: tramitandoContract.p3c,
+            p4c: tramitandoContract.p4c,
+            p5c: tramitandoContract.p5c,
+            p6c: tramitandoContract.p6c,
+            p1p: tramitandoContract.p1p,
+            p2p: tramitandoContract.p2p,
+            p3p: tramitandoContract.p3p,
+            p4p: tramitandoContract.p4p,
+            p5p: tramitandoContract.p5p,
+            p6p: tramitandoContract.p6p
+          };
+
+          if (tramitandoContract.product?.tariff) {
+            updateSpData.tariff = tramitandoContract.product.tariff;
           }
+
+          if (contractData?.isAutoconsumoModification || contractData?.selfConsumptionType || supplyPoint.selfConsumptionType) {
+            updateSpData.hasSelfConsumption = true;
+          }
+
+          await prisma.supplyPoint.update({
+            where: { id: supplyPoint.id },
+            data: updateSpData
+          });
 
           // Regla M1/M2: Rescindir contrato anterior
           if (procesoBase === 'M1' || procesoBase === 'M2') {

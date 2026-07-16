@@ -169,14 +169,14 @@ export async function GET(request: Request) {
         g.SolicitudesAnuladas++;
       }
 
-      const pasoAceptado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR === 'ACEPTADO' || ((p.paso === '02' || p.paso === '04') && !p.tipoError));
+      const pasoAceptado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR?.includes('ACEPTAD') || ((p.paso === '02' || p.paso === '04') && !p.tipoError));
       if (pasoAceptado && pasoAceptado.fechaAR && pasoInicial.fechaSolicitud) {
         const diffDays = Math.max(0, (pasoAceptado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24));
         g.aceptadas.sum += diffDays;
         g.aceptadas.count++;
       }
 
-      const pasoRechazado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR === 'RECHAZADO' || p.tipoError);
+      const pasoRechazado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR?.includes('RECHAZAD'));
       if (pasoRechazado && pasoInicial.fechaSolicitud) {
         const diffDays = pasoRechazado.fechaAR ? Math.max(0, (pasoRechazado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)) : 0;
         
@@ -185,12 +185,19 @@ export async function GET(request: Request) {
         if (pasoRechazado.motivosRechazo) {
           try {
             const mObj: any = pasoRechazado.motivosRechazo;
-            const m = mObj?.Motivo || mObj;
-            if (m) {
-              if (Array.isArray(m) && m.length > 0 && m[0].CodigoMotivo) {
-                motivo = m[0].CodigoMotivo;
-              } else if (m.CodigoMotivo) {
-                motivo = m.CodigoMotivo;
+            
+            if (Array.isArray(mObj) && typeof mObj[0] === 'string') {
+              // parser.ts ya lo mapeó a array de strings (ej. paso 04)
+              motivo = mObj[0];
+            } else {
+              // Objeto XML crudo (ej. paso 02)
+              const m = mObj?.Motivo || mObj?.MotivoRechazo || mObj;
+              if (m) {
+                if (Array.isArray(m) && m.length > 0) {
+                  motivo = m[0].CodigoMotivo || m[0].CodigoMotivoRechazo || m[0];
+                } else {
+                  motivo = m.CodigoMotivo || m.CodigoMotivoRechazo || m;
+                }
               }
             }
           } catch(e) {}

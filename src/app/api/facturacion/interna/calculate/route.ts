@@ -33,15 +33,23 @@ export async function POST(req: Request) {
       
       const contract = f1.contract;
 
+      // Deduce invoice type
+      const jsonData = f1.jsonData as any;
+      const datosGen = jsonData?.DatosGeneralesFacturaATR?.DatosGeneralesFactura || jsonData?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura || jsonData?.DatosGeneralesFactura;
+      const tipoF1 = (datosGen && datosGen.TipoFactura) ? (Array.isArray(datosGen.TipoFactura) ? datosGen.TipoFactura[0] : datosGen.TipoFactura) : 'N';
+      let calculatedType = 'Normal';
+      if (tipoF1 === 'R') calculatedType = 'Rectificadora';
+      else if (tipoF1 === 'AR') calculatedType = 'Abono';
+
       try {
         // Ejecuta el cálculo forzando la reparación de la CCH si fuera necesario
         const result = await InternalBillingEngine.calculate(f1.id, true);
-        
+
         const draft = await prisma.internalInvoice.create({
           data: {
             status: 'BORRADOR',
             repairData: result.repairData,
-            invoiceType: 'NORMAL',
+            invoiceType: calculatedType,
             clientId: contract.clientId,
             contractId: contract.id,
             supplyPointId: contract.supplyPointId,
@@ -98,7 +106,7 @@ export async function POST(req: Request) {
           data: {
             status: 'REQUIERE_REPARACION',
             repairData: { issue: err.message || "Error fatal desconocido" },
-            invoiceType: 'NORMAL',
+            invoiceType: calculatedType,
             clientId: contract.clientId,
             contractId: contract.id,
             supplyPointId: contract.supplyPointId,

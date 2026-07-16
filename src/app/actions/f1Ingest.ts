@@ -301,6 +301,7 @@ async function ingestF1Core(file: File) {
         }
       });
 
+
       // Intentar enlazar automáticamente con una factura ya importada
       if (parsedCodFactura !== 'SIN_COD') {
         if (supplyPointId) {
@@ -316,6 +317,26 @@ async function ingestF1Core(file: File) {
                 AND DATE("billingEnd") = DATE(${newF1.fechaFin ? newF1.fechaFin : null}::timestamp)
                 AND "billingStart" IS NOT NULL
                 AND "rectifiedInvoiceId" IS NULL
+                AND (
+                  ("invoiceType" = 'Abono' AND (
+                     ${newF1.numeroFactura} LIKE 'AR-%' 
+                     OR ${newF1.jsonData}::text LIKE '%"TipoFactura":"S"%' 
+                     OR ${newF1.jsonData}::text LIKE '%"TipoFactura":"A"%'
+                     OR ${newF1.jsonData}::text LIKE '%"TipoFactura":"AR"%'
+                     OR ${newF1.jsonData}::text LIKE '%"TipoFactura":["S"]%'
+                     OR ${newF1.jsonData}::text LIKE '%"TipoFactura":["A"]%'
+                     OR ${newF1.jsonData}::text LIKE '%"TipoFactura":["AR"]%'
+                  )) OR
+                  (("invoiceType" IS NULL OR "invoiceType" != 'Abono') AND (
+                     ${newF1.numeroFactura} NOT LIKE 'AR-%'
+                     AND ${newF1.jsonData}::text NOT LIKE '%"TipoFactura":"S"%'
+                     AND ${newF1.jsonData}::text NOT LIKE '%"TipoFactura":"A"%'
+                     AND ${newF1.jsonData}::text NOT LIKE '%"TipoFactura":"AR"%'
+                     AND ${newF1.jsonData}::text NOT LIKE '%"TipoFactura":["S"]%'
+                     AND ${newF1.jsonData}::text NOT LIKE '%"TipoFactura":["A"]%'
+                     AND ${newF1.jsonData}::text NOT LIKE '%"TipoFactura":["AR"]%'
+                  ))
+                )
               )
             )
           `;
@@ -415,9 +436,126 @@ async function ingestF1Core(file: File) {
           facturaRealizada: true,
         }
       });
+
+
+
       procesadas++;
     }
+    // PASADA 2: Generar Abonos automáticos para todas las facturas R
+    // Se hace al final para garantizar que las facturas originales N ya estén guardadas en la BD, evitando problemas de orden en el array
+    const rInvoicesToProcess = await prisma.f1Invoice.findMany({
+      where: {
+        numeroFactura: { in: facturasAtrArray.concat(otrasFacturasArray).map((f: any) => {
+          const dGen = f.DatosGeneralesFacturaATR || f.DatosGeneralesOtrasFacturas || f.DatosGeneralesFactura || {};
+          return dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+        }).filter(Boolean) as string[] },
+        jsonData: {
+          path: ['DatosGeneralesFacturaATR', 'DatosGeneralesFactura', 'TipoFactura'],
+          string_contains: 'R'
+        }
+      }
+    });
 
+    const rInvoicesOtrasFacturas = await prisma.f1Invoice.findMany({
+      where: {
+        numeroFactura: { in: facturasAtrArray.concat(otrasFacturasArray).map((f: any) => {
+          const dGen = f.DatosGeneralesFacturaATR || f.DatosGeneralesOtrasFacturas || f.DatosGeneralesFactura || {};
+          return dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+        }).filter(Boolean) as string[] },
+        jsonData: {
+          path: ['DatosGeneralesOtrasFacturas', 'DatosGeneralesFactura', 'TipoFactura'],
+          string_contains: 'R'
+        }
+      }
+    });
+    
+    const allRInvoices = [...rInvoicesToProcess, ...rInvoicesOtrasFacturas];
+
+    for (const f of allRInvoices) {
+      const dGen = (f.jsonData as any).DatosGeneralesFacturaATR || (f.jsonData as any).DatosGeneralesOtrasFacturas;
+      if (!dGen?.DatosGeneralesFactura) continue;
+      
+      const tipoFacturaRaw = dGen.DatosGeneralesFactura?.TipoFactura;
+      const parsedTipo = typeof tipoFacturaRaw === 'string' ? tipoFacturaRaw : (Array.isArray(tipoFacturaRaw) ? tipoFacturaRaw[0] : 'N');
+      
+      if (parsedTipo === 'R') {
+        const codOriginal = dGen.DatosGeneralesFactura?.CodigoFacturaRectificadaAnulada;
+        const codAbono = dGen.DatosGeneralesFactura?.CodigoFacturaAbono || (codOriginal ? `AR-${codOriginal}` : undefined);
+        
+        if (codOriginal && codAbono) {
+          const strCodAbono = String(codAbono);
+          const strCodOriginal = String(codOriginal);
+          
+          const existingAbono = await prisma.f1Invoice.findFirst({
+            where: { numeroFactura: strCodAbono }
+          });
+          
+          if (!existingAbono) {
+            const originalF1 = await prisma.f1Invoice.findFirst({
+              where: { numeroFactura: strCodOriginal }
+            });
+            
+            if (originalF1 && originalF1.jsonData) {
+              const sourceJson = originalF1.jsonData as any;
+              const clonedJson = JSON.parse(JSON.stringify(sourceJson));
+              
+              const invertNumerics = (obj: any) => {
+                if (!obj || typeof obj !== 'object') return;
+                for (const key in obj) {
+                  if (typeof obj[key] === 'object') {
+                    invertNumerics(obj[key]);
+                  } else if (typeof obj[key] === 'string' || typeof obj[key] === 'number') {
+                    const numKeys = ['ConsumoCalculado', 'consumoCalculado', 'ValorEnergiaActiva', 'valorEnergiaActiva', 'ValorEnergiaReactiva', 'valorEnergiaReactiva', 'ValorEnergiaExcedentaria', 'valorEnergiaExcedentaria', 'Importe', 'importe', 'ImporteTotalFactura', 'SaldoFactura', 'BaseImponibleF1', 'ImporteTotalPeajes', 'ImporteTotalCargos', 'ImporteAlquiler', 'ImpuestoElectrico', 'ImporteExcesosPotencia', 'ImportePenalizacionReactiva'];
+                    const strVal = String(obj[key]);
+                    if (numKeys.some(k => key.includes(k) || key === k)) {
+                      const parsed = parseFloat(strVal.replace(',', '.'));
+                      if (!isNaN(parsed)) {
+                        obj[key] = (-parsed).toString().replace('.', ',');
+                      }
+                    }
+                  }
+                }
+              };
+              
+              invertNumerics(clonedJson);
+
+              if (clonedJson.DatosGeneralesFacturaATR?.DatosGeneralesFactura) {
+                clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.TipoFactura = 'AR';
+                clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+              } else if (clonedJson.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura) {
+                clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.TipoFactura = 'AR';
+                clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+              }
+              
+              const invSaldo = -(originalF1.saldoFactura || 0);
+              const invBase = -(originalF1.baseImponible || 0);
+              const invPeajes = -(originalF1.totalPeajes || 0);
+              const invCargos = -(originalF1.totalCargos || 0);
+
+              await prisma.f1Invoice.create({
+                data: {
+                  numeroFactura: strCodAbono,
+                  tipoDocumento: originalF1.tipoDocumento,
+                  fechaEmision: originalF1.fechaEmision,
+                  fechaInicio: originalF1.fechaInicio,
+                  fechaFin: originalF1.fechaFin,
+                  saldoFactura: invSaldo,
+                  baseImponible: invBase,
+                  totalPeajes: invPeajes,
+                  totalCargos: invCargos,
+                  xmlUrl: originalF1.xmlUrl,
+                  jsonData: clonedJson,
+                  supplyPointId: originalF1.supplyPointId,
+                  contractId: originalF1.contractId,
+                  facturaRealizada: true,
+                }
+              });
+              procesadas++;
+            }
+          }
+        }
+      }
+    }
     return { success: true, count: procesadas };
 
   } catch (error: any) {

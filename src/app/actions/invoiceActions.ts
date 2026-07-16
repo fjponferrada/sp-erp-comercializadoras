@@ -321,6 +321,26 @@ export async function importInvoicesAction(invoicesData: any[]) {
               AND DATE(i."billingEnd") = DATE(f1."fechaFin")
               AND i."billingStart" IS NOT NULL
               AND i."rectifiedInvoiceId" IS NULL
+              AND (
+                (i."invoiceType" = 'Abono' AND (
+                   f1."numeroFactura" LIKE 'AR-%' 
+                   OR f1."jsonData"::text LIKE '%"TipoFactura":"S"%' 
+                   OR f1."jsonData"::text LIKE '%"TipoFactura":"A"%'
+                   OR f1."jsonData"::text LIKE '%"TipoFactura":"AR"%'
+                   OR f1."jsonData"::text LIKE '%"TipoFactura":["S"]%'
+                   OR f1."jsonData"::text LIKE '%"TipoFactura":["A"]%'
+                   OR f1."jsonData"::text LIKE '%"TipoFactura":["AR"]%'
+                )) OR
+                ((i."invoiceType" IS NULL OR i."invoiceType" != 'Abono') AND (
+                   f1."numeroFactura" NOT LIKE 'AR-%'
+                   AND f1."jsonData"::text NOT LIKE '%"TipoFactura":"S"%'
+                   AND f1."jsonData"::text NOT LIKE '%"TipoFactura":"A"%'
+                   AND f1."jsonData"::text NOT LIKE '%"TipoFactura":"AR"%'
+                   AND f1."jsonData"::text NOT LIKE '%"TipoFactura":["S"]%'
+                   AND f1."jsonData"::text NOT LIKE '%"TipoFactura":["A"]%'
+                   AND f1."jsonData"::text NOT LIKE '%"TipoFactura":["AR"]%'
+                ))
+              )
             )
           )
         `;

@@ -28,6 +28,7 @@ export async function GET(req: Request, context: { params: Promise<{ draftId: st
 
     const templateData = {
       invoiceNumber: invoice.invoiceNumber || `PROFORMA-${invoice.id.substring(0,6).toUpperCase()}`,
+      invoiceType: invoice.invoiceType,
       issueDate: invoice.issueDate,
       clientName: invoice.client?.businessName || 'Desconocido',
       clientNif: invoice.client?.vatNumber || 'S/N',

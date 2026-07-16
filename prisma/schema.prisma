@@ -1082,6 +1082,7 @@ model InternalInvoice {
   id                 String                @id @default(cuid())
   invoiceNumber      String?
   status             InternalInvoiceStatus @default(BORRADOR)
+  hidden             Boolean               @default(false)
   invoiceType        String?
   clientId           String
   companyId          String?
@@ -1116,6 +1117,7 @@ model InternalInvoice {
   repairData    Json?
 
   @@unique([invoiceNumber, companyId])
+  @@index([f1InvoiceId])
 }
 
 model ReganecuData {
