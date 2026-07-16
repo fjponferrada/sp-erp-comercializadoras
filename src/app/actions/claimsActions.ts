@@ -142,14 +142,28 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
       }
     }
 
+    // Filter by searchTerm if provided
+    let finalClaims = claims;
+    if (searchTerm) {
+      const lowerTerm = searchTerm.toLowerCase();
+      finalClaims = claims.filter(c => 
+        (c.codigoSolicitud && c.codigoSolicitud.toLowerCase().includes(lowerTerm)) ||
+        (c.cups && c.cups.toLowerCase().includes(lowerTerm)) ||
+        (c.codigoReclamacion && c.codigoReclamacion.toLowerCase().includes(lowerTerm))
+      );
+    }
+
     // Sort descending by paso01 date
-    claims.sort((a, b) => {
+    finalClaims.sort((a, b) => {
       const dateA = a.paso01?.fecha || new Date(0);
       const dateB = b.paso01?.fecha || new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
 
-    const totalCount = claims.length; const paginatedClaims = claims.slice((page - 1) * limit, page * limit); return { success: true, data: paginatedClaims, totalCount };
+    const totalCount = finalClaims.length; 
+    const paginatedClaims = finalClaims.slice((page - 1) * limit, page * limit); 
+    
+    return { success: true, data: paginatedClaims, totalCount };
 
   } catch (error: any) {
     console.error('Error fetching claims:', error);
