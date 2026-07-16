@@ -163,13 +163,13 @@ export default function SupplyPointDocuments({
                     <td className="p-0 md:p-4 block md:table-cell mb-2 md:mb-0">
                       <div className="bg-black/40 px-2 py-1.5 rounded-lg border border-white/10 flex items-center justify-between">
                         <code className="text-xs text-lime-400 font-mono break-all line-clamp-1">
-                          {`https://erp.aed-energia.com/api/cnmc/document?file=${doc.url}&user=AED-CNMC&password=AED%232024Doc`}
+                          {`https://ultra.sp-energia.com/api/cnmc/document?file=${doc.url}&user=AED-CNMC&password=AED%232024Doc`}
                         </code>
                         <button
                           onClick={() => {
-                            const fullUrl = `https://erp.aed-energia.com/api/cnmc/document?file=${doc.url}&user=AED-CNMC&password=AED%232024Doc`;
+                            const fullUrl = `https://ultra.sp-energia.com/api/cnmc/document?file=${doc.url}&amp;user=AED-CNMC&amp;password=AED%232024Doc`;
                             navigator.clipboard.writeText(fullUrl);
-                            toast.success('Ruta CNMC copiada');
+                            toast.success('Ruta CNMC copiada (Lista para XML)');
                           }}
                           className="ml-2 text-[10px] bg-white/10 px-2 py-1 rounded text-white hover:bg-white/20 shrink-0"
                         >
