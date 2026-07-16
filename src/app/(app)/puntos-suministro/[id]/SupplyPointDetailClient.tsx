@@ -8,6 +8,7 @@ import {
   History, FileText, CheckCircle2, XCircle, Clock
 } from 'lucide-react';
 import EditSupplyPointModal from '../EditSupplyPointModal';
+import SupplyPointDocuments from '@/components/puntos-suministro/SupplyPointDocuments';
 
 export default function SupplyPointDetailClient({ 
   initialSupplyPoint, 
@@ -442,6 +443,13 @@ export default function SupplyPointDetailClient({
             </table>
           </div>
         </div>
+
+        {/* Documentación Técnica */}
+        <SupplyPointDocuments 
+          supplyPointId={supplyPoint.id} 
+          documents={supplyPoint.documents || []} 
+          onUpdate={() => window.location.reload()} 
+        />
 
       </div>
 

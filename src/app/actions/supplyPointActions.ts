@@ -87,6 +87,9 @@ export async function getSupplyPointDetailsAction(id: string) {
       },
       include: {
         client: true,
+        documents: {
+          orderBy: { createdAt: 'desc' },
+        },
         contracts: {
           where: contractFilter,
           orderBy: { createdAt: 'desc' },
