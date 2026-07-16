@@ -336,7 +336,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
                 <Text style={styles.drConceptText}>{p.period}. Potencia Facturada</Text>
                 <Text style={styles.drSubtext}>  Peajes potencia: {fmt(p.peajeEur)} €  ·  Cargos potencia: {fmt(p.cargoEur)} €</Text>
               </View>
-              <Text style={styles.drCenter}>{p.kw?.toFixed(0)}</Text>
+              <Text style={styles.drCenter}>{p.kw?.toFixed(3)}</Text>
               <Text style={styles.drCenter}>{p.days?.toFixed(0)}</Text>
               <Text style={styles.drCenter}>{p.price?.toFixed(6)}</Text>
               <Text style={styles.drRight}>{fmt(p.total)}</Text>

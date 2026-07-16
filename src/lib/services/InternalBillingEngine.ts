@@ -109,26 +109,31 @@ export class InternalBillingEngine {
     }
     
     const contract = f1.contract;
-    const tariff = f1.supplyPoint.tariff || '3.0TD';
+    const airTarifa = (contract.airtableData as any)?.Tarifa || (contract.airtableData as any)?.tarifa;
+    const tariff = (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || contract.product?.tariff || f1.supplyPoint.tariff || '3.0TD';
     // startDate and endDate are calculated below
     // 1. Obtener los volúmenes del F1
     const jsonData = f1.jsonData as any;
     
     let isAbono = false;
     let isAbonoAproximado = false;
+    let f1Ref = f1.numeroFactura;
     const datosGen = jsonData?.DatosGeneralesFacturaATR?.DatosGeneralesFactura || jsonData?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura || jsonData?.DatosGeneralesFactura;
     if (datosGen && datosGen.TipoFactura) {
-       const t = Array.isArray(datosGen.TipoFactura) ? datosGen.TipoFactura[0] : datosGen.TipoFactura;
+       const tipoFact = datosGen.TipoFactura;
+       const t = (Array.isArray(tipoFact) ? tipoFact[0] : tipoFact) as string;
        if (t === 'S' || t === 'AR' || t === 'A') {
          isAbono = true;
+         f1Ref = (Array.isArray(datosGen.CodigoFacturaRectificadaAnulada) ? datosGen.CodigoFacturaRectificadaAnulada[0] : datosGen.CodigoFacturaRectificadaAnulada) || f1Ref;
+         
          // --- REVERSE ENGINEERING FOR AR / A INVOICES ---
          // Instead of recalculating from CCH curves, we find the original N invoice
          // and clone its calculation, inverting all mathematical signs to guarantee 0% error.
          
          let originalNCode: string | null = null;
          
-         if (t === 'A') {
-            originalNCode = datosGen.CodigoFacturaRectificadaAnulada;
+         if (t === 'A' || t === 'AR' || t === 'S') {
+            originalNCode = (Array.isArray(datosGen.CodigoFacturaRectificadaAnulada) ? datosGen.CodigoFacturaRectificadaAnulada[0] : datosGen.CodigoFacturaRectificadaAnulada);
          } else {
             const allR = await prisma.f1Invoice.findMany({
               where: { supplyPointId: f1.supplyPointId, jsonData: { not: Array.isArray([]) ? [] : {} } }
@@ -238,7 +243,6 @@ export class InternalBillingEngine {
     }
 
     const termActiva = getArray(jsonData?.EnergiaActiva?.TerminoEnergiaActiva);
-    const pEnergia = termActiva.flatMap((t: any) => getArray(t?.Periodo));
     
     const f1VolumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
     let totalF1MWh = 0;
@@ -246,68 +250,77 @@ export class InternalBillingEngine {
     const f1Readings: Record<string, { actIni: string, actFin: string, reactIni: string, reactFin: string, reactCons: number, actCons: number, max: number }> = {};
     for (let i=1; i<=6; i++) f1Readings[`P${i}`] = { actIni: '-', actFin: '-', reactIni: '-', reactFin: '-', reactCons: 0, actCons: 0, max: 0 };
     
-    if (pEnergia && pEnergia.length > 0) {
-      for (let idx = 0; idx < pEnergia.length; idx++) {
-        const p = pEnergia[idx];
-        const pName = p.Periodo || p.periodo || `P${idx + 1}`;
-        const valorStr = p.ValorEnergiaActiva || p.valorEnergiaActiva || '0';
-        let kwh = parseFloat(valorStr.toString().replace(',', '.'));
-        if (isAbono) kwh = Math.abs(kwh);
-        const valorMWh = kwh / 1000.0;
-        if (f1VolumesByPeriod[pName] !== undefined) {
-          f1VolumesByPeriod[pName] += valorMWh;
-        }
-        totalF1MWh += valorMWh;
-        
-        if (f1Readings[pName]) {
-          f1Readings[pName].actCons += kwh;
+    if (termActiva && termActiva.length > 0) {
+      for (const t of termActiva) {
+        const pEnergia = getArray(t?.Periodo);
+        for (let idx = 0; idx < pEnergia.length; idx++) {
+          const p = pEnergia[idx];
+          const pName = p.Periodo || p.periodo || `P${idx + 1}`;
+          const valorStr = p.ValorEnergiaActiva || p.valorEnergiaActiva || '0';
+          let kwh = parseFloat(valorStr.toString().replace(',', '.'));
+          if (isAbono) kwh = Math.abs(kwh);
+          const valorMWh = kwh / 1000.0;
+          if (f1VolumesByPeriod[pName] !== undefined) {
+            f1VolumesByPeriod[pName] += valorMWh;
+          }
+          totalF1MWh += valorMWh;
+          
+          if (f1Readings[pName]) {
+            f1Readings[pName].actCons += kwh;
+          }
         }
       }
-    } else {
-      throw new Error("El fichero F1 (XML) no contiene desgloses de Energía Activa o es ilegible.");
     }
     
     const termExcedentaria = getArray(jsonData?.Autoconsumo?.EnergiaExcedentaria?.TerminoEnergiaExcedentaria);
-    const pExcedentaria = termExcedentaria.flatMap((t: any) => getArray(t?.Periodo));
     const f1SurplusVolumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
     let totalF1SurplusMWh = 0;
-    if (pExcedentaria && pExcedentaria.length > 0) {
-      for (let idx = 0; idx < pExcedentaria.length; idx++) {
-        const p = pExcedentaria[idx];
-        const pName = p.Periodo || p.periodo || `P${idx + 1}`;
-        const valorStr = p.ValorEnergiaExcedentaria || p.valorEnergiaExcedentaria || '0';
-        let kwh = parseFloat(valorStr.toString().replace(',', '.'));
-        if (isAbono) kwh = Math.abs(kwh);
-        const valorMWh = kwh / 1000.0;
-        if (f1SurplusVolumesByPeriod[pName] !== undefined) {
-          f1SurplusVolumesByPeriod[pName] += valorMWh;
+    if (termExcedentaria && termExcedentaria.length > 0) {
+      for (const t of termExcedentaria) {
+        const pExcedentaria = getArray(t?.Periodo);
+        for (let idx = 0; idx < pExcedentaria.length; idx++) {
+          const p = pExcedentaria[idx];
+          const pName = p.Periodo || p.periodo || `P${idx + 1}`;
+          const valorStr = p.ValorEnergiaExcedentaria || p.valorEnergiaExcedentaria || '0';
+          let kwh = parseFloat(valorStr.toString().replace(',', '.'));
+          if (isAbono) kwh = Math.abs(kwh);
+          const valorMWh = kwh / 1000.0;
+          if (f1SurplusVolumesByPeriod[pName] !== undefined) {
+            f1SurplusVolumesByPeriod[pName] += valorMWh;
+          }
+          totalF1SurplusMWh += valorMWh;
         }
-        totalF1SurplusMWh += valorMWh;
       }
     }
 
     const termReactiva = getArray(jsonData?.EnergiaReactiva?.TerminoEnergiaReactiva);
-    const pReactiva = termReactiva.flatMap((t: any) => getArray(t?.Periodo));
-    if (pReactiva && pReactiva.length > 0) {
-      for (const p of pReactiva) {
-        const pName = p.Periodo || p.periodo;
-        if (pName && f1Readings[pName]) {
-          let val = parseFloat((p.ValorEnergiaReactiva || p.valorEnergiaReactiva || '0').toString().replace(',', '.'));
-          if (isAbono) val = Math.abs(val);
-          f1Readings[pName].reactCons = val;
+    if (termReactiva && termReactiva.length > 0) {
+      for (const t of termReactiva) {
+        const pReactiva = getArray(t?.Periodo);
+        for (let idx = 0; idx < pReactiva.length; idx++) {
+          const p = pReactiva[idx];
+          const pName = p.Periodo || p.periodo || `P${idx + 1}`;
+          if (pName && f1Readings[pName]) {
+            let val = parseFloat((p.ValorEnergiaReactiva || p.valorEnergiaReactiva || '0').toString().replace(',', '.'));
+            if (isAbono) val = Math.abs(val);
+            f1Readings[pName].reactCons += val;
+          }
         }
       }
     }
 
     const termMax = getArray(jsonData?.Potencias?.TerminosPotencia);
-    const pMax = termMax.flatMap((t: any) => getArray(t?.Periodo));
-    if (pMax && pMax.length > 0) {
-      for (const p of pMax) {
-        const pName = p.Periodo || p.periodo;
-        if (pName && f1Readings[pName]) {
-          let val = parseFloat((p.PotenciaMaxDemandada || p.potenciaMaxDemandada || p.PotenciaMaxima || p.potenciaMaxima || '0').toString().replace(',', '.'));
-          if (isAbono) val = Math.abs(val);
-          f1Readings[pName].max = val;
+    if (termMax && termMax.length > 0) {
+      for (const t of termMax) {
+        const pMax = getArray(t?.Periodo);
+        for (let idx = 0; idx < pMax.length; idx++) {
+          const p = pMax[idx];
+          const pName = p.Periodo || p.periodo || `P${idx + 1}`;
+          if (pName && f1Readings[pName]) {
+            let val = parseFloat((p.PotenciaMaxDemandada || p.potenciaMaxDemandada || p.PotenciaMaxima || p.potenciaMaxima || '0').toString().replace(',', '.'));
+            if (isAbono) val = Math.abs(val);
+            f1Readings[pName].max = Math.max(f1Readings[pName].max, val);
+          }
         }
       }
     }

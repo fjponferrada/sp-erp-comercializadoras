@@ -149,8 +149,12 @@ export default function SupplyPointDetailClient({
             <div className="pt-4 border-t border-white/5">
               <p className="text-xs text-white/40 font-semibold mb-2 uppercase tracking-wider">Potencias (kW)</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {['p1c', 'p2c', 'p3c', 'p4c', 'p5c', 'p6c'].map((p, i) => (
-                  supplyPoint[p] ? (
+                {['p1c', 'p2c', 'p3c', 'p4c', 'p5c', 'p6c'].filter(p => {
+                  const is20 = supplyPoint.tariff === '2.0TD' || supplyPoint.tariff === '2.0 A';
+                  if (is20 && !['p1c', 'p2c'].includes(p)) return false;
+                  return true;
+                }).map((p, i) => (
+                  (supplyPoint[p] !== null && supplyPoint[p] !== undefined && supplyPoint[p] !== '') ? (
                     <div key={p} className="bg-white/5 border border-white/5 rounded flex items-center justify-between px-2 py-1">
                       <span className="text-[10px] text-white/40 font-mono">P{i+1}</span>
                       <span className="text-xs text-white">{supplyPoint[p]}</span>

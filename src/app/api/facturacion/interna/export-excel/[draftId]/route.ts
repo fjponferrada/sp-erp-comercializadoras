@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ draftId:
       where: { id: draftId },
       include: {
         f1Invoice: { include: { contract: true, supplyPoint: true } },
-        contract: { include: { supplyPoint: true } },
+        contract: { include: { supplyPoint: true, product: true } },
       }
     });
 
@@ -33,7 +33,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ draftId:
 
     const wsData = [];
     wsData.push(['CUPS', draft.contract?.supplyPoint?.cups || '']);
-    wsData.push(['Tarifa', draft.contract?.supplyPoint?.tariff || '']);
+    wsData.push(['Dirección de Suministro', draft.contract?.supplyPoint?.address || '']);
+    const airTarifa = (draft.contract?.airtableData as any)?.Tarifa || (draft.contract?.airtableData as any)?.tarifa;
+    const tariff = (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || draft.contract?.product?.tariff || draft.contract?.supplyPoint?.tariff || '';
+    wsData.push(['Tarifa', tariff]);
+    wsData.push(['Potencia Contratada', draft.contract?.p1c || draft.contract?.supplyPoint?.p1c || '']);
     wsData.push(['Periodo', `${draft.f1Invoice?.fechaInicio?.toISOString().split('T')[0]} - ${draft.f1Invoice?.fechaFin?.toISOString().split('T')[0]}`]);
     wsData.push([]);
     

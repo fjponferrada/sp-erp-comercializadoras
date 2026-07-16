@@ -152,7 +152,24 @@ export default function EditSupplyPointModal({
                   <h3 className="text-lime-400 font-bold mb-4">Datos Técnicos</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputField label="CNAE" name="cnae" value={formData.cnae} onChange={handleChange} />
-                    <InputField label="Tarifa" name="tariff" value={formData.tariff} onChange={handleChange} />
+                    <div>
+                      <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Tarifa</label>
+                      <select
+                        name="tariff"
+                        value={formData.tariff}
+                        onChange={handleChange}
+                        className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:border-lime-500/50 transition-all outline-none"
+                      >
+                        <option value="">Seleccionar...</option>
+                        <option value="2.0TD">2.0TD</option>
+                        <option value="3.0 A">2.0 A</option>
+                        <option value="3.0TD">3.0TD</option>
+                        <option value="6.1TD">6.1TD</option>
+                        <option value="3.0TDVE">3.0TDVE</option>
+                        <option value="6.1TDVE">6.1TDVE</option>
+                        <option value="6.2TD">6.2TD</option>
+                      </select>
+                    </div>
                     <InputField label="Distribuidora" name="distributor" value={formData.distributor} onChange={handleChange} />
                     <InputField label="Consumo Anual (kWh)" name="annualConsumption" type="number" value={formData.annualConsumption} onChange={handleChange} />
                   </div>

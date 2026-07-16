@@ -1288,6 +1288,13 @@ export async function updateContractFull(formData: FormData) {
     
     const isActivo = newStatus === 'ACTIVO';
 
+    const cDataObj = (existing.airtableData as any) || {};
+    if (tariff) {
+      cDataObj.tarifa = tariff;
+      cDataObj.Tarifa = tariff;
+      cDataObj['Código Tarifa'] = [tariff];
+    }
+
     // Contract data is a snapshot. We no longer update Client or SupplyPoint from here.
     // Update Contract
     await prisma.contract.update({
@@ -1317,6 +1324,7 @@ export async function updateContractFull(formData: FormData) {
         p1e, p2e, p3e, p4e, p5e, p6e,
         p1p, p2p, p3p, p4p, p5p, p6p,
         p1c, p2c, p3c, p4c, p5c, p6c,
+        airtableData: cDataObj,
         filePdfSigned: filePdfSignedUrl || undefined,
         fileAnexoFirmado: fileAnexoFirmadoUrl || undefined,
       }

@@ -72,7 +72,7 @@ export async function GET(request: Request) {
                 data: {
                   numeroFactura: strCodAbono,
                   tipoDocumento: originalF1.tipoDocumento || 'FacturaATR',
-                  fechaEmision: new Date(),
+                  fechaEmision: f1.fechaEmision,
                   fechaInicio: originalF1.fechaInicio,
                   fechaFin: originalF1.fechaFin,
                   saldoFactura: invSaldo,

@@ -519,12 +519,15 @@ async function ingestF1Core(file: File) {
               
               invertNumerics(clonedJson);
 
+              const rDateStr = dGen.DatosGeneralesFactura?.FechaFactura;
               if (clonedJson.DatosGeneralesFacturaATR?.DatosGeneralesFactura) {
                 clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.TipoFactura = 'AR';
                 clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+                if (rDateStr) clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.FechaFactura = rDateStr;
               } else if (clonedJson.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura) {
                 clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.TipoFactura = 'AR';
                 clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+                if (rDateStr) clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.FechaFactura = rDateStr;
               }
               
               const invSaldo = -(originalF1.saldoFactura || 0);
@@ -536,7 +539,7 @@ async function ingestF1Core(file: File) {
                 data: {
                   numeroFactura: strCodAbono,
                   tipoDocumento: originalF1.tipoDocumento,
-                  fechaEmision: originalF1.fechaEmision,
+                  fechaEmision: f.fechaEmision,
                   fechaInicio: originalF1.fechaInicio,
                   fechaFin: originalF1.fechaFin,
                   saldoFactura: invSaldo,

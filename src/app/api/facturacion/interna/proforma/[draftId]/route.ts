@@ -19,7 +19,7 @@ export async function GET(req: Request, context: { params: Promise<{ draftId: st
       include: {
         client: true,
         contract: {
-          include: { supplyPoint: true }
+          include: { supplyPoint: true, product: true }
         }
       }
     });
@@ -34,8 +34,11 @@ export async function GET(req: Request, context: { params: Promise<{ draftId: st
       clientNif: invoice.client?.vatNumber || 'S/N',
       clientAddress: invoice.client?.billingAddress || '',
       cups: invoice.contract?.supplyPoint?.cups || 'S/N',
-      tariff: invoice.contract?.supplyPoint?.tariff || '',
-      contractedPower: invoice.contract?.p1p || '',
+      tariff: (() => {
+        const airTarifa = (invoice.contract?.airtableData as any)?.Tarifa || (invoice.contract?.airtableData as any)?.tarifa;
+        return (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || invoice.contract?.product?.tariff || invoice.contract?.supplyPoint?.tariff || '';
+      })(),
+      contractedPower: invoice.contract?.p1c || invoice.contract?.supplyPoint?.p1c || '',
       billingStart: invoice.billingStart,
       billingEnd: invoice.billingEnd,
       totalMWh: invoice.totalMWh,

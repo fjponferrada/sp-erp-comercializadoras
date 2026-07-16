@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { Calculator, CheckCircle, FileText, AlertCircle, RefreshCw, Eye, EyeOff, Wrench, Trash2, Download, Table } from 'lucide-react';
+import { Calculator, CheckCircle, FileText, AlertCircle, RefreshCw, Eye, EyeOff, Wrench, Trash2, Download, Table, CheckSquare } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 
@@ -318,6 +318,19 @@ export default function FacturacionClient({ pendingF1s, drafts, historicalInvoic
                 <CheckCircle size={20} className="text-[var(--lime)]" /> Borradores Generados
               </h2>
               <div className="flex gap-2">
+                <button
+                  className="btn border border-[var(--border)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-white"
+                  onClick={() => {
+                    if (selectedDrafts.length === validDrafts.length && validDrafts.length > 0) {
+                      setSelectedDrafts([]);
+                    } else {
+                      setSelectedDrafts(validDrafts.map(d => d.id));
+                    }
+                  }}
+                >
+                  <CheckSquare size={18} />
+                  {selectedDrafts.length === validDrafts.length && validDrafts.length > 0 ? 'Deseleccionar Todos' : 'Seleccionar Todos'}
+                </button>
                 <button 
                   className="btn border border-[var(--border)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-red-500" 
                   disabled={selectedDrafts.length === 0 || isDeleting || isConfirming} 

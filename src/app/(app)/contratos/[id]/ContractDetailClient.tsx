@@ -499,10 +499,14 @@ export default function ContractDetailClient({
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Potencias Contratadas (kW)</h3></div>
                   <DataItem label="P1P" value={(initialContract.airtableData as any)?.p1c || initialContract.p1c || supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
                   <DataItem label="P2P" value={(initialContract.airtableData as any)?.p2c || initialContract.p2c || supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
-                  <DataItem label="P3P" value={(initialContract.airtableData as any)?.p3c || initialContract.p3c || supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
-                  <DataItem label="P4P" value={(initialContract.airtableData as any)?.p4c || initialContract.p4c || supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
-                  <DataItem label="P5P" value={(initialContract.airtableData as any)?.p5c || initialContract.p5c || supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
-                  <DataItem label="P6P" value={(initialContract.airtableData as any)?.p6c || initialContract.p6c || supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
+                  {displayTariff !== '2.0TD' && displayTariff !== '2.0 A' && (
+                    <>
+                      <DataItem label="P3P" value={(initialContract.airtableData as any)?.p3c || initialContract.p3c || supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
+                      <DataItem label="P4P" value={(initialContract.airtableData as any)?.p4c || initialContract.p4c || supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
+                      <DataItem label="P5P" value={(initialContract.airtableData as any)?.p5c || initialContract.p5c || supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
+                      <DataItem label="P6P" value={(initialContract.airtableData as any)?.p6c || initialContract.p6c || supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
+                    </>
+                  )}
                 </SectionCard>
               )}
 
