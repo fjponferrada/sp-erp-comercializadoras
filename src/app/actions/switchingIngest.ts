@@ -426,8 +426,11 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             updateSpData.tariff = tramitandoContract.product.tariff;
           }
 
-          if (contractData?.isAutoconsumoModification || contractData?.selfConsumptionType || supplyPoint.selfConsumptionType) {
+          if (contractData?.isAutoconsumoModification || contractData?.selfConsumptionType || supplyPoint.selfConsumptionType || parsedData.tipoAutoconsumo) {
             updateSpData.hasSelfConsumption = true;
+            if (parsedData.tipoAutoconsumo) {
+              updateSpData.selfConsumptionType = parsedData.tipoAutoconsumo;
+            }
           }
 
           await prisma.supplyPoint.update({
@@ -450,9 +453,10 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             }
           }
         }
-      } else if (procesoBase === 'E2') {
+      } else if (procesoBase === 'E2' || procesoBase === 'M2') {
         const lastContract = await prisma.contract.findFirst({
           where: { supplyPointId: { in: possibleSpIds }, status: { notIn: ['BORRADOR', 'Borrador', 'RECHAZADO', 'Rechazado'] } },
+          include: { product: true },
           orderBy: { terminationDate: 'desc' }
         });
         
@@ -460,6 +464,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           const { 
             id, createdAt, updatedAt, 
             airtableId, previousContractId, docusignEnvelopeId,
+            product,
             ...cloneData 
           } = lastContract;
           
@@ -470,7 +475,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           });
           const nextVersion = maxVersionContract ? maxVersionContract.version + 1 : lastContract.version + 1;
 
-          await prisma.contract.create({
+          const newContract = await prisma.contract.create({
             data: {
               ...cloneData as any,
               version: nextVersion,
@@ -481,10 +486,55 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             }
           });
           
-          warning = "Se ha activado una Reposición (E2_05) no iniciada por el sistema. Se ha clonado el último contrato y puesto en ACTIVO.";
+          if (procesoBase === 'M2') {
+            if (lastContract.status.toUpperCase() === 'ACTIVO') {
+              const prevDate = new Date(parsedData.fechaActivacionAlta || new Date());
+              prevDate.setDate(prevDate.getDate() - 1);
+              await prisma.contract.update({
+                where: { id: lastContract.id },
+                data: { terminationDate: prevDate, status: 'FINALIZADO' }
+              });
+            }
+
+            const contractData = lastContract.airtableData as any;
+            const modifiedTariff = typeof contractData?.tarifa === 'string' 
+              ? contractData.tarifa 
+              : (Array.isArray(contractData?.Tarifa) ? contractData.Tarifa[0] : contractData?.Tarifa);
+
+            const updateSpData: any = {
+              p1c: parsedData.potenciasContratadas?.[0] ?? lastContract.p1c,
+              p2c: parsedData.potenciasContratadas?.[1] ?? lastContract.p2c,
+              p3c: parsedData.potenciasContratadas?.[2] ?? lastContract.p3c,
+              p4c: parsedData.potenciasContratadas?.[3] ?? lastContract.p4c,
+              p5c: parsedData.potenciasContratadas?.[4] ?? lastContract.p5c,
+              p6c: parsedData.potenciasContratadas?.[5] ?? lastContract.p6c,
+            };
+
+            if (parsedData.tarifaATR) {
+              updateSpData.tariff = parsedData.tarifaATR;
+            } else if (modifiedTariff) {
+              updateSpData.tariff = modifiedTariff;
+            } else if (lastContract.product?.tariff) {
+              updateSpData.tariff = lastContract.product.tariff;
+            }
+
+            if (parsedData.tipoAutoconsumo) {
+              updateSpData.hasSelfConsumption = true;
+              updateSpData.selfConsumptionType = parsedData.tipoAutoconsumo;
+            }
+
+            await prisma.supplyPoint.update({
+              where: { id: supplyPoint.id },
+              data: updateSpData
+            });
+
+            warning = "Se ha procesado un M2 automático sin contrato TRAMITANDO. Se ha clonado el último contrato activo y actualizado el Supply Point con los datos del XML.";
+          } else {
+            warning = "Se ha activado una Reposición (E2_05) no iniciada por el sistema. Se ha clonado el último contrato y puesto en ACTIVO.";
+          }
         } else {
           tipoError = "CONTRATO_NO_ENCONTRADO_PARA_CLONAR";
-          warning = "Se recibió un paso 05 de E2 (Reposición inesperada), pero no se encontró un contrato previo para clonar.";
+          warning = `Se recibió un paso 05 de ${procesoBase} inesperado, pero no se encontró un contrato previo para clonar.`;
         }
       } else {
         tipoError = "CONTRATO_NO_TRAMITANDO";

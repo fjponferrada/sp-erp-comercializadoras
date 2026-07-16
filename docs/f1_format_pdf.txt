@@ -1,0 +1,257 @@
+ 
+ 
+ 
+ 
+ 
+ 
+FORMATO DE LOS FICHEROS DE 
+INTERCAMBIO 
+ 
+F1 – FACTURACIÓN DEL PEAJE DE 
+ACCESO Y OTROS CONCEPTOS 
+REGULADOS 
+ 
+ENERGÍA ELÉCTRICA 
+16 de mayo de 2024 
+ 
+INF/DE/478/23 
+www.cnmc.es 
+
+ 
+ 
+Expte. INF/DE/478/23 
+     Comisión Nacional de los Mercados y la Competencia              
+    Página 1 de 6 
+C/ Barquillo, 5 – 28004 Madrid - C/ Bolivia, 56 – 08018 Barcelona 
+www.cnmc.es 
+ 
+ 
+ 
+ 
+Índice 
+1. Objeto .......................................................................................................... 2 
+2. Definiciones ................................................................................................. 2 
+3. Ámbito de aplicación .................................................................................... 2 
+4. Formato de los ficheros ............................................................................... 3 
+5. Flujograma ................................................................................................... 3 
+6. Plazos de aplicación .................................................................................... 3 
+7. Formatos de comunicación electrónica........................................................ 3 
+ANEXO: Flujograma del proceso F1 .................................................................. 6 
+ 
+ 
+
+ 
+ 
+Expte. INF/DE/478/23 
+     Comisión Nacional de los Mercados y la Competencia              
+    Página 2 de 6 
+C/ Barquillo, 5 – 28004 Madrid - C/ Bolivia, 56 – 08018 Barcelona 
+www.cnmc.es 
+ 
+ 
+1. Objeto 
+Este documento tiene por objeto definir el formato de los ficheros de 
+intercambio para ejecutar la facturación de peaje de acceso y otros conceptos 
+regulados en el sector de energía eléctrica. Esta información se la facilita el 
+distribuidor de la red a la que está conectado el punto de suministro al 
+comercializador titular del contrato de suministro en el punto en cuestión y que 
+contrata el peaje de acceso con el distribuidor en nombre del consumidor (en 
+adelante, F1). 
+ 
+El formato define el flujo de comunicaciones o mensajes que se intercambian 
+los agentes afectados, los plazos establecidos para el envío de los mensajes 
+así como, los ficheros de comunicación electrónica que deben utilizar para 
+transmitir cada mensaje y ejecutar la facturación del peaje de acceso y otros 
+conceptos regulados indicada en el párrafo anterior.  
+ 
+El formato de los ficheros de intercambio se establece al amparo de lo 
+dispuesto en la Disposición Adicional tercera del Real Decreto 1074/2015, de 
+27 de noviembre.   
+2. Definiciones 
+A continuación se incluyen las definiciones de aplicación al presente 
+documento: 
+ 
+• Paso: Cada uno de los mensajes definidos en el flujo de 
+comunicaciones y representado en el flujograma. 
+• Comercializador: El comercializador es el agente que contrata el 
+acceso con el distribuidor en nombre del consumidor y recibe la 
+información del distribuidor sobre la facturación del peaje de acceso y 
+otros conceptos regulados del punto de suministro. 
+• Distribuidor: Es el propietario de la red de distribución en la que se 
+sitúa en general el punto de suministro, el sujeto que factura las tarifas 
+de acceso, el encargado del sistema de información de los puntos de 
+suministro, y el encargado de la lectura en los puntos de consumo. El 
+distribuidor es el emisor de la información sobre facturación del peaje de 
+acceso y otros conceptos regulados del punto de suministro. 
+3. Ámbito de aplicación 
+El formato del fichero de intercambio F1 es de aplicación al proceso de 
+facturación del peaje de acceso y otros conceptos regulados y afecta a un 
+mensaje o fichero que envía el distribuidor al comercializador en el sector de 
+energía eléctrica. 
+ 
+
+ 
+ 
+Expte. INF/DE/478/23 
+     Comisión Nacional de los Mercados y la Competencia              
+    Página 3 de 6 
+C/ Barquillo, 5 – 28004 Madrid - C/ Bolivia, 56 – 08018 Barcelona 
+www.cnmc.es 
+ 
+ 
+4. Formato de los ficheros 
+El formato del fichero de intercambio F1, facturación del peaje de acceso y 
+otros conceptos regulados, consta de un único paso: 
+• Paso 01: Envío por el distribuidor al comercializador de la información 
+sobre facturación del peaje de acceso y otros conceptos regulados que 
+afectan a un punto de suministro conectado a su red y para el que el 
+comercializador ha contratado en nombre del consumidor el peaje de 
+acceso con el distribuidor. Este fichero se emite para un determinado 
+CUPS el día en que se facture el peaje de acceso. 
+5. Flujograma 
+Se adjuntan como anexo el flujograma correspondiente al formato de fichero de 
+intercambio F1. 
+6. Plazos de aplicación 
+En el artículo 2 del Real Decreto 1718/2012, de 28 de diciembre, se establece 
+que la facturación de los consumidores acogidos a la tarifa de último recurso se 
+efectuará por la empresa comercializadora de último recurso con base a 
+lecturas reales. La lectura será realizada por el encargado de lectura con una 
+periodicidad bimestral, pero en caso de suministros que cuenten con equipos 
+de medida con capacidad para telemedida y telegestión, y efectivamente 
+integrados en los correspondientes sistemas, la lectura se realizará de modo 
+mensual.  
+Asimismo, el artículo 3 del Real Decreto 1718/2012, de 28 de diciembre 
+establece que para los consumidores que contratan su suministro a través de 
+una comercializadora en mercado libre, la lectura de la energía será realizada 
+por el encargado de lectura con una periodicidad máxima bimestral y puesta a 
+disposición de la empresa comercializadora. En el caso de suministros que 
+cuenten con equipos de medida con capacidad para telemedida y telegestión, y 
+efectivamente integrados en los correspondientes sistemas, la lectura se 
+realizará con una periodicidad mensual. 
+7. Formatos de comunicación electrónica 
+En el sitio “Cambio de Comercializador” de la página web de la Comisión 
+Nacional de los Mercados y la Competencia (CNMC) se publican los formatos 
+de los ficheros de intercambio de información entre distribuidores y 
+comercializadores. El formato de los ficheros de intercambio para facturar el 
+peaje de acceso y otros conceptos regulados (F1) consta además de los 
+siguientes documentos contenidos en el sitio de la Web referido anteriormente: 
+
+ 
+ 
+Expte. INF/DE/478/23 
+     Comisión Nacional de los Mercados y la Competencia              
+    Página 4 de 6 
+C/ Barquillo, 5 – 28004 Madrid - C/ Bolivia, 56 – 08018 Barcelona 
+www.cnmc.es 
+ 
+ 
+1. Tablas explicativas o descriptoras de los campos contenidos en los 
+ficheros de intercambio (documento Excel): “CNMC - E - Proceso F1 
+AAAA.MM.DD.xls” en el que se explica el formato de los ficheros de 
+intercambio F1 y se estructura de la siguiente manera: 
+ 
+− Cada pestaña del documento resume un paso del flujograma del 
+anexo e incluye: el nombre de todos los campos contenidos en el 
+mensaje, una breve descripción de cada campo, las condiciones 
+que sobre el campo se definen a nivel de la estructura de los 
+ficheros de intercambio XSD, las condiciones sobre el campo que 
+se definen a nivel distribuidor (comunes para todos los 
+distribuidores), el carácter obligatorio u opcional del campo, el 
+formato del propio campo y por último, para todos aquellos 
+campos que se informan a través de los valores definidos en una 
+tabla maestra, se especifica el número de la tabla maestra en 
+cuestión. 
+− En la cabecera de cada pestaña se encuentra la referencia al 
+mensaje o fichero de intercambio XSD que se describe. 
+2. Los ficheros de intercambio XSD que corresponden a cada paso del 
+flujograma y a cada pestaña del documento Excel descriptor de los 
+campos. 
+ 
+3. Tablas maestras (documento Word de tablas maestras): “CNMC - E - 
+Tablas de códigos - AAAA.MM.DD.doc”. Estas tablas contienen los 
+valores definidos para informar un campo en cuestión de los ficheros de 
+intercambio. 
+ 
+4. Curvas de carga, CCH (documento Word explicativo). Estos documentos 
+contienen una descripción de los ficheros que se deben intercambiar los 
+distribuidores y comercializadores para los tipos de clientes 3, 4 y 5 
+conectados en baja tensión, con medida horaria integrados en los 
+sistemas de telegestión. 
+ 
+• Fichero P5D, “CNMC – E – P5D XXXX.XX.XX”: Fichero que 
+incluye las curvas de carga horaria CCH_VAL1 de los suministros 
+de un comercializador que el distribuidor ha validado ese mismo 
+día. 
+• Fichero F5D, “CNMC – E – F5D XXXX.XX.XX”: Fichero que 
+incluye las curvas de carga horaria CCH_FACT2, de todos los 
+ 
+1 P.O. 10.15 “Calculo del mejor valor de energía en los puntos frontera y cierres de energía del 
+sistema de información de medidas eléctricas”. 
+2 P.O. 10.15 “Calculo del mejor valor de energía en los puntos frontera y cierres de energía del 
+sistema de información de medidas eléctricas”. 
+
+ 
+ 
+Expte. INF/DE/478/23 
+     Comisión Nacional de los Mercados y la Competencia              
+    Página 5 de 6 
+C/ Barquillo, 5 – 28004 Madrid - C/ Bolivia, 56 – 08018 Barcelona 
+www.cnmc.es 
+ 
+ 
+suministros de un comercializador cuyo peaje de acceso ha sido 
+facturado ese mismo día. Se emite para todos los CUPS cuyo 
+fichero F1 correspondiente se ha emitido ese día. 
+• Fichero RF5D, “CNMC – E – P5D XXXX.XX.XX”: Fichero que 
+incluye la nueva curva de carga horaria emitida tras una 
+reclamación interpuesta por el comercializador que no haya dado 
+lugar a una modificación del saldo ATR3. 
+• Fichero B5D, “CNMC – E – P5D XXXX.XX.XX”: Fichero que 
+incluye las curvas de carga horaria CCH_GENNETABETA, de 
+todos los suministros con una modalidad de autoconsumo (con 
+medida de generación) de un comercializador cuyo peaje de 
+acceso ha sido facturado ese mismo día. Se emite para todos los 
+CUPS cuyo fichero F1 correspondiente se ha emitido ese día. 
+• Fichero A5D, “CNMC – E – P5D XXXX.XX.XX”: Fichero que 
+incluye las curvas de carga horaria CCH_AUTOCONS, de todos 
+los suministros con una modalidad de autoconsumo (con medida 
+de generación) de un comercializador cuyo peaje de acceso ha 
+sido facturado ese mismo día. Se emite para todos CUPS cuyo 
+fichero F1 correspondiente se ha emitido ese día. 
+Los ficheros B5D y A5D se pondrán a disposición de los 
+comercializadores a través de los mismos canales establecidos para la 
+puesta a disposición de la CCH_FACT en el P.O. 10.11  
+ 
+A continuación, se detalla el nombre del fichero XSD que debe ser 
+utilizado en el paso 01 del proceso F1:  
+ 
+Paso del 
+Flujograma 
+Mensaje o fichero XSD 
+Descripción del mensaje 
+01 
+Facturacion.xsd 
+Envío de la información sobre la facturación del 
+peaje de acceso y otros conceptos regulados 
+del distribuidor al comercializador. 
+La información relativa a los flujogramas, tablas maestras, tablas explicativas o 
+descriptoras, y ficheros XSD, se mantendrá permanentemente actualizada en 
+la página Web de la CNMC. 
+ 
+ 
+ 
+3 P.O. 10.11 “Tratamiento e intercambio de información entre el Operador del Sistema, 
+encargados de lectura, comercializadores y resto de agentes”. 
+
+ 
+ 
+Expte. INF/DE/478/23 
+     Comisión Nacional de los Mercados y la Competencia              
+    Página 6 de 6 
+C/ Barquillo, 5 – 28004 Madrid - C/ Bolivia, 56 – 08018 Barcelona 
+www.cnmc.es 
+ 
+ 
+ANEXO: Flujograma del proceso F1 
+ 
+ 

@@ -268,6 +268,10 @@ export default function CnmcClient() {
               </a>
             </div>
             
+            <div className="mb-8 p-4 bg-white/5 rounded-xl border border-white/10 text-xs text-white/50 text-left leading-relaxed">
+              *El número que aparece al final del nombre del archivo identifica la versión de la entrega. Utilice &quot;01&quot; para la presentación inicial y actualice la numeración de forma correlativa (&quot;02&quot;, &quot;03&quot;, etc.) en caso de realizar correcciones o nuevas entregas del modelo.
+            </div>
+            
             <div className="flex justify-center">
               <button 
                 onClick={() => setShowModal(false)}

@@ -1,0 +1,1 @@
+const fs = require('fs'); const text = fs.readFileSync('docs/cnmc_temp/word/document.xml', 'utf8'); const stripped = text.replace(/<[^>]+>/g, ' '); fs.writeFileSync('docs/cnmc_doc.txt', stripped); console.log('Done');
