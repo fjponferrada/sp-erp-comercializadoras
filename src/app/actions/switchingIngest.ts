@@ -414,8 +414,14 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             p6p: tramitandoContract.p6p
           };
 
+          const modifiedTariff = typeof contractData?.tarifa === 'string' 
+            ? contractData.tarifa 
+            : (Array.isArray(contractData?.Tarifa) ? contractData.Tarifa[0] : contractData?.Tarifa);
+
           if (parsedData.tarifaATR) {
             updateSpData.tariff = parsedData.tarifaATR;
+          } else if (modifiedTariff) {
+            updateSpData.tariff = modifiedTariff;
           } else if (tramitandoContract.product?.tariff) {
             updateSpData.tariff = tramitandoContract.product.tariff;
           }
