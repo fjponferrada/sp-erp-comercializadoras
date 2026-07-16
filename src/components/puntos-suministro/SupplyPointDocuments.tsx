@@ -162,15 +162,18 @@ export default function SupplyPointDocuments({
                     </td>
                     <td className="p-0 md:p-4 block md:table-cell mb-2 md:mb-0">
                       <div className="bg-black/40 px-2 py-1.5 rounded-lg border border-white/10 flex items-center justify-between">
-                        <code className="text-xs text-lime-400 font-mono break-all line-clamp-1">{doc.url}</code>
+                        <code className="text-xs text-lime-400 font-mono break-all line-clamp-1">
+                          {`https://erp.aed-energia.com/api/cnmc/document?file=${doc.url}&user=AED-CNMC&password=AED%232024Doc`}
+                        </code>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(doc.url);
-                            toast.success('Ruta copiada');
+                            const fullUrl = `https://erp.aed-energia.com/api/cnmc/document?file=${doc.url}&user=AED-CNMC&password=AED%232024Doc`;
+                            navigator.clipboard.writeText(fullUrl);
+                            toast.success('Ruta CNMC copiada');
                           }}
-                          className="ml-2 text-[10px] bg-white/10 px-2 py-1 rounded text-white hover:bg-white/20"
+                          className="ml-2 text-[10px] bg-white/10 px-2 py-1 rounded text-white hover:bg-white/20 shrink-0"
                         >
-                          Copiar
+                          Copiar Enlace
                         </button>
                       </div>
                     </td>
