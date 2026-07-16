@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 let _r2Client: S3Client | null = null;
@@ -70,4 +70,23 @@ export async function generatePresignedUrl(path: string, contentType: string): P
   const publicUrl = `${baseUrl}/${path}`;
 
   return { uploadUrl, publicUrl };
+}
+
+export async function getFileStreamFromR2(path: string): Promise<{ stream: any, contentType: string }> {
+  const bucketName = process.env.R2_BUCKET_NAME || '';
+
+  if (!bucketName) throw new Error('R2_BUCKET_NAME is not configured.');
+
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: path,
+  });
+
+  const client = getR2Client();
+  const response = await client.send(command);
+
+  return {
+    stream: response.Body,
+    contentType: response.ContentType || 'application/octet-stream',
+  };
 }
