@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const searchTerm = searchParams.get('search') || '';
     const filterType = searchParams.get('type') || '';
+    const status = searchParams.get('status') || '';
     const dateFrom = searchParams.get('from') || '';
     const dateTo = searchParams.get('to') || '';
 
@@ -22,6 +23,12 @@ export async function GET(request: Request) {
 
     if (filterType) {
       whereClause.invoiceType = filterType;
+    }
+
+    if (status === 'communicated') {
+      whereClause.communicatedAt = { not: null };
+    } else if (status === 'pending') {
+      whereClause.communicatedAt = null;
     }
 
     if (dateFrom || dateTo) {

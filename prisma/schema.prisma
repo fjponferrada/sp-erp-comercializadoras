@@ -52,8 +52,10 @@ model Brand {
   codigoMarca           String?             @unique
   address               String?
   email                 String?
+  supportEmail          String?
   contactPerson         String?
   phone                 String?
+  whatsappPhone         String?
   clave                 String?
   enviosPorHora         Int?
   facturaElectrica      String?
@@ -67,6 +69,7 @@ model Brand {
   envioCliente          Boolean             @default(false)
   envioCorreo           Boolean             @default(false)
   logoUrl               String?
+  invoiceLogoUrl        String?
   faviconUrl            String?
   accentColor           String              @default("#DEFF9A")
   bgColor               String              @default("#0B0F19")

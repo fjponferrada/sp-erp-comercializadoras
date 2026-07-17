@@ -17,7 +17,7 @@ export default async function InvoicesPage() {
 
   // Obtenemos solo la primera página de facturas para la carga inicial
   const { getPaginatedInvoicesAction } = await import('@/app/actions/invoiceActions');
-  const result = await getPaginatedInvoicesAction(1, 100, '', '');
+  const result = await getPaginatedInvoicesAction(1, 100, '', '', '', '', '');
   const initialInvoices = result.success ? result.invoices : [];
   const totalCount = result.success ? result.totalCount : 0;
 

@@ -149,8 +149,20 @@ export default function MarcasClient({ initialBrands }: { initialBrands: any[] }
                                     <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.address || ''} onChange={e => handleChange('address', e.target.value)} />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-slate-400 mb-1 block">Teléfono</label>
+                                    <label className="text-xs text-slate-400 mb-1 block">Email (General)</label>
+                                    <input type="email" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.email || ''} onChange={e => handleChange('email', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Email (At. Cliente / Facturación)</label>
+                                    <input type="email" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.supportEmail || ''} onChange={e => handleChange('supportEmail', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Teléfono Fijo</label>
                                     <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.phone || ''} onChange={e => handleChange('phone', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Teléfono WhatsApp</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.whatsappPhone || ''} onChange={e => handleChange('whatsappPhone', e.target.value)} />
                                   </div>
                                   <div>
                                     <label className="text-xs text-slate-400 mb-1 block">Persona de contacto</label>
@@ -234,8 +246,64 @@ export default function MarcasClient({ initialBrands }: { initialBrands: any[] }
                                 </h3>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                   <div style={{ gridColumn: 'span 2' }}>
-                                    <label className="text-xs text-slate-400 mb-1 block">URL Logo / Imagen</label>
-                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.logoUrl || ''} onChange={e => handleChange('logoUrl', e.target.value)} />
+                                    <label className="text-xs text-slate-400 mb-1 block">Logotipo Pequeño (Panel)</label>
+                                    <div className="flex gap-2">
+                                      <input type="text" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.logoUrl || ''} onChange={e => handleChange('logoUrl', e.target.value)} placeholder="https://..." />
+                                      <input 
+                                        type="file" 
+                                        accept="image/*"
+                                        id="logo-upload"
+                                        style={{ display: 'none' }}
+                                        onChange={async (e) => {
+                                          const file = e.target.files?.[0];
+                                          if (!file) return;
+                                          const form = new FormData();
+                                          form.append('file', file);
+                                          try {
+                                            const res = await fetch('/api/upload', { method: 'POST', body: form });
+                                            if (res.ok) {
+                                              const data = await res.json();
+                                              handleChange('logoUrl', data.url);
+                                            } else {
+                                              alert("Error subiendo el logo");
+                                            }
+                                          } catch (err) {
+                                            alert("Error de red al subir");
+                                          }
+                                        }}
+                                      />
+                                      <label htmlFor="logo-upload" className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg cursor-pointer text-sm flex items-center justify-center">Subir</label>
+                                    </div>
+                                  </div>
+                                  <div style={{ gridColumn: 'span 2' }}>
+                                    <label className="text-xs text-slate-400 mb-1 block">Logotipo Completo (Facturas e Emails)</label>
+                                    <div className="flex gap-2">
+                                      <input type="text" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.invoiceLogoUrl || ''} onChange={e => handleChange('invoiceLogoUrl', e.target.value)} placeholder="https://..." />
+                                      <input 
+                                        type="file" 
+                                        accept="image/*"
+                                        id="invoice-logo-upload"
+                                        style={{ display: 'none' }}
+                                        onChange={async (e) => {
+                                          const file = e.target.files?.[0];
+                                          if (!file) return;
+                                          const form = new FormData();
+                                          form.append('file', file);
+                                          try {
+                                            const res = await fetch('/api/upload', { method: 'POST', body: form });
+                                            if (res.ok) {
+                                              const data = await res.json();
+                                              handleChange('invoiceLogoUrl', data.url);
+                                            } else {
+                                              alert("Error subiendo el logo");
+                                            }
+                                          } catch (err) {
+                                            alert("Error de red al subir");
+                                          }
+                                        }}
+                                      />
+                                      <label htmlFor="invoice-logo-upload" className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg cursor-pointer text-sm flex items-center justify-center">Subir</label>
+                                    </div>
                                   </div>
                                   <div>
                                     <label className="text-xs text-slate-400 mb-1 block">Color Acento (HEX)</label>
@@ -243,6 +311,37 @@ export default function MarcasClient({ initialBrands }: { initialBrands: any[] }
                                       <input type="color" value={formData.accentColor || '#DEFF9A'} onChange={e => handleChange('accentColor', e.target.value)} className="h-9 w-9 rounded cursor-pointer bg-transparent border-0 p-0" />
                                       <input type="text" className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white uppercase" value={formData.accentColor || ''} onChange={e => handleChange('accentColor', e.target.value)} />
                                     </div>
+                                  </div>
+                                </div>
+
+                                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                                  Cuentas Bancarias para Transferencias
+                                </h3>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Entidad 1</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.bankName1 || ''} onChange={e => handleChange('bankName1', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">IBAN 1</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.bankIban1 || ''} onChange={e => handleChange('bankIban1', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Entidad 2</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.bankName2 || ''} onChange={e => handleChange('bankName2', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">IBAN 2</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.bankIban2 || ''} onChange={e => handleChange('bankIban2', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Entidad 3</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.bankName3 || ''} onChange={e => handleChange('bankName3', e.target.value)} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">IBAN 3</label>
+                                    <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white" value={formData.bankIban3 || ''} onChange={e => handleChange('bankIban3', e.target.value)} />
                                   </div>
                                 </div>
 

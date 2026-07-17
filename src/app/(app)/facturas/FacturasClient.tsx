@@ -8,6 +8,7 @@ import PaginationFooter from '@/components/PaginationFooter';
 import { formatDateUTC } from '@/lib/utils/date';
 import SendInvoicesButton from '@/components/facturas/SendInvoicesButton';
 import RequestPaymentButton from '@/components/facturas/RequestPaymentButton';
+import ForceResendButton from '@/components/facturas/ForceResendButton';
 
 interface Client {
   id: string;
@@ -61,6 +62,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [communicationFilter, setCommunicationFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   
@@ -74,10 +76,12 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   // Fetch from server action when filters or pagination change
   React.useEffect(() => {
-    if (currentPage === 1 && itemsPerPage === 100 && searchTerm === '' && filterType === '' && dateFrom === '' && dateTo === '') {
+    if (refreshKey === 0 && currentPage === 1 && itemsPerPage === 100 && searchTerm === '' && filterType === '' && dateFrom === '' && dateTo === '' && communicationFilter === '') {
       setInvoices(initialInvoices);
       setTotalCount(initialTotalCount);
       return;
@@ -87,7 +91,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
       setIsLoading(true);
       try {
         const { getPaginatedInvoicesAction } = await import('@/app/actions/invoiceActions');
-        const result = await getPaginatedInvoicesAction(currentPage, itemsPerPage, searchTerm, filterType, dateFrom, dateTo);
+        const result = await getPaginatedInvoicesAction(currentPage, itemsPerPage, searchTerm, filterType, dateFrom, dateTo, communicationFilter);
         if (result.success && result.invoices) {
           setInvoices(result.invoices as Invoice[]);
           setTotalCount(result.totalCount || 0);
@@ -104,13 +108,14 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
     }, 300); // 300ms debounce for typing in search
 
     return () => clearTimeout(debounceId);
-  }, [currentPage, itemsPerPage, searchTerm, filterType, dateFrom, dateTo]);
+  }, [currentPage, itemsPerPage, searchTerm, filterType, dateFrom, dateTo, communicationFilter, refreshKey]);
 
   // Reset page when filters change
   React.useEffect(() => {
     setCurrentPage(1);
     setSelectedInvoiceIds(new Set()); // Clear selection when filters change
-  }, [searchTerm, filterType, itemsPerPage, dateFrom, dateTo]);
+    setLastSelectedIndex(null);
+  }, [searchTerm, filterType, itemsPerPage, dateFrom, dateTo, communicationFilter]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -119,13 +124,28 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
     } else {
       setSelectedInvoiceIds(new Set());
     }
+    setLastSelectedIndex(null);
   };
 
-  const handleSelectInvoice = (id: string, checked: boolean) => {
+  const handleSelectInvoice = (index: number, id: string, checked: boolean, e: React.ChangeEvent<HTMLInputElement>) => {
     const newSelected = new Set(selectedInvoiceIds);
-    if (checked) newSelected.add(id);
-    else newSelected.delete(id);
+    
+    if ((e.nativeEvent as any).shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      
+      for (let i = start; i <= end; i++) {
+        const invId = invoices[i].id;
+        if (checked) newSelected.add(invId);
+        else newSelected.delete(invId);
+      }
+    } else {
+      if (checked) newSelected.add(id);
+      else newSelected.delete(id);
+    }
+    
     setSelectedInvoiceIds(newSelected);
+    setLastSelectedIndex(index);
   };
 
   return (
@@ -165,6 +185,21 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
             <option value="Rectificativa">Rectificativa</option>
           </select>
         </div>
+        {showCommunicationStatus && (
+          <div style={{ position: 'relative', minWidth: '150px' }}>
+            <Filter size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1 }} />
+            <select 
+              value={communicationFilter}
+              onChange={(e) => setCommunicationFilter(e.target.value)}
+              className="form-input"
+              style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
+            >
+              <option value="">Envío: Todas</option>
+              <option value="communicated">Comunicadas</option>
+              <option value="pending">Pte. Envío</option>
+            </select>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <input 
             type="date" 
@@ -188,7 +223,10 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
         {showPaymentButtons && (
           <SendInvoicesButton 
             selectedInvoiceIds={Array.from(selectedInvoiceIds)} 
-            onSentSuccess={() => setSelectedInvoiceIds(new Set())}
+            onSentSuccess={() => {
+              setSelectedInvoiceIds(new Set());
+              setRefreshKey(k => k + 1);
+            }}
           />
         )}
         <button 
@@ -199,6 +237,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
             if (filterType) params.set('type', filterType);
             if (dateFrom) params.set('from', dateFrom);
             if (dateTo) params.set('to', dateTo);
+            if (communicationFilter) params.set('status', communicationFilter);
             window.open(`/api/facturas/export?${params.toString()}`, '_blank');
           }}
         >
@@ -275,6 +314,11 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                       <Download size={16} />
                     </a>
                   )}
+                  {invoice.communicatedAt && (
+                    <div style={{ background: 'rgba(255,255,255,0.05)', padding: '6px', borderRadius: '6px' }}>
+                      <ForceResendButton invoiceId={invoice.id} />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -305,13 +349,13 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
               </tr>
             </thead>
             <tbody>
-              {invoices.map((invoice) => (
+              {invoices.map((invoice, index) => (
                 <tr key={invoice.id}>
                   <td style={{ textAlign: 'center' }}>
                     <input 
                       type="checkbox" 
                       checked={selectedInvoiceIds.has(invoice.id)}
-                      onChange={(e) => handleSelectInvoice(invoice.id, e.target.checked)}
+                      onChange={(e) => handleSelectInvoice(index, invoice.id, e.target.checked, e)}
                       style={{ cursor: 'pointer' }}
                     />
                   </td>
@@ -425,6 +469,9 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                           <RequestPaymentButton invoiceId={invoice.id} type="transfer" />
                           <RequestPaymentButton invoiceId={invoice.id} type="overdue" />
                         </>
+                      )}
+                      {invoice.communicatedAt && (
+                        <ForceResendButton invoiceId={invoice.id} />
                       )}
                     </div>
                     {!invoice.pdfUrl && <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', marginTop: '4px' }}>Pendiente de PDF</div>}

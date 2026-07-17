@@ -43,12 +43,24 @@ export async function generateViewport() {
   };
 }
 
+import { Toaster } from 'react-hot-toast';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AuthProvider>
           <PWAInstall />
+          <Toaster 
+            position="top-center" 
+            toastOptions={{
+              style: {
+                background: 'var(--bg-elevated, #1e293b)',
+                color: 'var(--text-primary, #f8fafc)',
+                border: '1px solid var(--border, #334155)'
+              }
+            }} 
+          />
           {children}
         </AuthProvider>
       </body>

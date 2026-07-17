@@ -361,6 +361,83 @@ export async function importInvoicesAction(invoicesData: any[]) {
 import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key');
 
+function extractClientFirstName(client: any): string {
+  if (client.firstName?.trim()) {
+    return client.firstName.trim();
+  }
+
+  const airtableData = typeof client.airtableData === 'string' 
+    ? JSON.parse(client.airtableData) 
+    : (client.airtableData || {});
+    
+  if (airtableData) {
+    const airtableNombre = airtableData['Nombre'] || airtableData['NOMBRE'] || airtableData['nombre'];
+    if (airtableNombre) return String(airtableNombre).trim();
+  }
+
+  const fullName = client.businessName || '';
+  const apellidos = `${client.lastName || ''} ${client.lastName2 || ''}`.trim();
+  
+  if (apellidos && fullName.toLowerCase().includes(apellidos.toLowerCase())) {
+    const regex = new RegExp(apellidos, 'i');
+    const extracted = fullName.replace(regex, '').trim();
+    if (extracted) return extracted;
+  }
+
+  return fullName || 'Cliente';
+}
+
+function generateInvoiceEmailContent(invoice: any, brand: any) {
+  const brandName = brand?.name || 'Su Comercializadora';
+  const brandColor = brand?.accentColor || '#4F46E5';
+  const logoUrl = brand?.invoiceLogoUrl || brand?.logoUrl;
+  const logoHtml = logoUrl 
+    ? `<div style="text-align: left; margin-top: 40px;"><img src="${logoUrl}" alt="${brandName}" style="max-height: 80px;" /></div>`
+    : '';
+
+  const clientName = extractClientFirstName(invoice.client);
+  
+  const formatDate = (date: Date) => date ? new Date(date).toLocaleDateString('es-ES') : '';
+  const billingPeriod = (invoice.billingStart && invoice.billingEnd) 
+    ? `, por el periodo facturado del ${formatDate(invoice.billingStart)} al ${formatDate(invoice.billingEnd)}`
+    : '';
+
+  let contactMethods = `respondiendo a este email`;
+  if (brand?.whatsappPhone || brand?.phone) {
+    contactMethods += `, o `;
+    const methods = [];
+    if (brand?.phone) methods.push(`en el <a href="tel:${brand.phone.replace(/\\D/g, '')}" style="color: ${brandColor}; text-decoration: none; font-weight: bold;">${brand.phone}</a>`);
+    if (brand?.whatsappPhone) methods.push(`por Whatsapp <a href="https://wa.me/${brand.whatsappPhone.replace(/\\D/g, '')}" style="color: ${brandColor}; text-decoration: none; font-weight: bold;">haciendo clic aquí</a>`);
+    contactMethods += methods.join(' o ');
+  }
+
+  const isAbono = invoice.invoiceType === 'Abono';
+  const totalLabel = isAbono ? 'Total a tu favor' : 'Total a pagar';
+  const displayAmount = isAbono ? -Math.abs(invoice.totalAmount) : invoice.totalAmount;
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px; color: #333;">
+      <p>Hola <b>${clientName}</b>,</p>
+      <p>Te adjuntamos mediante enlace seguro la factura con número <b>${invoice.invoiceNumber}</b>, asociada a tu suministro <b>${invoice.supplyPoint?.cups || 'Desconocido'}</b>${billingPeriod}.</p>
+      
+      <div style="margin: 30px 0; padding: 20px; background: ${brandColor}15; border-left: 4px solid ${brandColor}; border-radius: 4px;">
+        <p style="margin: 0 0 10px 0;"><b>${totalLabel}:</b> <span style="font-size: 1.2rem; color: ${brandColor};">${displayAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span></p>
+        <p style="margin: 0;"><b>Fecha de vencimiento:</b> ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('es-ES') : 'A la vista'}</p>
+      </div>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${invoice.pdfUrl}" style="background-color: ${brandColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Ver y Descargar Factura</a>
+      </div>
+
+      <p>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros ${contactMethods}.</p>
+      <p>Gracias por confiar en nosotros,</p>
+      <p><b>El Equipo ${brandName}</b></p>
+      
+      ${logoHtml}
+    </div>
+  `;
+}
+
 export async function sendPendingInvoicesAction() {
   try {
     // Buscar facturas que tengan PDF, email de cliente, y no hayan sido comunicadas
@@ -388,27 +465,12 @@ export async function sendPendingInvoicesAction() {
       try {
         const brand = invoice.client.brand;
         const brandName = brand?.name || 'Su Comercializadora';
-        const brandColor = brand?.accentColor || '#4F46E5';
-        const logoHtml = brand?.logoUrl 
-          ? `<img src="${brand.logoUrl}" alt="${brandName}" style="max-height: 60px; margin-bottom: 20px;" />`
-          : '';
-
-        const emailContent = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
-            ${logoHtml}
-            <p>Hola <b>${invoice.client.businessName || invoice.client.firstName}</b>,</p>
-            <p>Te adjuntamos (enlace seguro) la factura con número <b>${invoice.invoiceNumber}</b>, correspondiente a tu suministro <b>${invoice.supplyPoint?.cups || 'Desconocido'}</b>.</p>
-            <p><a href="${invoice.pdfUrl}" style="background-color: ${brandColor}; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0; font-weight: bold;">Descargar Factura en PDF</a></p>
-            <p>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email.</p>
-            <p>Gracias por confiar en nosotros,</p>
-            <p><b>El Equipo de ${brandName}</b></p>
-          </div>
-        `;
+        const emailContent = generateInvoiceEmailContent(invoice, brand);
 
         await resend.emails.send({
           from: `facturacion@${brand?.slug || 'crm'}.com`, // Se asume que los dominios están configurados en Resend
           to: invoice.client.contactEmail!,
-          subject: `[${brandName}] Aviso de factura emitida - ${invoice.invoiceNumber}`,
+          subject: `Aviso de factura emitida - ${invoice.invoiceNumber}`,
           html: emailContent
         });
 
@@ -430,6 +492,45 @@ export async function sendPendingInvoicesAction() {
 
   } catch (error: any) {
     console.error("Error en envío masivo:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function forceResendInvoiceAction(invoiceId: string) {
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        client: { include: { brand: true } },
+        supplyPoint: true
+      }
+    });
+
+    if (!invoice || !invoice.pdfUrl || !invoice.client.contactEmail) {
+      return { success: false, error: "La factura no tiene PDF o el cliente no tiene Email válido." };
+    }
+
+    const brand = invoice.client.brand;
+    const brandName = brand?.name || 'Su Comercializadora';
+    const emailContent = generateInvoiceEmailContent(invoice, brand);
+
+    await resend.emails.send({
+      from: brand?.supportEmail ? `${brandName} <${brand.supportEmail}>` : `${brandName} <facturacion@${brand?.domain || 'aed-energia.com'}>`,
+      to: invoice.client.contactEmail,
+      subject: `Aviso de factura emitida - ${invoice.invoiceNumber}`,
+      html: emailContent,
+      ...(brand?.supportEmail && { reply_to: brand.supportEmail })
+    });
+
+    // Actualizar fecha de comunicación
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { communicatedAt: new Date() }
+    });
+
+    return { success: true, message: "Factura reenviada correctamente." };
+  } catch (error: any) {
+    console.error("Error forzando reenvío:", error);
     return { success: false, error: error.message };
   }
 }
@@ -466,28 +567,14 @@ export async function sendSelectedInvoicesAction(invoiceIds: string[]) {
       try {
         const brand = invoice.client.brand;
         const brandName = brand?.name || 'Su Comercializadora';
-        const brandColor = brand?.accentColor || '#4F46E5';
-        const logoHtml = brand?.logoUrl 
-          ? `<img src="${brand.logoUrl}" alt="${brandName}" style="max-height: 60px; margin-bottom: 20px;" />`
-          : '';
-
-        const emailContent = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
-            ${logoHtml}
-            <p>Hola <b>${invoice.client.businessName || invoice.client.firstName}</b>,</p>
-            <p>Te adjuntamos (enlace seguro) la factura con número <b>${invoice.invoiceNumber}</b>, correspondiente a tu suministro <b>${invoice.supplyPoint?.cups || 'Desconocido'}</b>.</p>
-            <p><a href="${invoice.pdfUrl}" style="background-color: ${brandColor}; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0; font-weight: bold;">Descargar Factura en PDF</a></p>
-            <p>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email.</p>
-            <p>Gracias por confiar en nosotros,</p>
-            <p><b>El Equipo de ${brandName}</b></p>
-          </div>
-        `;
+        const emailContent = generateInvoiceEmailContent(invoice, brand);
 
         await resend.emails.send({
-          from: `facturacion@${brand?.slug || 'crm'}.com`,
+          from: brand?.supportEmail ? `${brandName} <${brand.supportEmail}>` : `${brandName} <facturacion@${brand?.domain || 'aed-energia.com'}>`,
           to: invoice.client.contactEmail!,
-          subject: `[${brandName}] Aviso de factura emitida - ${invoice.invoiceNumber}`,
-          html: emailContent
+          subject: `Aviso de factura emitida - ${invoice.invoiceNumber}`,
+          html: emailContent,
+          ...(brand?.supportEmail && { reply_to: brand.supportEmail })
         });
 
         // Marcar como enviada
@@ -508,6 +595,29 @@ export async function sendSelectedInvoicesAction(invoiceIds: string[]) {
 
   } catch (error: any) {
     console.error("Error en envío seleccionado:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function markSelectedInvoicesAsCommunicatedAction(invoiceIds: string[]) {
+  try {
+    if (!invoiceIds || invoiceIds.length === 0) {
+      return { success: false, error: "No se han seleccionado facturas." };
+    }
+
+    const res = await prisma.invoice.updateMany({
+      where: { 
+        id: { in: invoiceIds },
+        communicatedAt: null
+      },
+      data: { communicatedAt: new Date() }
+    });
+
+    revalidatePath('/facturas');
+    return { success: true, count: res.count, message: `Se han marcado ${res.count} facturas como comunicadas.` };
+
+  } catch (error: any) {
+    console.error("Error al marcar como comunicadas:", error);
     return { success: false, error: error.message };
   }
 }
@@ -570,7 +680,7 @@ export async function createPenalizationInvoiceAction(data: {
     await resend.emails.send({
       from: `facturacion@${brand?.slug || 'crm'}.com`,
       to: contract.client.contactEmail || contract.client.invoiceEmail || 'dummy@example.com',
-      subject: `[${brandName}] Incumplimiento de Contrato - Factura de Penalización`,
+      subject: `Incumplimiento de Contrato - Factura de Penalización`,
       html: emailContent
     });
 
@@ -601,9 +711,12 @@ export async function requestPaymentTransferAction(invoiceId: string, type: 'tra
     const brand = invoice.client.brand;
     const brandName = brand?.name || 'Su Comercializadora';
     const brandColor = brand?.accentColor || '#4F46E5';
-    const logoHtml = brand?.logoUrl 
-      ? `<img src="${brand.logoUrl}" alt="${brandName}" style="max-height: 60px; margin-bottom: 20px;" />`
+    const logoUrl = brand?.invoiceLogoUrl || brand?.logoUrl;
+    const logoHtml = logoUrl 
+      ? `<div style="text-align: left; margin-top: 40px;"><img src="${logoUrl}" alt="${brandName}" style="max-height: 80px;" /></div>`
       : '';
+
+    const clientName = extractClientFirstName(invoice.client);
 
     const banks = [];
     if (brand?.bankName1 && brand?.bankIban1) banks.push({ name: brand.bankName1, iban: brand.bankIban1 });
@@ -611,38 +724,58 @@ export async function requestPaymentTransferAction(invoiceId: string, type: 'tra
     if (brand?.bankName3 && brand?.bankIban3) banks.push({ name: brand.bankName3, iban: brand.bankIban3 });
     if (banks.length === 0) banks.push({ name: 'Cuenta por defecto', iban: 'ES53 2100 4013 4922 0034 1288' });
 
-    let banksHtml = '';
-    banks.forEach((b, i) => {
+    let banksHtml = `
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <thead>
+          <tr style="background-color: #f3f4f6;">
+            <th style="padding: 10px; border: 1px solid #ccc; text-align: left; font-weight: bold;">Entidad</th>
+            <th style="padding: 10px; border: 1px solid #ccc; text-align: left; font-weight: bold;">IBAN</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    banks.forEach((b) => {
       banksHtml += `
-        <table style="width: 100%; border-collapse: collapse; margin-top: ${i===0 ? '20px' : '0'}; margin-bottom: ${i===banks.length-1 ? '20px' : '0'};">
           <tr>
-            <td style="padding: 10px; border: 1px solid #ccc; font-weight: bold; width: 30%; border-bottom: none;">Entidad</td>
-            <td style="padding: 10px; border: 1px solid #ccc; border-left: none; border-bottom: none;">${b.name}</td>
+            <td style="padding: 10px; border: 1px solid #ccc;">${b.name}</td>
+            <td style="padding: 10px; border: 1px solid #ccc; font-family: monospace; font-size: 14px;">${b.iban}</td>
           </tr>
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ccc; font-weight: bold;">IBAN</td>
-            <td style="padding: 10px; border: 1px solid #ccc; border-left: none; font-family: monospace; font-size: 16px;">${b.iban}</td>
-          </tr>
-        </table>
       `;
     });
+    banksHtml += `
+        </tbody>
+      </table>
+    `;
 
-    const textIntro = type === 'overdue' 
-      ? `Te recordamos que <b>tienes vencido el pago</b> de tu factura adjunta, por importe de <b><span style="color: ${brandColor}">${invoice.totalAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span></b>.`
-      : `Te recordamos que no tienes domiciliado el pago de tu factura adjunta, por importe de <b><span style="color: ${brandColor}">${invoice.totalAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span></b>.`;
+    const isAbono = invoice.invoiceType === 'Abono';
+    const displayAmount = isAbono ? -Math.abs(invoice.totalAmount) : invoice.totalAmount;
 
-    const textAction = type === 'overdue'
-      ? `Para el abono de la cantidad pendiente puedes realizarnos transferencia o ingreso en cajero automático en la siguiente cuenta, indicando tu nombre y el número de factura (<b>${invoice.invoiceNumber}</b>):`
-      : `Para liquidar tu factura puedes realizarnos transferencia bancaria o ingreso en cajero, en la siguiente cuenta bancaria, indicando tu nombre y el número de factura (<b>${invoice.invoiceNumber}</b>):`;
+    let textIntro = '';
+    let textAction = '';
+    let subject = '';
 
-    const subject = type === 'overdue'
-      ? `[${brandName}] Factura Vencida - ${invoice.invoiceNumber}`
-      : `[${brandName}] Pago Pendiente - Factura ${invoice.invoiceNumber}`;
+    if (isAbono) {
+      subject = `Saldo a tu favor - Factura ${invoice.invoiceNumber}`;
+      textIntro = `Te informamos que tienes a tu favor la factura adjunta, por importe de <b><span style="color: ${brandColor}">${displayAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span></b>.`;
+      textAction = `Esta cantidad se compensará automáticamente en tus próximas facturas, o se te devolverá a tu cuenta bancaria si así corresponde.`;
+      banksHtml = ''; // No enviamos nuestras cuentas bancarias si les debemos dinero
+    } else {
+      subject = type === 'overdue'
+        ? `Factura Vencida - ${invoice.invoiceNumber}`
+        : `Pago Pendiente - Factura ${invoice.invoiceNumber}`;
+
+      textIntro = type === 'overdue' 
+        ? `Te recordamos que <b>tienes vencido el pago</b> de tu factura adjunta, por importe de <b><span style="color: ${brandColor}">${displayAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span></b>.`
+        : `Te recordamos que no tienes domiciliado el pago de tu factura adjunta, por importe de <b><span style="color: ${brandColor}">${displayAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span></b>.`;
+
+      textAction = type === 'overdue'
+        ? `Para el abono de la cantidad pendiente puedes realizarnos transferencia o ingreso en cajero automático en la siguiente cuenta, indicando tu nombre y el número de factura (<b>${invoice.invoiceNumber}</b>):`
+        : `Para liquidar tu factura puedes realizarnos transferencia bancaria o ingreso en cajero, en la siguiente cuenta bancaria, indicando tu nombre y el número de factura (<b>${invoice.invoiceNumber}</b>):`;
+    }
 
     const emailContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
-        ${logoHtml}
-        <p>Estimad@ cliente, <b>${invoice.client.businessName || invoice.client.firstName}</b>:</p>
+        <p>Estimad@ cliente, <b>${clientName}</b>:</p>
         <p>${textIntro}</p>
         <p><a href="${invoice.pdfUrl}" style="background-color: ${brandColor}; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0; font-weight: bold;">Descargar Factura</a></p>
         <p>${textAction}</p>
@@ -650,15 +783,17 @@ export async function requestPaymentTransferAction(invoiceId: string, type: 'tra
         ${banksHtml}
         
         <p>Un saludo.</p>
-        <p><b>Atención al Cliente - ${brandName}</b></p>
+        <p><b>El Equipo ${brandName}</b></p>
+        ${logoHtml}
       </div>
     `;
 
     await resend.emails.send({
-      from: `facturacion@${brand?.slug || 'crm'}.com`,
+      from: brand?.supportEmail ? `${brandName} <${brand.supportEmail}>` : `${brandName} <facturacion@${brand?.domain || 'aed-energia.com'}>`,
       to: invoice.client.contactEmail,
       subject: subject,
-      html: emailContent
+      html: emailContent,
+      ...(brand?.supportEmail && { reply_to: brand.supportEmail })
     });
 
     return { success: true, message: `Aviso de ${type === 'overdue' ? 'factura vencida' : 'pago'} enviado correctamente` };
@@ -674,7 +809,8 @@ export async function getPaginatedInvoicesAction(
   searchTerm: string, 
   filterType: string,
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  communicationFilter?: string
 ) {
   try {
     const { getInvoiceVisibilityFilter } = await import('@/lib/permissions');
@@ -684,6 +820,12 @@ export async function getPaginatedInvoicesAction(
 
     if (filterType) {
       whereClause.invoiceType = filterType;
+    }
+
+    if (communicationFilter === 'communicated') {
+      whereClause.communicatedAt = { not: null };
+    } else if (communicationFilter === 'pending') {
+      whereClause.communicatedAt = null;
     }
 
     if (dateFrom || dateTo) {
