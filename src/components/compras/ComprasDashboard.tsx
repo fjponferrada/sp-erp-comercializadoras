@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Topbar from '@/components/Topbar';
 
-export default function ComprasDashboard({ initialForecasts, activeContracts, lastTrainingDate }: any) {
+export default function ComprasDashboard({ initialForecasts, activeContracts, lastTrainingDate, projectionData }: any) {
   const [activeTab, setActiveTab] = useState('prediccion');
   const [loading, setLoading] = useState(false);
   const [training, setTraining] = useState(false);
@@ -218,6 +218,47 @@ export default function ComprasDashboard({ initialForecasts, activeContracts, la
                     </button>
                   </div>
                 </div>
+
+                {projectionData && projectionData.length > 0 && (
+                  <div className="animate-fade-in-up" style={{ marginTop: '24px', background: 'var(--bg-elevated)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                    <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-base)' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Proyección de Consumo a 12 Meses (Cartera Actual)</h3>
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-base)', borderBottom: '2px solid var(--border)' }}>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Concepto</th>
+                            {projectionData.map((p: any, i: number) => (
+                              <th key={i} style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p.monthName}</th>
+                            ))}
+                            <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--primary)' }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', transition: 'background 0.2s' }} className="hover:bg-gray-50/5 dark:hover:bg-white/5">
+                            <td style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Consumo Estimado (MWh)</td>
+                            {projectionData.map((p: any, i: number) => (
+                              <td key={i} style={{ padding: '12px 16px', color: 'var(--text-primary)' }}>{p.mwh.toLocaleString('es-ES', { maximumFractionDigits: 0 })}</td>
+                            ))}
+                            <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--primary)' }}>
+                              {projectionData.reduce((acc: number, p: any) => acc + p.mwh, 0).toLocaleString('es-ES', { maximumFractionDigits: 0 })}
+                            </td>
+                          </tr>
+                          <tr style={{ background: 'var(--bg-elevated)', transition: 'background 0.2s' }} className="hover:bg-gray-50/5 dark:hover:bg-white/5">
+                            <td style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>% sobre Total 12m</td>
+                            {projectionData.map((p: any, i: number) => (
+                              <td key={i} style={{ padding: '12px 16px', color: 'var(--text-primary)' }}>{p.percentage.toLocaleString('es-ES', { maximumFractionDigits: 1 })}%</td>
+                            ))}
+                            <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--primary)' }}>
+                              {Math.round(projectionData.reduce((acc: number, p: any) => acc + p.percentage, 0))}%
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {training && (
                   <div className="animate-fade-in-up" style={{ padding: '20px', background: 'var(--bg-elevated)', borderRadius: '12px', border: '1px solid var(--border)' }}>

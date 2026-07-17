@@ -37,9 +37,10 @@ const getTariffStyle = (tarifa: string) => {
   return { background: 'rgba(107, 114, 128, 0.1)', color: '#9ca3af', border: '1px solid rgba(107, 114, 128, 0.2)' };
 };
 
-export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[] }) {
+export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [], channels = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[], channels?: any[] }) {
   const [search, setSearch] = useState('');
   const [motivoFilter, setMotivoFilter] = useState('TODOS');
+  const [canalFilter, setCanalFilter] = useState('TODOS');
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
@@ -49,12 +50,12 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS') return;
+    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS') return;
 
     const fetchBajas = async () => {
       setIsLoading(true);
       try {
-        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter);
+        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter);
         if (result.success && result.bajas) {
           setBajas(result.bajas as BajaData[]);
           setTotalCount(result.totalCount || 0);
@@ -71,11 +72,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
     }, 300);
 
     return () => clearTimeout(debounceId);
-  }, [page, itemsPerPage, search, motivoFilter]);
+  }, [page, itemsPerPage, search, motivoFilter, canalFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, motivoFilter]);
+  }, [search, motivoFilter, canalFilter]);
 
   return (
     <>
@@ -114,6 +115,18 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input className="form-input" placeholder="Buscar cliente o CUPS..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '32px', fontSize: '0.8rem' }} />
             </div>
+            
+            <select
+              className="form-input"
+              value={canalFilter}
+              onChange={(e) => setCanalFilter(e.target.value)}
+              style={{ width: '200px', fontSize: '0.8rem' }}
+            >
+              <option value="TODOS">Todos los canales</option>
+              {channels?.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', fontFamily: "'JetBrains Mono', monospace" }}>
               {totalCount} bajas
             </div>

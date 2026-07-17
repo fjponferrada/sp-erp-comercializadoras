@@ -1,5 +1,6 @@
 import ComprasDashboard from '@/components/compras/ComprasDashboard';
 import { prisma } from '@/lib/prisma';
+import { get12MonthProjectionAction } from '@/app/actions/portfolioProjectionActions';
 
 export default async function ComprasPage() {
   // Fetch initial data for the dashboard to render server-side
@@ -16,12 +17,16 @@ export default async function ComprasPage() {
     select: { updatedAt: true }
   });
 
+  const projectionResult = await get12MonthProjectionAction();
+  const projectionData = projectionResult.success ? projectionResult.data : [];
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <ComprasDashboard 
         initialForecasts={recentForecasts} 
         activeContracts={activeContracts} 
         lastTrainingDate={lastModelCache?.updatedAt}
+        projectionData={projectionData}
       />
     </div>
   );

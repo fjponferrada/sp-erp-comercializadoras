@@ -447,7 +447,8 @@ async function ingestF1Core(file: File) {
       where: {
         numeroFactura: { in: facturasAtrArray.concat(otrasFacturasArray).map((f: any) => {
           const dGen = f.DatosGeneralesFacturaATR || f.DatosGeneralesOtrasFacturas || f.DatosGeneralesFactura || {};
-          return dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+          const val = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+          return val ? String(val) : undefined;
         }).filter(Boolean) as string[] },
         jsonData: {
           path: ['DatosGeneralesFacturaATR', 'DatosGeneralesFactura', 'TipoFactura'],
@@ -460,7 +461,8 @@ async function ingestF1Core(file: File) {
       where: {
         numeroFactura: { in: facturasAtrArray.concat(otrasFacturasArray).map((f: any) => {
           const dGen = f.DatosGeneralesFacturaATR || f.DatosGeneralesOtrasFacturas || f.DatosGeneralesFactura || {};
-          return dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+          const val = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+          return val ? String(val) : undefined;
         }).filter(Boolean) as string[] },
         jsonData: {
           path: ['DatosGeneralesOtrasFacturas', 'DatosGeneralesFactura', 'TipoFactura'],

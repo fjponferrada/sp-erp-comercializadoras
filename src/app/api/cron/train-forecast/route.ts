@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { PROVINCES_GEO } from '@/lib/services/ProvinceService';
 import { getDay, getMonth, isWeekend, subDays } from 'date-fns';
 import { DecisionTreeRegression } from 'ml-cart';
+import { auth } from '@/auth';
 
 import { AggregationService } from '@/lib/services/AggregationService';
 
@@ -17,9 +18,14 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const cronSecret = searchParams.get('secret');
 
-    // Permitir si se envía la contraseña en el header (Vercel Cron) o en la URL (legacy/local)
-    if (expectedSecret !== 'fallback_secret' && cronSecret !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized: Invalid cron secret' }, { status: 401 });
+    const session = await auth();
+
+    // Permitir si se envía la contraseña (Vercel Cron) o si hay sesión activa (Botón UI)
+    if (
+      (expectedSecret !== 'fallback_secret' && cronSecret !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`)
+      && !session?.user
+    ) {
+      return NextResponse.json({ error: 'Unauthorized: Invalid cron secret or no session' }, { status: 401 });
     }
 
     console.log('Synchronizing history before training...');

@@ -149,6 +149,7 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
             )}
 
             <select className="form-input" value={estadoFilter} onChange={e => { setEstadoFilter(e.target.value); setPage(1); }} style={{ width: 'auto', fontSize: '0.8rem' }}>
+              <option value="VENCIDO">Vencido (&lt; 0 días)</option>
               <option value="URGENTE">Urgente (0–20 días)</option>
               <option value="PROXIMO">Próximo (21–40d)</option>
               <option value="PENDIENTE">Pendiente (+40d)</option>
