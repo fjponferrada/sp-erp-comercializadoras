@@ -2,12 +2,14 @@
 
 import { prisma } from '@/lib/prisma';
 import { getUserVisibilityFilter } from '@/lib/permissions';
+import { auth } from '@/auth';
 
 export async function getPaginatedBajasAction(
   page: number,
   itemsPerPage: number,
   search: string,
-  motivoFilter: string
+  motivoFilter: string,
+  canalFilter: string = 'TODOS'
 ) {
   try {
     const visibilityFilter = await getUserVisibilityFilter();
@@ -33,6 +35,10 @@ export async function getPaginatedBajasAction(
         { client: { lastName: { contains: search, mode: 'insensitive' } } },
         { client: { vatNumber: { contains: search, mode: 'insensitive' } } }
       ];
+    }
+
+    if (canalFilter !== 'TODOS') {
+      whereClause.user = { channelId: canalFilter };
     }
 
     // Puesto que motivoFilter actual está hardcodeado a "Fin de permanencia", simulamos:
@@ -175,6 +181,148 @@ export async function getBajasStatsAction() {
       }
     };
   } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function fetchBajaContext(cups: string) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      throw new Error('No estás autenticado.');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { brand: { include: { company: true } } }
+    });
+
+    if (!user?.brand?.company) {
+      throw new Error('El usuario no tiene una compañía asociada.');
+    }
+    const emisora = user.brand.company.codigoRee || '';
+
+    let destino = '';
+    if (cups && cups.length >= 6 && cups.startsWith('ES')) {
+      const sp = await prisma.supplyPoint.findFirst({
+        where: { cups: { startsWith: cups.substring(0, 20) } }
+      });
+      
+      if (sp?.distributorReeCode) {
+        destino = sp.distributorReeCode;
+      } else {
+        destino = cups.substring(2, 6);
+      }
+    }
+
+    return { success: true, emisora, destino };
+  } catch (error: any) {
+    console.error('Error fetching context:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function generateBajaXml(data: {
+  emisora: string;
+  destino: string;
+  codigoSolicitud: string;
+  cups: string;
+  motivo: string;
+  fechaPrevista: string;
+}) {
+  try {
+    const { emisora, destino, codigoSolicitud, cups, motivo, fechaPrevista } = data;
+
+    const rootNode = 'MensajeBajaSuspension';
+    const now = new Date();
+    const formattedDate = now.toISOString().split('.')[0];
+    
+    // Fetch client to put data in XML
+    const sp = await prisma.supplyPoint.findFirst({
+      where: { cups: { startsWith: cups.substring(0, 20) } },
+      include: {
+        contracts: {
+          where: { status: { in: ['ACTIVO', 'TRAMITANDO'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { client: true }
+        }
+      }
+    });
+
+    const client = sp?.contracts?.[0]?.client;
+    if (!client) {
+      throw new Error('No se ha encontrado un cliente activo para este CUPS. Imposible generar el nodo <Cliente>.');
+    }
+
+    // Determine type of doc
+    let tipoIdentificador = 'NIF';
+    const vat = client.vatNumber.trim().toUpperCase();
+    if (vat.match(/^[XYZ]/)) tipoIdentificador = 'NIE';
+    else if (vat.match(/^[ABCDEFGHJNPQRSUVW]/)) tipoIdentificador = 'CIF';
+    else if (vat.length > 9) tipoIdentificador = 'Pasaporte';
+
+    let tipoPersona = 'F';
+    if (tipoIdentificador === 'CIF') tipoPersona = 'J';
+
+    let xmlNombre = '';
+    if (tipoPersona === 'F') {
+      const lastName = client.lastName || '';
+      xmlNombre = `<NombrePersona>${client.firstName || '-'}</NombrePersona>
+<PrimerApellido>${lastName.split(' ')[0] || '-'}</PrimerApellido>`;
+      const segApellido = lastName.split(' ').slice(1).join(' ');
+      if (segApellido) {
+        xmlNombre += `\n<SegundoApellido>${segApellido}</SegundoApellido>`;
+      }
+    } else {
+      xmlNombre = `<RazonSocial>${client.businessName}</RazonSocial>`;
+    }
+
+    let telefonoXml = '';
+    if (client.contactPhone) {
+      const phone = client.contactPhone.replace(/\D/g, '').slice(-9);
+      if (phone.length === 9) {
+        telefonoXml = `
+<Telefono>
+  <PrefijoPais>34</PrefijoPais>
+  <Numero>${phone}</Numero>
+</Telefono>`;
+      }
+    }
+
+    const xml = `<${rootNode} xmlns="http://localhost/elegibilidad">
+<Cabecera>
+  <CodigoREEEmpresaEmisora>${emisora}</CodigoREEEmpresaEmisora>
+  <CodigoREEEmpresaDestino>${destino}</CodigoREEEmpresaDestino>
+  <CodigoDelProceso>B1</CodigoDelProceso>
+  <CodigoDePaso>01</CodigoDePaso>
+  <CodigoDeSolicitud>${codigoSolicitud}</CodigoDeSolicitud>
+  <SecuencialDeSolicitud>01</SecuencialDeSolicitud>
+  <FechaSolicitud>${formattedDate}</FechaSolicitud>
+  <CUPS>${cups}</CUPS>
+</Cabecera>
+<BajaSuspension>
+  <DatosSolicitud>
+    <IndActivacion>A</IndActivacion>${fechaPrevista ? `
+    <FechaPrevistaAccion>${fechaPrevista}</FechaPrevistaAccion>` : ''}
+    <Motivo>${motivo}</Motivo>
+  </DatosSolicitud>
+  <Cliente>
+    <IdCliente>
+      <TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
+      <Identificador>${vat}</Identificador>
+      <TipoPersona>${tipoPersona}</TipoPersona>
+    </IdCliente>
+    <Nombre>
+      ${xmlNombre}
+    </Nombre>${telefonoXml}
+  </Cliente>
+</BajaSuspension>
+</${rootNode}>`;
+
+    return { success: true, xml };
+  } catch (error: any) {
+    console.error('Error generando XML de baja:', error);
     return { success: false, error: error.message };
   }
 }
