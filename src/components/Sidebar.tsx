@@ -147,6 +147,7 @@ const baseNavGroups = [
     roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
     items: [
       { href: '/ajustes/importador', icon: UploadCloud, label: 'Importar CCH' },
+      { href: '/importar-facturas', icon: UploadCloud, label: 'Importar Facturas' },
       { href: '/importar-switching', icon: UploadCloud, label: 'Importador XML' },
       { href: '/compras/importar-compodem', icon: FileText, label: 'Importar COMPODEM' },
       { href: '/compras/importar-reganecu', icon: UploadCloud, label: 'Importar REGANECU' },
