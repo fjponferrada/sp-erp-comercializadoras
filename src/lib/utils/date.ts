@@ -25,7 +25,13 @@ export const formatDateUTC = (val: any): string => {
         }
       }
     } else if (typeof val === 'number') {
-      d = new Date(val);
+      if (val < 100000) {
+        // Es un número de serie de Excel (días desde 30-12-1899)
+        d = new Date((val - 25569) * 86400 * 1000);
+      } else {
+        // Es un timestamp Unix (milisegundos)
+        d = new Date(val);
+      }
     } else {
       d = new Date(val as any);
     }
