@@ -48,6 +48,10 @@ export async function GET(req: Request) {
     let X_global: number[][] = [];
     let Y_global: number[] = [];
 
+    // Dictionary to group by unique configurations
+    // Key: "segmentId|provinceId|dow|month|h|tempBin"
+    const groupedData = new Map<string, { sumY: number, count: number, exactTempSum: number }>();
+
     for (const record of history) {
       if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(record.segment)) continue; // VIP and VE are handled via SDA dynamically
       if (record.clientCount === 0) continue;
@@ -62,28 +66,39 @@ export async function GET(req: Request) {
 
       for (let h = 0; h < 24; h++) {
         const temp = record.temperature[h] ?? 20.0;
+        const tempBin = Math.round(temp); // Group by integer temperature to reduce cardinality
         const cons = record.totalConsumption[h] ?? 0;
-        X_global.push([segmentId, provinceId, dow, month, h, temp, isWknd]);
-        Y_global.push(cons / record.clientCount);
+        const yVal = cons / record.clientCount;
+
+        const key = `${segmentId}|${provinceId}|${dow}|${month}|${h}|${tempBin}|${isWknd}`;
+        
+        let bucket = groupedData.get(key);
+        if (!bucket) {
+          bucket = { sumY: 0, count: 0, exactTempSum: 0 };
+          groupedData.set(key, bucket);
+        }
+        bucket.sumY += yVal;
+        bucket.exactTempSum += temp;
+        bucket.count += 1;
       }
     }
 
-    // Optimize training for serverless environment by down-sampling 
-    const MAX_TRAINING_SAMPLES = 10000;
-    if (X_global.length > MAX_TRAINING_SAMPLES) {
-      const sampledX: number[][] = [];
-      const sampledY: number[] = [];
-      for (let i = 0; i < MAX_TRAINING_SAMPLES; i++) {
-        const randIdx = Math.floor(Math.random() * X_global.length);
-        sampledX.push(X_global[randIdx]);
-        sampledY.push(Y_global[randIdx]);
-        X_global[randIdx] = X_global[X_global.length - 1];
-        Y_global[randIdx] = Y_global[Y_global.length - 1];
-        X_global.pop();
-        Y_global.pop();
-      }
-      X_global = sampledX;
-      Y_global = sampledY;
+    // Convert buckets back to X and Y arrays
+    for (const [key, bucket] of groupedData.entries()) {
+      const [segmentIdStr, provinceIdStr, dowStr, monthStr, hStr, tempBinStr, isWkndStr] = key.split('|');
+      const avgTemp = bucket.exactTempSum / bucket.count;
+      const avgY = bucket.sumY / bucket.count;
+
+      X_global.push([
+        parseInt(segmentIdStr, 10),
+        parseInt(provinceIdStr, 10),
+        parseInt(dowStr, 10),
+        parseInt(monthStr, 10),
+        parseInt(hStr, 10),
+        avgTemp,
+        parseInt(isWkndStr, 10)
+      ]);
+      Y_global.push(avgY);
     }
 
     if (X_global.length < 100) {
