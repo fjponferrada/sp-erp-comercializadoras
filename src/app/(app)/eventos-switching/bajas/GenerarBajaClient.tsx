@@ -57,9 +57,11 @@ export default function GenerarBajaClient() {
       setError(null);
 
       let finalCodigo = formData.codigoSolicitud;
-      if (!finalCodigo && formData.emisora && formData.cups.length >= 6) {
-        const timestamp = new Date().getTime().toString().slice(-6);
-        finalCodigo = `${formData.emisora}${timestamp}${formData.cups.substring(2, 6)}`;
+      if (!finalCodigo && formData.emisora) {
+        // El Código de Solicitud debe ser exactamente de 12 dígitos [0-9]{12}
+        // Emisora (4 dígitos) + Timestamp/Random (8 dígitos) = 12 dígitos
+        const timePart = new Date().getTime().toString().slice(-8);
+        finalCodigo = `${formData.emisora.substring(0, 4).padEnd(4, '0')}${timePart}`;
       }
 
       if (!finalCodigo || !formData.cups || !formData.destino) {
