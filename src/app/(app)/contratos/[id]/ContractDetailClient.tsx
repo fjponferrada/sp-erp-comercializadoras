@@ -634,7 +634,7 @@ export default function ContractDetailClient({
                       </div>
 
                       <div className="flex justify-between items-center mt-2 pt-2 border-t border-[var(--border-strong)]">
-                        <div className="text-base font-bold text-[var(--lime)]">€ {inv.totalAmount.toFixed(2)}</div>
+                        <div className="text-base font-bold text-[var(--lime)]">€ {(inv.totalAmount || 0).toFixed(2)}</div>
                         <a href={`/facturas/${inv.id}`} className="bg-[rgba(255,255,255,0.05)] border border-[var(--border)] rounded px-3 py-1.5 text-xs text-white">Ver Detalles</a>
                       </div>
                     </div>
@@ -667,7 +667,7 @@ export default function ContractDetailClient({
                         <td className="py-3 px-4 text-sm text-gray-500">
                           {inv.invoiceData?.['Desde(EA)'] || inv.desdeEA ? formatDateUTC(inv.invoiceData?.['Desde(EA)'] || inv.desdeEA) : '-'} al {inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA ? formatDateUTC(inv.invoiceData?.['Hasta(EA)'] || inv.hastaEA) : '-'}
                         </td>
-                        <td className="py-3 px-4 text-sm font-bold text-[var(--lime)]">€ {inv.totalAmount.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-sm font-bold text-[var(--lime)]">€ {(inv.totalAmount || 0).toFixed(2)}</td>
                         <td className="py-3 px-4">
                           <span className={`px-2 py-1 rounded text-xs font-bold max-w-max ${
                             inv.status === 'PAGADA' ? 'bg-[rgba(34,197,94,0.15)] text-green-400 border border-[rgba(34,197,94,0.3)]' :
