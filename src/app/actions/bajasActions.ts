@@ -256,14 +256,14 @@ export async function generateBajaXml(data: {
     }
 
     // Determine type of doc
-    let tipoIdentificador = 'NIF';
+    let tipoIdentificador = 'NI';
     const vat = client.vatNumber.trim().toUpperCase();
-    if (vat.match(/^[XYZ]/)) tipoIdentificador = 'NIE';
-    else if (vat.match(/^[ABCDEFGHJNPQRSUVW]/)) tipoIdentificador = 'CIF';
-    else if (vat.length > 9) tipoIdentificador = 'Pasaporte';
+    if (vat.length > 9 && !vat.match(/^[ABCDEFGHJNPQRSUVW]/)) {
+      tipoIdentificador = 'PA';
+    }
 
     let tipoPersona = 'F';
-    if (tipoIdentificador === 'CIF') tipoPersona = 'J';
+    if (vat.match(/^[ABCDEFGHJNPQRSUVW]/)) tipoPersona = 'J';
 
     let xmlNombre = '';
     if (tipoPersona === 'F') {
@@ -311,7 +311,6 @@ export async function generateBajaXml(data: {
     <IdCliente>
       <TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
       <Identificador>${vat}</Identificador>
-      <TipoPersona>${tipoPersona}</TipoPersona>
     </IdCliente>
     <Nombre>
       ${xmlNombre}
