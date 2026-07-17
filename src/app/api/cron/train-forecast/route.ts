@@ -101,6 +101,21 @@ export async function GET(req: Request) {
       Y_global.push(avgY);
     }
 
+    const MAX_TRAINING_SAMPLES = 10000;
+    if (X_global.length > MAX_TRAINING_SAMPLES) {
+      console.log(`Downsampling deterministically from ${X_global.length} to ${MAX_TRAINING_SAMPLES}...`);
+      const step = X_global.length / MAX_TRAINING_SAMPLES;
+      const sampledX: number[][] = [];
+      const sampledY: number[] = [];
+      for (let i = 0; i < MAX_TRAINING_SAMPLES; i++) {
+        const idx = Math.floor(i * step);
+        sampledX.push(X_global[idx]);
+        sampledY.push(Y_global[idx]);
+      }
+      X_global = sampledX;
+      Y_global = sampledY;
+    }
+
     if (X_global.length < 100) {
       return NextResponse.json({ error: 'Not enough data to train model' }, { status: 400 });
     }
