@@ -741,7 +741,7 @@ export class InternalBillingEngine {
       orderBy: { validFrom: 'asc' }
     });
 
-    const emissionDate = draft.f1Invoice?.fechaEmision || new Date();
+    const emissionDate = f1.fechaEmision || new Date();
     const bonoSocialRecords = await prisma.regulatedDailyCost.findMany({
       where: {
         concept: 'Bono_Social',
