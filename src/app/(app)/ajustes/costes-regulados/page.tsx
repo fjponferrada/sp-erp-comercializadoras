@@ -20,6 +20,14 @@ export default function ParametrosPricingPage() {
   const [activeRegulatedYear, setActiveRegulatedYear] = useState<number>(currentYear);
   const [availableRegulatedYears, setAvailableRegulatedYears] = useState<number[]>([currentYear]);
 
+  const [newDailyCost, setNewDailyCost] = useState({
+    concept: 'Bono_Social',
+    amount: '',
+    label: '',
+    validFrom: '',
+    validTo: ''
+  });
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -64,6 +72,16 @@ export default function ParametrosPricingPage() {
   const deleteDailyCost = async (id: string) => {
     if (!confirm('¿Eliminar este coste diario?')) return;
     await fetch(`/api/settings/regulated-daily-costs?id=${id}`, { method: 'DELETE' });
+    fetchData();
+  };
+
+  const saveNewDailyCost = async () => {
+    if (!newDailyCost.amount || !newDailyCost.validFrom) return alert('Importe y fecha de inicio obligatorios');
+    await fetch('/api/settings/regulated-daily-costs', {
+      method: 'POST',
+      body: JSON.stringify(newDailyCost)
+    });
+    setNewDailyCost({ concept: 'Bono_Social', amount: '', label: '', validFrom: '', validTo: '' });
     fetchData();
   };
 
@@ -195,6 +213,7 @@ export default function ParametrosPricingPage() {
                           <thead style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
                             <tr>
                               <th className="p-3 text-xs text-gray-400 font-bold uppercase">Concepto</th>
+                              <th className="p-3 text-xs text-gray-400 font-bold uppercase">Descripción (PDF)</th>
                               <th className="p-3 text-xs text-gray-400 font-bold uppercase">Coste Diario (€/día)</th>
                               <th className="p-3 text-xs text-gray-400 font-bold uppercase">Válido Desde</th>
                               <th className="p-3 text-xs text-gray-400 font-bold uppercase">Válido Hasta</th>
@@ -205,6 +224,7 @@ export default function ParametrosPricingPage() {
                             {regulatedDaily.map((r: any) => (
                               <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-gray-800/30">
                                 <td className="p-3 text-sm text-gray-300 font-bold text-[var(--primary)]">{r.concept}</td>
+                                <td className="p-3 text-sm text-gray-400">{r.label || '-'}</td>
                                 <td className="p-3 text-sm text-gray-300 font-mono">{r.amount.toFixed(6)} €</td>
                                 <td className="p-3 text-sm text-gray-400 whitespace-nowrap">{new Date(r.validFrom).toLocaleDateString()}</td>
                                 <td className="p-3 text-sm text-gray-400 whitespace-nowrap">{r.validTo ? new Date(r.validTo).toLocaleDateString() : '-'}</td>
@@ -215,8 +235,16 @@ export default function ParametrosPricingPage() {
                                 </td>
                               </tr>
                             ))}
+                            <tr className="bg-gray-800/20">
+                              <td className="p-2"><input type="text" placeholder="Bono_Social" className="w-full p-1 text-sm bg-gray-900 border border-gray-700 rounded" value={newDailyCost.concept} onChange={e => setNewDailyCost({...newDailyCost, concept: e.target.value})} /></td>
+                              <td className="p-2"><input type="text" placeholder="Ej: Financiación del Bono Social..." className="w-full p-1 text-sm bg-gray-900 border border-gray-700 rounded" value={newDailyCost.label} onChange={e => setNewDailyCost({...newDailyCost, label: e.target.value})} /></td>
+                              <td className="p-2"><input type="number" step="0.000001" placeholder="0.000000" className="w-full p-1 text-sm bg-gray-900 border border-gray-700 rounded" value={newDailyCost.amount} onChange={e => setNewDailyCost({...newDailyCost, amount: e.target.value})} /></td>
+                              <td className="p-2"><input type="date" className="w-full p-1 text-sm bg-gray-900 border border-gray-700 rounded" value={newDailyCost.validFrom} onChange={e => setNewDailyCost({...newDailyCost, validFrom: e.target.value})} /></td>
+                              <td className="p-2"><input type="date" className="w-full p-1 text-sm bg-gray-900 border border-gray-700 rounded" value={newDailyCost.validTo} onChange={e => setNewDailyCost({...newDailyCost, validTo: e.target.value})} /></td>
+                              <td className="p-2 text-right"><button onClick={saveNewDailyCost} className="p-1 bg-[var(--primary)] text-white rounded hover:opacity-80"><Plus size={16}/></button></td>
+                            </tr>
                             {regulatedDaily.length === 0 && (
-                              <tr><td colSpan={5} className="p-8 text-center text-gray-500">No hay datos de costes diarios.</td></tr>
+                              <tr><td colSpan={6} className="p-8 text-center text-gray-500">No hay datos de costes diarios.</td></tr>
                             )}
                           </tbody>
                         </table>

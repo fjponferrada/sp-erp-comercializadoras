@@ -21,6 +21,7 @@ export interface BillingCalculationResult {
   capacityCost: number;
   fneeCost: number;
   bonoSocial: number;
+  bonoSocialLabel?: string;
   
   powerCost: number; // Término de potencia facturado al cliente
   peajesDistribuidora: number; // Peajes (referencia calculada BOE o F1)
@@ -741,7 +742,8 @@ export class InternalBillingEngine {
       orderBy: { validFrom: 'asc' }
     });
 
-    const emissionDate = f1.fechaEmision || new Date();
+    // Se utiliza la fecha de emisión de NUESTRA factura (el momento actual al generar el borrador)
+    const emissionDate = new Date();
     const bonoSocialRecords = await prisma.regulatedDailyCost.findMany({
       where: {
         concept: 'Bono_Social',
@@ -754,6 +756,9 @@ export class InternalBillingEngine {
       orderBy: { validFrom: 'desc' }
     });
     const bonoSocialDailyAmount = bonoSocialRecords.length > 0 ? bonoSocialRecords[0].amount : 0.019121;
+    const bonoSocialLabel = bonoSocialRecords.length > 0 && bonoSocialRecords[0].label 
+      ? bonoSocialRecords[0].label 
+      : 'Financiación del Bono Social (Orden TED/1487/2024)';
 
     let refDate = contract.signatureDate;
     if (!refDate) {
@@ -1508,6 +1513,7 @@ export class InternalBillingEngine {
       cargosDistribuidora: totalCargosEnergiaBOE, // Informational
       alquilerEquipo,
       bonoSocial,
+      bonoSocialLabel,
       taxElectric,
       svaCost,
       svaConcept,

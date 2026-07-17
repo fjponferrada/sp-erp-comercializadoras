@@ -483,7 +483,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
 
           {bonoSocial !== 0 && (
             <View style={styles.extraRow}>
-              <View style={styles.erConcept}><Text>Financiación del Bono Social (Orden TED/1487/2024)</Text></View>
+              <View style={styles.erConcept}><Text>{data.bonoSocialLabel || 'Financiación del Bono Social'}</Text></View>
               <Text style={styles.erCenter}></Text>
               <Text style={styles.erCenter}>{days}</Text>
               <Text style={styles.erCenter}>{(bonoSocial / (powerDetails.length > 0 ? powerDetails[0].days : 30)).toFixed(6)}</Text>

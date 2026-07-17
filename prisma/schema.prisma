@@ -1168,6 +1168,7 @@ model RegulatedDailyCost {
   id          String    @id @default(cuid())
   concept     String    // Ej: "Bono_Social"
   amount      Float     // Coste diario en €/día
+  label       String?   // Texto a imprimir en el PDF, ej: "Financiación del Bono Social (Orden TED/1487/2024)"
   validFrom   DateTime  @db.Date
   validTo     DateTime? @db.Date
 

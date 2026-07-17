@@ -31,6 +31,7 @@ export async function POST(req: Request) {
       data: {
         concept: body.concept,
         amount: parsedAmount,
+        label: body.label || null,
         validFrom,
         validTo
       }
@@ -59,6 +60,7 @@ export async function PUT(req: Request) {
       data: {
         concept: body.concept,
         amount: parsedAmount,
+        label: body.label || null,
         validFrom,
         validTo
       }
