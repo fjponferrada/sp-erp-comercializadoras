@@ -741,6 +741,20 @@ export class InternalBillingEngine {
       orderBy: { validFrom: 'asc' }
     });
 
+    const emissionDate = draft.f1Invoice?.fechaEmision || new Date();
+    const bonoSocialRecords = await prisma.regulatedDailyCost.findMany({
+      where: {
+        concept: 'Bono_Social',
+        validFrom: { lte: emissionDate },
+        OR: [
+          { validTo: null },
+          { validTo: { gte: emissionDate } }
+        ]
+      },
+      orderBy: { validFrom: 'desc' }
+    });
+    const bonoSocialDailyAmount = bonoSocialRecords.length > 0 ? bonoSocialRecords[0].amount : 0.019121;
+
     let refDate = contract.signatureDate;
     if (!refDate) {
       const getJsonDate = (json: any, key: string) => {
@@ -1180,8 +1194,8 @@ export class InternalBillingEngine {
       }
     }
 
-    // Bono Social (Orden TED/1487/2024: ~0.019121 €/día)
-    const bonoSocial = billingDays * 0.019121;
+    // Bono Social Dinámico (basado en fechaEmision)
+    const bonoSocial = billingDays * bonoSocialDailyAmount;
     
     // For fixed pricing, re-calculate energy and ATR using period totals from F1
     if (isFixed) {

@@ -9,6 +9,7 @@ export default function ParametrosPricingPage() {
   const [loading, setLoading] = useState(true);
   
   const [regulated, setRegulated] = useState<any[]>([]);
+  const [regulatedDaily, setRegulatedDaily] = useState<any[]>([]);
   const [futures, setFutures] = useState<any[]>([]);
   const [editedFutures, setEditedFutures] = useState<any[]>([]);
   const [savingFutures, setSavingFutures] = useState(false);
@@ -26,13 +27,16 @@ export default function ParametrosPricingPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [resReg, resFut] = await Promise.all([
+      const [resReg, resDaily, resFut] = await Promise.all([
         fetch('/api/settings/regulated-costs'),
+        fetch('/api/settings/regulated-daily-costs'),
         fetch('/api/settings/future-prices')
       ]);
       const futuresData = await resFut.json();
       const regData = await resReg.json();
+      const dailyData = await resDaily.json();
       setRegulated(regData);
+      setRegulatedDaily(dailyData);
       setFutures(futuresData);
       
       const years = Array.from(new Set(regData.map((r: any) => new Date(r.validFrom).getFullYear()))).sort((a: any, b: any) => b - a) as number[];
@@ -54,6 +58,12 @@ export default function ParametrosPricingPage() {
   const deleteRegulated = async (id: string) => {
     if (!confirm('¿Eliminar este coste regulado?')) return;
     await fetch(`/api/settings/regulated-costs?id=${id}`, { method: 'DELETE' });
+    fetchData();
+  };
+
+  const deleteDailyCost = async (id: string) => {
+    if (!confirm('¿Eliminar este coste diario?')) return;
+    await fetch(`/api/settings/regulated-daily-costs?id=${id}`, { method: 'DELETE' });
     fetchData();
   };
 
@@ -174,8 +184,48 @@ export default function ParametrosPricingPage() {
             ) : (
               <>
                 {activeTab === 'regulados' && (
-                  <div className="space-y-4 animate-in fade-in">
-                    <div className="flex justify-between items-center mb-4">
+                  <div className="space-y-8 animate-in fade-in">
+                    {/* Costes Diarios */}
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-gray-200">Costes Diarios Regulados (por CUPS)</h3>
+                      </div>
+                      <div className="overflow-x-auto" style={{ border: '1px solid var(--border)', borderRadius: '8px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                          <thead style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                            <tr>
+                              <th className="p-3 text-xs text-gray-400 font-bold uppercase">Concepto</th>
+                              <th className="p-3 text-xs text-gray-400 font-bold uppercase">Coste Diario (€/día)</th>
+                              <th className="p-3 text-xs text-gray-400 font-bold uppercase">Válido Desde</th>
+                              <th className="p-3 text-xs text-gray-400 font-bold uppercase">Válido Hasta</th>
+                              <th className="p-3 text-xs text-gray-400 font-bold uppercase text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {regulatedDaily.map((r: any) => (
+                              <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-gray-800/30">
+                                <td className="p-3 text-sm text-gray-300 font-bold text-[var(--primary)]">{r.concept}</td>
+                                <td className="p-3 text-sm text-gray-300 font-mono">{r.amount.toFixed(6)} €</td>
+                                <td className="p-3 text-sm text-gray-400 whitespace-nowrap">{new Date(r.validFrom).toLocaleDateString()}</td>
+                                <td className="p-3 text-sm text-gray-400 whitespace-nowrap">{r.validTo ? new Date(r.validTo).toLocaleDateString() : '-'}</td>
+                                <td className="p-3 text-right">
+                                  <button onClick={() => deleteDailyCost(r.id)} className="text-red-400 hover:text-red-300 p-1">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {regulatedDaily.length === 0 && (
+                              <tr><td colSpan={5} className="p-8 text-center text-gray-500">No hay datos de costes diarios.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Matriz de Periodos */}
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-4">
                         <h3 className="text-lg font-bold text-gray-200">Matriz de Costes Regulados</h3>
                         <select 
@@ -249,7 +299,9 @@ export default function ParametrosPricingPage() {
                       </table>
                     </div>
                   </div>
+                </div>
                 )}
+
 
                 {activeTab === 'futuros' && (
                   <div className="space-y-4 animate-in fade-in">

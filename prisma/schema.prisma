@@ -1163,3 +1163,16 @@ model PendingEnergySummary {
 
   @@unique([month, companyId])
 }
+
+model RegulatedDailyCost {
+  id          String    @id @default(cuid())
+  concept     String    // Ej: "Bono_Social"
+  amount      Float     // Coste diario en €/día
+  validFrom   DateTime  @db.Date
+  validTo     DateTime? @db.Date
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([concept])
+}
