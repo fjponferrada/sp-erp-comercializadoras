@@ -67,6 +67,7 @@ export async function POST(req: Request) {
               cargosDistribuidora: result.cargosDistribuidora,
               alquilerEquipo: result.alquilerEquipo,
               bonoSocial: result.bonoSocial,
+              bonoSocialLabel: result.bonoSocialLabel,
               taxElectric: result.taxElectric,
               excesosPotencia: result.excesosPotencia,
               excedentesAutoconsumo: result.excedentesAutoconsumo,
