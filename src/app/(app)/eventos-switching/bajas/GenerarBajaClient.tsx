@@ -56,11 +56,17 @@ export default function GenerarBajaClient() {
       setLoading(true);
       setError(null);
 
-      if (!formData.codigoSolicitud || !formData.cups || !formData.destino) {
-        throw new Error('Por favor, rellena todos los campos obligatorios (Destino, Código Solicitud, CUPS).');
+      let finalCodigo = formData.codigoSolicitud;
+      if (!finalCodigo && formData.emisora && formData.cups.length >= 6) {
+        const timestamp = new Date().getTime().toString().slice(-6);
+        finalCodigo = `${formData.emisora}${timestamp}${formData.cups.substring(2, 6)}`;
       }
 
-      const response = await generateBajaXml(formData);
+      if (!finalCodigo || !formData.cups || !formData.destino) {
+        throw new Error('Por favor, rellena todos los campos obligatorios (Destino, CUPS, etc.).');
+      }
+
+      const response = await generateBajaXml({ ...formData, codigoSolicitud: finalCodigo });
 
       if (!response.success) {
         throw new Error(response.error || 'Error desconocido al generar XML');
@@ -72,7 +78,7 @@ export default function GenerarBajaClient() {
       const link = document.createElement('a');
       link.href = url;
       
-      link.setAttribute('download', `B1_01_${formData.codigoSolicitud}.xml`);
+      link.setAttribute('download', `B1_01_${finalCodigo}.xml`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -141,18 +147,7 @@ export default function GenerarBajaClient() {
             </select>
           </div>
 
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-              Código de Solicitud
-            </label>
-            <input
-              type="text"
-              value={formData.codigoSolicitud}
-              onChange={(e) => handleChange('codigoSolicitud', e.target.value)}
-              className="form-input"
-              placeholder="Ej: 249999413591"
-            />
-          </div>
+
 
           <div className="space-y-2 md:col-span-2">
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
