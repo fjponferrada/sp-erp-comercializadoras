@@ -972,7 +972,9 @@ export class InternalBillingEngine {
       // Calculation of losses
       let pctPerd = 0;
       if (perdidasBOE) {
-        const pVal = getRegVal(perdidasBOE, p);
+        let pVal = getRegVal(perdidasBOE, p);
+        if (pVal > 1.0 && pVal <= 2.0) pVal -= 1.0;
+        else if (pVal > 2.0) pVal /= 100.0;
         const k = kMap.get(key) || 1;
         pctPerd = pVal * k;
       } else {

@@ -168,10 +168,14 @@ export async function generateTomorrowForecast() {
                 const currentK = isKQuarterly 
                   ? (kArray[h * 4] + kArray[h * 4 + 1] + kArray[h * 4 + 2] + kArray[h * 4 + 3]) / 4 
                   : kArray[h];
-                lossPct = boeVal * currentK;
+                  
+                let baseLoss = boeVal;
+                if (baseLoss > 1.0 && baseLoss <= 2.0) baseLoss -= 1.0; // e.g. 1.15 -> 0.15
+                else if (baseLoss > 2.0) baseLoss /= 100.0; // e.g. 15 -> 0.15
+                
+                lossPct = baseLoss * currentK;
               }
             }
-            if (lossPct > 2.0) lossPct /= 100.0; // Security check
             const finalVal = avgHour * (1 + lossPct);
             
             vipPredictions[h] += finalVal;
@@ -219,10 +223,14 @@ export async function generateTomorrowForecast() {
             const currentK = isKQuarterly 
               ? (kArray[h * 4] + kArray[h * 4 + 1] + kArray[h * 4 + 2] + kArray[h * 4 + 3]) / 4 
               : kArray[h];
-            lossPct = boeVal * currentK;
+              
+            let baseLoss = boeVal;
+            if (baseLoss > 1.0 && baseLoss <= 2.0) baseLoss -= 1.0; // e.g. 1.15 -> 0.15
+            else if (baseLoss > 2.0) baseLoss /= 100.0; // e.g. 15 -> 0.15
+            
+            lossPct = baseLoss * currentK;
           }
         }
-        if (lossPct > 2.0) lossPct /= 100.0;
         
         const clusterPrediction = Math.max(0, Y_pred[h]) * activeCount * (1 + lossPct);
         finalPrediction[h] += clusterPrediction;
