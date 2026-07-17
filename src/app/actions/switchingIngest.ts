@@ -554,8 +554,16 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           const updateData: any = {};
           if (procesoBase === 'B1' || procesoBase === 'E1') {
             updateData.suspendido = true;
-            // Para no sobreescribir la fechaAceptacion del Alta original (C1/A3), guardamos la fecha en fechaPrevistaBaja
-            updateData.fechaPrevistaBaja = parsedData.fechaPrevActivacion || parsedData.fechaAR || new Date();
+            // Guardamos la fecha real de aceptación del B1/E1 en el nuevo campo
+            if (parsedData.fechaAR) {
+              updateData.fechaAceptacionBaja = parsedData.fechaAR;
+            } else {
+              updateData.fechaAceptacionBaja = new Date();
+            }
+            // Si además nos mandan la fecha prevista de corte, la guardamos también
+            if (parsedData.fechaPrevActivacion) {
+              updateData.fechaPrevistaBaja = parsedData.fechaPrevActivacion;
+            }
           }
           await prisma.contract.update({
             where: { id: activeContract.id },

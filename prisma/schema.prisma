@@ -481,6 +481,7 @@ model Contract {
   bolsilloSolar              Boolean?
   nSolicitud                 String?
   fechaAceptacion            DateTime?
+  fechaAceptacionBaja        DateTime?
   fechaRechazo               DateTime?
   fechaPrevistaActivacion    DateTime?
   fechaPrevistaBaja          DateTime?
