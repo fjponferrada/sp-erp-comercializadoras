@@ -104,13 +104,23 @@ export async function GET(req: Request) {
     const MAX_TRAINING_SAMPLES = 10000;
     if (X_global.length > MAX_TRAINING_SAMPLES) {
       console.log(`Downsampling deterministically from ${X_global.length} to ${MAX_TRAINING_SAMPLES}...`);
-      const step = X_global.length / MAX_TRAINING_SAMPLES;
+      
+      // Sort to guarantee 100% determinism regardless of Map iteration order
+      const combined = X_global.map((x, i) => ({ x, y: Y_global[i] }));
+      combined.sort((a, b) => {
+        for (let j = 0; j < a.x.length; j++) {
+          if (a.x[j] !== b.x[j]) return a.x[j] - b.x[j];
+        }
+        return 0;
+      });
+
+      const step = combined.length / MAX_TRAINING_SAMPLES;
       const sampledX: number[][] = [];
       const sampledY: number[] = [];
       for (let i = 0; i < MAX_TRAINING_SAMPLES; i++) {
         const idx = Math.floor(i * step);
-        sampledX.push(X_global[idx]);
-        sampledY.push(Y_global[idx]);
+        sampledX.push(combined[idx].x);
+        sampledY.push(combined[idx].y);
       }
       X_global = sampledX;
       Y_global = sampledY;
