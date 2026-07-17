@@ -52,6 +52,7 @@ export async function GET(req: Request, context: { params: Promise<{ draftId: st
       energyMarketDetails: (invoice.invoiceData as any)?.energyMarketDetails || [],
       alquilerEquipo: (invoice.invoiceData as any)?.alquilerEquipo || 0,
       bonoSocial: (invoice.invoiceData as any)?.bonoSocial || 0,
+      bonoSocialLabel: (invoice.invoiceData as any)?.bonoSocialLabel || '',
       taxElectric: (invoice.invoiceData as any)?.taxElectric || 0,
       excesosPotencia: (invoice.invoiceData as any)?.excesosPotencia || 0,
       excedentesAutoconsumo: (invoice.invoiceData as any)?.excedentesAutoconsumo || 0,
