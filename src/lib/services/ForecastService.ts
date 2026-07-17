@@ -42,10 +42,18 @@ export async function generateTomorrowForecast() {
   
   console.log(`Generating forecast for ${tomorrowStr}...`);
 
-  const activeContracts = await prisma.contract.findMany({
+  const activeContractsRaw = await prisma.contract.findMany({
     where: { status: 'ACTIVO' },
     include: { supplyPoint: true }
   });
+
+  const seenSps = new Set<string>();
+  const activeContracts = [];
+  for (const c of activeContractsRaw) {
+    if (!c.supplyPointId || seenSps.has(c.supplyPointId)) continue;
+    seenSps.add(c.supplyPointId);
+    activeContracts.push(c);
+  }
 
   const currentClients: Record<string, number> = {};
   const vipVeContracts = [];

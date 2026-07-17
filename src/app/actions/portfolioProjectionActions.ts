@@ -102,8 +102,12 @@ export async function get12MonthProjectionAction(): Promise<{ success: true; dat
     };
 
     let totalMwh = 0;
+    const seenCupsProj = new Set<string>();
 
     for (const row of (contractsRaw as any[])) {
+      if (seenCupsProj.has(row.cups)) continue;
+      seenCupsProj.add(row.cups);
+      
       const annualConsumption = Number(row.annualConsumption) || 0;
       if (annualConsumption <= 0) continue;
 
