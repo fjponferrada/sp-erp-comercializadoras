@@ -551,9 +551,11 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPointId = supplyPoint.id;
         contractId = activeContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
-          const updateData: any = { fechaAceptacion: parsedData.fechaAR || new Date() };
+          const updateData: any = {};
           if (procesoBase === 'B1' || procesoBase === 'E1') {
             updateData.suspendido = true;
+            // Para no sobreescribir la fechaAceptacion del Alta original (C1/A3), guardamos la fecha en fechaPrevistaBaja
+            updateData.fechaPrevistaBaja = parsedData.fechaPrevActivacion || parsedData.fechaAR || new Date();
           }
           await prisma.contract.update({
             where: { id: activeContract.id },
