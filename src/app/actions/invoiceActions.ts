@@ -818,7 +818,20 @@ export async function getPaginatedInvoicesAction(
     
     const whereClause: any = { ...visibilityFilter };
 
-    if (filterType) {
+    if (filterType === 'Bolsillo Solar') {
+      try {
+        const matchingIdsRes = await prisma.$queryRaw<any[]>`
+          SELECT id FROM "Invoice"
+          WHERE ("invoiceData"->>'Descuento Bolsillo Solar') IS NOT NULL
+            AND TRIM("invoiceData"->>'Descuento Bolsillo Solar') != ''
+            AND REPLACE("invoiceData"->>'Descuento Bolsillo Solar', ',', '.')::numeric != 0
+        `;
+        const matchingIds = matchingIdsRes.map((r: any) => r.id);
+        whereClause.id = { in: matchingIds };
+      } catch (e) {
+        console.error("Error filtrando por Bolsillo Solar:", e);
+      }
+    } else if (filterType) {
       whereClause.invoiceType = filterType;
     }
 

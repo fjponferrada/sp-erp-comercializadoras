@@ -151,99 +151,103 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   return (
     <div className="space-y-6">
       {/* Filters & Actions */}
-      <div
-        className="animate-fade-in-up delay-300"
-        style={{
-          display: 'flex',
-          gap: '12px',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ position: 'relative', flex: '1', minWidth: '280px' }}>
-          <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <input 
-            type="text" 
-            placeholder="Buscar por Nº Factura, Nombre, CIF o CUPS..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-input"
-            style={{ paddingLeft: '38px' }}
-          />
-        </div>
-        <div style={{ position: 'relative', minWidth: '180px' }}>
-          <Filter size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1 }} />
-          <select 
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="form-input"
-            style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
-          >
-            <option value="">Tipo: Todas</option>
-            <option value="Normal">Normal</option>
-            <option value="Abono">Abono</option>
-            <option value="Rectificativa">Rectificativa</option>
-          </select>
-        </div>
-        {showCommunicationStatus && (
-          <div style={{ position: 'relative', minWidth: '150px' }}>
-            <Filter size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1 }} />
-            <select 
-              value={communicationFilter}
-              onChange={(e) => setCommunicationFilter(e.target.value)}
+      <div className="animate-fade-in-up delay-300 flex flex-col gap-4">
+        {/* Primera línea: Buscador y Filtro de fechas */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div style={{ position: 'relative', flex: '1', minWidth: '280px' }}>
+            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <input 
+              type="text" 
+              placeholder="Buscar por Nº Factura, Nombre, CIF o CUPS..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="form-input"
-              style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
-            >
-              <option value="">Envío: Todas</option>
-              <option value="communicated">Comunicadas</option>
-              <option value="pending">Pte. Envío</option>
-            </select>
+              style={{ paddingLeft: '38px' }}
+            />
           </div>
-        )}
-        <div className="flex items-center gap-2">
-          <input 
-            type="date" 
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-            className="form-input"
-            title="Fecha Desde"
-          />
-          <span style={{ color: 'var(--text-muted)' }}>-</span>
-          <input 
-            type="date" 
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-            className="form-input"
-            title="Fecha Hasta"
-          />
+          <div className="flex items-center gap-2">
+            <input 
+              type="date" 
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+              className="form-input"
+              title="Fecha Desde"
+            />
+            <span style={{ color: 'var(--text-muted)' }}>-</span>
+            <input 
+              type="date" 
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+              className="form-input"
+              title="Fecha Hasta"
+            />
+          </div>
         </div>
-        
-        {showPaymentButtons && (
-          <SendInvoicesButton 
-            selectedInvoiceIds={Array.from(selectedInvoiceIds)} 
-            onSentSuccess={() => {
-              setSelectedInvoiceIds(new Set());
-              setRefreshKey(k => k + 1);
-            }}
-          />
-        )}
-        <button 
-          className="btn-secondary"
-          onClick={() => {
-            const params = new URLSearchParams();
-            if (searchTerm) params.set('search', searchTerm);
-            if (filterType) params.set('type', filterType);
-            if (dateFrom) params.set('from', dateFrom);
-            if (dateTo) params.set('to', dateTo);
-            if (communicationFilter) params.set('status', communicationFilter);
-            window.open(`/api/facturas/export?${params.toString()}`, '_blank');
-          }}
-        >
-          <Download size={14} />
-          Exportar
-        </button>
+
+        {/* Segunda línea: Filtros y Botones de acción */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div style={{ position: 'relative', minWidth: '180px' }}>
+              <Filter size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1 }} />
+              <select 
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="form-input"
+                style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
+              >
+                <option value="">Tipo: Todas</option>
+                <option value="Normal">Normal</option>
+                <option value="Abono">Abono</option>
+                <option value="Rectificativa">Rectificativa</option>
+                <option value="Bolsillo Solar">Bolsillo Solar</option>
+              </select>
+            </div>
+            {showCommunicationStatus && (
+              <div style={{ position: 'relative', minWidth: '150px' }}>
+                <Filter size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1 }} />
+                <select 
+                  value={communicationFilter}
+                  onChange={(e) => setCommunicationFilter(e.target.value)}
+                  className="form-input"
+                  style={{ paddingLeft: '36px', cursor: 'pointer', appearance: 'none' }}
+                >
+                  <option value="">Envío: Todas</option>
+                  <option value="communicated">Comunicadas</option>
+                  <option value="pending">Pte. Envío</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {showPaymentButtons && (
+              <SendInvoicesButton 
+                selectedInvoiceIds={Array.from(selectedInvoiceIds)} 
+                onSentSuccess={() => {
+                  setSelectedInvoiceIds(new Set());
+                  setRefreshKey(k => k + 1);
+                }}
+              />
+            )}
+            <button 
+              className="btn-secondary"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (searchTerm) params.set('search', searchTerm);
+                if (filterType) params.set('type', filterType);
+                if (dateFrom) params.set('from', dateFrom);
+                if (dateTo) params.set('to', dateTo);
+                if (communicationFilter) params.set('status', communicationFilter);
+                window.open(`/api/facturas/export?${params.toString()}`, '_blank');
+              }}
+            >
+              <Download size={14} />
+              Exportar
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Table */}
