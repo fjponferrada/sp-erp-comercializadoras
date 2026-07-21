@@ -45,7 +45,9 @@ export async function GET(request: NextRequest) {
     // OPTIMIZATION: If a specific municipality is requested, pre-filter SupplyPoints 
     // to avoid fetching hundreds of thousands of invoices into memory and timing out on Vercel.
     if (municipalityName) {
-      const searchCity = normalizeString(municipalityName);
+      // Split ' -- PROVINCE' off if it exists to get just the city name
+      const cleanMunicipalityName = municipalityName.includes(' -- ') ? municipalityName.split(' -- ')[0] : municipalityName;
+      const searchCity = normalizeString(cleanMunicipalityName);
       
       const sps = await prisma.supplyPoint.findMany({
         where: { client: { brandId } },
@@ -55,15 +57,10 @@ export async function GET(request: NextRequest) {
       const matchingSpIds = sps.filter(sp => {
         const city = normalizeString(sp.city);
         if (!city) return false;
-        if (city === searchCity || city.includes(searchCity) || (city.length >= 4 && searchCity.includes(city))) return true;
         
-        const cityWords = city.split(' ').filter(w => w.length >= 4);
-        const searchWords = searchCity.split(' ').filter(w => w.length >= 4);
-        for (const cw of cityWords) {
-          if (cw.length >= 5 && searchWords.some(sw => sw === cw || sw.includes(cw) || cw.includes(sw))) {
-            return true;
-          }
-        }
+        // Exact match or substring match (e.g. "L'HOSPITALET DE L'INFANT" inside "VANDELLOS I L'HOSPITALET DE L'INFANT")
+        if (city === searchCity || searchCity.includes(city) || city.includes(searchCity)) return true;
+        
         return false;
       }).map(sp => sp.id);
 
@@ -110,26 +107,17 @@ export async function GET(request: NextRequest) {
     // Filter invoices in memory to allow accent-insensitive matching
     let filteredInvoices = invoices;
     if (municipalityName) {
-      const searchCity = normalizeString(municipalityName);
+      const cleanMunicipalityName = municipalityName.includes(' -- ') ? municipalityName.split(' -- ')[0] : municipalityName;
+      const searchCity = normalizeString(cleanMunicipalityName);
+      
       filteredInvoices = invoices.filter(inv => {
         const data = inv.invoiceData as Record<string, any> | null;
         const rawCity = inv.supplyPoint?.city || (data ? (data['POBLACION PS'] || data['Poblacion PS'] || data['Población PS']) : null);
         const city = normalizeString(rawCity as string);
         if (!city) return false;
         
-        if (city === searchCity || city.includes(searchCity) || (city.length >= 4 && searchCity.includes(city))) return true;
+        if (city === searchCity || searchCity.includes(city) || city.includes(searchCity)) return true;
         
-        // Fallback fuzzy match: compare significant words
-        const cityWords = city.split(' ').filter(w => w.length >= 4);
-        const searchWords = searchCity.split(' ').filter(w => w.length >= 4);
-        
-        // If they share at least one significant word >= 5 chars, we consider it a match
-        // Example: 'BOLLULLOS' matches 'BOLLULLOS'
-        for (const cw of cityWords) {
-          if (cw.length >= 5 && searchWords.some(sw => sw === cw || sw.includes(cw) || cw.includes(sw))) {
-            return true;
-          }
-        }
         return false;
       });
     }
