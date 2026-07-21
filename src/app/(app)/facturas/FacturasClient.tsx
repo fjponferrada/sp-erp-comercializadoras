@@ -78,6 +78,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   const [isLoading, setIsLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
 
   // Fetch from server action when filters or pagination change
   React.useEffect(() => {
@@ -230,6 +231,40 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                   setRefreshKey(k => k + 1);
                 }}
               />
+            )}
+            {selectedInvoiceIds.size > 0 && (
+              <button
+                className="btn-secondary"
+                disabled={isDownloadingZip}
+                onClick={async () => {
+                  setIsDownloadingZip(true);
+                  try {
+                    const res = await fetch('/api/facturas/download-zip', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ invoiceIds: Array.from(selectedInvoiceIds) })
+                    });
+                    if (!res.ok) throw new Error('Error al generar ZIP');
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'facturas_seleccionadas.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                  } catch (e) {
+                    console.error(e);
+                    alert("Error descargando ZIP");
+                  } finally {
+                    setIsDownloadingZip(false);
+                  }
+                }}
+              >
+                {isDownloadingZip ? <span className="animate-spin inline-block mr-1 border-2 border-current border-t-transparent rounded-full w-3 h-3" /> : <Download size={14} />}
+                ZIP ({selectedInvoiceIds.size})
+              </button>
             )}
             <button 
               className="btn-secondary"
