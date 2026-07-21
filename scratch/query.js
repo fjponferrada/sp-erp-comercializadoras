@@ -1,45 +1,46 @@
-require('dotenv').config();
-const { Client } = require('pg');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 async function main() {
-  const client = new Client({
-    connectionString: process.env.DATABASE_URL
+  const c = await prisma.contract.findFirst({
+    where: { contractCode: 'PRPR2510301219NM0F' },
+    include: {
+      client: true,
+      supplyPoint: true,
+      product: true,
+      Lead: true
+    }
   });
-  await client.connect();
 
-  console.log("Connected to DB!");
-
-  const res = await client.query('SELECT * FROM "Client" WHERE "vatNumber" = $1', ['34001966P']);
-  const row = res.rows[0];
-  
-  if (row) {
-    console.log("CLIENT DATA:");
-    console.log("contactEmail:", row.contactEmail);
-    console.log("contactPhone:", row.contactPhone);
-    console.log("firstName:", row.firstName);
-    console.log("businessName:", row.businessName);
-    console.log("billingStreet:", row.billingStreet);
-    
-    // airtableData might be parsed or string
-    let airtableData = row.airtableData;
-    if (typeof airtableData === 'string') {
-      try {
-        airtableData = JSON.parse(airtableData);
-      } catch(e){}
-    }
-    console.log("Airtable Data keys:", airtableData ? Object.keys(airtableData) : null);
-    if (airtableData) {
-      console.log("Airtable Nombre:", airtableData['Nombre'] || airtableData['NOMBRE'] || airtableData['nombre']);
-      console.log("Airtable Email:", airtableData['Email'] || airtableData['EMAIL']);
-      console.log("Airtable DOMICILIO PS:", airtableData['DOMICILIO PS COMPLETO'] || airtableData['DOMICILIO PS']);
-      console.log("Airtable TIPO VIA TITULAR:", airtableData['TIPO VIA TITULAR'] || airtableData['TIPO VÍA TITULAR']);
-      console.log("Airtable NOMBRE VIA TITULAR:", airtableData['NOMBRE VIA TITULAR'] || airtableData['NOMBRE VÍA TITULAR'] || airtableData['Calle Titular']);
-    }
-  } else {
-    console.log("Client not found");
+  if (!c) {
+    console.log("Contract not found!");
+    return;
   }
 
-  await client.end();
+  console.log("Client Type:", c.client.clientType);
+  console.log("Product Tariff:", c.product?.tariff);
+  console.log("SupplyPoint Tariff:", c.supplyPoint?.tariff);
+  
+  if (c.airtableData) {
+    console.log("Contract airtableData keys:", Object.keys(c.airtableData));
+    console.log("Contract airtableData TARIFA:", c.airtableData["tarifa"], c.airtableData["Tarifa"]);
+  } else {
+    console.log("Contract airtableData is null");
+  }
+
+  if (c.Lead?.contractData) {
+    console.log("Lead contractData keys:", Object.keys(c.Lead.contractData));
+    console.log("Lead contractData TARIFA:", c.Lead.contractData["tarifa"], c.Lead.contractData["Tarifa"]);
+    // Let's find any key that includes "tarif" or "Tarif"
+    const matchingKeys = Object.keys(c.Lead.contractData).filter(k => k.toLowerCase().includes('tarif'));
+    console.log("Matching keys in Lead contractData:", matchingKeys);
+    matchingKeys.forEach(k => {
+      console.log(`Lead contractData["${k}"] =`, c.Lead.contractData[k]);
+    });
+  } else {
+    console.log("Lead contractData is null");
+  }
+
 }
 
-main().catch(console.error);
+main().finally(() => prisma.$disconnect());

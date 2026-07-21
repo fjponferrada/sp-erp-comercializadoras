@@ -40,46 +40,69 @@ export async function GET(request: NextRequest) {
     const endDate = new Date(endDateParam);
     endDate.setHours(23, 59, 59, 999);
 
-    const invoices = await prisma.invoice.findMany({
-      where: {
-        client: { brandId },
-        issueDate: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      select: {
-        id: true,
-        pdfUrl: true,
-        issueDate: true,
-        billingStart: true,
-        billingEnd: true,
-        invoiceNumber: true,
-        invoiceType: true,
-        taxAmount: true,
-        totalMWh: true,
-        subtotal1: true,
-        invoiceData: true,
-        client: {
-          select: {
-            vatNumber: true
-          }
-        },
-        supplyPoint: {
-          select: {
-            cups: true,
-            city: true,
-            tariff: true,
-            postalCode: true,
-            distributor: true,
-            distributorName: true
+    let invoices: any[] = [];
+
+    // OPTIMIZATION: If a specific municipality is requested, pre-filter SupplyPoints 
+    // to avoid fetching hundreds of thousands of invoices into memory and timing out on Vercel.
+    if (municipalityName) {
+      const searchCity = normalizeString(municipalityName);
+      
+      const sps = await prisma.supplyPoint.findMany({
+        where: { client: { brandId } },
+        select: { id: true, city: true }
+      });
+
+      const matchingSpIds = sps.filter(sp => {
+        const city = normalizeString(sp.city);
+        if (!city) return false;
+        if (city === searchCity || city.includes(searchCity) || (city.length >= 4 && searchCity.includes(city))) return true;
+        
+        const cityWords = city.split(' ').filter(w => w.length >= 4);
+        const searchWords = searchCity.split(' ').filter(w => w.length >= 4);
+        for (const cw of cityWords) {
+          if (cw.length >= 5 && searchWords.some(sw => sw === cw || sw.includes(cw) || cw.includes(sw))) {
+            return true;
           }
         }
-      },
-      orderBy: {
-        issueDate: 'asc'
-      }
-    });
+        return false;
+      }).map(sp => sp.id);
+
+      invoices = await prisma.invoice.findMany({
+        where: {
+          client: { brandId },
+          issueDate: { gte: startDate, lte: endDate },
+          supplyPointId: { in: matchingSpIds }
+        },
+        select: {
+          id: true, pdfUrl: true, issueDate: true, billingStart: true, billingEnd: true,
+          invoiceNumber: true, invoiceType: true, taxAmount: true, totalMWh: true,
+          subtotal1: true, invoiceData: true,
+          client: { select: { vatNumber: true } },
+          supplyPoint: {
+            select: { cups: true, city: true, tariff: true, postalCode: true, distributor: true, distributorName: true }
+          }
+        },
+        orderBy: { issueDate: 'asc' }
+      });
+    } else {
+      // If "Todos los ayuntamientos" is selected, we must fetch everything in the date range
+      invoices = await prisma.invoice.findMany({
+        where: {
+          client: { brandId },
+          issueDate: { gte: startDate, lte: endDate },
+        },
+        select: {
+          id: true, pdfUrl: true, issueDate: true, billingStart: true, billingEnd: true,
+          invoiceNumber: true, invoiceType: true, taxAmount: true, totalMWh: true,
+          subtotal1: true, invoiceData: true,
+          client: { select: { vatNumber: true } },
+          supplyPoint: {
+            select: { cups: true, city: true, tariff: true, postalCode: true, distributor: true, distributorName: true }
+          }
+        },
+        orderBy: { issueDate: 'asc' }
+      });
+    }
 
     let totalBaseGlobal = 0;
     let totalTasaGlobal = 0;
