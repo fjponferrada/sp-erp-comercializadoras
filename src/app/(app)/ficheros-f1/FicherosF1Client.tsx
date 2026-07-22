@@ -126,11 +126,11 @@ export default function FicherosF1Client() {
               />
             </div>
             <div className="space-y-1 flex-1 min-w-[200px]">
-              <label className="text-xs font-medium text-gray-400">CUPS</label>
+              <label className="text-xs font-medium text-gray-400">CUPS o Código Fiscal</label>
               <div className="relative">
                 <input 
                   type="text" 
-                  placeholder="Buscar por CUPS..." 
+                  placeholder="Buscar por CUPS o Código Fiscal..." 
                   value={cups} 
                   onChange={(e) => setCups(e.target.value)} 
                   className="w-full pl-9 pr-3 py-2 bg-[var(--bg-base)] border border-[var(--border)] rounded-lg text-sm text-gray-200 focus:border-[var(--lime)] focus:ring-1 focus:ring-[var(--lime)] outline-none"

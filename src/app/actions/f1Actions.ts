@@ -19,7 +19,20 @@ export async function getPaginatedF1FilesAction(
     const whereClause: any = {};
 
     if (cups) {
-      whereClause.supplyPoint = { cups: { contains: cups, mode: 'insensitive' } };
+      whereClause.OR = [
+        { supplyPoint: { cups: { contains: cups, mode: 'insensitive' } } },
+        { 
+          supplyPoint: { 
+            contracts: { 
+              some: { 
+                client: { 
+                  vatNumber: { contains: cups, mode: 'insensitive' } 
+                } 
+              } 
+            } 
+          } 
+        }
+      ];
     }
 
     if (startDate || endDate) {
@@ -117,7 +130,13 @@ export async function getPendingF1EnergyAction(
     ];
 
     if (cups) {
-      conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM "SupplyPoint" sp WHERE sp.id = f."supplyPointId" AND sp."cups" ILIKE ${`%${cups}%`})`);
+      conditions.push(Prisma.sql`EXISTS (
+        SELECT 1 FROM "SupplyPoint" sp 
+        LEFT JOIN "Contract" c ON c."supplyPointId" = sp.id
+        LEFT JOIN "Client" cl ON cl.id = c."clientId"
+        WHERE sp.id = f."supplyPointId" 
+          AND (sp."cups" ILIKE ${`%${cups}%`} OR cl."vatNumber" ILIKE ${`%${cups}%`})
+      )`);
     }
 
     if (startDate) {

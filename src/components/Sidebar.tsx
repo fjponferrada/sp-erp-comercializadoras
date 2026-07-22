@@ -166,7 +166,6 @@ const baseNavGroups = [
       { href: '/ajustes', icon: Settings, label: 'Ajustes Generales' },
       { href: '/ajustes/costes-regulados', icon: FileBarChart, label: 'Costes Regulados (BOE)' },
       { href: '/ajustes/perfiles-ree', icon: Calendar, label: 'Perfiles REE (CSV)' },
-      { href: '/ajustes/usuarios', icon: Users, label: 'Gestión Usuarios' },
     ],
   },
 ];
