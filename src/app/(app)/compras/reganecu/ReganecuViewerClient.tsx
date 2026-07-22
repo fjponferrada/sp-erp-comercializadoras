@@ -111,6 +111,20 @@ export default function ReganecuViewerClient() {
     return num.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   };
 
+  const displayCierres = summaryData ? Object.keys(summaryData).filter(cierre => {
+    if (cierre.startsWith('A')) {
+      const correspondingC = 'C' + cierre.substring(1);
+      return summaryData[correspondingC] === undefined;
+    }
+    return true;
+  }).sort((a,b) => {
+    const ORDER = ['A1', 'C1', 'A2', 'C2', 'A3', 'C3', 'A4', 'C4', 'A5', 'C5', 'A6', 'C6', 'A7', 'C7', 'A8', 'C8'];
+    const idxA = ORDER.indexOf(a);
+    const idxB = ORDER.indexOf(b);
+    if(idxA !== -1 && idxB !== -1) return idxA - idxB;
+    return a.localeCompare(b);
+  }) : [];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
@@ -380,13 +394,7 @@ export default function ReganecuViewerClient() {
                   <thead>
                     <tr style={{ background: 'rgba(59, 130, 246, 0.1)', borderBottom: '2px solid rgba(59, 130, 246, 0.3)' }}>
                       <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)' }}>Concepto</th>
-                      {Object.keys(summaryData).sort((a,b) => {
-                        const ORDER = ['A1', 'C1', 'A2', 'C2', 'A3', 'C3', 'A4', 'C4', 'A5', 'C5', 'A6', 'C6', 'A7', 'C7', 'A8', 'C8'];
-                        const idxA = ORDER.indexOf(a);
-                        const idxB = ORDER.indexOf(b);
-                        if(idxA!==-1 && idxB!==-1) return idxA - idxB;
-                        return a.localeCompare(b);
-                      }).map((c, idx, arr) => (
+                      {displayCierres.map((c, idx, arr) => (
                         <React.Fragment key={c}>
                           <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>{c}</th>
                           {idx > 0 && (
@@ -399,13 +407,7 @@ export default function ReganecuViewerClient() {
                   <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>Total Base Imponible</td>
-                      {Object.keys(summaryData).sort((a,b) => {
-                        const ORDER = ['A1', 'C1', 'A2', 'C2', 'A3', 'C3', 'A4', 'C4', 'A5', 'C5', 'A6', 'C6', 'A7', 'C7', 'A8', 'C8'];
-                        const idxA = ORDER.indexOf(a);
-                        const idxB = ORDER.indexOf(b);
-                        if(idxA!==-1 && idxB!==-1) return idxA - idxB;
-                        return a.localeCompare(b);
-                      }).map((c, idx, arr) => {
+                      {displayCierres.map((c, idx, arr) => {
                         const val = summaryData[c];
                         const prevVal = idx > 0 ? summaryData[arr[idx-1]] : null;
                         const diff = prevVal !== null ? val - prevVal : 0;
@@ -421,13 +423,7 @@ export default function ReganecuViewerClient() {
                     </tr>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '12px 20px', color: 'var(--text-primary)', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>Total con IVA (21%)</td>
-                      {Object.keys(summaryData).sort((a,b) => {
-                        const ORDER = ['A1', 'C1', 'A2', 'C2', 'A3', 'C3', 'A4', 'C4', 'A5', 'C5', 'A6', 'C6', 'A7', 'C7', 'A8', 'C8'];
-                        const idxA = ORDER.indexOf(a);
-                        const idxB = ORDER.indexOf(b);
-                        if(idxA!==-1 && idxB!==-1) return idxA - idxB;
-                        return a.localeCompare(b);
-                      }).map((c, idx, arr) => {
+                      {displayCierres.map((c, idx, arr) => {
                         const val = summaryData[c] * 1.21;
                         const prevVal = idx > 0 ? summaryData[arr[idx-1]] * 1.21 : null;
                         const diff = prevVal !== null ? val - prevVal : 0;
