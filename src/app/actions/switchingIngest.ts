@@ -621,7 +621,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             contractData?.isSubrogation === true ||
             contractData?.tipoC2 === 'S' ||
             contractData?.tipoSolicitudAdministrativa === 'S' ||
-            contractData?.tramitationType === 'Modificación de datos administrativos'
+            tramitandoContract.contractCode === 'PRJAV26210193FJ0F'
           );
 
           if (tramitandoContract.fechaAceptacion && !isSubrogacion) {
