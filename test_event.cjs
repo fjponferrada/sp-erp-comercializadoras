@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function run() { const ev = await prisma.switchingEvent.findFirst({ where: { contractId: 'PRJAV26210193FJ0F' }, orderBy: { createdAt: 'desc' } }); console.log('Event:', ev); await prisma.$disconnect(); } run().catch(console.error);

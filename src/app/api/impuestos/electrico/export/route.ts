@@ -120,12 +120,24 @@ export async function GET(req: Request) {
          }
       }
 
+      const cp = inv.supplyPoint?.postalCode?.trim() || '';
       const prov = (inv.supplyPoint?.province || '').toLowerCase();
+      
       let zona = 'España';
-      if (prov.includes('navarra')) zona = 'Navarra';
-      else if (prov.includes('alava') || prov.includes('álava')) zona = 'Álava';
-      else if (prov.includes('guipuzcoa') || prov.includes('guipúzcoa') || prov.includes('gipuzkoa')) zona = 'Guipúzcoa';
-      else if (prov.includes('vizcaya') || prov.includes('bizkaia')) zona = 'Vizcaya';
+      
+      if (cp.startsWith('31') || prov.includes('navarra')) {
+        zona = 'Navarra';
+      } else if (cp.startsWith('01') || prov.includes('alava') || prov.includes('álava')) {
+        zona = 'Álava';
+      } else if (cp.startsWith('20') || prov.includes('guipuzcoa') || prov.includes('guipúzcoa') || prov.includes('gipuzkoa')) {
+        zona = 'Guipúzcoa';
+      } else if (cp.startsWith('48') || prov.includes('vizcaya') || prov.includes('bizkaia')) {
+        zona = 'Vizcaya';
+      } else if (cp.startsWith('51') || prov.includes('ceuta')) {
+        zona = 'Ceuta';
+      } else if (cp.startsWith('52') || prov.includes('melilla')) {
+        zona = 'Melilla';
+      }
 
       if (targetZona && targetZona !== zona) {
         continue;
