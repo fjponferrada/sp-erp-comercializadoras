@@ -614,20 +614,26 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         contractId = tramitandoContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
           const contractData = tramitandoContract.airtableData as any;
-          const isSubrogacion = procesoBase === 'M1' && (
+          const isModificacionAdministrativa = 
             tramitandoContract.tipoC2 === 'S' || 
             tramitandoContract.tipoC2 === 'M1_S' || 
             tramitandoContract.tipo === 'M1-S' ||
-            contractData?.isSubrogation === true ||
             contractData?.tipoC2 === 'S' ||
             contractData?.tipoSolicitudAdministrativa === 'S' ||
-            tramitandoContract.contractCode === 'PRJAV26210193FJ0F'
-          );
+            contractData?.tipoSolicitudAdministrativa === 'A' ||
+            contractData?.tipoSolicitudAdministrativa === 'C' ||
+            contractData?.isSubrogation === true ||
+            tramitandoContract.contractCode === 'PRJAV26210193FJ0F';
+            
+          const isTraspaso = contractData?.tipoSolicitudAdministrativa === 'T';
+          const isAutoconsumo = contractData?.isAutoconsumoModification === true || tramitandoContract.tramitationType?.toLowerCase().includes('autoconsumo');
 
-          if (tramitandoContract.fechaAceptacion && !isSubrogacion) {
+          const isAutoActivatableAdmin = procesoBase === 'M1' && isModificacionAdministrativa && !isTraspaso && !isAutoconsumo;
+
+          if (tramitandoContract.fechaAceptacion && !isAutoActivatableAdmin) {
             tipoError = "COLISION_DE_FECHAS";
             warning = "El XML trae una fecha de aceptación, pero el contrato ya tiene fecha de aceptación asignada.";
-          } else if (parsedData.fechaAR || (isSubrogacion && tramitandoContract.fechaAceptacion)) {
+          } else if (parsedData.fechaAR || (isAutoActivatableAdmin && tramitandoContract.fechaAceptacion)) {
             
             const activationDate = parsedData.fechaPrevActivacion || parsedData.fechaAR || tramitandoContract.fechaPrevistaActivacion || tramitandoContract.fechaAceptacion;
             
@@ -636,15 +642,15 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
               data: { 
                 fechaAceptacion: parsedData.fechaAR || tramitandoContract.fechaAceptacion, 
                 fechaPrevistaActivacion: parsedData.fechaPrevActivacion || tramitandoContract.fechaPrevistaActivacion,
-                ...(isSubrogacion ? { 
+                ...(isAutoActivatableAdmin ? { 
                   status: 'ACTIVO', 
                   activationDate: activationDate 
                 } : {})
               }
             });
             
-            if (isSubrogacion) {
-               warning = "Activado automáticamente por ser subrogación (M1 tipo S). No se esperará al paso 05.";
+            if (isAutoActivatableAdmin) {
+               warning = "Activado automáticamente por ser modificación administrativa sin trabajos de campo. No se esperará al paso 05.";
                
                const oldActiveContract = await prisma.contract.findFirst({
                  where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] }, id: { not: tramitandoContract.id } }
