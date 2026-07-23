@@ -613,19 +613,20 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPointId = supplyPoint.id;
         contractId = tramitandoContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
-          if (tramitandoContract.fechaAceptacion) {
+          const isSubrogacion = procesoBase === 'M1' && (tramitandoContract.tipoC2 === 'S' || tramitandoContract.tipoC2 === 'M1_S' || tramitandoContract.tipo === 'M1-S');
+
+          if (tramitandoContract.fechaAceptacion && !isSubrogacion) {
             tipoError = "COLISION_DE_FECHAS";
             warning = "El XML trae una fecha de aceptación, pero el contrato ya tiene fecha de aceptación asignada.";
-          } else if (parsedData.fechaAR) {
-            const isSubrogacion = procesoBase === 'M1' && (tramitandoContract.tipoC2 === 'S' || tramitandoContract.tipoC2 === 'M1_S' || tramitandoContract.tipo === 'M1-S');
+          } else if (parsedData.fechaAR || (isSubrogacion && tramitandoContract.fechaAceptacion)) {
             
-            const activationDate = parsedData.fechaPrevActivacion || parsedData.fechaAR;
+            const activationDate = parsedData.fechaPrevActivacion || parsedData.fechaAR || tramitandoContract.fechaPrevistaActivacion || tramitandoContract.fechaAceptacion;
             
             await prisma.contract.update({
               where: { id: tramitandoContract.id },
               data: { 
-                fechaAceptacion: parsedData.fechaAR, 
-                fechaPrevistaActivacion: parsedData.fechaPrevActivacion,
+                fechaAceptacion: parsedData.fechaAR || tramitandoContract.fechaAceptacion, 
+                fechaPrevistaActivacion: parsedData.fechaPrevActivacion || tramitandoContract.fechaPrevistaActivacion,
                 ...(isSubrogacion ? { 
                   status: 'ACTIVO', 
                   fechaActivacion: activationDate 
