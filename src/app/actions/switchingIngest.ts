@@ -617,10 +617,23 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             tipoError = "COLISION_DE_FECHAS";
             warning = "El XML trae una fecha de aceptación, pero el contrato ya tiene fecha de aceptación asignada.";
           } else if (parsedData.fechaAR) {
+            const isSubrogacion = procesoBase === 'M1' && (tramitandoContract.tipoC2 === 'S' || tramitandoContract.tipoC2 === 'M1_S' || tramitandoContract.tipo === 'M1-S');
+            
             await prisma.contract.update({
               where: { id: tramitandoContract.id },
-              data: { fechaAceptacion: parsedData.fechaAR, fechaPrevistaActivacion: parsedData.fechaPrevActivacion }
+              data: { 
+                fechaAceptacion: parsedData.fechaAR, 
+                fechaPrevistaActivacion: parsedData.fechaPrevActivacion,
+                ...(isSubrogacion ? { 
+                  status: 'ACTIVO', 
+                  fechaActivacion: parsedData.fechaPrevActivacion || parsedData.fechaAR 
+                } : {})
+              }
             });
+            
+            if (isSubrogacion) {
+               warning = "Activado automáticamente por ser subrogación (M1 tipo S). No se esperará al paso 05.";
+            }
           }
         } else if (parsedData.estadoAR === 'RECHAZADO') {
           if (tramitandoContract.status === 'RECHAZADO' || tramitandoContract.status === 'Rechazo Distribuidora') {
