@@ -5,9 +5,24 @@ import { auth } from '@/auth';
 import { normalizeProvincia, normalizeMunicipio, normalizeTipoVia } from '@/lib/normalizeAddress';
 import { unstable_noStore as noStore } from 'next/cache';
 
-const removeAccents = (str: string) => {
-  if (!str) return str;
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const escapeXml = (unsafe: string | null | undefined) => {
+  if (!unsafe) return '';
+  return String(unsafe).replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+      default: return c;
+    }
+  });
+};
+
+const removeAccentsAndEscape = (str: string | null | undefined) => {
+  if (!str) return '';
+  const noAccents = String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return escapeXml(noAccents);
 };
 
 export async function searchCupsForClaim(cups: string) {
@@ -251,15 +266,15 @@ export async function generateClaim(data: any) {
       let xmlNombre = '';
       if (tipoPersona === 'J') {
         const razonSocial = activeClient?.businessName || 'DESCONOCIDO';
-        xmlNombre = `<RazonSocial>${removeAccents(razonSocial)}</RazonSocial>`;
+        xmlNombre = `<RazonSocial>${removeAccentsAndEscape(razonSocial)}</RazonSocial>`;
       } else {
         const nombrePila = activeClient?.firstName || activeClient?.businessName || 'DESCONOCIDO';
         const primerApellido = activeClient?.lastName || 'DESCONOCIDO';
         const segundoApellido = activeClient?.lastName2 || '';
         
-        xmlNombre = `<NombreDePila>${removeAccents(nombrePila)}</NombreDePila>\n<PrimerApellido>${removeAccents(primerApellido)}</PrimerApellido>`;
+        xmlNombre = `<NombreDePila>${removeAccentsAndEscape(nombrePila)}</NombreDePila>\n<PrimerApellido>${removeAccentsAndEscape(primerApellido)}</PrimerApellido>`;
         if (segundoApellido.trim()) {
-          xmlNombre += `\n<SegundoApellido>${removeAccents(segundoApellido.trim())}</SegundoApellido>`;
+          xmlNombre += `\n<SegundoApellido>${removeAccentsAndEscape(segundoApellido.trim())}</SegundoApellido>`;
         }
       }
 
@@ -349,7 +364,7 @@ export async function generateClaim(data: any) {
             // Remove accents and convert e.g., "CÓDIGO INCIDENCIA" to "CodigoIncidencia"
             const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const xmlTag = normalizedKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
-            dynamicFieldsXml += `\n<${xmlTag}>${value}</${xmlTag}>`;
+            dynamicFieldsXml += `\n<${xmlTag}>${escapeXml(value)}</${xmlTag}>`;
           }
         }
       }
@@ -375,12 +390,12 @@ export async function generateClaim(data: any) {
 <VariablesDetalleReclamacion>
 <VariableDetalleReclamacion>
 <Contacto>
-<PersonaDeContacto>${companyContact}</PersonaDeContacto>
+<PersonaDeContacto>${escapeXml(companyContact)}</PersonaDeContacto>
 <Telefono>
 <PrefijoPais>34</PrefijoPais>
-<Numero>${companyPhone}</Numero>
+<Numero>${escapeXml(companyPhone)}</Numero>
 </Telefono>
-<CorreoElectronico>${companyEmail}</CorreoElectronico>
+<CorreoElectronico>${escapeXml(companyEmail)}</CorreoElectronico>
 </Contacto>
 ${dynamicFieldsXml}${numFacturaAtrXml}${lecturasXml}</VariableDetalleReclamacion>
 </VariablesDetalleReclamacion>
@@ -405,13 +420,13 @@ ${xmlNombre}
 <CodPostal>${zip}</CodPostal>
 <Via>
 <TipoVia>${normTipoVia}</TipoVia>
-<Calle>${removeAccents(street || '').substring(0, 30)}</Calle>
-<NumeroFinca>${number}</NumeroFinca>
+<Calle>${removeAccentsAndEscape(street || '').substring(0, 30)}</Calle>
+<NumeroFinca>${escapeXml(number)}</NumeroFinca>
 </Via>
 </Direccion>
 </Cliente>
 <TipoReclamante>06</TipoReclamante>
-<Comentarios>${comentarios || ''}</Comentarios>
+<Comentarios>${escapeXml(comentarios || '')}</Comentarios>
 </SolicitudReclamacion>
 </MensajeReclamacionPeticion>`;
     };
