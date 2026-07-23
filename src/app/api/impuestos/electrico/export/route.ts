@@ -133,10 +133,6 @@ export async function GET(req: Request) {
         zona = 'Guipúzcoa';
       } else if (cp.startsWith('48') || prov.includes('vizcaya') || prov.includes('bizkaia')) {
         zona = 'Vizcaya';
-      } else if (cp.startsWith('51') || prov.includes('ceuta')) {
-        zona = 'Ceuta';
-      } else if (cp.startsWith('52') || prov.includes('melilla')) {
-        zona = 'Melilla';
       }
 
       if (targetZona && targetZona !== zona) {

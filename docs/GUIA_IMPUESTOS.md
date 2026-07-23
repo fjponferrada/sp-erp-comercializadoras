@@ -10,11 +10,11 @@ Las reglas descritas a continuación son de obligado cumplimiento para garantiza
 
 El Modelo 560 es la declaración a la AEAT del Impuesto Eléctrico. La generación del fichero de desglose (TXT/CSV) requiere una precisión milimétrica.
 
-### 1.1 Exclusión de Zonas Forales y Especiales
-La declaración del Modelo 560 que se presenta en la **AEAT Peninsular** no debe incluir las facturas de territorios con régimen fiscal propio o imposición especial.
-- **Regla:** El sistema debe excluir matemáticamente todas las facturas correspondientes al País Vasco (Álava, Guipúzcoa, Vizcaya), Navarra, Ceuta y Melilla.
-- **Detección:** Se realiza mediante los Códigos Postales (`01`, `20`, `31`, `48`, `51`, `52`) o leyendo explícitamente el nombre de la provincia del `SupplyPoint`.
-- **Riesgo:** Si no se aplica esta exclusión, se sobredeclara la Base Imponible y la Cuota Íntegra a la Hacienda Estatal, pagando impuestos de más.
+### 1.1 Exclusión de Zonas Forales
+La declaración del Modelo 560 que se presenta en la **AEAT Central** no debe incluir las facturas de territorios con régimen fiscal y hacienda propia (zonas forales).
+- **Regla:** El sistema debe excluir matemáticamente todas las facturas correspondientes al País Vasco (Álava, Guipúzcoa, Vizcaya) y Navarra.
+- **Detección:** Se realiza mediante los Códigos Postales (`01`, `20`, `31`, `48`) o leyendo explícitamente el nombre de la provincia del `SupplyPoint`.
+- **Riesgo:** Si no se aplica esta exclusión, se sobredeclara la Base Imponible y la Cuota Íntegra a la Hacienda Estatal, pagando impuestos de más. (Nota: Ceuta y Melilla sí se liquidan ante la AEAT y, por tanto, se mantienen junto al resto de España).
 
 ### 1.2 Extracción Real del Impuesto (No aplicar Tipos Fijos a bulto)
 - **Error común de proveedores externos:** Coger la suma total de las bases imponibles de todos los suministros de baja tensión (SBFO) y multiplicarla por un tipo impositivo fijo (ej. 3,8% o 5,112696%). Esto genera cuotas irreales.
