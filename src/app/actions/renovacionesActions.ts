@@ -300,7 +300,6 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         p4c: oldContract.p4c,
         p5c: oldContract.p5c,
         p6c: oldContract.p6c,
-        annualConsumption: oldContract.annualConsumption,
         
         // Nuevos datos económicos (del nuevo producto)
         p1e: product.p1e,
