@@ -300,6 +300,7 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         supplyPointId: oldContract.supplyPointId,
         userId: oldContract.userId,
         brandId: oldContract.brandId,
+        leadId: oldContract.leadId,
         productId: product.id,
         previousContractId: oldContract.id,
         tipo: 'R',

@@ -182,6 +182,7 @@ export async function createContractModificationAction(
         productId: oldContract.productId,
         brandId: oldContract.brandId,
         userId: oldContract.userId, 
+        leadId: oldContract.leadId,
         previousContractId: oldContract.id,
         tipo: 'M1',
         tipoC2: isSubrogation ? 'S' : 'N',
