@@ -151,8 +151,7 @@ export async function generateSwitchingXmls(contractIds: string[]) {
       const now = new Date();
       const localISO = (new Date(now.getTime() - now.getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
       const fechaSol = localISO.split('.')[0]; // YYYY-MM-DDTHH:mm:ss
-      
-      const clientName = cAirtableFallback['NOMBRE Y APELLIDOS'] || cAirtableFallback['Titular'] || c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim();
+      const clientName = c.client.businessName || (`${c.client.firstName || ''} ${c.client.lastName || ''}`).trim() || cAirtableFallback['NOMBRE Y APELLIDOS'] || cAirtableFallback['Titular'] || '';
       
       if (!c.supplyPoint.cups || !c.client.vatNumber || !codDestino || !codEmisora) {
         errors.push({
@@ -168,11 +167,11 @@ export async function generateSwitchingXmls(contractIds: string[]) {
 
       // Básicos de cliente (común a todos)
       const isCompany = /^[ABCDEFGHJNPQRSUVW]/i.test(c.client.vatNumber);
-      const companyName = c.client.businessName || cAirtableFallback['NOMBRERAZON SOCIAL'] || cAirtableFallback['Razón Social'] || clientName;
-      
-      let nombreDePila = cAirtableFallback['NOMBRERAZON SOCIAL'] || cAirtableFallback['Nombre de pila'] || c.client.firstName || '';
-      let primerApellido = cAirtableFallback['Primer Apellido'] || c.client.lastName || '';
-      let segundoApellido = cAirtableFallback['Segundo Apellido'] || c.client.lastName2 || '';
+      const companyName = c.client.businessName || cAirtableFallback['NOMBRERAZON SOCIAL'] || cAirtableFallback['Razn Social'] || clientName;
+        
+      let nombreDePila = c.client.firstName || cAirtableFallback['Nombre de pila'] || cAirtableFallback['NOMBRERAZON SOCIAL'] || '';
+      let primerApellido = c.client.lastName || cAirtableFallback['Primer Apellido'] || '';
+      let segundoApellido = c.client.lastName2 || cAirtableFallback['Segundo Apellido'] || '';
 
       const clienteXml = `
         <Cliente>
