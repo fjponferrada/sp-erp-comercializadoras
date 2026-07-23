@@ -276,7 +276,19 @@ export async function renewContractAction(oldContractId: string, newProductId: s
     if (oldContract.expectedEndDate) {
       const prevEndDate = new Date(oldContract.expectedEndDate);
       const prevEndDay = new Date(Date.UTC(prevEndDate.getUTCFullYear(), prevEndDate.getUTCMonth(), prevEndDate.getUTCDate()));
-      fechaPrevistaActivacion = new Date(prevEndDay.getTime() + 24 * 60 * 60 * 1000);
+      const expectedActivationDay = new Date(prevEndDay.getTime() + 24 * 60 * 60 * 1000);
+      
+      const now = new Date();
+      const signatureDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      
+      const delayMs = signatureDay.getTime() - expectedActivationDay.getTime();
+      const delayDays = delayMs / (1000 * 60 * 60 * 24);
+      
+      if (delayDays > 30) {
+        fechaPrevistaActivacion = signatureDay;
+      } else {
+        fechaPrevistaActivacion = expectedActivationDay;
+      }
     }
 
     // Create new contract
