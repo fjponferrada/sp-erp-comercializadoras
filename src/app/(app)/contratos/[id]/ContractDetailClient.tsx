@@ -226,7 +226,7 @@ export default function ContractDetailClient({
         showSearch={false}
         customActions={
           <div className="flex gap-2 md:gap-3 items-center overflow-x-auto md:overflow-visible no-scrollbar pb-1 md:pb-0">
-            <button onClick={() => router.push('/contratos')} className="btn-ghost">
+            <button onClick={() => router.back()} className="btn-ghost">
               <ChevronLeft size={16} /> <span className="hidden md:inline">Volver</span>
             </button>
             <div className="h-8 border-l border-[var(--border)] mx-2"></div>

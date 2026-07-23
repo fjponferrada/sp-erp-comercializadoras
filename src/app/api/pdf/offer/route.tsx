@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
 import { Page, Text, View, Document, StyleSheet, renderToStream, Image } from '@react-pdf/renderer';
+import { Resend } from 'resend';
 
 const styles = StyleSheet.create({
   page: {
@@ -103,7 +104,10 @@ const styles = StyleSheet.create({
   }
 });
 
-const OfferDocument = ({ lead, prices, offerType }: { lead: any, prices: any, offerType: string }) => (
+const OfferDocument = ({ lead, prices, offerType }: { lead: any, prices: any, offerType: string }) => {
+  const isIndexed = !prices.p1 || Number(prices.p1) === 0 || prices.p1 === '0.000' || prices.p1 === '0';
+
+  return (
   <Document>
     <Page size="A4" style={styles.page}>
       
@@ -113,7 +117,7 @@ const OfferDocument = ({ lead, prices, offerType }: { lead: any, prices: any, of
           <Text style={styles.title}>
             {offerType === 'autoconsumo' ? 'Oferta de Autoconsumo' : 'Oferta de Suministro'}
           </Text>
-          <Text style={styles.subtitle}>Referencia: {lead.id.slice(0, 8).toUpperCase()}</Text>
+          <Text style={styles.subtitle}>Referencia: {lead.id ? lead.id.slice(0, 8).toUpperCase() : lead.cups}</Text>
           <Text style={styles.subtitle}>Fecha: {new Date().toLocaleDateString('es-ES')}</Text>
         </View>
       </View>
@@ -148,45 +152,55 @@ const OfferDocument = ({ lead, prices, offerType }: { lead: any, prices: any, of
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Consumo Estimado:</Text>
-          <Text style={styles.value}>{lead.estimatedMWh ? `${lead.estimatedMWh.toFixed(2)} MWh/año` : '-'}</Text>
+          <Text style={styles.value}>{lead.estimatedMWh ? `${Number(lead.estimatedMWh).toFixed(2)} MWh/año` : '-'}</Text>
         </View>
       </View>
 
       {/* Precios */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Condiciones Económicas (€/kWh)</Text>
-        <View style={styles.priceGrid}>
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>P1 (Punta)</Text>
-            <Text style={styles.priceValue}>{prices.p1}</Text>
-          </View>
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>P2 (Llano)</Text>
-            <Text style={styles.priceValue}>{prices.p2}</Text>
-          </View>
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>P3 (Valle)</Text>
-            <Text style={styles.priceValue}>{prices.p3}</Text>
-          </View>
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>P4</Text>
-            <Text style={styles.priceValue}>{prices.p4}</Text>
-          </View>
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>P5</Text>
-            <Text style={styles.priceValue}>{prices.p5}</Text>
-          </View>
-          <View style={styles.priceBox}>
-            <Text style={styles.priceLabel}>P6</Text>
-            <Text style={styles.priceValue}>{prices.p6}</Text>
-          </View>
-        </View>
+        <Text style={styles.sectionTitle}>Condiciones Económicas</Text>
         
-        <View style={{ marginTop: 20, padding: 10, backgroundColor: '#ECFCCB', borderRadius: 6 }}>
-          <Text style={{ fontSize: 11, color: '#3F6212', fontWeight: 'bold' }}>
-            Margen Comercial (Fee): {prices.fee || '0.00'} €/mes
-          </Text>
-        </View>
+        {isIndexed ? (
+          <View style={{ marginTop: 10, padding: 15, backgroundColor: '#F3F4F6', borderRadius: 8 }}>
+            <Text style={{ fontSize: 11, color: '#111827', lineHeight: 1.5 }}>
+              Término de energía facturado a precio de mercado (Tarifa Indexada) más un margen de comercialización (Fee) de {prices.fee || '0.00'}.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.priceGrid}>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>P1 (Punta)</Text>
+                <Text style={styles.priceValue}>{prices.p1}</Text>
+              </View>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>P2 (Llano)</Text>
+                <Text style={styles.priceValue}>{prices.p2}</Text>
+              </View>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>P3 (Valle)</Text>
+                <Text style={styles.priceValue}>{prices.p3}</Text>
+              </View>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>P4</Text>
+                <Text style={styles.priceValue}>{prices.p4}</Text>
+              </View>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>P5</Text>
+                <Text style={styles.priceValue}>{prices.p5}</Text>
+              </View>
+              <View style={styles.priceBox}>
+                <Text style={styles.priceLabel}>P6</Text>
+                <Text style={styles.priceValue}>{prices.p6}</Text>
+              </View>
+            </View>
+            <View style={{ marginTop: 20, padding: 10, backgroundColor: '#ECFCCB', borderRadius: 6 }}>
+              <Text style={{ fontSize: 11, color: '#3F6212', fontWeight: 'bold' }}>
+                Margen Comercial (Fee): {prices.fee || '0.00'} €/mes
+              </Text>
+            </View>
+          </>
+        )}
 
         {offerType === 'autoconsumo' && (
           <View style={styles.autoconsumoBox}>
@@ -215,15 +229,59 @@ const OfferDocument = ({ lead, prices, offerType }: { lead: any, prices: any, of
 
     </Page>
   </Document>
-);
+  );
+};
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { lead, prices, offerType = 'suministro' } = body;
+    const { lead, prices, offerType = 'suministro', action } = body;
 
     const stream = await renderToStream(<OfferDocument lead={lead} prices={prices} offerType={offerType} />);
     
+    if (action === 'send') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const pdfBuffer = Buffer.concat(chunks);
+      
+      const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key');
+      const emailTo = lead.email || lead.contactEmail;
+      
+      if (!emailTo) {
+        return NextResponse.json({ success: false, error: 'El cliente no tiene un email válido' }, { status: 400 });
+      }
+
+      const isIndexed = !prices.p1 || Number(prices.p1) === 0 || prices.p1 === '0.000' || prices.p1 === '0';
+      const termEnergiaText = isIndexed 
+        ? `<p>El término de energía se facturará a <strong>precio de mercado (Indexado)</strong> más un pequeño margen de comercialización de ${prices.fee || '0.00'}.</p>`
+        : `<p>Se aplicarán precios fijos competitivos durante toda la duración del contrato. Puedes consultar el desglose exacto en el PDF adjunto.</p>`;
+
+      await resend.emails.send({
+        from: 'AED Energía <noreply@aed-energia.com>',
+        to: [emailTo],
+        subject: `Tu Oferta de ${offerType === 'autoconsumo' ? 'Autoconsumo' : 'Suministro'} - AED Energía`,
+        html: `
+          <div style="font-family: sans-serif; color: #333; line-height: 1.5; max-width: 600px; margin: 0 auto;">
+            <h2>Hola ${lead.businessName || 'cliente'},</h2>
+            <p>Adjuntamos la oferta personalizada para tu punto de suministro con CUPS <strong>${lead.cups || ''}</strong>.</p>
+            ${termEnergiaText}
+            <p>Si tienes cualquier duda, contacta con nosotros.</p>
+            <p>Un saludo,<br><strong>El equipo de AED Energía</strong></p>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: `Oferta_${offerType.toUpperCase()}_AED_${lead.cups || lead.id}.pdf`,
+            content: pdfBuffer,
+          }
+        ]
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
     // Convert Node.js stream to Web stream
     const webStream = new ReadableStream({
       start(controller) {

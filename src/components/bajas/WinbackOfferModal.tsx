@@ -44,36 +44,64 @@ export default function WinbackOfferModal({ baja, products, onClose }: WinbackOf
     setError('');
 
     try {
-      // Simulate API call to generate PDF (using the same endpoint as Leads)
+      const productData = products.find(p => p.id === selectedProduct);
+      
+      const leadPayload = {
+        id: baja.id || baja.cups,
+        businessName: baja.cliente,
+        vatNumber: '', // Not strictly needed, we pass what we have
+        email: baja.email || '',
+        phone: baja.telefono || '',
+        address: baja.direccion || '',
+        cups: baja.cups,
+        tariff: baja.tarifa,
+        estimatedMWh: baja.mwh
+      };
+
+      const pricesPayload = {
+        p1: productData?.p1p || productData?.p1 || '0.000',
+        p2: productData?.p2p || productData?.p2 || '0.000',
+        p3: productData?.p3p || productData?.p3 || '0.000',
+        p4: productData?.p4p || productData?.p4 || '0.000',
+        p5: productData?.p5p || productData?.p5 || '0.000',
+        p6: productData?.p6p || productData?.p6 || '0.000',
+        fee: productData?.fee || productData?.feeIndex || '0.00',
+        feeExcedentes: productData?.feeExcedentes || '0.00',
+        bolsilloSolar: productData?.bolsilloSolar || false
+      };
+
+      const offerType = (productData?.type === 'Autoconsumo' || productData?.hasSelfConsumption || baja.hasSelfConsumption) ? 'autoconsumo' : 'suministro';
+
       const res = await fetch('/api/pdf/offer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientName: baja.cliente,
-          vatNumber: '', // Not strictly needed for the mockup, but we should pass what we have
-          email: baja.email || '',
-          phone: baja.telefono || '',
-          address: '',
-          cups: baja.cups,
-          productId: selectedProduct
+          lead: leadPayload,
+          prices: pricesPayload,
+          offerType,
+          action
         }),
       });
 
-      if (!res.ok) throw new Error('Error al generar la oferta');
-      
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      if (!res.ok) throw new Error('Error al procesar la oferta');
       
       if (action === 'download') {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `Oferta_Recuperacion_${baja.cliente}.pdf`;
         document.body.appendChild(a);
         a.click();
         a.remove();
+        window.URL.revokeObjectURL(url);
       } else {
-        // Send email mockup
-        alert(`Oferta enviada por email a ${baja.email || 'el cliente'} correctamente.`);
+        const data = await res.json();
+        if (data.success) {
+          alert(`Oferta enviada por email a ${baja.email || 'el cliente'} correctamente.`);
+        } else {
+          throw new Error(data.error || 'Error al enviar email');
+        }
       }
       
       onClose();

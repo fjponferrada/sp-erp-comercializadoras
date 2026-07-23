@@ -160,7 +160,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   </div>
 
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    <strong>CUPS:</strong> {b.cups}
+                    <strong>CUPS:</strong> <a href={`/contratos/${b.id}`} className="hover:text-amber-500 hover:underline transition-colors">{b.cups}</a>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
@@ -214,7 +214,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   </tr>
                 ) : bajas.map((b, index) => (
                   <tr key={b.id || `${b.cups}-${index}`} style={{ cursor: 'default' }}>
-                    <td className="mono-cell" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{b.cups.slice(0, 20)}...</td>
+                    <td className="mono-cell" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                      <a href={`/contratos/${b.id}`} className="hover:text-amber-500 hover:underline transition-colors" title="Ver detalle del contrato">
+                        {b.cups}
+                      </a>
+                    </td>
                     <td className="primary-cell">
                       <div className="flex flex-col">
                         <span>{b.cliente}</span>

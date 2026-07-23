@@ -367,6 +367,15 @@ export async function createUnilateralModificationAction(
       }
     });
 
+    // Mover el Lead al nuevo contrato para no perder el consumo estimado y vínculo
+    const leadToMove = await prisma.lead.findFirst({ where: { contractId: oldContract.id } });
+    if (leadToMove) {
+      await prisma.lead.update({
+        where: { id: leadToMove.id },
+        data: { contractId: newContract.id }
+      });
+    }
+
     revalidatePath(`/contratos/${oldContractId}`);
     return { success: true, newContractId: newContract.id };
 
