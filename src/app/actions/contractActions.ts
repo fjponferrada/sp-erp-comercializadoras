@@ -1179,7 +1179,9 @@ export async function updateContractFull(formData: FormData) {
     const signatureDate = formData.get('signatureDate') as string;
     const requestDate = formData.get('requestDate') as string;
     const activationDate = formData.get('activationDate') as string;
+    const fechaPrevistaActivacion = formData.get('fechaPrevistaActivacion') as string;
     const terminationDate = formData.get('terminationDate') as string;
+    const fechaPrevistaBaja = formData.get('fechaPrevistaBaja') as string;
     const permanenceStartDate = formData.get('permanenceStartDate') as string;
     const expectedEndDate = formData.get('expectedEndDate') as string;
     const discountStartDate = formData.get('discountStartDate') as string;
@@ -1327,7 +1329,9 @@ export async function updateContractFull(formData: FormData) {
         signatureDate: signatureDate ? new Date(signatureDate) : null,
         requestDate: requestDate ? new Date(requestDate) : null,
         activationDate: activationDate ? new Date(activationDate) : null,
+        fechaPrevistaActivacion: fechaPrevistaActivacion ? new Date(fechaPrevistaActivacion) : null,
         terminationDate: terminationDate ? new Date(terminationDate) : null,
+        fechaPrevistaBaja: fechaPrevistaBaja ? new Date(fechaPrevistaBaja) : null,
         permanenceStartDate: permanenceStartDate ? new Date(permanenceStartDate) : null,
         expectedEndDate: expectedEndDate ? new Date(expectedEndDate) : null,
         discountStartDate: discountStartDate ? new Date(discountStartDate) : null,

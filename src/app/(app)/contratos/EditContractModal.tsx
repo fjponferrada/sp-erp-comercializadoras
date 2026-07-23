@@ -101,8 +101,10 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
     
     signatureDate: formatDateForInput(contract.signatureDate || airtableData.fechafirma || airtableData.fechafirmacontrato || cData.fechafirma),
     requestDate: formatDateForInput(contract.requestDate),
-    activationDate: formatDateForInput(contract.activationDate || contract.fechaPrevistaActivacion || cData.fechaPrevistaActivacion),
-    terminationDate: formatDateForInput(contract.terminationDate || contract.fechaPrevistaBaja || cData.fechaPrevistaBaja),
+    activationDate: formatDateForInput(contract.activationDate),
+    fechaPrevistaActivacion: formatDateForInput(contract.fechaPrevistaActivacion || cData.fechaPrevistaActivacion),
+    terminationDate: formatDateForInput(contract.terminationDate),
+    fechaPrevistaBaja: formatDateForInput(contract.fechaPrevistaBaja || cData.fechaPrevistaBaja),
     permanenceStartDate: formatDateForInput(contract.permanenceStartDate),
     expectedEndDate: formatDateForInput(contract.expectedEndDate),
     discountStartDate: formatDateForInput(contract.discountStartDate),
@@ -441,9 +443,11 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <InputField formData={formData} handleChange={handleChange} label="Fecha Firma" name="signatureDate" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Fecha Solicitud" name="requestDate" type="date" />
+                <InputField formData={formData} handleChange={handleChange} label="Fecha Prev. Activación" name="fechaPrevistaActivacion" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Fecha Activación" name="activationDate" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Inicio Permanencia" name="permanenceStartDate" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Fin Previsto" name="expectedEndDate" type="date" />
+                <InputField formData={formData} handleChange={handleChange} label="Fecha Prev. Baja" name="fechaPrevistaBaja" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Fecha Baja" name="terminationDate" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Inicio Descuento" name="discountStartDate" type="date" />
                 <InputField formData={formData} handleChange={handleChange} label="Fin Descuento" name="discountEndDate" type="date" />
