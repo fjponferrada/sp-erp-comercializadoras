@@ -10,7 +10,7 @@ export const prisma =
     const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.PRISMA_DATABASE_URL;
     const pool = new Pool({
       connectionString,
-      max: process.env.NODE_ENV === 'production' ? 5 : 1,
+      max: process.env.NODE_ENV === 'production' ? 2 : 1,
       idleTimeoutMillis: process.env.NODE_ENV === 'production' ? 30000 : 2000,
     });
     const adapter = new PrismaPg(pool);
