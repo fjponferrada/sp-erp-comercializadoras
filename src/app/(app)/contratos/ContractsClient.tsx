@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Topbar from '@/components/Topbar';
@@ -78,26 +78,28 @@ const ESTADOS_FILTER = [
 ];
 
 /* ─────────────────────────── COMPONENT ──────────────────────────── */
-import React, { useEffect } from 'react';
 
 export default function ContractsClient({ 
   initialContracts, 
   initialTotalCount,
   stats,
   userRole = 'CANAL',
-  initialChannels = []
+  initialChannels = [],
+  initialTipos = []
 }: { 
   initialContracts: any[], 
   initialTotalCount: number,
   stats: { activos: number, tramitando: number, bajas: number, totalMwh: number },
-  userRole?: string,
-  initialChannels?: string[]
+  userRole: string,
+  initialChannels: string[],
+  initialTipos: string[]
 }) {
   const router = useRouter();
   const [search, setSearch]         = useState('');
   const [estadoFilter, setEstado]   = useState('Todos');
   const [tarifaFilter, setTarifa]   = useState('Todas');
   const [canalFilter, setCanal]     = useState('Todos');
+  const [tipoFilter, setTipo]       = useState('Todos');
   
   const [sortCol, setSortCol]       = useState<string | null>('fechaRegistro');
   const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc');
@@ -110,8 +112,10 @@ export default function ContractsClient({
   const [contracts, setContracts] = useState<any[]>(initialContracts);
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   const canalesDropdown = useMemo(() => ['Todos', ...initialChannels], [initialChannels]);
+  const tiposDropdown = useMemo(() => ['Todos', ...initialTipos], [initialTipos]);
 
   const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
   const showStats = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole as string);
@@ -132,47 +136,72 @@ export default function ContractsClient({
     }
   };
 
+  const fetchContracts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const { getPaginatedContractsAction } = await import('@/app/actions/contractActions');
+      const result = await getPaginatedContractsAction(page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir);
+      if (result.success && result.contracts) {
+        setContracts(result.contracts);
+        setTotalCount(result.totalCount || 0);
+      }
+    } catch (err) {
+      console.error("Error fetching contracts:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir]);
+
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
+    const s = sessionStorage.getItem('c_search'); if (s !== null) setSearch(s);
+    const e = sessionStorage.getItem('c_estado'); if (e !== null) setEstado(e);
+    const t = sessionStorage.getItem('c_tarifa'); if (t !== null) setTarifa(t);
+    const c = sessionStorage.getItem('c_canal'); if (c !== null) setCanal(c);
+    const tp = sessionStorage.getItem('c_tipo'); if (tp !== null) setTipo(tp);
+    const p = sessionStorage.getItem('c_page'); if (p !== null) setPage(Number(p));
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    sessionStorage.setItem('c_search', search);
+    sessionStorage.setItem('c_estado', estadoFilter);
+    sessionStorage.setItem('c_tarifa', tarifaFilter);
+    sessionStorage.setItem('c_canal', canalFilter);
+    sessionStorage.setItem('c_tipo', tipoFilter);
+    sessionStorage.setItem('c_page', String(page));
+  }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, page, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    
+    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && tipoFilter === 'Todos' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
       setContracts(initialContracts);
       setTotalCount(initialTotalCount);
       return;
     }
 
-    const fetchContracts = async () => {
-      setIsLoading(true);
-      try {
-        const { getPaginatedContractsAction } = await import('@/app/actions/contractActions');
-        const result = await getPaginatedContractsAction(page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, sortCol, sortDir);
-        if (result.success && result.contracts) {
-          setContracts(result.contracts);
-          setTotalCount(result.totalCount || 0);
-        }
-      } catch (err) {
-        console.error("Error fetching contracts:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     const debounceId = setTimeout(() => {
       fetchContracts();
     }, 300);
-
     return () => clearTimeout(debounceId);
-  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, sortCol, sortDir]);
+  }, [fetchContracts, page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir, initialContracts, initialTotalCount, isHydrated]);
 
+  // Using a ref to track if it's the initial hydration to prevent resetting page
+  const initialHydrationDone = React.useRef(false);
   useEffect(() => {
-    setPage(1);
-  }, [search, estadoFilter, tarifaFilter, canalFilter]);
+    if (isHydrated) {
+      if (!initialHydrationDone.current) {
+        initialHydrationDone.current = true;
+        return;
+      }
+      setPage(1);
+    }
+  }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, isHydrated]);
 
   const paginated = useMemo(() => {
-    const now = new Date();
-    const future15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
-
     return contracts.map(c => {
       let estado = c.status || 'TRAMITANDO';
-
       return {
         id: c.id,
         cups: c.supplyPoint?.cups || c.lead?.cups || '—',
@@ -214,18 +243,18 @@ export default function ContractsClient({
     { label: 'MWh Totales', value: stats.totalMwh.toLocaleString('es-ES', { maximumFractionDigits: 0 }), delta: 'Cartera actual', positive: true, icon: BarChart3, color: 'var(--lime)', glow: 'var(--lime-glow)' },
   ];
 
+  const [isExporting, setIsExporting] = useState(false);
+
   const handleRefresh = () => {
+    fetchContracts();
     router.refresh();
   };
 
-  const [isExporting, setIsExporting] = useState(false);
-
   const handleExportExcel = async () => {
     setIsExporting(true);
-    const loadingToast = toast.loading('Generando exportación Excel (puede tardar un poco)...');
+    const loadingToast = toast.loading('Generando exportación Excel...');
     try {
-      const { exportContractsExcelAction } = await import('@/app/actions/contractActions');
-      const result = await exportContractsExcelAction(search, estadoFilter, tarifaFilter, canalFilter);
+      const result = await exportContractsExcelAction(search, estadoFilter, tarifaFilter, canalFilter, tipoFilter);
       if (result.success && result.data) {
         const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(result.data);
@@ -234,10 +263,9 @@ export default function ContractsClient({
         XLSX.writeFile(wb, `Exportacion_Contratos_${new Date().toISOString().split('T')[0]}.xlsx`);
         toast.success('Excel generado correctamente', { id: loadingToast });
       } else {
-        toast.error('Error generando Excel: ' + result.error, { id: loadingToast });
+        toast.error('Error: ' + result.error, { id: loadingToast });
       }
     } catch (error) {
-      console.error(error);
       toast.error('Error al exportar', { id: loadingToast });
     } finally {
       setIsExporting(false);
@@ -250,7 +278,6 @@ export default function ContractsClient({
 
       <div style={{ padding: '28px 28px 48px' }}>
         
-        {/* STAT CARDS */}
         {showStats && (
           <div className="animate-fade-in-up grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
             {STATS.map((s, i) => {
@@ -271,18 +298,37 @@ export default function ContractsClient({
           </div>
         )}
 
-        {/* TABLE CARD */}
         <div className="card animate-fade-in-up delay-200" style={{ padding: 0 }}>
           
-          {/* FILTERS */}
-          <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: '1 1 260px', minWidth: '220px' }}>
-              <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-              <input className="form-input" placeholder="Buscar CUPS, cliente, contrato, producto…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '36px' }} />
+          {/* FILTERS AND SEARCH */}
+          <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: '1 1 auto', minWidth: '220px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                <input className="form-input w-full" placeholder="Buscar CUPS, cliente, contrato, producto…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '36px', width: '100%' }} />
+              </div>
+
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{totalCount}</span> resultados
+                </div>
+                
+                <button 
+                  onClick={handleExportExcel} 
+                  disabled={isExporting}
+                  className="btn-secondary" 
+                  style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px' }}
+                  title="Exportar a formato TERA XLSX"
+                >
+                  {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  Exportar XLSX
+                </button>
+              </div>
             </div>
 
             {showStats && (
-              <>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', minWidth: '160px' }}>
                   <select className="form-input" value={estadoFilter} onChange={e => { setEstado(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
                     {ESTADOS_FILTER.map(e => <option key={e} value={e}>{e === 'Todos' ? 'Estado: Todos' : ESTADO_CONFIG[e]?.label ?? e}</option>)}
@@ -303,25 +349,15 @@ export default function ContractsClient({
                   </select>
                   <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                 </div>
-              </>
-            )}
 
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{totalCount}</span> resultados
+                <div style={{ position: 'relative', minWidth: '220px', maxWidth: '300px' }}>
+                  <select className="form-input w-full" value={tipoFilter} onChange={e => { setTipo(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
+                    {tiposDropdown.map(t => <option key={t} value={t}>{t === 'Todos' ? 'Tipo: Todos' : t}</option>)}
+                  </select>
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                </div>
               </div>
-              
-              <button 
-                onClick={handleExportExcel} 
-                disabled={isExporting}
-                className="btn-secondary" 
-                style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px' }}
-                title="Exportar a formato TERA XLSX"
-              >
-                {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                Exportar XLSX
-              </button>
-            </div>
+            )}
           </div>
 
           {/* TABLE DATA */}

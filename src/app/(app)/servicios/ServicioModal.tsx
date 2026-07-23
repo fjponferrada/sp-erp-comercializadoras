@@ -10,6 +10,7 @@ interface Servicio {
   name: string;
   monthlyPrice: number | null;
   dailyPrice: number | null;
+  durationMonths: number;
   isActive: boolean;
   isCommissionable?: boolean;
 }
@@ -25,6 +26,7 @@ export default function ServicioModal({ isOpen, onClose, servicioToEdit, onSaved
   const [name, setName] = useState('');
   const [monthlyPrice, setMonthlyPrice] = useState('');
   const [dailyPrice, setDailyPrice] = useState('');
+  const [durationMonths, setDurationMonths] = useState('120');
   const [isCommissionable, setIsCommissionable] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -34,11 +36,13 @@ export default function ServicioModal({ isOpen, onClose, servicioToEdit, onSaved
         setName(servicioToEdit.name);
         setMonthlyPrice(servicioToEdit.monthlyPrice !== null ? String(servicioToEdit.monthlyPrice) : '');
         setDailyPrice(servicioToEdit.dailyPrice !== null ? String(servicioToEdit.dailyPrice) : '');
+        setDurationMonths(servicioToEdit.durationMonths ? String(servicioToEdit.durationMonths) : '120');
         setIsCommissionable(!!servicioToEdit.isCommissionable);
       } else {
         setName('');
         setMonthlyPrice('');
         setDailyPrice('');
+        setDurationMonths('120');
         setIsCommissionable(false);
       }
     }
@@ -55,14 +59,15 @@ export default function ServicioModal({ isOpen, onClose, servicioToEdit, onSaved
 
     const mPrice = monthlyPrice ? parseFloat(monthlyPrice.replace(',', '.')) : 0;
     const dPrice = dailyPrice ? parseFloat(dailyPrice.replace(',', '.')) : 0;
+    const durMonths = parseInt(durationMonths) || 120;
 
     setLoading(true);
     try {
       let res;
       if (servicioToEdit) {
-        res = await updateServicioAction(servicioToEdit.id, { name, monthlyPrice: mPrice, dailyPrice: dPrice, isCommissionable });
+        res = await updateServicioAction(servicioToEdit.id, { name, monthlyPrice: mPrice, dailyPrice: dPrice, durationMonths: durMonths, isCommissionable });
       } else {
-        res = await createServicioAction({ name, monthlyPrice: mPrice, dailyPrice: dPrice, isCommissionable });
+        res = await createServicioAction({ name, monthlyPrice: mPrice, dailyPrice: dPrice, durationMonths: durMonths, isCommissionable });
       }
 
       if (res.success && res.data) {
@@ -125,6 +130,19 @@ export default function ServicioModal({ isOpen, onClose, servicioToEdit, onSaved
                   className="w-full bg-[#111827] border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-[var(--lime)]"
                   value={dailyPrice}
                   onChange={(e) => setDailyPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">Duración (Meses)</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  required
+                  placeholder="Ej. 120"
+                  className="w-full bg-[#111827] border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-[var(--lime)]"
+                  value={durationMonths}
+                  onChange={(e) => setDurationMonths(e.target.value)}
                 />
               </div>
             </div>

@@ -303,9 +303,27 @@ export async function convertLeadToContractAction(leadId: string) {
         name: s.name,
         monthlyPrice: s.monthlyPrice,
         dailyPrice: s.dailyPrice,
+        durationMonths: s.durationMonths,
         isCommissionable: s.isCommissionable
       }));
       additionalServiceConnect = { connect: services.map(s => ({ id: s.id })) };
+    }
+    
+    // Rellenar legacy fields para retrocompatibilidad UI y facturación si hay servicios adicionales
+    let svaConceptToSave = cData.servicioAdicional || (product as any).svaConcept || undefined;
+    let svaPriceToSave = undefined;
+    let svaDurationToSave = undefined;
+    if (additionalServicesSnapshot && additionalServicesSnapshot.length > 0) {
+      const firstService = additionalServicesSnapshot[0];
+      svaConceptToSave = firstService.name;
+      svaDurationToSave = firstService.durationMonths;
+      
+      // El motor de facturación requiere el precio TOTAL del servicio para prorratearlo
+      if (firstService.monthlyPrice !== null && firstService.monthlyPrice !== undefined) {
+        svaPriceToSave = firstService.monthlyPrice * (firstService.durationMonths || 120);
+      } else if (firstService.dailyPrice !== null && firstService.dailyPrice !== undefined) {
+        svaPriceToSave = firstService.dailyPrice * 30 * (firstService.durationMonths || 120);
+      }
     }
 
     // 5. Crear el contrato
@@ -350,6 +368,9 @@ export async function convertLeadToContractAction(leadId: string) {
         commissionType: product.commissionType || null,
         powerTiersCommission: product.powerTiersCommission ? product.powerTiersCommission : undefined,
         permanenceMonths: product.permanenceMonths || null,
+        svaConcept: svaConceptToSave,
+        svaPrice: svaPriceToSave,
+        svaDuration: svaDurationToSave,
         additionalServicesSnapshot: additionalServicesSnapshot ?? undefined,
         AdditionalService: additionalServiceConnect,
       },
@@ -1345,6 +1366,7 @@ export async function getPaginatedContractsAction(
   estadoFilter: string,
   tarifaFilter: string,
   canalFilter: string,
+  tipoFilter: string,
   sortCol: string | null,
   sortDir: 'asc' | 'desc'
 ) {
@@ -1397,6 +1419,10 @@ export async function getPaginatedContractsAction(
           name: canalFilter
         }
       };
+    }
+
+    if (tipoFilter && tipoFilter !== 'Todos') {
+      whereClause.tipo = tipoFilter;
     }
 
     let orderBy: any = undefined;
@@ -1725,12 +1751,17 @@ export async function exportContractsExcelAction(
   searchTerm: string, 
   estadoFilter: string,
   tarifaFilter: string,
-  canalFilter: string
+  canalFilter: string,
+  tipoFilter: string
 ) {
   try {
     const { prisma } = await import('@/lib/prisma');
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const visibilityFilter = await getUserVisibilityFilter();
+
+    const allDistributors = await prisma.distributor.findMany();
+    const distMap = new Map();
+    allDistributors.forEach((d: any) => distMap.set(d.reeCode, d.name));
 
     let whereClause: any = { ...visibilityFilter };
 
@@ -1767,6 +1798,10 @@ export async function exportContractsExcelAction(
 
     if (canalFilter && canalFilter !== 'Todos') {
       whereClause.user = { ...whereClause.user, channel: { name: canalFilter } };
+    }
+
+    if (tipoFilter && tipoFilter !== 'Todos') {
+      whereClause.tipo = tipoFilter;
     }
 
     const allMatching = await prisma.contract.findMany({
@@ -1870,8 +1905,15 @@ export async function exportContractsExcelAction(
       
       // Limpiar distribuidora y extraer código REE si existe en formato [XXXX]
       const rawDist = c.supplyPoint?.distributor || c.supplyPoint?.distributorName || formatStr(cd["DISTRIBUIDORA"]);
-      const cleanDist = rawDist ? String(rawDist).replace(/^\[\d+\]\s*/, '') : '';
+      let cleanDist = rawDist ? String(rawDist).replace(/^\[\d+\]\s*/, '') : '';
       const extractedReeCode = rawDist ? (String(rawDist).match(/^\[(\d+)\]/) || [])[1] : null;
+      const finalReeCode = extractedReeCode || c.supplyPoint?.distributorReeCode || formatStr(cd["CODIGO REE DISTRIBUIDORA"]) || formatStr(cd["codigo_ree_distri"]);
+
+      if (cleanDist && /^\d+$/.test(cleanDist)) {
+        cleanDist = distMap.get(cleanDist) || cleanDist;
+      } else if (!cleanDist && finalReeCode && distMap.has(finalReeCode)) {
+        cleanDist = distMap.get(finalReeCode);
+      }
 
       // Mapear código CNMC a Tarifa (Airtable guarda a veces '018', '019' en lugar del string)
       const cnmcToTariff = (code: string) => {
@@ -1897,9 +1939,15 @@ export async function exportContractsExcelAction(
         "Tipo_entrada": "A",
         "Fecha_prevista": c.fechaPrevista ? formatDate(c.fechaPrevista) : formatStr(cd["Fecha_prevista"]),
         "Tipo_de_cliente": isJuridica ? 'J' : 'F',
-        "NOMBRERAZON SOCIAL": c.client?.businessName || formatStr(cd["NOMBRERAZON SOCIAL"]),
-        "Primer Apellido": c.client?.firstName || formatStr(cd["Primer Apellido"]),
-        "Segundo Apellido": c.client?.lastName || formatStr(cd["Segundo Apellido"]),
+        "NOMBRERAZON SOCIAL": isJuridica 
+            ? (c.client?.businessName || formatStr(cd["NOMBRERAZON SOCIAL"]))
+            : (c.client?.firstName || formatStr(cd["NOMBRERAZON SOCIAL"])),
+        "Primer Apellido": isJuridica 
+            ? "" 
+            : (c.client?.lastName?.trim().split(/\\s+/)[0] || formatStr(cd["Primer Apellido"])),
+        "Segundo Apellido": isJuridica 
+            ? "" 
+            : (c.client?.lastName?.trim().split(/\\s+/).slice(1).join(" ") || formatStr(cd["Segundo Apellido"])),
         "CIF": c.client?.vatNumber || formatStr(cd["CIF"]),
         "DOMICILIO SOC": cleanDomSoc,
         "CP SOC": c.client?.billingPostalCode || c.client?.postalCode || formatStr(cd["CP SOC"]),
@@ -1926,7 +1974,7 @@ export async function exportContractsExcelAction(
         "Tlf_2": c.client?.contactPhone2 || formatStr(cd["Tlf_2"]),
         "Email_2": c.client?.contactEmail2 || formatStr(cd["Email_2"]),
         "DISTRIBUIDORA": cleanDist,
-        "codigo_ree_distri": extractedReeCode || c.supplyPoint?.distributorReeCode || formatStr(cd["CODIGO REE DISTRIBUIDORA"]) || formatStr(cd["codigo_ree_distri"]),
+        "codigo_ree_distri": finalReeCode,
         "CUPS": c.supplyPoint?.cups || formatStr(cd["CUPS"]),
         "DOMICILIO PS": cleanDomPs,
         "CP PS": c.supplyPoint?.postalCode || formatStr(cd["CP PS"]),
@@ -2004,10 +2052,10 @@ export async function exportContractsExcelAction(
         "inicio_proceso": "",
         "fecha_activacion": formatDate(c.activationDate) || formatStr(cd["fecha_activacion"]),
         "fecha_baja": c.terminationDate ? formatDate(c.terminationDate) : formatStr(cd["fecha_baja"]),
-        "FECHA_BAJA_ESTIMADA": c.expectedEndDate ? formatDate(c.expectedEndDate) : formatStr(cd["FECHA_BAJA_ESTIMADA"]),
+        "FECHA_BAJA_ESTIMADA": "",
         "GAS INCLUIDO": "NO",
         "BOLSILLO SOLAR": c.bolsilloSolar ? "SI" : (c.bolsilloSolar === false ? "NO" : formatStr(cd["BOLSILLO SOLAR"])),
-        "CG BOLSILLO SOLAR": fmtNum(c.cgBolsilloSolar) || formatStr(cd["CG BOLSILLO SOLAR"]),
+        "CG BOLSILLO SOLAR": (c.bolsilloSolar === false || c.bolsilloSolar === null) ? "" : (fmtNum(c.cgBolsilloSolar) || formatStr(cd["CG BOLSILLO SOLAR"])),
         "p1cd": "",
         "p2cd": "",
         "p3cd": "",

@@ -15,7 +15,7 @@ async function getAdminBrandId() {
   return (activeBrandId && activeBrandId !== 'todas') ? activeBrandId : (session.user as any)?.brandId;
 }
 
-export async function createServicioAction(data: { name: string; monthlyPrice: number; dailyPrice: number; isCommissionable: boolean }) {
+export async function createServicioAction(data: { name: string; monthlyPrice: number; dailyPrice: number; durationMonths: number; isCommissionable: boolean }) {
   try {
     const brandId = await getAdminBrandId();
     if (!brandId) return { success: false, error: 'No autorizado o sin marca activa' };
@@ -25,6 +25,7 @@ export async function createServicioAction(data: { name: string; monthlyPrice: n
         name: data.name,
         monthlyPrice: data.monthlyPrice,
         dailyPrice: data.dailyPrice,
+        durationMonths: data.durationMonths,
         isCommissionable: data.isCommissionable,
         isActive: true,
         brandId: brandId
@@ -38,7 +39,7 @@ export async function createServicioAction(data: { name: string; monthlyPrice: n
   }
 }
 
-export async function updateServicioAction(id: string, data: { name: string; monthlyPrice: number; dailyPrice: number; isCommissionable: boolean }) {
+export async function updateServicioAction(id: string, data: { name: string; monthlyPrice: number; dailyPrice: number; durationMonths: number; isCommissionable: boolean }) {
   try {
     const brandId = await getAdminBrandId();
     if (!brandId) return { success: false, error: 'No autorizado' };
@@ -54,6 +55,7 @@ export async function updateServicioAction(id: string, data: { name: string; mon
         name: data.name,
         monthlyPrice: data.monthlyPrice,
         dailyPrice: data.dailyPrice,
+        durationMonths: data.durationMonths,
         isCommissionable: data.isCommissionable
       }
     });

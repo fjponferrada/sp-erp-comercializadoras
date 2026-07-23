@@ -55,12 +55,31 @@ export async function GET(req: Request) {
         // Ejecutar transición
         try {
           await prisma.$transaction(async (tx) => {
+            let finalActivationDay = expectedActivationDay;
+            let finalTerminationDay = renewal.contract!.expectedEndDate;
+
+            // Calcular retraso respecto a la firma (o a hoy si no hay signatureDate)
+            const signatureDay = renewal.signatureDate 
+              ? new Date(Date.UTC(renewal.signatureDate.getUTCFullYear(), renewal.signatureDate.getUTCMonth(), renewal.signatureDate.getUTCDate()))
+              : today;
+            
+            const delayMs = signatureDay.getTime() - expectedActivationDay.getTime();
+            const delayDays = delayMs / (1000 * 60 * 60 * 24);
+
+            // Umbral de gracia: 30 días
+            // Si han pasado más de 30 días, no hacemos la activación retroactiva total.
+            // La fecha de activación pasa a ser la fecha de firma.
+            if (delayDays > 30) {
+              finalActivationDay = signatureDay;
+              finalTerminationDay = new Date(finalActivationDay.getTime() - 24 * 60 * 60 * 1000); // Un día antes de la firma
+            }
+
             // 1. Dar de baja el antiguo (FINALIZADO)
             await tx.contract.update({
               where: { id: renewal.previousContractId! },
               data: {
                 status: 'FINALIZADO',
-                terminationDate: renewal.contract!.expectedEndDate
+                terminationDate: finalTerminationDay
               }
             });
 
@@ -69,8 +88,8 @@ export async function GET(req: Request) {
               where: { id: renewal.id },
               data: {
                 status: 'ACTIVO',
-                activationDate: expectedActivationDay,
-                permanenceStartDate: expectedActivationDay
+                activationDate: finalActivationDay,
+                permanenceStartDate: finalActivationDay
               }
             });
           });

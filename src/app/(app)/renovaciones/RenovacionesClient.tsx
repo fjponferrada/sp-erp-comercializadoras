@@ -29,6 +29,7 @@ export interface RenovacionData {
   canal: string;
   estado: string; // 'URGENTE' | 'PROXIMO' | 'PENDIENTE'
   hasSelfConsumption: boolean;
+  hasPendingRenewal?: boolean;
 }
 
 const estadoBadge = (estado: string, dias: number) => {
@@ -38,7 +39,7 @@ const estadoBadge = (estado: string, dias: number) => {
   return <span className="badge badge-draft">{dias} días</span>;
 };
 
-export default function RenovacionesClient({ initialRenovaciones, initialTotalCount, initialStats, products = [], canales = [] }: { initialRenovaciones: RenovacionData[], initialTotalCount: number, initialStats: any, products?: any[], canales?: any[] }) {
+export default function RenovacionesClient({ initialRenovaciones, initialTotalCount, initialStats, products = [], canales = [], additionalServices = [] }: { initialRenovaciones: RenovacionData[], initialTotalCount: number, initialStats: any, products?: any[], canales?: any[], additionalServices?: any[] }) {
   const { data: session } = useSession();
   const userRole = (session?.user as any)?.role || 'user';
   const showCanalFilter = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
@@ -51,6 +52,9 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
   const [itemsPerPage, setItemsPerPage] = useState(100);
   const [renovados, setRenovados] = useState<string[]>([]);
   const [ocultos, setOcultos] = useState<string[]>([]);
+  
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [activeModalRenovaciones, setActiveModalRenovaciones] = useState<RenovacionData[]>([]);
   
   const [renovarModalOpen, setRenovarModalOpen] = useState(false);
   const [selectedRenovacion, setSelectedRenovacion] = useState<RenovacionData | null>(null);
@@ -99,6 +103,29 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
   // Aplicar ocultación local
   const displayedRenovaciones = renovaciones.filter(r => !ocultos.includes(r.id));
 
+  const allSelectable = displayedRenovaciones.filter(r => !r.hasPendingRenewal && !renovados.includes(r.id));
+  const allSelected = allSelectable.length > 0 && selectedIds.length === allSelectable.length;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(allSelectable.map(r => r.id));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleRenovarMasivamente = () => {
+    const selected = renovaciones.filter(r => selectedIds.includes(r.id));
+    setActiveModalRenovaciones(selected);
+    setRenovarModalOpen(true);
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar title="Renovaciones" subtitle="Contratos próximos a vencimiento · Gestión de retención de cartera" />
@@ -127,6 +154,24 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
             );
           })}
         </div>
+
+        {selectedIds.length > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center justify-between animate-fade-in-up">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-500">
+                <CheckCircle2 size={18} />
+              </div>
+              <span className="text-amber-500 font-semibold">{selectedIds.length} contratos seleccionados</span>
+            </div>
+            <button 
+              onClick={handleRenovarMasivamente}
+              className="btn-primary"
+              style={{ padding: '8px 24px', fontWeight: 'bold', fontSize: '0.9rem' }}
+            >
+              Renovar Masivamente ({selectedIds.length})
+            </button>
+          </div>
+        )}
 
         {/* Filters & Table wrapper */}
         <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
@@ -168,13 +213,22 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
               </div>
             ) : (
               displayedRenovaciones.map((r) => {
-                const renovado = renovados.includes(r.id);
+                const renovado = r.hasPendingRenewal || renovados.includes(r.id);
                 return (
                   <div key={r.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px', opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1, paddingRight: '8px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{r.cliente}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{r.telefonoContacto}</div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1, paddingRight: '8px' }}>
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 mt-1 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500"
+                          checked={selectedIds.includes(r.id)}
+                          onChange={() => toggleOne(r.id)}
+                          disabled={renovado}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{r.cliente}</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{r.telefonoContacto}</div>
+                        </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         {renovado ? (
@@ -220,6 +274,14 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                    />
+                  </th>
                   <th>Cliente / Contacto</th>
                   <th>Suministro</th>
                   <th>Contrato</th>
@@ -236,9 +298,18 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                     </td>
                   </tr>
                 ) : displayedRenovaciones.map((r) => {
-                  const renovado = renovados.includes(r.id);
+                  const renovado = r.hasPendingRenewal || renovados.includes(r.id);
                   return (
-                    <tr key={r.id} style={{ opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }}>
+                    <tr key={r.id} style={{ opacity: renovado ? 0.5 : 1, transition: 'opacity 0.3s' }} className={selectedIds.includes(r.id) ? 'bg-amber-500/5' : ''}>
+                      <td style={{ textAlign: 'center' }}>
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500"
+                          checked={selectedIds.includes(r.id)}
+                          onChange={() => toggleOne(r.id)}
+                          disabled={renovado}
+                        />
+                      </td>
                       
                       {/* CLIENTE */}
                       <td>
@@ -289,7 +360,14 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
                           <span className="badge badge-active inline-flex mt-2"><CheckCircle2 size={10} /> Renovado</span>
                         ) : (
                           <div className="flex items-center justify-end">
-                            <button className="bg-[var(--lime)] hover:bg-[#b0f03a] text-black font-bold px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm" onClick={() => { setSelectedRenovacion(r); setRenovarModalOpen(true); }}>
+                            <button 
+                              onClick={() => {
+                                setActiveModalRenovaciones([r]);
+                                setRenovarModalOpen(true);
+                              }}
+                              className="btn-primary" 
+                              style={{ padding: '6px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                            >
                               Renovar
                             </button>
                           </div>
@@ -315,10 +393,18 @@ export default function RenovacionesClient({ initialRenovaciones, initialTotalCo
 
       <RenovarModal 
         isOpen={renovarModalOpen} 
-        onClose={() => setRenovarModalOpen(false)} 
-        renovacion={selectedRenovacion}
+        onClose={() => {
+          setRenovarModalOpen(false);
+          setActiveModalRenovaciones([]);
+        }}
+        renovaciones={activeModalRenovaciones}
         products={products}
-        onRenovado={(id) => setRenovados(p => [...p, id])}
+        additionalServices={additionalServices}
+        onRenovado={(id) => {
+          setRenovados(p => [...p, id]);
+          setSelectedIds(prev => prev.filter(selId => selId !== id)); // quitar de seleccionados si se renovó con éxito
+        }}
+        userRole={userRole}
       />
     </div>
   );

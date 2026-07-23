@@ -458,6 +458,8 @@ model Contract {
   permanenceMonths           Int?
   p1c                        Float?
   p2c                        Float?
+  isTacitRenewal             Boolean                @default(false)
+  tacitRenewalCommunicatedAt DateTime?
   p3c                        Float?
   p4c                        Float?
   p5c                        Float?
@@ -563,6 +565,7 @@ model AdditionalService {
   name             String
   monthlyPrice     Float?
   dailyPrice       Float?
+  durationMonths   Int              @default(120)
   isActive         Boolean          @default(true)
   isCommissionable Boolean          @default(false)
   brandId          String

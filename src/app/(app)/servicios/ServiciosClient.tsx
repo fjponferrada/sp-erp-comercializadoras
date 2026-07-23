@@ -11,6 +11,7 @@ interface Servicio {
   name: string;
   monthlyPrice: number | null;
   dailyPrice: number | null;
+  durationMonths: number;
   isActive: boolean;
   isCommissionable?: boolean;
 }
@@ -60,6 +61,7 @@ export default function ServiciosClient({ initialServicios }: Props) {
                 <th className="px-6 py-4">Nombre del Servicio</th>
                 <th className="px-6 py-4">Precio Mensual (€)</th>
                 <th className="px-6 py-4">Precio Diario (€)</th>
+                <th className="px-6 py-4 text-center">Duración (Meses)</th>
                 <th className="px-6 py-4 text-center">Comisión</th>
                 <th className="px-6 py-4 text-center">Estado</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
@@ -71,6 +73,7 @@ export default function ServiciosClient({ initialServicios }: Props) {
                   <td className="px-6 py-4 font-medium text-white">{svc.name}</td>
                   <td className="px-6 py-4">{svc.monthlyPrice !== null ? svc.monthlyPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 }) + ' €' : '-'}</td>
                   <td className="px-6 py-4">{svc.dailyPrice !== null ? svc.dailyPrice.toLocaleString('es-ES', { minimumFractionDigits: 3 }) + ' €' : '-'}</td>
+                  <td className="px-6 py-4 text-center">{svc.durationMonths}</td>
                   <td className="px-6 py-4 text-center">
                     {svc.isCommissionable ? (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">

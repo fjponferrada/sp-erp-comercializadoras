@@ -13,11 +13,12 @@ export default async function RenovacionesPage() {
     redirect('/');
   }
 
-  const [renovacionesResult, statsResult, products, canales] = await Promise.all([
+  const [renovacionesResult, statsResult, products, canales, additionalServices] = await Promise.all([
     getPaginatedRenovacionesAction(1, 100, '', 'TODAS', 'URGENTE', 'TODOS'),
     getRenovacionesStatsAction(),
     getAuthorizedProductsWhereClause().then(where => where ? prisma.product.findMany({ where, orderBy: { name: 'asc' } }) : []),
-    prisma.channel.findMany({ orderBy: { name: 'asc' } })
+    prisma.channel.findMany({ orderBy: { name: 'asc' } }),
+    prisma.additionalService.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } })
   ]);
 
   console.log('BOE PRODUCTS:', products.filter(p => p.name.includes('BOE')).map(p => ({name: p.name, type: p.type, pm: p.pricingModel})));
@@ -29,6 +30,7 @@ export default async function RenovacionesPage() {
       initialStats={statsResult.success ? statsResult.stats : { totalEnCola: 0, urgentes: 0, proximos: 0, totalMwhRenovar: 0 }}
       products={products} 
       canales={canales}
+      additionalServices={additionalServices}
     />
   );
 }

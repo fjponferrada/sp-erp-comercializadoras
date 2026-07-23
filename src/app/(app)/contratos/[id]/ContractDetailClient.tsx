@@ -8,6 +8,8 @@ import { formatDateUTC } from '@/lib/utils/date';
 import { updateContractDatesAction, sendContractToDocuSignAction, deleteLatestVersionAction } from '@/app/actions/contractActions';
 import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
+import { comunicarRenovacionTacitaAction } from '@/app/actions/renovacionesActions';
+import toast from 'react-hot-toast';
 import ConsumosTab from './ConsumosTab';
 import ModificationModal from './ModificationModal';
 import HistoricalChart from './HistoricalChart';
@@ -40,6 +42,8 @@ export default function ContractDetailClient({
   const [isGeneratingXml, setIsGeneratingXml] = useState(false);
   const [isDeletingVersion, setIsDeletingVersion] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showTacitRenewalModal, setShowTacitRenewalModal] = useState(false);
+  const [isCommunicatingTacitRenewal, setIsCommunicatingTacitRenewal] = useState(false);
 
   // Forms state
   const formatDateForInput = (isoDate: Date | string | null | undefined) => {
@@ -279,6 +283,17 @@ export default function ContractDetailClient({
                 title="Editar datos del contrato"
               >
                 <Pencil size={16} /> <span className="hidden md:inline">Editar</span>
+              </button>
+            )}
+            {initialContract.tipo === 'R' && initialContract.status === 'ACEPTADO' && initialContract.isTacitRenewal === true && (
+              <button 
+                onClick={() => setShowTacitRenewalModal(true)}
+                disabled={isCommunicatingTacitRenewal}
+                className={initialContract.tacitRenewalCommunicatedAt ? "bg-[#1E2A3A] text-gray-300 px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-[#2A3B4C] transition-colors flex items-center gap-2 disabled:opacity-50 border border-[#2A3B4C]" : "bg-[var(--lime)] text-black px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-[#c2ff66] transition-colors flex items-center gap-2 disabled:opacity-50"}
+                title="Comunicar Renovación Tácita al cliente"
+              >
+                {isCommunicatingTacitRenewal ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                <span className="hidden md:inline">{isCommunicatingTacitRenewal ? 'Enviando...' : (initialContract.tacitRenewalCommunicatedAt ? 'Re-comunicar' : 'Comunicar R. Tácita')}</span>
               </button>
             )}
             {initialContract.status === 'BORRADOR' && (
@@ -1098,6 +1113,52 @@ export default function ContractDetailClient({
         )}
 
       </div>
+
+      {showTacitRenewalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0B0F19] border border-[#1E2A3A] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-[#1E2A3A] bg-[#111827]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Send size={20} className="text-[var(--lime)]" />
+                Comunicar Renovación Tácita
+              </h2>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-300 text-sm leading-relaxed">
+                ¿Seguro que deseas comunicar la renovación tácita a este cliente? Se enviará un correo electrónico oficial con los nuevos precios de potencia, energía y servicios adicionales que le aplican.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-5 border-t border-[#1E2A3A] bg-[#111827]">
+              <button
+                onClick={() => setShowTacitRenewalModal(false)}
+                className="px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white transition-colors"
+                disabled={isCommunicatingTacitRenewal}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  setIsCommunicatingTacitRenewal(true);
+                  const res = await comunicarRenovacionTacitaAction(initialContract.id);
+                  setIsCommunicatingTacitRenewal(false);
+                  setShowTacitRenewalModal(false);
+                  if (res.error) {
+                    toast.error(res.error);
+                  } else {
+                    toast.success('Renovación tácita comunicada correctamente.');
+                    router.refresh();
+                  }
+                }}
+                disabled={isCommunicatingTacitRenewal}
+                className="bg-[var(--lime)] text-black px-5 py-2 rounded-lg font-semibold hover:bg-[#c2ff66] transition-colors flex items-center gap-2 disabled:opacity-50 text-sm"
+              >
+                {isCommunicatingTacitRenewal ? 'Enviando...' : 'Sí, Comunicar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

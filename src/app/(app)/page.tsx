@@ -234,9 +234,9 @@ export default function DashboardPage() {
                       <tr><td colSpan={6} style={{textAlign: 'center', padding: '30px'}}>No hay contratos recientes</td></tr>
                     )}
                     {recentContracts.map((c: any) => (
-                      <tr key={c.internalId} style={{ cursor: 'pointer' }}>
+                      <tr key={c.internalId} style={{ cursor: 'pointer' }} onClick={() => router.push(`/contratos/${c.internalId}`)}>
                         <td className="mono-cell" style={{ color: 'var(--lime)', fontWeight: 500, fontSize: '0.75rem' }}>
-                          {c.id?.slice(0, 18) || 'Sin ref'}...
+                          {c.id || 'Sin ref'}
                         </td>
                         <td className="primary-cell">{c.client}</td>
                         <td><span className={statusBadge(c.status)}>{c.status}</span></td>
