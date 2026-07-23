@@ -182,7 +182,6 @@ export async function createContractModificationAction(
         productId: oldContract.productId,
         brandId: oldContract.brandId,
         userId: oldContract.userId, 
-        leadId: oldContract.leadId,
         previousContractId: oldContract.id,
         tipo: 'M1',
         tipoC2: isSubrogation ? 'S' : 'N',
@@ -269,6 +268,16 @@ export async function createContractModificationAction(
     });
 
     revalidatePath(`/contratos/${oldContractId}`);
+
+    // Mover el Lead al nuevo contrato para no perder el consumo estimado y vínculo
+    const leadToMove = await prisma.lead.findFirst({ where: { contractId: oldContract.id } });
+    if (leadToMove) {
+      await prisma.lead.update({
+        where: { id: leadToMove.id },
+        data: { contractId: newContract.id }
+      });
+    }
+
     return { success: true, newContractId: newContract.id };
 
   } catch (error: any) {

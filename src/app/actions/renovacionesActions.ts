@@ -300,7 +300,6 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         supplyPointId: oldContract.supplyPointId,
         userId: oldContract.userId,
         brandId: oldContract.brandId,
-        leadId: oldContract.leadId,
         productId: product.id,
         previousContractId: oldContract.id,
         tipo: 'R',
@@ -390,6 +389,15 @@ export async function renewContractAction(oldContractId: string, newProductId: s
       where: { id: newContract.id },
       data: { pdfUrl: uploadedUrl }
     });
+
+    // Mover el Lead al nuevo contrato para no perder el consumo estimado y vínculo
+    const leadToMove = await prisma.lead.findFirst({ where: { contractId: oldContract.id } });
+    if (leadToMove) {
+      await prisma.lead.update({
+        where: { id: leadToMove.id },
+        data: { contractId: newContract.id }
+      });
+    }
 
     return { success: true, contractId: newContract.id };
   } catch (error: any) {
