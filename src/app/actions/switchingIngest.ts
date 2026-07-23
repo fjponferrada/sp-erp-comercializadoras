@@ -613,7 +613,16 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPointId = supplyPoint.id;
         contractId = tramitandoContract.id;
         if (parsedData.estadoAR === 'ACEPTADO') {
-          const isSubrogacion = procesoBase === 'M1' && (tramitandoContract.tipoC2 === 'S' || tramitandoContract.tipoC2 === 'M1_S' || tramitandoContract.tipo === 'M1-S');
+          const contractData = tramitandoContract.airtableData as any;
+          const isSubrogacion = procesoBase === 'M1' && (
+            tramitandoContract.tipoC2 === 'S' || 
+            tramitandoContract.tipoC2 === 'M1_S' || 
+            tramitandoContract.tipo === 'M1-S' ||
+            contractData?.isSubrogation === true ||
+            contractData?.tipoC2 === 'S' ||
+            contractData?.tipoSolicitudAdministrativa === 'S' ||
+            contractData?.tramitationType === 'Modificación de datos administrativos'
+          );
 
           if (tramitandoContract.fechaAceptacion && !isSubrogacion) {
             tipoError = "COLISION_DE_FECHAS";
