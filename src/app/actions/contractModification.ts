@@ -189,6 +189,7 @@ export async function createContractModificationAction(
         status: 'BORRADOR',
         signatureDate: oldContract.signatureDate,
         permanenceStartDate: oldContract.permanenceStartDate,
+        expectedEndDate: oldContract.expectedEndDate,
         airtableData: newContractData,
         p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,
         p4e: oldContract.p4e, p5e: oldContract.p5e, p6e: oldContract.p6e,
