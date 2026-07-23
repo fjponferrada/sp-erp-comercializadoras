@@ -38,11 +38,18 @@ const getTariffStyle = (tarifa: string) => {
 };
 
 export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [], channels = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[], channels?: any[] }) {
-  const [search, setSearch] = useState('');
-  const [motivoFilter, setMotivoFilter] = useState('TODOS');
-  const [canalFilter, setCanalFilter] = useState('TODOS');
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_search') || '' : '');
+  const [motivoFilter, setMotivoFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_motivoFilter') || 'TODOS' : 'TODOS');
+  const [canalFilter, setCanalFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_canalFilter') || 'TODOS' : 'TODOS');
+  const [page, setPage] = useState(() => typeof window !== 'undefined' ? Number(sessionStorage.getItem('bajas_page')) || 1 : 1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
+
+  useEffect(() => {
+    sessionStorage.setItem('bajas_search', search);
+    sessionStorage.setItem('bajas_motivoFilter', motivoFilter);
+    sessionStorage.setItem('bajas_canalFilter', canalFilter);
+    sessionStorage.setItem('bajas_page', page.toString());
+  }, [search, motivoFilter, canalFilter, page]);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
 
   const [bajas, setBajas] = useState<BajaData[]>(initialBajas);
