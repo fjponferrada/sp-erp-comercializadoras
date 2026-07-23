@@ -52,7 +52,7 @@ export default function WinbackOfferModal({ baja, products, onClose }: WinbackOf
         vatNumber: '', // Not strictly needed, we pass what we have
         email: baja.email || '',
         phone: baja.telefono || '',
-        address: baja.direccion || '',
+        address: '', // BajaData does not have direccion
         cups: baja.cups,
         tariff: baja.tarifa,
         estimatedMWh: baja.mwh
