@@ -619,6 +619,8 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           } else if (parsedData.fechaAR) {
             const isSubrogacion = procesoBase === 'M1' && (tramitandoContract.tipoC2 === 'S' || tramitandoContract.tipoC2 === 'M1_S' || tramitandoContract.tipo === 'M1-S');
             
+            const activationDate = parsedData.fechaPrevActivacion || parsedData.fechaAR;
+            
             await prisma.contract.update({
               where: { id: tramitandoContract.id },
               data: { 
@@ -626,13 +628,25 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
                 fechaPrevistaActivacion: parsedData.fechaPrevActivacion,
                 ...(isSubrogacion ? { 
                   status: 'ACTIVO', 
-                  fechaActivacion: parsedData.fechaPrevActivacion || parsedData.fechaAR 
+                  fechaActivacion: activationDate 
                 } : {})
               }
             });
             
             if (isSubrogacion) {
                warning = "Activado automáticamente por ser subrogación (M1 tipo S). No se esperará al paso 05.";
+               
+               const oldActiveContract = await prisma.contract.findFirst({
+                 where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] }, id: { not: tramitandoContract.id } }
+               });
+               if (oldActiveContract && !oldActiveContract.terminationDate) {
+                 const prevDate = new Date(activationDate);
+                 prevDate.setDate(prevDate.getDate() - 1);
+                 await prisma.contract.update({
+                   where: { id: oldActiveContract.id },
+                   data: { terminationDate: prevDate, status: 'FINALIZADO' }
+                 });
+               }
             }
           }
         } else if (parsedData.estadoAR === 'RECHAZADO') {
