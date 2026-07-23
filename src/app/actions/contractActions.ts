@@ -1936,8 +1936,10 @@ export async function exportContractsExcelAction(
         "Tipo": c.tipo || formatStr(cd["Tipo"]),
         "Tipo_c2": c.tipoC2 || formatStr(cd["Tipo_c2"]),
         "Peticion_cliente_c2": formatStr(cd["Peticion_cliente_c2"]),
-        "Tipo_entrada": "A",
-        "Fecha_prevista": c.fechaPrevista ? formatDate(c.fechaPrevista) : formatStr(cd["Fecha_prevista"]),
+        "Tipo_entrada": c.tipo === 'R' ? "F" : "A",
+        "Fecha_prevista": c.tipo === 'R' && c.fechaPrevistaActivacion 
+          ? formatDate(c.fechaPrevistaActivacion) 
+          : (c.fechaPrevista ? formatDate(c.fechaPrevista) : formatStr(cd["Fecha_prevista"])),
         "Tipo_de_cliente": isJuridica ? 'J' : 'F',
         "NOMBRERAZON SOCIAL": isJuridica 
             ? (c.client?.businessName || formatStr(cd["NOMBRERAZON SOCIAL"]))
