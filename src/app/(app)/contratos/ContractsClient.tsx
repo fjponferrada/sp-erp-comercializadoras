@@ -254,6 +254,7 @@ export default function ContractsClient({
     setIsExporting(true);
     const loadingToast = toast.loading('Generando exportación Excel...');
     try {
+      const { exportContractsExcelAction } = await import('@/app/actions/contractActions');
       const result = await exportContractsExcelAction(search, estadoFilter, tarifaFilter, canalFilter, tipoFilter);
       if (result.success && result.data) {
         const XLSX = await import('xlsx');
