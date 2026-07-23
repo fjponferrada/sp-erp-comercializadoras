@@ -388,10 +388,16 @@ export async function generateSwitchingXmls(contractIds: string[]) {
           if (tipoC2 === 'S' || tipoC2 === 'M1_S') tipoModificacionM1 = 'S';
           if (tipoC2 === 'N' || tipoC2 === 'M1_N') tipoModificacionM1 = 'N';
 
+          let tipoSolicitudAdministrativa = '';
+          if (tipoModificacionM1 === 'S' || tipoModificacionM1 === 'A') {
+             tipoSolicitudAdministrativa = cAirtable.tipoSolicitudAdministrativa || 'T'; // T por defecto para seguridad (sin subrogación) si no está especificado
+             tipoSolicitudAdministrativa = `<TipoSolicitudAdministrativa>${tipoSolicitudAdministrativa}</TipoSolicitudAdministrativa>`;
+          }
+
           payloadContent = `
             <DatosSolicitud>
               <TipoModificacion>${tipoModificacionM1}</TipoModificacion>
-              ${tipoModificacionM1 === 'S' || tipoModificacionM1 === 'A' ? '<TipoSolicitudAdministrativa>T</TipoSolicitudAdministrativa>' : ''}
+              ${tipoSolicitudAdministrativa}
               <CNAE>${c.supplyPoint.cnae || c.client.cnae || '3514'}</CNAE>
               <IndActivacion>A</IndActivacion>
             </DatosSolicitud>

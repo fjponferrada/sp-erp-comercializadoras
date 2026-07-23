@@ -146,6 +146,7 @@ export async function createContractModificationAction(
       newContractData.nif = nifFinal;
       newContractData.nombre = nombreFinal;
       newContractData.iban = ibanFinal;
+      newContractData.tipoSolicitudAdministrativa = 'S';
     } else if (isTecnica) {
       newContractData.tarifa = formData.tarifa;
       newContractData.Tarifa = formData.tarifa;
