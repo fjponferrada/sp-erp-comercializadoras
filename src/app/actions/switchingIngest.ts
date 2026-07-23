@@ -638,7 +638,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
                 fechaPrevistaActivacion: parsedData.fechaPrevActivacion || tramitandoContract.fechaPrevistaActivacion,
                 ...(isSubrogacion ? { 
                   status: 'ACTIVO', 
-                  fechaActivacion: activationDate 
+                  activationDate: activationDate 
                 } : {})
               }
             });
