@@ -36,9 +36,17 @@ async function fetchForecastWeather(lat: number, lon: number, targetDate: string
   }
 }
 
+import { toDate, format as formatTz } from 'date-fns-tz';
+
 export async function generateTomorrowForecast() {
-  const tomorrow = addDays(startOfDay(new Date()), 1);
-  const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+  // Always calculate "tomorrow" strictly based on Madrid time, avoiding Vercel UTC midnight issues
+  const timeZone = 'Europe/Madrid';
+  const nowInMadrid = toDate(new Date(), { timeZone });
+  
+  // Set to midnight of tomorrow in Madrid
+  nowInMadrid.setHours(0, 0, 0, 0);
+  const tomorrow = addDays(nowInMadrid, 1);
+  const tomorrowStr = formatTz(tomorrow, 'yyyy-MM-dd', { timeZone });
   
   console.log(`Generating forecast for ${tomorrowStr}...`);
 
