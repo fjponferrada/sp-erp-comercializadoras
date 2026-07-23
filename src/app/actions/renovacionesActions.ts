@@ -272,6 +272,13 @@ export async function renewContractAction(oldContractId: string, newProductId: s
       expectedEndDate.setFullYear(expectedEndDate.getFullYear() + 1);
     }
 
+    let fechaPrevistaActivacion = null;
+    if (oldContract.expectedEndDate) {
+      const prevEndDate = new Date(oldContract.expectedEndDate);
+      const prevEndDay = new Date(Date.UTC(prevEndDate.getUTCFullYear(), prevEndDate.getUTCMonth(), prevEndDate.getUTCDate()));
+      fechaPrevistaActivacion = new Date(prevEndDay.getTime() + 24 * 60 * 60 * 1000);
+    }
+
     // Create new contract
     const newContract = await prisma.contract.create({
       data: {
@@ -289,6 +296,7 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         isTacitRenewal: renewalType === 'TACITA',
         signatureDate: renewalType === 'TACITA' ? new Date() : undefined,
         expectedEndDate: expectedEndDate,
+        fechaPrevistaActivacion: fechaPrevistaActivacion,
         
         AdditionalService: additionalServiceConnect,
         additionalServicesSnapshot: additionalServicesSnapshot ?? undefined,
