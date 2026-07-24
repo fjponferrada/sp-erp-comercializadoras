@@ -563,11 +563,17 @@ export async function searchCupsWithBillingDelay(minDays: number = 45) {
       }
     });
 
-    const cupsList = [...new Set(supplyPoints.map(sp => sp.cups))];
+    const extendedCupsList = new Set<string>();
+    for (const sp of supplyPoints) {
+      extendedCupsList.add(sp.cups);
+      if (sp.cups.length > 20) {
+        extendedCupsList.add(sp.cups.substring(0, 20));
+      }
+    }
 
     const invoices = await prisma.invoice.findMany({
       where: { 
-        supplyPoint: { cups: { in: cupsList } },
+        supplyPoint: { cups: { in: Array.from(extendedCupsList) } },
         billingEnd: { not: null }
       },
       select: { billingEnd: true, supplyPoint: { select: { cups: true } } },
@@ -576,8 +582,12 @@ export async function searchCupsWithBillingDelay(minDays: number = 45) {
 
     const latestInvoiceByCups = new Map<string, Date>();
     for (const inv of invoices) {
-      if (inv.supplyPoint?.cups && inv.billingEnd && !latestInvoiceByCups.has(inv.supplyPoint.cups)) {
-        latestInvoiceByCups.set(inv.supplyPoint.cups, new Date(inv.billingEnd));
+      if (inv.supplyPoint?.cups && inv.billingEnd) {
+        const baseCups = inv.supplyPoint.cups.substring(0, 20);
+        const existing = latestInvoiceByCups.get(baseCups);
+        if (!existing || new Date(inv.billingEnd) > existing) {
+          latestInvoiceByCups.set(baseCups, new Date(inv.billingEnd));
+        }
       }
     }
 
@@ -623,7 +633,8 @@ export async function searchCupsWithBillingDelay(minDays: number = 45) {
       effectiveStartDate = currentStart;
 
       let lastBilledDate: Date | null = null;
-      const latestBillingEnd = latestInvoiceByCups.get(sp.cups);
+      const baseCups = sp.cups.substring(0, 20);
+      const latestBillingEnd = latestInvoiceByCups.get(baseCups);
       
       if (latestBillingEnd && latestBillingEnd >= effectiveStartDate) {
         lastBilledDate = new Date(latestBillingEnd);
