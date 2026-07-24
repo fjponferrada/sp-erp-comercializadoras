@@ -171,13 +171,8 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
 
   const cupsBase = parsedData.cups?.substring(0, 20);
   let supplyPoint: any = foundContractBySolicitud?.supplyPoint || null;
-  if (supplyPoint) {
-    possibleSpIds = [supplyPoint.id];
-  }
-
-  if (!supplyPoint && parsedData.cups) {
-    const cupsBase = parsedData.cups.substring(0, 20);
-    // Find supply points starting with cupsBase. If multiple, prefer the ones with the exact NIF if we have it
+  
+  if (cupsBase) {
     const matches = await prisma.supplyPoint.findMany({
       where: { cups: { startsWith: cupsBase } },
       include: { 
@@ -187,18 +182,25 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     });
 
     if (matches.length > 0) {
-      if (parsedData.nifCliente) {
-        // Try to find the supply point belonging to the client with this NIF
-        const nifMatch = matches.find(m => m.client?.vatNumber?.toUpperCase() === parsedData.nifCliente);
-        if (nifMatch) supplyPoint = nifMatch as any;
-      }
-
-      if (!supplyPoint) {
-        matches.sort((a, b) => b._count.contracts - a._count.contracts);
-        supplyPoint = matches[0] as any;
-      }
       possibleSpIds = matches.map(m => m.id);
+      
+      if (!supplyPoint) {
+        if (parsedData.nifCliente) {
+          const nifMatch = matches.find(m => m.client?.vatNumber?.toUpperCase() === parsedData.nifCliente);
+          if (nifMatch) supplyPoint = nifMatch as any;
+        }
+
+        if (!supplyPoint) {
+          matches.sort((a, b) => b._count.contracts - a._count.contracts);
+          supplyPoint = matches[0] as any;
+        }
+      }
     }
+  }
+
+  // Fallback si el CUPS no venía en el XML pero encontramos el supplyPoint por nSolicitud
+  if (supplyPoint && !possibleSpIds.includes(supplyPoint.id)) {
+    possibleSpIds.push(supplyPoint.id);
   }
 
   if (!supplyPoint) {
