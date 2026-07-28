@@ -855,38 +855,17 @@ export async function getPaginatedInvoicesAction(
     }
 
     if (searchTerm) {
-      const isCups = searchTerm.toUpperCase().startsWith('ES') && searchTerm.length >= 18;
-      const isVatNumber = /^[A-Z0-9]{8,10}$/i.test(searchTerm) && !isCups;
-      const isInvoiceNumber = /^[A-Z0-9]{6,}$/i.test(searchTerm) && !isCups && !isVatNumber;
-
-      if (isCups) {
-        whereClause.OR = [
-          { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
-          { invoiceData: { path: ['CUPS'], string_contains: searchTerm } },
-        ];
-      } else if (isVatNumber) {
-        whereClause.OR = [
-          { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
-          { invoiceData: { path: ['NIF/CIF'], string_contains: searchTerm } },
-          { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
-        ];
-      } else if (isInvoiceNumber && !searchTerm.includes(' ')) {
-        whereClause.OR = [
-          { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
-        ];
-      } else {
-        whereClause.OR = [
-          { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
-          { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
-          { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
-          { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
-          { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
-          { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
-          { invoiceData: { path: ['NOMBRE/RAZON SOCIAL'], string_contains: searchTerm } },
-          { invoiceData: { path: ['NIF/CIF'], string_contains: searchTerm } },
-          { invoiceData: { path: ['CUPS'], string_contains: searchTerm } },
-        ];
-      }
+      whereClause.OR = [
+        { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
+        { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
+        { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
+        { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
+        { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
+        { invoiceData: { path: ['NOMBRE/RAZON SOCIAL'], string_contains: searchTerm } },
+        { invoiceData: { path: ['NIF/CIF'], string_contains: searchTerm } },
+        { invoiceData: { path: ['CUPS'], string_contains: searchTerm } },
+      ];
     }
 
     const skip = (page - 1) * itemsPerPage;

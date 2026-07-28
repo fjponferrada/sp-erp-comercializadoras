@@ -7,11 +7,10 @@ datasource db {
 }
 
 model Company {
-  id                     String                @id @default(cuid())
+  id                     String                 @id @default(cuid())
   name                   String
-  cif                    String                @unique
-  cie                    String?               @unique
-  codigo                 String?               @unique
+  cif                    String                 @unique
+  codigo                 String?                @unique
   address                String?
   email                  String?
   contactPerson          String?
@@ -27,35 +26,33 @@ model Company {
   representadoPor        String?
   fechaActivacionIsm     DateTime?
   fechaBajaIsm           DateTime?
-  residenciaCanarias     Boolean               @default(false)
-  exportableOdoo         Boolean               @default(false)
-  empresaVisible         Boolean               @default(true)
-  emisionFacturasCliente Boolean               @default(true)
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
-  brands                 Brand[]
-  users                  User[]                @relation("UserCompanies")
-  invoices               Invoice[]
-  ppas                   Ppa[]
-  internalInvoices       InternalInvoice[]
-  reganecuDatas          ReganecuData[]
+  residenciaCanarias     Boolean                @default(false)
+  exportableOdoo         Boolean                @default(false)
+  empresaVisible         Boolean                @default(true)
+  emisionFacturasCliente Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  cie                    String?                @unique
   aggregatedLoadCurves   AggregatedLoadCurve[]
-  syncJobs               SyncJob[]
+  brands                 Brand[]
+  internalInvoices       InternalInvoice[]
+  invoices               Invoice[]
   pendingEnergySummaries PendingEnergySummary[]
+  ppas                   Ppa[]
+  reganecuDatas          ReganecuData[]
+  syncJobs               SyncJob[]
+  users                  User[]                 @relation("UserCompanies")
 }
 
 model Brand {
   id                    String              @id @default(cuid())
   name                  String
   slug                  String              @unique
-  domain                String?             @unique
   codigoMarca           String?             @unique
   address               String?
   email                 String?
-  supportEmail          String?
   contactPerson         String?
   phone                 String?
-  whatsappPhone         String?
   clave                 String?
   enviosPorHora         Int?
   facturaElectrica      String?
@@ -69,7 +66,6 @@ model Brand {
   envioCliente          Boolean             @default(false)
   envioCorreo           Boolean             @default(false)
   logoUrl               String?
-  invoiceLogoUrl        String?
   faviconUrl            String?
   accentColor           String              @default("#DEFF9A")
   bgColor               String              @default("#0B0F19")
@@ -84,14 +80,18 @@ model Brand {
   companyId             String
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
+  domain                String?             @unique
+  supportEmail          String?
+  whatsappPhone         String?
+  invoiceLogoUrl        String?
+  additionalServices    AdditionalService[]
   company               Company             @relation(fields: [companyId], references: [id])
+  channels              Channel[]
   clients               Client[]
+  contracts             Contract[]
   products              Product[]
   tickets               Ticket[]
   users                 User[]
-  contracts             Contract[]
-  channels              Channel[]
-  additionalServices    AdditionalService[]
   User_BackofficeBrands User[]              @relation("BackofficeBrands")
 }
 
@@ -124,7 +124,6 @@ model Client {
   businessName              String
   firstName                 String?
   lastName                  String?
-  lastName2                 String?
   vatNumber                 String
   contactName               String?
   contactLastName           String?
@@ -167,15 +166,16 @@ model Client {
   visibilitySupervisorEmail String?
   fileIbanCertificate       String?
   fileRepresentativeId      String?
+  airtableData              Json?
+  lastName2                 String?
   brand                     Brand             @relation(fields: [brandId], references: [id])
   contracts                 Contract[]
   documents                 Document[]
+  internalInvoices          InternalInvoice[]
   invoices                  Invoice[]
   solarQuotes               SolarQuote[]
   supplyPoints              SupplyPoint[]
   tickets                   Ticket[]
-  airtableData              Json?
-  internalInvoices          InternalInvoice[]
 
   @@unique([vatNumber, brandId])
 }
@@ -191,7 +191,6 @@ model Lead {
   type               String     @default("LUZ")
   solarData          Json?
   contractData       Json?
-  sipsRawData        Json?
   isMultipoint       Boolean    @default(false)
   cups               String?
   estimatedMWh       Float?
@@ -211,24 +210,25 @@ model Lead {
   monthlyExpense     String?
   comparative        String?
   savings            Float?
+  airtableData       Json?
+  sipsRawData        Json?
   documents          Document[]
   contract           Contract?  @relation(fields: [contractId], references: [id])
   user               User       @relation(fields: [userId], references: [id])
-  airtableData       Json?
 
   @@index([cups])
 }
 
 model Province {
   id             String         @id @default(cuid())
-  code           String         @unique // e.g. "28"
+  code           String         @unique
   name           String
   municipalities Municipality[]
 }
 
 model Municipality {
   id         String   @id @default(cuid())
-  code       String   @unique // e.g. "28079"
+  code       String   @unique
   name       String
   provinceId String
   province   Province @relation(fields: [provinceId], references: [id])
@@ -236,19 +236,19 @@ model Municipality {
 
 model StreetType {
   id   String @id @default(cuid())
-  code String @unique // e.g. "CL", "AV"
+  code String @unique
   name String
 }
 
 model SupplyPoint {
-  id                  String           @id @default(cuid())
+  id                  String            @id @default(cuid())
   cups                String
   cups2               String?
   address             String
   city                String
   postalCode          String
   province            String
-  country             String           @default("España")
+  country             String            @default("España")
   tariff              String
   distributor         String?
   annualConsumption   Float?
@@ -259,22 +259,15 @@ model SupplyPoint {
   p5c                 Float?
   p6c                 Float?
   cnae                String?
-  iban                String?
-  swift               String?
-  paymentMethod       String?
-  mandateSigned       Boolean          @default(false)
   p1p                 Float?
   p2p                 Float?
   p3p                 Float?
   p4p                 Float?
   p5p                 Float?
   p6p                 Float?
-  hasSelfConsumption  Boolean          @default(false)
+  hasSelfConsumption  Boolean           @default(false)
   selfConsumptionType String?
   cie                 String?
-  ieDiscount          Float?
-  regimenFiscal       String?
-  segment             String?
   cieSelfConsumption  String?
   cadastralReference  String?
   cadastreProvince    String?
@@ -286,7 +279,6 @@ model SupplyPoint {
   cadastreFloor       String?
   cadastreDoor        String?
   cau                 String?
-  tipoCups            String?
   cauType             String?
   cauSubtype          String?
   cauCollective       String?
@@ -298,7 +290,7 @@ model SupplyPoint {
   distributorReeCode  String?
   distributorName     String?
   clientId            String
-  airtableId          String?          @unique
+  airtableId          String?           @unique
   streetType          String?
   street              String?
   streetNumber        String?
@@ -345,71 +337,75 @@ model SupplyPoint {
   excedentesManualOct Float?
   excedentesManualNov Float?
   excedentesManualDic Float?
+  airtableData        Json?
+  sipsRawData         Json?
+  iban                String?
+  mandateSigned       Boolean           @default(false)
+  paymentMethod       String?
+  swift               String?
+  contractData        Json?
+  segment             String?
+  isBimonthly         Boolean           @default(false)
+  tipoCups            String?
+  ieDiscount          Float?
+  regimenFiscal       String?
   contracts           Contract[]
   documents           Document[]
+  f1Invoices          F1Invoice[]
+  internalInvoices    InternalInvoice[]
   invoices            Invoice[]
   solarQuotes         SolarQuote[]
-  client              Client           @relation(fields: [clientId], references: [id])
-  tickets             Ticket[]
-  airtableData        Json?
-  contractData        Json?
-  sipsRawData         Json?
+  client              Client            @relation(fields: [clientId], references: [id])
   switchingEvents     SwitchingEvent[]
-  f1Invoices          F1Invoice[]
-
-  isBimonthly      Boolean           @default(false)
-  internalInvoices InternalInvoice[]
+  tickets             Ticket[]
 
   @@unique([cups, clientId])
   @@index([cups])
 }
 
 model Product {
-  id                  String  @id @default(cuid())
-  name                String
-  type                String
-  brandId             String
-  tariff              String?
-  hasSelfConsumption  Boolean @default(false)
-  selfConsumptionType String?
-  fee                 Float?
-  pexc                Float?
-  feeExcedentes       Float?
-  cgBolsilloSolar     Float?
-  deviationCost       Float?
-  p1e                 Float?
-  p2e                 Float?
-  p3e                 Float?
-  p4e                 Float?
-  p5e                 Float?
-  p6e                 Float?
-  p1p                 Float?
-  p2p                 Float?
-  p3p                 Float?
-  p4p                 Float?
-  p5p                 Float?
-  p6p                 Float?
-
-  // -- Márgenes configurables --
-  marginFC Float?
-  ip1      Float?
-  ip2      Float?
-  ip3      Float?
-  ip4      Float?
-  ip5      Float?
-  ip6      Float?
-
+  id                   String           @id @default(cuid())
+  name                 String
+  type                 String
+  brandId              String
+  tariff               String?
+  hasSelfConsumption   Boolean          @default(false)
+  selfConsumptionType  String?
+  fee                  Float?
+  pexc                 Float?
+  feeExcedentes        Float?
+  cgBolsilloSolar      Float?
+  deviationCost        Float?
+  p1e                  Float?
+  p2e                  Float?
+  p3e                  Float?
+  p4e                  Float?
+  p5e                  Float?
+  p6e                  Float?
+  p1p                  Float?
+  p2p                  Float?
+  p3p                  Float?
+  p4p                  Float?
+  p5p                  Float?
+  p6p                  Float?
   isAvailableCrm       Boolean          @default(true)
-  isCustomizable       Boolean          @default(false)
-  pricingModel         String           @default("FIXED")
   commissionType       String           @default("MARGIN_PERCENTAGE")
   powerTiersCommission Json?
   permanenceMonths     Int?
   airtableData         Json?
+  isCustomizable       Boolean          @default(false)
+  pricingModel         String           @default("FIXED")
+  ip1                  Float?
+  ip2                  Float?
+  ip3                  Float?
+  ip4                  Float?
+  ip5                  Float?
+  ip6                  Float?
+  marginFC             Float?
   contracts            Contract[]
-  channels             Channel[]
   brand                Brand            @relation(fields: [brandId], references: [id])
-  commissionRules      CommissionRule[]
+  channels             Channel[]        @relation("ChannelToProduct")
+  commissionRules      CommissionRule[] @relation("CommissionRuleToProduct")
 }
 
 model Contract {
@@ -426,7 +422,6 @@ model Contract {
   expectedEndDate            DateTime?
   terminationDate            DateTime?
   docusignEnvelopeId         String?                @unique
-  iban                       String?
   commissionBase             Float?
   commissionFinal            Float?
   commissionVariable         Float?
@@ -451,15 +446,8 @@ model Contract {
   p4p                        Float?
   p5p                        Float?
   p6p                        Float?
-  feeExcedentes              Float?
-  pricingModel               String?
-  commissionType             String?
-  powerTiersCommission       Json?
-  permanenceMonths           Int?
   p1c                        Float?
   p2c                        Float?
-  isTacitRenewal             Boolean                @default(false)
-  tacitRenewalCommunicatedAt DateTime?
   p3c                        Float?
   p4c                        Float?
   p5c                        Float?
@@ -475,7 +463,6 @@ model Contract {
   productId                  String
   userId                     String
   airtableId                 String?                @unique
-  annualConsumption          Float?
   createdAt                  DateTime               @default(now())
   updatedAt                  DateTime               @updatedAt
   tipo                       String?
@@ -486,14 +473,30 @@ model Contract {
   bolsilloSolar              Boolean?
   nSolicitud                 String?
   fechaAceptacion            DateTime?
-  fechaAceptacionBaja        DateTime?
-  fechaRechazo               DateTime?
   fechaPrevistaActivacion    DateTime?
-  fechaPrevistaBaja          DateTime?
   genContratoAuto            Boolean?
   transferencia              Boolean?
   isMultipoint               Boolean?
+  airtableData               Json?
+  brandId                    String?
+  fechaPrevistaBaja          DateTime?
+  fechaRechazo               DateTime?
+  iban                       String?
+  commissionType             String?
+  feeExcedentes              Float?
+  permanenceMonths           Int?
+  powerTiersCommission       Json?
+  pricingModel               String?
+  filePdfSigned              String?
+  pdfUrl                     String?
+  fileAnexoFirmado           String?
+  annualConsumption          Float?
+  additionalServicesSnapshot Json?
+  fechaAceptacionBaja        DateTime?
+  isTacitRenewal             Boolean                @default(false)
+  tacitRenewalCommunicatedAt DateTime?
   Commission                 Commission?
+  brand                      Brand?                 @relation(fields: [brandId], references: [id])
   client                     Client                 @relation(fields: [clientId], references: [id])
   contract                   Contract?              @relation("ContractToContract", fields: [previousContractId], references: [id])
   other_Contract             Contract?              @relation("ContractToContract")
@@ -502,19 +505,12 @@ model Contract {
   user                       User                   @relation(fields: [userId], references: [id])
   ContractModification       ContractModification[]
   documents                  Document[]
+  f1Invoices                 F1Invoice[]
+  internalInvoices           InternalInvoice[]
   invoices                   Invoice[]
   Lead                       Lead?
-  AdditionalService          AdditionalService[]
-  additionalServicesSnapshot Json?
-  airtableData               Json?
-  brandId                    String?
-  brand                      Brand?                 @relation(fields: [brandId], references: [id])
   switchingEvents            SwitchingEvent[]
-  f1Invoices                 F1Invoice[]
-  pdfUrl                     String?
-  filePdfSigned              String?
-  fileAnexoFirmado           String?
-  internalInvoices           InternalInvoice[]
+  AdditionalService          AdditionalService[]    @relation("AdditionalServiceToContract")
 
   @@unique([contractCode, version, brandId])
   @@index([supplyPointId])
@@ -526,11 +522,9 @@ model Invoice {
   invoiceNumber      String
   invoiceType        String?
   clientId           String
-  companyId          String?
   rectifiedInvoiceId String?
   contractId         String?
   supplyPointId      String?
-  f1InvoiceId        String?
   issueDate          DateTime
   paymentDate        DateTime?
   subtotal1          Float?
@@ -546,14 +540,16 @@ model Invoice {
   communicatedAt     DateTime?
   invoiceData        Json?
   createdAt          DateTime     @default(now())
+  companyId          String?
+  f1InvoiceId        String?
+  xmlUrl             String?
   client             Client       @relation(fields: [clientId], references: [id])
   company            Company?     @relation(fields: [companyId], references: [id])
   contract           Contract?    @relation(fields: [contractId], references: [id])
+  f1Invoice          F1Invoice?   @relation(fields: [f1InvoiceId], references: [id])
   invoice            Invoice?     @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
   otherInvoices      Invoice[]    @relation("InvoiceToInvoice")
   supplyPoint        SupplyPoint? @relation(fields: [supplyPointId], references: [id])
-  f1Invoice          F1Invoice?   @relation(fields: [f1InvoiceId], references: [id])
-  xmlUrl             String?
 
   @@unique([invoiceNumber, companyId])
   @@index([supplyPointId])
@@ -563,15 +559,15 @@ model Invoice {
 model AdditionalService {
   id               String           @id @default(cuid())
   name             String
-  monthlyPrice     Float?
-  dailyPrice       Float?
-  durationMonths   Int              @default(120)
   isActive         Boolean          @default(true)
-  isCommissionable Boolean          @default(false)
   brandId          String
+  dailyPrice       Float?
+  monthlyPrice     Float?
+  isCommissionable Boolean          @default(false)
+  durationMonths   Int              @default(120)
   brand            Brand            @relation(fields: [brandId], references: [id])
-  contracts        Contract[]
-  commissionRules  CommissionRule[]
+  commissionRules  CommissionRule[] @relation("AdditionalServiceToCommissionRule")
+  contracts        Contract[]       @relation("AdditionalServiceToContract")
 }
 
 model Channel {
@@ -588,21 +584,21 @@ model Channel {
   maxRenewalDays        Int             @default(45)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
-  commissions           Commission[]
-  users                 User[]
   brandId               String?
   commissionTierId      String?
-  products              Product[]
   brand                 Brand?          @relation(fields: [brandId], references: [id])
   tier                  CommissionTier? @relation(fields: [commissionTierId], references: [id])
+  commissions           Commission[]
+  users                 User[]
+  products              Product[]       @relation("ChannelToProduct")
 }
 
 model CommissionTier {
   id          String           @id @default(cuid())
   name        String           @unique
-  description String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  description String?
   channels    Channel[]
   rules       CommissionRule[]
 }
@@ -610,17 +606,17 @@ model CommissionTier {
 model CommissionRule {
   id                 String              @id @default(cuid())
   tierId             String
-  tariff             String? // e.g. "2.0TD", null applies to all
-  productType        String? // e.g. "Fijo", "Indexado", null applies to all
-  powerMin           Float? // Inclusive minimum power
-  powerMax           Float? // Exclusive maximum power
-  commissionType     String // "FIXED" or "PERCENTAGE"
+  tariff             String?
+  productType        String?
+  powerMin           Float?
+  powerMax           Float?
+  commissionType     String
   value              Float
-  tier               CommissionTier      @relation(fields: [tierId], references: [id])
-  products           Product[]
-  additionalServices AdditionalService[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+  tier               CommissionTier      @relation(fields: [tierId], references: [id])
+  additionalServices AdditionalService[] @relation("AdditionalServiceToCommissionRule")
+  products           Product[]           @relation("CommissionRuleToProduct")
 }
 
 model Commission {
@@ -733,98 +729,65 @@ model Ticket {
   supplyPoint    SupplyPoint? @relation(fields: [supplyPointId], references: [id])
 }
 
-enum Role {
-  SUPERADMIN
-  COMPANYADMIN
-  BACKOFFICE
-  CANAL
-  COMERCIAL
-  CLIENT
-}
-
-enum TicketStatus {
-  NUEVA
-  EN_PROCESO
-  PENDIENTE_RESOLUCION
-  RESUELTA
-  CERRADA
-}
-
 model SwitchingEvent {
-  id String @id @default(cuid())
-
-  // Clave única anti-duplicados (ej: codigoSolicitud_cups_proceso_paso)
-  uniqueProcess String   @unique
-  fechaAviso    DateTime @default(now())
-
-  // Datos extraídos del XML
+  id                  String       @id @default(cuid())
+  uniqueProcess       String       @unique
+  fechaAviso          DateTime     @default(now())
   fechaSolicitud      DateTime?
   codigoSolicitud     String?
-  proceso             String // "Proceso" (ej. "C1_11", "B1_02")
-  procesoBase         String // El directorio raíz (ej. "C1", "F1", "R1") para filtrar fácil
+  proceso             String
+  procesoBase         String
   paso                String?
   estadoAR            String?
-  tipoReclamacion     String?
-  subtipoReclamacion  String?
   fechaAR             DateTime?
   fechaPrevActivacion DateTime?
   fechaActivacionAlta DateTime?
   fechaActivacionBaja DateTime?
   observaciones       String?
+  xmlUrl              String?
+  isAnnulled          Boolean      @default(false)
+  tipoError           String?
+  warning             String?
+  isResolved          Boolean      @default(false)
+  supplyPointId       String?
+  contractId          String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  codigoReclamacion   String?
   motivosRechazo      Json?
   actuacionCampo      Boolean?
-  xmlUrl              String? // Ruta en R2: switching/recibidos/C2/...
-  codigoReclamacion   String?
-  isAnnulled          Boolean   @default(false)
-
-  // Sistema de Warnings
-  tipoError  String?
-  warning    String?
-  isResolved Boolean @default(false)
-
-  // Vínculos Relacionales
-  supplyPointId String?
-  supplyPoint   SupplyPoint? @relation(fields: [supplyPointId], references: [id])
-
-  contractId String?
-  contract   Contract? @relation(fields: [contractId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  subtipoReclamacion  String?
+  tipoReclamacion     String?
+  contract            Contract?    @relation(fields: [contractId], references: [id])
+  supplyPoint         SupplyPoint? @relation(fields: [supplyPointId], references: [id])
 
   @@index([supplyPointId])
   @@index([contractId])
 }
 
 model F1Invoice {
-  id String @id @default(cuid())
-
-  supplyPointId String?
-  supplyPoint   SupplyPoint? @relation(fields: [supplyPointId], references: [id])
-
-  contractId String?
-  contract   Contract? @relation(fields: [contractId], references: [id])
-
+  id                String            @id @default(cuid())
+  supplyPointId     String?
+  contractId        String?
   numeroFactura     String?
-  tipoDocumento     String    @default("FacturaATR")
-  motivoFacturacion String?
   fechaEmision      DateTime?
   fechaInicio       DateTime?
   fechaFin          DateTime?
-
-  facturaRealizada Boolean @default(true)
-  baseImponible    Float?
-  totalPeajes      Float?
-  totalCargos      Float?
-  saldoFactura     Float?
-
-  xmlUrl   String?
-  jsonData Json?
-
-  invoices         Invoice[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  internalInvoices InternalInvoice[]
+  facturaRealizada  Boolean           @default(true)
+  baseImponible     Float?
+  totalPeajes       Float?
+  totalCargos       Float?
+  saldoFactura      Float?
+  xmlUrl            String?
+  jsonData          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  motivoFacturacion String?
+  tipoDocumento     String            @default("FacturaATR")
+  contract          Contract?         @relation(fields: [contractId], references: [id])
+  supplyPoint       SupplyPoint?      @relation(fields: [supplyPointId], references: [id])
+  internalInvoices  InternalInvoice[]
+  invoices          Invoice[]
 
   @@index([supplyPointId])
   @@index([contractId])
@@ -838,21 +801,21 @@ model Distributor {
   emailAtr          String?
   phone             String?
   portalUrl         String?
-  registroCnmc      String?
-  ftpHost           String?
-  ftpPort           Int?      @default(21)
-  ftpUser           String?
-  ftpPassword       String?
-  ftpTargetPath     String?
-  ftpActive         Boolean   @default(false)
-  ftpLastSyncAt     DateTime?
-  webUser           String?
-  webPassword       String?
-  webScriptPath     String?
-  webScrapingActive Boolean   @default(false)
-  webLastSyncAt     DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  registroCnmc      String?
+  ftpActive         Boolean   @default(false)
+  ftpHost           String?
+  ftpLastSyncAt     DateTime?
+  ftpPassword       String?
+  ftpPort           Int?      @default(21)
+  ftpTargetPath     String?
+  ftpUser           String?
+  webLastSyncAt     DateTime?
+  webPassword       String?
+  webScrapingActive Boolean   @default(false)
+  webScriptPath     String?
+  webUser           String?
 }
 
 model PasswordResetToken {
@@ -862,16 +825,6 @@ model PasswordResetToken {
   expires DateTime
 
   @@unique([email, token])
-}
-
-enum Resolution {
-  HOURLY
-  QUARTER_HOURLY
-}
-
-enum CurveType {
-  CONSUMPTION
-  SURPLUS
 }
 
 model LoadCurve {
@@ -889,10 +842,10 @@ model LoadCurve {
 }
 
 model WeatherHistory {
-  id           String   @id @default(cuid())
   date         DateTime @db.Date
-  province     String
   temperatures Float[]
+  id           String   @id @default(cuid())
+  province     String
 
   @@unique([date, province])
   @@index([date])
@@ -902,16 +855,15 @@ model AggregatedLoadCurve {
   id               String   @id @default(cuid())
   date             DateTime @db.Date
   segment          String
-  province         String
-  tariff           String   @default("2.0TD")
   totalConsumption Float[]
   clientCount      Int
   temperature      Float[]
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  companyId String?
-  company   Company? @relation(fields: [companyId], references: [id])
+  province         String
+  tariff           String   @default("2.0TD")
+  companyId        String?
+  company          Company? @relation(fields: [companyId], references: [id])
 
   @@unique([date, segment, province, tariff, companyId])
   @@index([date])
@@ -941,7 +893,7 @@ model ForecastModelCache {
 
 model ScrapingJob {
   id        String   @id @default(cuid())
-  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, ERROR
+  status    String   @default("PENDING")
   logs      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -950,31 +902,15 @@ model ScrapingJob {
 model SyncJob {
   id        String   @id @default(cuid())
   type      String   @default("FTP_SYNC")
-  status    String   @default("PENDING") // PENDING, RUNNING, COMPLETED, ERROR
+  status    String   @default("PENDING")
   progress  Int      @default(0)
   total     Int      @default(0)
   logs      String?
   results   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id])
-}
-
-enum PpaType {
-  FISICO
-  FINANCIERO
-}
-
-enum PpaSubtype {
-  CARGA_BASE
-  PERFIL_FIJO
-}
-
-enum PpaPriceType {
-  FIJO
-  INDEXADO
 }
 
 model Ppa {
@@ -986,25 +922,23 @@ model Ppa {
   startDate        DateTime
   endDate          DateTime?
   priceType        PpaPriceType
-  priceValue       Float? // Precio fijo (€/MWh) o Fee sobre OMIE
-  basePowerMw      Float? // Obligatorio si es CARGA_BASE
-  profileData      Json? // Obligatorio si es PERFIL_FIJO (Matriz 12x24)
-  includeInPricing Boolean      @default(true)
+  priceValue       Float?
+  basePowerMw      Float?
+  profileData      Json?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
-
-  company Company @relation(fields: [companyId], references: [id])
+  includeInPricing Boolean      @default(true)
+  company          Company      @relation(fields: [companyId], references: [id])
 }
 
 model SystemComponentPrice {
   id        String   @id @default(cuid())
-  component String // Ej: "OMIE", "DESVIOS", "PEAJE_P1", "CARGO_P1"
+  component String
   date      DateTime @db.Date
-  values    Float[] // 96 valores (quinceminutales) o 24 (horarios)
-  version   String? // Ej: "C1", "C2", "C3", "C4", "C5"
-
+  values    Float[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  version   String?
 
   @@unique([component, date])
   @@index([component])
@@ -1013,8 +947,8 @@ model SystemComponentPrice {
 
 model RegulatedCost {
   id          String   @id @default(cuid())
-  concept     String // Ej: "Cargos_Energia", "FNEE", "Tasa_Municipal"
-  tariff      String // Ej: "2.0TD", "3.0TD", o "TODAS"
+  concept     String
+  tariff      String
   validFrom   DateTime @db.Date
   validTo     DateTime @db.Date
   p1          Float?
@@ -1023,19 +957,17 @@ model RegulatedCost {
   p4          Float?
   p5          Float?
   p6          Float?
-  singleValue Float? // Para costes planos sin discriminación horaria
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  singleValue Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([concept, tariff])
 }
 
 model FuturePrice {
-  id    String @id @default(cuid())
-  month Int    @unique // 1-12
-  price Float // Precio objetivo en €/MWh
-
+  id        String   @id @default(cuid())
+  month     Int      @unique
+  price     Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1049,7 +981,7 @@ model ReeProfile {
   p20td   Float
   p30td   Float
   p30tdve Float?
-  pSolar  Float?   @default(0)
+  pSolar  Float? @default(0)
 
   @@unique([year, month, day, hour])
 }
@@ -1070,26 +1002,17 @@ model EsiosIndicatorData {
   name        String
   date        DateTime @db.Date
   values      Float[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([indicatorId, date])
   @@index([indicatorId])
-}
-
-enum InternalInvoiceStatus {
-  BORRADOR
-  EMITIDA
-  ABONO
-  REQUIERE_REPARACION
 }
 
 model InternalInvoice {
   id                 String                @id @default(cuid())
   invoiceNumber      String?
   status             InternalInvoiceStatus @default(BORRADOR)
-  hidden             Boolean               @default(false)
   invoiceType        String?
   clientId           String
   companyId          String?
@@ -1112,16 +1035,16 @@ model InternalInvoice {
   communicatedAt     DateTime?
   invoiceData        Json?
   createdAt          DateTime              @default(now())
-
-  client        Client            @relation(fields: [clientId], references: [id])
-  company       Company?          @relation(fields: [companyId], references: [id])
-  contract      Contract?         @relation(fields: [contractId], references: [id])
-  invoice       InternalInvoice?  @relation("InternalInvoiceToInternalInvoice", fields: [rectifiedInvoiceId], references: [id])
-  otherInvoices InternalInvoice[] @relation("InternalInvoiceToInternalInvoice")
-  supplyPoint   SupplyPoint?      @relation(fields: [supplyPointId], references: [id])
-  f1Invoice     F1Invoice?        @relation(fields: [f1InvoiceId], references: [id])
-  xmlUrl        String?
-  repairData    Json?
+  xmlUrl             String?
+  repairData         Json?
+  hidden             Boolean               @default(false)
+  client             Client                @relation(fields: [clientId], references: [id])
+  company            Company?              @relation(fields: [companyId], references: [id])
+  contract           Contract?             @relation(fields: [contractId], references: [id])
+  f1Invoice          F1Invoice?            @relation(fields: [f1InvoiceId], references: [id])
+  invoice            InternalInvoice?      @relation("InternalInvoiceToInternalInvoice", fields: [rectifiedInvoiceId], references: [id])
+  otherInvoices      InternalInvoice[]     @relation("InternalInvoiceToInternalInvoice")
+  supplyPoint        SupplyPoint?          @relation(fields: [supplyPointId], references: [id])
 
   @@unique([invoiceNumber, companyId])
   @@index([f1InvoiceId])
@@ -1129,22 +1052,19 @@ model InternalInvoice {
 
 model ReganecuData {
   id         String   @id @default(cuid())
-  date       DateTime @db.Date // Fecha a la que pertenece (ej. 2026-03-01)
-  cierre     String // Tipo de cierre: "C1", "C2", "C3", etc.
-  region     String // Tipo de región: "peninsula", etc.
+  date       DateTime @db.Date
+  cierre     String
+  region     String
   matricial  Boolean  @default(false)
   total      Boolean  @default(false)
   upr        Boolean  @default(false)
-  resolution String // "QH" (cuartohorario), "H" (horario), "D" (diario - liquidia)
-
-  jsonData Json
-
-  fileName  String?
-  companyId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company Company? @relation(fields: [companyId], references: [id])
+  resolution String
+  fileName   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  jsonData   Json
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id])
 
   @@unique([date, cierre, region, matricial, total, upr, resolution, companyId])
   @@index([date, cierre, region])
@@ -1152,31 +1072,78 @@ model ReganecuData {
 
 model PendingEnergySummary {
   id                      String   @id @default(cuid())
-  month                   String   // format "yyyy-MM"
+  month                   String
   cierre                  String
   estimatedBcMwh          Float
   liquidatedMwh           Float
   pendingMwh              Float
   estimatedPendingCostEur Float
-  invoicedMwh             Float    @default(0)
   updatedAt               DateTime @updatedAt
-
   companyId               String?
+  invoicedMwh             Float    @default(0)
   company                 Company? @relation(fields: [companyId], references: [id])
 
   @@unique([month, companyId])
 }
 
 model RegulatedDailyCost {
-  id          String    @id @default(cuid())
-  concept     String    // Ej: "Bono_Social"
-  amount      Float     // Coste diario en €/día
-  label       String?   // Texto a imprimir en el PDF, ej: "Financiación del Bono Social (Orden TED/1487/2024)"
-  validFrom   DateTime  @db.Date
-  validTo     DateTime? @db.Date
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  concept   String
+  amount    Float
+  validFrom DateTime  @db.Date
+  validTo   DateTime? @db.Date
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  label     String?
 
   @@index([concept])
+}
+
+enum Role {
+  SUPERADMIN
+  COMPANYADMIN
+  BACKOFFICE
+  CANAL
+  COMERCIAL
+  CLIENT
+}
+
+enum TicketStatus {
+  NUEVA
+  EN_PROCESO
+  PENDIENTE_RESOLUCION
+  RESUELTA
+  CERRADA
+}
+
+enum Resolution {
+  HOURLY
+  QUARTER_HOURLY
+}
+
+enum CurveType {
+  CONSUMPTION
+  SURPLUS
+}
+
+enum PpaType {
+  FISICO
+  FINANCIERO
+}
+
+enum PpaSubtype {
+  CARGA_BASE
+  PERFIL_FIJO
+}
+
+enum PpaPriceType {
+  FIJO
+  INDEXADO
+}
+
+enum InternalInvoiceStatus {
+  BORRADOR
+  EMITIDA
+  ABONO
+  REQUIERE_REPARACION
 }

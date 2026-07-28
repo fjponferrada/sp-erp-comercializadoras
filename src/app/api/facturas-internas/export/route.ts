@@ -45,33 +45,14 @@ export async function GET(request: Request) {
     }
 
     if (searchTerm) {
-      const isCups = searchTerm.toUpperCase().startsWith('ES') && searchTerm.length >= 18;
-      const isVatNumber = /^[A-Z0-9]{8,10}$/i.test(searchTerm) && !isCups;
-      const isInvoiceNumber = /^[A-Z0-9]{6,}$/i.test(searchTerm) && !isCups && !isVatNumber;
-
-      if (isCups) {
-        whereClause.OR = [
-          { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } }
-        ];
-      } else if (isVatNumber) {
-        whereClause.OR = [
-          { contract: { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } } },
-          { id: { contains: searchTerm, mode: 'insensitive' } },
-        ];
-      } else if (isInvoiceNumber && !searchTerm.includes(' ')) {
-        whereClause.OR = [
-          { id: { contains: searchTerm, mode: 'insensitive' } },
-        ];
-      } else {
-        whereClause.OR = [
-          { id: { contains: searchTerm, mode: 'insensitive' } },
-          { contract: { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } } },
-          { contract: { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } } },
-          { contract: { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } } },
-          { contract: { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } } },
-          { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } },
-        ];
-      }
+      whereClause.OR = [
+        { id: { contains: searchTerm, mode: 'insensitive' } },
+        { contract: { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } } },
+        { contract: { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } } },
+        { contract: { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } } },
+        { contract: { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } } },
+        { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } },
+      ];
     }
 
     const invoicesRaw = await prisma.internalInvoice.findMany({
