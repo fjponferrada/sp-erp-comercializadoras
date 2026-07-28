@@ -10,10 +10,9 @@ if (!process.env.DATABASE_URL) {
 
 export const prisma =
   globalForPrisma.prisma ||
-  // @ts-ignore - Vercel Edge client requires datasourceUrl but TS uses Node types
   new PrismaClient({
     datasourceUrl: process.env.DATABASE_URL || "postgres://dummy:dummy@localhost:5432/dummy"
-  });
+  } as any);
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
