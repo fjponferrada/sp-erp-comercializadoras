@@ -1,0 +1,141 @@
+'use client';
+
+import React, { useState } from 'react';
+import { X, Send, AlertTriangle } from 'lucide-react';
+import { sendMassCommunication } from '@/app/actions/commsActions';
+import toast from 'react-hot-toast';
+
+export default function MassCommsModal({ 
+  onClose, 
+  selectedIds, 
+  onSuccess 
+}: { 
+  onClose: () => void; 
+  selectedIds: string[];
+  onSuccess: () => void;
+}) {
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!subject.trim() || !body.trim()) {
+      toast.error('El asunto y el mensaje son obligatorios.');
+      return;
+    }
+
+    if (!confirm(`¿Estás seguro de que quieres enviar este correo a ${selectedIds.length} puntos de suministro?`)) {
+      return;
+    }
+
+    setIsSending(true);
+    const result = await sendMassCommunication(subject, body, selectedIds);
+    setIsSending(false);
+
+    if (result.success) {
+      toast.success(`Comunicación masiva enviada correctamente (Procesados ${result.sentCount} emails)`);
+      onSuccess();
+    } else {
+      toast.error(result.error || 'Error enviando comunicación masiva.');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, padding: '24px'
+    }}>
+      <div style={{
+        background: 'var(--bg-card)', borderRadius: '12px', width: '100%', maxWidth: '650px',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column',
+        maxHeight: '90vh'
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Redactar Comunicación Masiva</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          <div style={{ padding: '12px 16px', background: 'rgba(255, 171, 0, 0.1)', borderRadius: '8px', border: '1px solid rgba(255, 171, 0, 0.2)', display: 'flex', gap: '12px' }}>
+            <AlertTriangle size={20} color="#FFAB00" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+              <strong>Vas a enviar un correo masivo a los clientes de {selectedIds.length} Puntos de Suministro.</strong><br/>
+              Si un mismo cliente tiene varios CUPS en la selección, el sistema agrupará los envíos para mandarle un único correo.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+              Asunto del Correo
+            </label>
+            <input 
+              type="text" 
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="Ej: Aviso importante sobre su suministro eléctrico"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '14px' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Mensaje
+              </label>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Variables disponibles: <code style={{ background: 'var(--bg-base)', padding: '2px 4px', borderRadius: '4px' }}>{`{{nombre_cliente}}`}</code>, <code style={{ background: 'var(--bg-base)', padding: '2px 4px', borderRadius: '4px' }}>{`{{cups}}`}</code>
+              </span>
+            </div>
+            <textarea 
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              placeholder="Estimado/a {{nombre_cliente}}, le contactamos en referencia a sus puntos de suministro: {{cups}}..."
+              style={{ 
+                width: '100%', minHeight: '200px', flex: 1, padding: '12px', borderRadius: '6px', 
+                border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', 
+                fontSize: '14px', fontFamily: 'inherit', resize: 'vertical'
+              }}
+            />
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', background: 'var(--bg-base)', borderRadius: '0 0 12px 12px' }}>
+          <button 
+            onClick={onClose}
+            disabled={isSending}
+            style={{ padding: '10px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-primary)', fontWeight: 500, cursor: 'pointer' }}
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSend}
+            disabled={isSending || !subject.trim() || !body.trim()}
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '10px 16px', borderRadius: '6px', border: 'none', 
+              background: 'var(--lime)', color: 'var(--bg-base)', fontWeight: 600, 
+              cursor: (isSending || !subject.trim() || !body.trim()) ? 'not-allowed' : 'pointer',
+              opacity: (isSending || !subject.trim() || !body.trim()) ? 0.7 : 1
+            }}
+          >
+            {isSending ? (
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span>
+            ) : (
+              <Send size={18} />
+            )}
+            {isSending ? 'Enviando...' : 'Enviar Masivo'}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}

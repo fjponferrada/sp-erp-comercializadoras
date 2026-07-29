@@ -37,7 +37,8 @@ import {
   BarChart2,
   Database,
   Calendar,
-  FileBarChart
+  FileBarChart,
+  Mail
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -85,6 +86,7 @@ const baseNavGroups = [
       { href: '/liquidacion-comisiones', icon: Wallet, label: 'Liquidación Comisiones' },
       { href: '/energia-pendiente', icon: ZapOff, label: 'Suministro Pendiente Facturar' },
       { href: '/gestion/energia-pendiente', icon: ZapOff, label: 'Energía Pendiente Liquidar' },
+      { href: '/gestion/comunicaciones-masivas', icon: Mail, label: 'Comunicaciones Masivas' },
     ],
   },
   {
