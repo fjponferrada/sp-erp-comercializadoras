@@ -16,7 +16,7 @@ export async function getSupplyPointsForComms() {
       include: {
         contracts: {
           orderBy: { version: 'desc' },
-          take: 1,
+          // No usamos 'take: 1' para poder ver si hay contratos ACTIVOS anteriores
           include: {
             client: true,
             user: {
@@ -30,18 +30,22 @@ export async function getSupplyPointsForComms() {
     });
 
     const result = supplyPoints.map(sp => {
-      const latestContract = sp.contracts[0];
-      if (!latestContract) return null; // Ignore SPs with no contracts
+      if (sp.contracts.length === 0) return null;
+
+      // Buscar si el CUPS tiene ALGÚN contrato ACTIVO. 
+      // Si lo tiene, ese es el contrato vigente real. Si no, usamos el último (TRAMITANDO, FINALIZADO...).
+      const activeContract = sp.contracts.find(c => c.status === 'ACTIVO');
+      const referenceContract = activeContract || sp.contracts[0];
 
       return {
         id: sp.id,
         cups: sp.cups,
-        status: latestContract.status === 'ACTIVO' ? 'ACTIVO' : 'INACTIVO',
-        clientName: latestContract.client?.businessName || (latestContract.client?.firstName ? `${latestContract.client.firstName} ${latestContract.client.lastName}` : 'Sin nombre'),
-        clientEmail: latestContract.client?.contactEmail || latestContract.client?.invoiceEmail || latestContract.client?.representativeEmail || '',
-        channelName: latestContract.user?.channel?.name || 'Sin Canal',
-        channelId: latestContract.user?.channel?.id || 'NO_CHANNEL',
-        contractId: latestContract.id
+        status: referenceContract.status === 'ACTIVO' ? 'ACTIVO' : 'INACTIVO',
+        clientName: referenceContract.client?.businessName || (referenceContract.client?.firstName ? `${referenceContract.client.firstName} ${referenceContract.client.lastName}` : 'Sin nombre'),
+        clientEmail: referenceContract.client?.contactEmail || referenceContract.client?.invoiceEmail || referenceContract.client?.representativeEmail || '',
+        channelName: referenceContract.user?.channel?.name || 'Sin Canal',
+        channelId: referenceContract.user?.channel?.id || 'NO_CHANNEL',
+        contractId: referenceContract.id
       };
     }) as any[];
     
