@@ -1,9 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Send, AlertTriangle } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Send, AlertTriangle, Bold } from 'lucide-react';
 import { sendMassCommunication } from '@/app/actions/commsActions';
 import toast from 'react-hot-toast';
+
+const defaultBody = `
+<div>Escribe aquí el cuerpo principal de tu comunicado. Ej: le contactamos en referencia a sus puntos de suministro: {{cups}}...</div>
+<br/>
+<div style="color: #6b7280; font-size: 13px; line-height: 1.5;">
+  <p style="margin: 0 0 8px 0;">Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email, o en el 900525826 o por Whatsapp <a href="https://wa.me/34900525826" style="color: #0056b3; text-decoration: underline;">haciendo clic aquí</a>.</p>
+  <p style="margin: 0;">Gracias por confiar en nosotros,</p>
+  <p style="margin: 4px 0 0 0; font-weight: 600;">El Equipo AED Energía</p>
+</div>
+`;
 
 export default function MassCommsModal({ 
   onClose, 
@@ -15,11 +25,18 @@ export default function MassCommsModal({
   onSuccess: () => void;
 }) {
   const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(defaultBody);
   const [isSending, setIsSending] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const handleBold = (e: React.MouseEvent) => {
+    e.preventDefault(); // Evita perder el foco del texto seleccionado
+    document.execCommand('bold', false, undefined);
+  };
 
   const handleSend = async () => {
-    if (!subject.trim() || !body.trim()) {
+    const finalBody = editorRef.current?.innerHTML || '';
+    if (!subject.trim() || !finalBody.trim()) {
       toast.error('El asunto y el mensaje son obligatorios.');
       return;
     }
@@ -29,7 +46,7 @@ export default function MassCommsModal({
     }
 
     setIsSending(true);
-    const result = await sendMassCommunication(subject, body, selectedIds);
+    const result = await sendMassCommunication(subject, finalBody, selectedIds);
     setIsSending(false);
 
     if (result.success) {
@@ -97,26 +114,42 @@ export default function MassCommsModal({
               padding: '16px', background: 'var(--bg-elevated)', borderRadius: '8px', 
               border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' 
             }}>
+              
+              {/* Toolbar */}
+              <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '4px' }}>
+                <button
+                  type="button"
+                  onMouseDown={handleBold}
+                  title="Negrita"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', 
+                    borderRadius: '4px', cursor: 'pointer', color: 'var(--text-primary)'
+                  }}
+                >
+                  <Bold size={16} strokeWidth={3} />
+                </button>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', alignSelf: 'center', marginLeft: 'auto' }}>
+                  Selecciona el texto y pulsa el botón para ponerlo en negrita.
+                </span>
+              </div>
+
               <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
                 Hola {'{{nombre_cliente}}'},
               </div>
               
-              <textarea 
-                value={body}
-                onChange={e => setBody(e.target.value)}
-                placeholder="Escribe aquí el cuerpo principal de tu comunicado. Ej: le contactamos en referencia a sus puntos de suministro: {{cups}}..."
+              <div 
+                ref={editorRef}
+                contentEditable
+                onInput={e => setBody(e.currentTarget.innerHTML)}
+                dangerouslySetInnerHTML={{ __html: defaultBody }}
                 style={{ 
-                  width: '100%', minHeight: '140px', flex: 1, padding: '12px', borderRadius: '6px', 
+                  width: '100%', minHeight: '180px', flex: 1, padding: '12px', borderRadius: '6px', 
                   border: '1px dashed var(--border-strong)', background: 'var(--bg-base)', color: 'var(--text-primary)', 
-                  fontSize: '14px', fontFamily: 'inherit', resize: 'vertical'
+                  fontSize: '14px', fontFamily: 'Arial, sans-serif', overflowY: 'auto', outline: 'none'
                 }}
               />
               
-              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.5' }}>
-                <p style={{ margin: '0 0 8px 0' }}>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email, o en el 900525826 o por Whatsapp <span style={{color: 'var(--primary)'}}>haciendo clic aquí</span>.</p>
-                <p style={{ margin: 0 }}>Gracias por confiar en nosotros,</p>
-                <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>El Equipo AED Energía</p>
-              </div>
             </div>
           </div>
 

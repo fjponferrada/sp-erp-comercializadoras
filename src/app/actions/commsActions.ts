@@ -119,10 +119,7 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
           subject: subject,
           html: `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
             <p>Hola ${client.name},</p>
-            <p>${personalizedBody.replace(/\n/g, '<br/>')}</p>
-            <br/>
-            <p>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email, o en el 900525826 o por Whatsapp <a href="https://wa.me/34900525826" style="color: #0056b3;">haciendo clic aqu&iacute;</a>.</p>
-            <p>Gracias por confiar en nosotros,<br/><br/><strong>El Equipo AED Energ&iacute;a</strong></p>
+            ${personalizedBody}
           </div>`
         };
       });
