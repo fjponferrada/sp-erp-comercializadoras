@@ -71,13 +71,13 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
       include: {
         contracts: {
           orderBy: { version: 'desc' },
-          include: { client: true }
+          include: { client: { include: { brand: true } } }
         }
       }
     });
 
     // 2. Group by Client to avoid sending 5 emails to the same client for 5 CUPS
-    const clientsMap = new Map<string, { email: string; name: string; cupsList: string[] }>();
+    const clientsMap = new Map<string, { email: string; name: string; cupsList: string[]; brand: any }>();
 
     supplyPoints.forEach(sp => {
       const activeContract = sp.contracts.find(c => c.status === 'ACTIVO');
@@ -90,7 +90,7 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
       const clientName = contract.client?.businessName || (contract.client?.firstName ? `${contract.client.firstName} ${contract.client.lastName}` : 'Cliente');
       
       if (!clientsMap.has(email)) {
-        clientsMap.set(email, { email, name: clientName, cupsList: [] });
+        clientsMap.set(email, { email, name: clientName, cupsList: [], brand: contract.client?.brand });
       }
       clientsMap.get(email)!.cupsList.push(sp.cups);
     });
@@ -113,8 +113,14 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
           .replace(/\{\{nombre_cliente\}\}/g, client.name)
           .replace(/\{\{cups\}\}/g, client.cupsList.join(', '));
 
+        const brand = client.brand;
+        const brandName = brand?.name || 'AED Energía';
+        const fromEmail = brand?.supportEmail 
+          ? `${brandName} <${brand.supportEmail}>` 
+          : `${brandName} <facturacion@${brand?.domain || 'aed-energia.com'}>`;
+
         return {
-          from: 'Ultra Energía <no-reply@ultra.sp-energia.com>',
+          from: fromEmail,
           to: [client.email],
           subject: subject,
           html: `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
@@ -124,7 +130,13 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
         };
       });
 
-      await resend.batch.send(emailPayloads);
+      const { data, error } = await resend.batch.send(emailPayloads);
+      
+      if (error) {
+        console.error('Resend batch send error:', error);
+        return { success: false, error: error.message || JSON.stringify(error) };
+      }
+
       sentCount += emailPayloads.length;
 
       // Small delay between batches to avoid rate limits
