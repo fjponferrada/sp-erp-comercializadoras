@@ -86,22 +86,38 @@ export default function MassCommsModal({
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
               <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Mensaje
+                Mensaje (Previsualización)
               </label>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Variables disponibles: <code style={{ background: 'var(--bg-base)', padding: '2px 4px', borderRadius: '4px' }}>{`{{nombre_cliente}}`}</code>, <code style={{ background: 'var(--bg-base)', padding: '2px 4px', borderRadius: '4px' }}>{`{{cups}}`}</code>
+                Variables: <code style={{ background: 'var(--bg-base)', padding: '2px 4px', borderRadius: '4px' }}>{`{{cups}}`}</code>
               </span>
             </div>
-            <textarea 
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              placeholder="Estimado/a {{nombre_cliente}}, le contactamos en referencia a sus puntos de suministro: {{cups}}..."
-              style={{ 
-                width: '100%', minHeight: '200px', flex: 1, padding: '12px', borderRadius: '6px', 
-                border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', 
-                fontSize: '14px', fontFamily: 'inherit', resize: 'vertical'
-              }}
-            />
+            
+            <div style={{ 
+              padding: '16px', background: 'var(--bg-elevated)', borderRadius: '8px', 
+              border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' 
+            }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                Hola {'{{nombre_cliente}}'},
+              </div>
+              
+              <textarea 
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                placeholder="Escribe aquí el cuerpo principal de tu comunicado. Ej: le contactamos en referencia a sus puntos de suministro: {{cups}}..."
+                style={{ 
+                  width: '100%', minHeight: '140px', flex: 1, padding: '12px', borderRadius: '6px', 
+                  border: '1px dashed var(--border-strong)', background: 'var(--bg-base)', color: 'var(--text-primary)', 
+                  fontSize: '14px', fontFamily: 'inherit', resize: 'vertical'
+                }}
+              />
+              
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.5' }}>
+                <p style={{ margin: '0 0 8px 0' }}>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email, o en el 900525826 o por Whatsapp <span style={{color: 'var(--primary)'}}>haciendo clic aquí</span>.</p>
+                <p style={{ margin: 0 }}>Gracias por confiar en nosotros,</p>
+                <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>El Equipo AED Energía</p>
+              </div>
+            </div>
           </div>
 
         </div>
