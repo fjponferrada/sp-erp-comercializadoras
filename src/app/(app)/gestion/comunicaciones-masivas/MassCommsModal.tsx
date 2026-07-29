@@ -7,12 +7,6 @@ import toast from 'react-hot-toast';
 
 const defaultBody = `
 <div>Escribe aquí el cuerpo principal de tu comunicado. Ej: le contactamos en referencia a sus puntos de suministro: {{cups}}...</div>
-<br/>
-<div style="color: #6b7280; font-size: 13px; line-height: 1.5;">
-  <p style="margin: 0 0 8px 0;">Para cualquier duda que tengas, puedes ponerte en contacto con nosotros respondiendo a este email, o en el 900525826 o por Whatsapp <a href="https://wa.me/34900525826" style="color: #0056b3; text-decoration: underline;">haciendo clic aquí</a>.</p>
-  <p style="margin: 0;">Gracias por confiar en nosotros,</p>
-  <p style="margin: 4px 0 0 0; font-weight: 600;">El Equipo AED Energía</p>
-</div>
 `;
 
 export default function MassCommsModal({ 
@@ -25,7 +19,6 @@ export default function MassCommsModal({
   onSuccess: () => void;
 }) {
   const [subject, setSubject] = useState('');
-  const [body, setBody] = useState(defaultBody);
   const [isSending, setIsSending] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
@@ -135,20 +128,27 @@ export default function MassCommsModal({
               </div>
 
               <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                Hola {'{{nombre_cliente}}'},
+                Hola <b>{'{{nombre_cliente}}'}</b>,
               </div>
               
               <div 
                 ref={editorRef}
                 contentEditable
-                onInput={e => setBody(e.currentTarget.innerHTML)}
                 dangerouslySetInnerHTML={{ __html: defaultBody }}
                 style={{ 
-                  width: '100%', minHeight: '180px', flex: 1, padding: '12px', borderRadius: '6px', 
+                  width: '100%', minHeight: '120px', flex: 1, padding: '12px', borderRadius: '6px', 
                   border: '1px dashed var(--border-strong)', background: 'var(--bg-base)', color: 'var(--text-primary)', 
                   fontSize: '14px', fontFamily: 'Arial, sans-serif', overflowY: 'auto', outline: 'none'
                 }}
               />
+              
+              <div style={{ padding: '12px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <p style={{ margin: '0 0 8px 0' }}><i>[Firma y métodos de contacto generados automáticamente según la comercializadora del cliente]</i></p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '40px', height: '16px', background: 'var(--border-strong)', borderRadius: '2px' }}></div>
+                  <div style={{ width: '80px', height: '8px', background: 'var(--border-strong)', borderRadius: '4px' }}></div>
+                </div>
+              </div>
               
             </div>
           </div>
@@ -166,13 +166,13 @@ export default function MassCommsModal({
           </button>
           <button 
             onClick={handleSend}
-            disabled={isSending || !subject.trim() || !body.trim()}
+            disabled={isSending || !subject.trim()}
             style={{ 
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '10px 16px', borderRadius: '6px', border: 'none', 
               background: 'var(--lime)', color: 'var(--bg-base)', fontWeight: 600, 
-              cursor: (isSending || !subject.trim() || !body.trim()) ? 'not-allowed' : 'pointer',
-              opacity: (isSending || !subject.trim() || !body.trim()) ? 0.7 : 1
+              cursor: (isSending || !subject.trim()) ? 'not-allowed' : 'pointer',
+              opacity: (isSending || !subject.trim()) ? 0.7 : 1
             }}
           >
             {isSending ? (

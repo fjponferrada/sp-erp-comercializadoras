@@ -59,6 +59,24 @@ export async function getSupplyPointsForComms() {
   }
 }
 
+function extractClientFirstName(client: any) {
+  if (!client) return 'Cliente';
+  if (client.firstName) return client.firstName;
+  
+  const fullName = client.businessName || '';
+  if (client.clientType !== 'FISICA') return fullName;
+  
+  const apellidos = client.lastName;
+  
+  if (apellidos && fullName.toLowerCase().includes(apellidos.toLowerCase())) {
+    const regex = new RegExp(apellidos, 'i');
+    const extracted = fullName.replace(regex, '').trim();
+    if (extracted) return extracted;
+  }
+
+  return fullName || 'Cliente';
+}
+
 export async function sendMassCommunication(subject: string, bodyTemplate: string, supplyPointIds: string[]) {
   if (!resend) {
     return { success: false, error: 'Resend no está configurado.' };
@@ -77,7 +95,7 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
     });
 
     // 2. Group by Client to avoid sending 5 emails to the same client for 5 CUPS
-    const clientsMap = new Map<string, { email: string; name: string; cupsList: string[]; brand: any }>();
+    const clientsMap = new Map<string, { email: string; name: string; rawClient: any; cupsList: string[]; brand: any }>();
 
     supplyPoints.forEach(sp => {
       const activeContract = sp.contracts.find(c => c.status === 'ACTIVO');
@@ -87,10 +105,10 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
       const email = contract.client?.contactEmail || contract.client?.invoiceEmail || contract.client?.representativeEmail;
       if (!email || !email.includes('@')) return;
 
-      const clientName = contract.client?.businessName || (contract.client?.firstName ? `${contract.client.firstName} ${contract.client.lastName}` : 'Cliente');
+      const clientName = extractClientFirstName(contract.client);
       
       if (!clientsMap.has(email)) {
-        clientsMap.set(email, { email, name: clientName, cupsList: [], brand: contract.client?.brand });
+        clientsMap.set(email, { email, name: clientName, rawClient: contract.client, cupsList: [], brand: contract.client?.brand });
       }
       clientsMap.get(email)!.cupsList.push(sp.cups);
     });
@@ -115,18 +133,42 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
 
         const brand = client.brand;
         const brandName = brand?.name || 'AED Energía';
+        const brandColor = brand?.accentColor || '#4F46E5';
         const fromEmail = brand?.supportEmail 
           ? `${brandName} <${brand.supportEmail}>` 
           : `${brandName} <facturacion@${brand?.domain || 'aed-energia.com'}>`;
+        
+        let contactMethods = `respondiendo a este email`;
+        if (brand?.whatsappPhone || brand?.phone) {
+          contactMethods += `, o `;
+          const methods = [];
+          if (brand?.phone) methods.push(`en el <a href="tel:${brand.phone.replace(/\D/g, '')}" style="color: ${brandColor}; text-decoration: none; font-weight: bold;">${brand.phone}</a>`);
+          if (brand?.whatsappPhone) methods.push(`por Whatsapp <a href="https://wa.me/${brand.whatsappPhone.replace(/\D/g, '')}" style="color: ${brandColor}; text-decoration: none; font-weight: bold;">haciendo clic aquí</a>`);
+          contactMethods += methods.join(' o ');
+        }
+
+        const logoUrl = brand?.invoiceLogoUrl || brand?.logoUrl;
+        const logoHtml = logoUrl 
+          ? `<div style="text-align: left; margin-top: 40px;"><img src="${logoUrl}" alt="${brandName}" style="max-height: 80px;" /></div>`
+          : '';
+
+        const fullHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px; color: #333;">
+            <p>Hola <b>${client.name}</b>,</p>
+            ${personalizedBody}
+            <br/>
+            <p>Para cualquier duda que tengas, puedes ponerte en contacto con nosotros ${contactMethods}.</p>
+            <p>Gracias por confiar en nosotros,</p>
+            <p><b>El Equipo ${brandName}</b></p>
+            ${logoHtml}
+          </div>
+        `;
 
         return {
           from: fromEmail,
           to: [client.email],
           subject: subject,
-          html: `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-            <p>Hola ${client.name},</p>
-            ${personalizedBody}
-          </div>`
+          html: fullHtml
         };
       });
 
