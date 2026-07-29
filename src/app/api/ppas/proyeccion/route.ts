@@ -19,10 +19,22 @@ export async function POST(request: Request) {
     }
 
     const now = new Date();
-    // Empezamos desde el día 1 del mes actual
-    const start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-    // 12 meses vista (el día 0 del mes actual + 12 es el último día del mes 11)
+    let start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
     const end = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 12, 0, 23, 59, 59, 999));
+
+    // Determinar último día con datos reales para no pisarlo con previsión
+    const lastOmie = await prisma.systemComponentPrice.findFirst({
+      where: { component: 'OMIE' },
+      orderBy: { date: 'desc' }
+    });
+
+    if (lastOmie && lastOmie.date) {
+      const nextDayAfterOmie = new Date(lastOmie.date);
+      nextDayAfterOmie.setUTCDate(nextDayAfterOmie.getUTCDate() + 1);
+      if (nextDayAfterOmie > start) {
+        start = nextDayAfterOmie;
+      }
+    }
 
     const futureData = await prisma.portfolioBaseCurve.findMany({
       where: {

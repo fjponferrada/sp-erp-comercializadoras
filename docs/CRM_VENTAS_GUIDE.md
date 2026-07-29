@@ -6,10 +6,10 @@ Esta guía detalla la arquitectura, el flujo de negocio y las decisiones de dise
 
 ## 1. Arquitectura de Contratos y Trazabilidad
 
-A diferencia de CRMs genéricos, este sistema utiliza un modelo de **Trazabilidad por Versiones** para mantener el historial completo de un Punto de Suministro (CUPS).
+A diferencia de CRMs genéricos, este sistema utiliza un modelo de **Trazabilidad por Versiones** para mantener el historial de los acuerdos comerciales. Es importante destacar que el versionado pertenece a la "rama" del contrato, no al CUPS en sí.
 
-*   **Versionado (`version`)**: Todo contrato nuevo parte de la versión 1. Cualquier modificación posterior (Cambio de titular, cambio de tarifa) genera un nuevo registro de contrato con `version + 1`.
-*   **Encadenamiento (`previousContractId`)**: El nuevo borrador se enlaza al contrato anterior. Esto permite saber de dónde viene un contrato y bloquear acciones contradictorias (ej. no dejar que dos comerciales renueven el mismo contrato a la vez).
+*   **Versionado (`version`)**: Todo contrato nuevo e independiente nace en su versión base (0 o 1). Si un cliente se va y vuelve años después a la misma casa (mismo CUPS), firmará un contrato totalmente nuevo que volverá a nacer en su versión base. Cualquier modificación posterior sobre un contrato vivo (Cambio de titular, cambio de tarifa) genera un nuevo registro de contrato con `version + 1`.
+*   **Encadenamiento (`previousContractId`)**: El nuevo borrador se enlaza al contrato anterior. Esto permite saber de dónde viene un contrato y trazar su árbol genealógico. Dos contratos sin parentesco para el mismo CUPS nunca se cruzarán en sus versiones.
 *   **Tipos de Modificación (M1)**: 
     *   **Administrativa (Cambio de Titular)**: Hereda las fechas contractuales (`expectedEndDate`, `permanenceStartDate`) pero cambia el `client` asociado.
     *   **Técnica (Cambio de Tarifa/Potencia)**: Modifica los parámetros técnicos (P1-P6) pero mantiene al mismo cliente.

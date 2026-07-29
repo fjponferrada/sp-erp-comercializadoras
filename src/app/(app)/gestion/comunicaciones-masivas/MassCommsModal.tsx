@@ -42,13 +42,13 @@ export default function MassCommsModal({
 
   return (
     <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, padding: '24px'
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '24px'
     }}>
       <div style={{
-        background: 'var(--bg-card)', borderRadius: '12px', width: '100%', maxWidth: '650px',
-        boxShadow: '0 10px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: '650px', border: '1px solid var(--border-strong)',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column',
         maxHeight: '90vh'
       }}>
         {/* Header */}
