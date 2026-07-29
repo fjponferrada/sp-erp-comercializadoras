@@ -71,7 +71,6 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
       include: {
         contracts: {
           orderBy: { version: 'desc' },
-          take: 1,
           include: { client: true }
         }
       }
@@ -81,8 +80,11 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
     const clientsMap = new Map<string, { email: string; name: string; cupsList: string[] }>();
 
     supplyPoints.forEach(sp => {
-      const contract = sp.contracts[0];
-      const email = contract?.client?.contactEmail || contract?.client?.invoiceEmail || contract?.client?.representativeEmail;
+      const activeContract = sp.contracts.find(c => c.status === 'ACTIVO');
+      const contract = activeContract || sp.contracts[0];
+      if (!contract) return;
+      
+      const email = contract.client?.contactEmail || contract.client?.invoiceEmail || contract.client?.representativeEmail;
       if (!email || !email.includes('@')) return;
 
       const clientName = contract.client?.businessName || (contract.client?.firstName ? `${contract.client.firstName} ${contract.client.lastName}` : 'Cliente');
