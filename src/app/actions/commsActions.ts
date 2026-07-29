@@ -37,15 +37,18 @@ export async function getSupplyPointsForComms() {
         id: sp.id,
         cups: sp.cups,
         status: latestContract.status === 'ACTIVO' ? 'ACTIVO' : 'INACTIVO',
-        clientName: latestContract.client?.businessName || latestContract.client?.name || 'Sin nombre',
-        clientEmail: latestContract.client?.email || '',
+        clientName: latestContract.client?.businessName || (latestContract.client?.firstName ? `${latestContract.client.firstName} ${latestContract.client.lastName}` : 'Sin nombre'),
+        clientEmail: latestContract.client?.contactEmail || latestContract.client?.invoiceEmail || latestContract.client?.representativeEmail || '',
         channelName: latestContract.user?.channel?.name || 'Sin Canal',
         channelId: latestContract.user?.channel?.id || 'NO_CHANNEL',
         contractId: latestContract.id
       };
-    }).filter(Boolean); // Remove nulls
+    }) as any[];
+    
+    // Remove nulls
+    const filteredResult = result.filter(r => r !== null);
 
-    return { success: true, data: result };
+    return { success: true, data: filteredResult };
   } catch (error: any) {
     console.error('Error fetching supply points for comms:', error);
     return { success: false, error: error.message };
@@ -75,10 +78,10 @@ export async function sendMassCommunication(subject: string, bodyTemplate: strin
 
     supplyPoints.forEach(sp => {
       const contract = sp.contracts[0];
-      const email = contract?.client?.email;
+      const email = contract?.client?.contactEmail || contract?.client?.invoiceEmail || contract?.client?.representativeEmail;
       if (!email || !email.includes('@')) return;
 
-      const clientName = contract.client?.businessName || contract.client?.name || 'Cliente';
+      const clientName = contract.client?.businessName || (contract.client?.firstName ? `${contract.client.firstName} ${contract.client.lastName}` : 'Cliente');
       
       if (!clientsMap.has(email)) {
         clientsMap.set(email, { email, name: clientName, cupsList: [] });
