@@ -27,8 +27,7 @@ export default async function ComunicacionesMasivasPage() {
         Envía correos electrónicos masivos a clientes filtrando por estado o canal. 
         El envío agrupará a los clientes con varios CUPS para no duplicar correos.
       </p>
-
-      <MassCommsClient initialData={initialData || []} />
+      <MassCommsClient initialData={(initialData as any[]) || []} />
     </div>
   );
 }
