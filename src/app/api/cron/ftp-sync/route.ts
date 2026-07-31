@@ -100,12 +100,13 @@ async function listFtpRecursive(ftpClient: Client, currentPath: string, onProgre
 }
 export const maxDuration = 300; // Allow Vercel / Next up to 5 minutes to run this script
 
-export async function executeFtpSync(configs: any[], jobId?: string) {
+export async function executeFtpSync(configs: any[], jobId?: string, requestUrl?: string) {
   const startTime = Date.now();
-  const MAX_EXECUTION_TIME_MS = 50000; // 50 segundos para evitar el timeout del navegador (típicamente 120s) y Vercel (60s).
+  const isLocal = requestUrl?.includes('127.0.0.1') || requestUrl?.includes('localhost');
+  const MAX_EXECUTION_TIME_MS = isLocal ? 240000 : 50000;
 
   let results: any = {};
-  const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
+  const PRIORIDAD_MAP = ['F1', 'C1', 'C2', 'M1', 'M2', 'A3', 'B1', 'B2', 'D1', 'E1', 'E2', 'Q1', 'R1', 'T1', 'W1', 'P0', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D'];
   let hasMore = false;
 
   try {
@@ -410,11 +411,11 @@ export async function GET(req: Request) {
   if (jobId) {
     // Modo asíncrono
     // Lanzamos la promesa y no la esperamos (el cliente la llamará en bucle)
-    executeFtpSync(configs, jobId).catch(console.error);
+    executeFtpSync(configs, jobId, req.url).catch(console.error);
     return NextResponse.json({ message: 'Sincronización FTP iniciada en segundo plano', jobId, hasMore: true });
   } else {
     // Modo síncrono (legacy / vercel cron)
-    const { results, hasMore } = await executeFtpSync(configs);
+    const { results, hasMore } = await executeFtpSync(configs, undefined, req.url);
     return NextResponse.json({ message: 'Sincronización FTP chunk completado', results, hasMore });
   }
 }
