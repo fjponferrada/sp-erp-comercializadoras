@@ -50,7 +50,7 @@ $headers = @{
 }
 
 $hasMore = $true
-$maxRetries = 10
+$maxRetries = 30
 $retryCount = 0
 
 while ($hasMore -and $retryCount -lt $maxRetries) {

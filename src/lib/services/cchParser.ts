@@ -123,10 +123,10 @@ export async function processCchCsv(
     
     if (parts[0].includes('/')) {
       const dParts = parts[0].split('/');
-      if (dParts[0].length === 4) {
+      if (dParts[0] && dParts[0].length === 4) {
         // Formato YYYY/MM/DD
         dateObj = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T${parts[1] || '00:00'}Z`);
-      } else if (dParts[2].length === 4) {
+      } else if (dParts[2] && dParts[2].length === 4) {
         // Formato DD/MM/YYYY
         dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}Z`);
       } else {
@@ -134,10 +134,10 @@ export async function processCchCsv(
       }
     } else if (parts[0].includes('-')) {
       const dParts = parts[0].split('-');
-      if (dParts[0].length === 4) {
+      if (dParts[0] && dParts[0].length === 4) {
         // Formato YYYY-MM-DD
         dateObj = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T${parts[1] || '00:00'}Z`);
-      } else if (dParts[2].length === 4) {
+      } else if (dParts[2] && dParts[2].length === 4) {
         // Formato DD-MM-YYYY
         dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}Z`);
       } else {

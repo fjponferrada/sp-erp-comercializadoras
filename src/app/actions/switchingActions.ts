@@ -35,7 +35,7 @@ export async function getPaginatedSwitchingEventsAction(
     if (procesoBase) {
       whereClause.procesoBase = procesoBase;
     } else {
-      whereClause.procesoBase = { notIn: ['F1', 'R1', 'P0', 'Q1', 'W1', 'T1'] };
+      whereClause.procesoBase = { notIn: ['F1', 'R1', 'P0', 'Q1', 'W1'] };
     }
 
     if (searchTerm) {
