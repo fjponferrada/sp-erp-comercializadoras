@@ -904,6 +904,38 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         }
       }
       warning = `Anulación de proceso de Desistimiento (paso ${paso}) procesada.`;
+    } else if (procesoBase === 'T1') {
+      // Traspaso a la COR
+      const contract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds }, status: { notIn: ['FINALIZADO', 'Finalizado', 'BAJA', 'Baja', 'RECHAZADO', 'Rechazado'] } },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (contract) {
+        supplyPointId = contract.supplyPointId;
+        contractId = contract.id;
+        
+        if (paso === '06') {
+          // ActivacionTraspasoCORSaliente: Nos notifican que el COR ha asumido el CUPS
+          const bajaDate = parsedData.fechaActivacionAlta || parsedData.fechaPrevActivacion || new Date();
+          await prisma.contract.update({
+            where: { id: contract.id },
+            data: { 
+              status: 'FINALIZADO',
+              terminationDate: bajaDate,
+              internalComments: `[Aviso] El punto de suministro ha sido traspasado a la COR (Paso 06). Contrato finalizado automáticamente.\n${contract.internalComments || ''}`
+            }
+          });
+          warning = `El cliente ha sido traspasado a la COR. El contrato se ha FINALIZADO automáticamente con fecha ${new Date(bajaDate).toISOString().split('T')[0]}.`;
+        } else {
+          // Otros pasos T1
+          tipoError = `T1_PASO_${paso}`;
+          warning = `Proceso de traspaso a la COR (T1) en paso ${paso}. Por favor, revise manualmente.`;
+        }
+      } else {
+        tipoError = `T1_PASO_${paso}`;
+        warning = `Aviso de traspaso a la COR (T1) en paso ${paso}, pero no se encontró un contrato activo que dar de baja para este CUPS.`;
+      }
     } else {
       // Fallback genérico para otros pasos
       const anyContract = await prisma.contract.findFirst({
@@ -927,7 +959,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
       where: { id: existingEventId },
       data: {
         uniqueProcess: uniqueProcess, // Actualizar al nuevo formato por si acaso
-        isResolved: (!warning || (parsedData.procesoBase === 'E2' && parsedData.paso === '05')),
+        isResolved: (!warning || (parsedData.procesoBase === 'E2' && parsedData.paso === '05') || (parsedData.procesoBase === 'T1' && parsedData.paso === '06')),
         contract: contractId ? { connect: { id: contractId } } : undefined,
         supplyPoint: supplyPointId ? { connect: { id: supplyPointId } } : undefined,
         tipoError: tipoError || null,
@@ -964,14 +996,14 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         actuacionCampo: parsedData.actuacionCampo ?? undefined,
         codigoReclamacion: parsedData.codigoReclamacion,
         xmlUrl,
-        isResolved: (!warning || (parsedData.procesoBase === 'E2' && parsedData.paso === '05')),
+        isResolved: (!warning || (parsedData.procesoBase === 'E2' && parsedData.paso === '05') || (parsedData.procesoBase === 'T1' && parsedData.paso === '06')),
         contractId,
         supplyPointId,
         tipoError,
         warning,
       },
       update: {
-        isResolved: (!warning || (parsedData.procesoBase === 'E2' && parsedData.paso === '05')),
+        isResolved: (!warning || (parsedData.procesoBase === 'E2' && parsedData.paso === '05') || (parsedData.procesoBase === 'T1' && parsedData.paso === '06')),
         contractId: contractId || undefined,
         supplyPointId: supplyPointId || undefined,
         tipoError: tipoError || null,
