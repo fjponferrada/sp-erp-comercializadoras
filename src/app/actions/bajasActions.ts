@@ -58,6 +58,56 @@ export async function getPaginatedBajasAction(
       }
     }
 
+    // --- Helper function to calculate penalty ---
+    const calculatePenalty = (b: any): number => {
+      // If contract has no permanence start date or termination date, or no permanence months, penalty is 0
+      if (!b.permanenceStartDate || !b.terminationDate || !b.permanenceMonths) return 0;
+      
+      const pStart = new Date(b.permanenceStartDate);
+      const pEnd = new Date(pStart);
+      pEnd.setMonth(pEnd.getMonth() + b.permanenceMonths);
+      const bDate = new Date(b.terminationDate);
+
+      // If contract terminated after permanence ended, 0 penalty
+      if (bDate >= pEnd) return 0;
+
+      const isResidencial = b.supplyPoint?.tariff === '2.0TD' && b.client?.type === 'F';
+      const annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
+      const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const expectedEnergyRemaining = (annualCons / 365) * daysRemaining;
+
+      if (isResidencial) {
+        // Desistimiento: 14 days
+        const daysFromStart = Math.ceil((bDate.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysFromStart <= 14) return 0;
+
+        // Calc cost: energy + power
+        const energyPrice = b.p1e || 0.15; // fallback to 0.15 if missing
+        const energyCost = expectedEnergyRemaining * 1000 * energyPrice;
+        
+        // Power cost (daily power cost * days remaining)
+        // P1P..P6P are usually annual prices. So daily = price / 365
+        let annualPowerCost = 0;
+        if (b.p1p && b.p1c) annualPowerCost += b.p1p * b.p1c;
+        if (b.p2p && b.p2c) annualPowerCost += b.p2p * b.p2c;
+        if (b.p3p && b.p3c) annualPowerCost += b.p3p * b.p3c;
+        if (b.p4p && b.p4c) annualPowerCost += b.p4p * b.p4c;
+        if (b.p5p && b.p5c) annualPowerCost += b.p5p * b.p5c;
+        if (b.p6p && b.p6c) annualPowerCost += b.p6p * b.p6c;
+
+        const powerCost = (annualPowerCost / 365) * daysRemaining;
+        
+        const totalPendingCost = energyCost + powerCost;
+        return totalPendingCost * 1.21 * 0.05;
+      } else {
+        // No Residencial (Resto)
+        const energyPrice = b.p1e || 0;
+        const totalPendingCost = expectedEnergyRemaining * 1000 * energyPrice;
+        return totalPendingCost * 1.21 * 0.05;
+      }
+    };
+    // ---------------------------------------------
+
     // Puesto que motivoFilter actual está hardcodeado a "Fin de permanencia", simulamos:
     if (motivoFilter !== 'TODOS') {
       if (motivoFilter !== 'Fin de permanencia') {
@@ -103,7 +153,10 @@ export async function getPaginatedBajasAction(
         producto: b.product?.name || 'Desconocido',
         diasVida: diffDays,
         hasSelfConsumption: b.supplyPoint?.hasSelfConsumption || false,
-        bajaProcess: b.bajaProcess || null
+        bajaProcess: b.bajaProcess || null,
+        calculatedPenalty: b.calculatedPenalty !== null ? b.calculatedPenalty : calculatePenalty(b),
+        penalization: b.penalization,
+        penaltyStatus: b.penaltyStatus || 'PENDIENTE'
       };
     });
 
@@ -340,6 +393,36 @@ export async function generateBajaXml(data: {
     return { success: true, xml };
   } catch (error: any) {
     console.error('Error generando XML de baja:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function savePenaltyAction(contractId: string, penalization: number, status: string) {
+  try {
+    const visibilityFilter = await getUserVisibilityFilter();
+    
+    // Check permission/existence
+    const contract = await prisma.contract.findFirst({
+      where: {
+        id: contractId,
+        ...visibilityFilter
+      }
+    });
+
+    if (!contract) {
+      return { success: false, error: 'Contract not found or access denied' };
+    }
+
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        penalization,
+        penaltyStatus: status
+      }
+    });
+
+    return { success: true };
+  } catch (error: any) {
     return { success: false, error: error.message };
   }
 }

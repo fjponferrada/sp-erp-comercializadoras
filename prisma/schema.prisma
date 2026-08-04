@@ -426,6 +426,8 @@ model Contract {
   commissionFinal            Float?
   commissionVariable         Float?
   penalization               Float?
+  calculatedPenalty          Float?
+  penaltyStatus              String?
   svaConcept                 String?
   svaPrice                   Float?
   svaDuration                Int?

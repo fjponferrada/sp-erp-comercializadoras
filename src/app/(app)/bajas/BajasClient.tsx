@@ -24,11 +24,14 @@ export interface BajaData {
   diasVida: number;
   hasSelfConsumption: boolean;
   bajaProcess?: string | null;
+  calculatedPenalty?: number;
+  penalization?: number | null;
+  penaltyStatus?: string;
 }
 
 import WinbackOfferModal from '@/components/bajas/WinbackOfferModal';
-import { Phone, MessageCircle, Send } from 'lucide-react';
-import { getPaginatedBajasAction } from '@/app/actions/bajasActions';
+import { Phone, MessageCircle, Send, FileText } from 'lucide-react';
+import { getPaginatedBajasAction, savePenaltyAction } from '@/app/actions/bajasActions';
 
 const getTariffStyle = (tarifa: string) => {
   const t = tarifa.toUpperCase();
@@ -66,6 +69,34 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
   const [bajas, setBajas] = useState<BajaData[]>(initialBajas);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [isLoading, setIsLoading] = useState(false);
+  const [penaltyModalData, setPenaltyModalData] = useState<BajaData | null>(null);
+  const [editingPenalty, setEditingPenalty] = useState<string>('');
+  const [savingPenalty, setSavingPenalty] = useState(false);
+
+  useEffect(() => {
+    if (penaltyModalData) {
+      setEditingPenalty(
+        penaltyModalData.penalization !== null && penaltyModalData.penalization !== undefined
+          ? penaltyModalData.penalization.toFixed(2)
+          : penaltyModalData.calculatedPenalty?.toFixed(2) || '0.00'
+      );
+    }
+  }, [penaltyModalData]);
+
+  const handleSavePenalty = async (status: string) => {
+    if (!penaltyModalData) return;
+    setSavingPenalty(true);
+    const val = parseFloat(editingPenalty);
+    const result = await savePenaltyAction(penaltyModalData.id, isNaN(val) ? 0 : val, status);
+    if (result.success) {
+      // Update local state
+      setBajas(prev => prev.map(b => b.id === penaltyModalData.id ? { ...b, penalization: isNaN(val) ? 0 : val, penaltyStatus: status } : b));
+      setPenaltyModalData(null);
+    } else {
+      alert('Error guardando la penalización: ' + result.error);
+    }
+    setSavingPenalty(false);
+  };
 
   useEffect(() => {
     if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && origenBajaFilter.length === origenBajaOptions.length) return;
@@ -277,13 +308,14 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   <th>Producto</th>
                   <th>Fecha Baja</th>
                   <th>Origen Baja</th>
+                  <th>Penalización</th>
                   <th style={{ textAlign: 'center' }}>Acciones de Recuperación</th>
                 </tr>
               </thead>
               <tbody>
                 {bajas.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
                       No se encontraron bajas con los filtros aplicados.
                     </td>
                   </tr>
@@ -310,6 +342,28 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>-</span>
                       )}
+                    </td>
+                    <td>
+                      <button 
+                        className="badge hover:opacity-80 transition-opacity"
+                        style={{ 
+                          background: b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.1)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                          color: b.penaltyStatus === 'FACTURADA' ? '#34d399' : b.penaltyStatus === 'DESCARTADA' ? '#9ca3af' : '#fbbf24',
+                          border: `1px solid ${b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.2)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+                          fontSize: '0.75rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setPenaltyModalData(b)}
+                        title="Gestionar Penalización"
+                      >
+                        <FileText size={12} />
+                        {b.penalization !== null && b.penalization !== undefined 
+                          ? `${b.penalization.toFixed(2)} €` 
+                          : b.calculatedPenalty ? `${b.calculatedPenalty.toFixed(2)} € (Auto)` : '0.00 €'}
+                      </button>
                     </td>
 
                     <td>
@@ -352,6 +406,66 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
           products={products}
           onClose={() => setOfferModalData(null)}
         />
+      )}
+
+      {penaltyModalData && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card" style={{ width: '400px', maxWidth: '90%', padding: '24px' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FileText size={20} />
+              Gestionar Penalización
+            </h3>
+            
+            <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Cálculo Automático ERP</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {penaltyModalData.calculatedPenalty ? penaltyModalData.calculatedPenalty.toFixed(2) : '0.00'} €
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>
+                Penalización a Aplicar (€)
+              </label>
+              <input 
+                type="number" 
+                step="0.01" 
+                className="form-input" 
+                style={{ width: '100%', fontSize: '1rem', padding: '10px' }}
+                value={editingPenalty}
+                onChange={e => setEditingPenalty(e.target.value)}
+              />
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                Puedes ajustar manualmente el importe antes de confirmarlo.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button 
+                className="btn-secondary" 
+                onClick={() => setPenaltyModalData(null)}
+                disabled={savingPenalty}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn-secondary" 
+                style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)' }}
+                onClick={() => handleSavePenalty('DESCARTADA')}
+                disabled={savingPenalty}
+              >
+                Descartar (No Cobrar)
+              </button>
+              <button 
+                className="btn-primary" 
+                onClick={() => handleSavePenalty('FACTURADA')}
+                disabled={savingPenalty}
+              >
+                {savingPenalty ? 'Guardando...' : 'Confirmar y Facturar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
