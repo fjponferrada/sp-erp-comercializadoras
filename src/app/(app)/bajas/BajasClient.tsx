@@ -128,74 +128,80 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
 
         {/* Table */}
         <div className="card animate-fade-in-up delay-300" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: '1 1 220px' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input className="form-input" placeholder="Buscar cliente o CUPS..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '32px', fontSize: '0.8rem' }} />
-            </div>
-            
-            <div style={{ position: 'relative' }}>
-              <button 
-                className="form-input" 
-                style={{ width: '200px', fontSize: '0.8rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                onClick={() => setIsOrigenDropdownOpen(!isOrigenDropdownOpen)}
-              >
-                <span>Orígenes ({origenBajaFilter.length === origenBajaOptions.length ? 'Todos' : origenBajaFilter.length})</span>
-                <TrendingDown size={14} style={{ color: 'var(--text-muted)' }} />
-              </button>
-              
-              {isOrigenDropdownOpen && (
-                <div style={{ 
-                  position: 'absolute', top: '100%', left: 0, marginTop: '4px', width: '220px', 
-                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '6px', 
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, padding: '8px',
-                  maxHeight: '300px', overflowY: 'auto'
-                }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={origenBajaFilter.length === origenBajaOptions.length}
-                      onChange={(e) => {
-                        if (e.target.checked) setOrigenBajaFilter(origenBajaOptions);
-                        else setOrigenBajaFilter([]);
-                      }}
-                    />
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Seleccionar todos</span>
-                  </label>
-                  
-                  {origenBajaOptions.map(origen => (
-                    <label key={origen} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={origenBajaFilter.includes(origen)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setOrigenBajaFilter([...origenBajaFilter, origen]);
-                          } else {
-                            setOrigenBajaFilter(origenBajaFilter.filter(o => o !== origen));
-                          }
-                        }}
-                      />
-                      <span style={{ fontSize: '0.8rem' }}>{origen}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Fila principal: Buscador */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input className="form-input" placeholder="Buscar cliente o CUPS..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '32px', fontSize: '0.8rem', width: '100%' }} />
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap' }}>
+                {totalCount} bajas
+              </div>
             </div>
 
-            <select
-              className="form-input"
-              value={canalFilter}
-              onChange={(e) => setCanalFilter(e.target.value)}
-              style={{ width: '200px', fontSize: '0.8rem' }}
-            >
-              <option value="TODOS">Todos los canales</option>
-              {channels?.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', fontFamily: "'JetBrains Mono', monospace" }}>
-              {totalCount} bajas
+            {/* Fila secundaria: Filtros */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                className="form-input"
+                value={canalFilter}
+                onChange={(e) => setCanalFilter(e.target.value)}
+                style={{ width: '200px', fontSize: '0.8rem' }}
+              >
+                <option value="TODOS">Todos los canales</option>
+                {channels?.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+
+              <div style={{ position: 'relative' }}>
+                <button 
+                  className="form-input" 
+                  style={{ width: '200px', fontSize: '0.8rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onClick={() => setIsOrigenDropdownOpen(!isOrigenDropdownOpen)}
+                >
+                  <span>Orígenes ({origenBajaFilter.length === origenBajaOptions.length ? 'Todos' : origenBajaFilter.length})</span>
+                  <TrendingDown size={14} style={{ color: 'var(--text-muted)' }} />
+                </button>
+                
+                {isOrigenDropdownOpen && (
+                  <div style={{ 
+                    position: 'absolute', top: '100%', left: 0, marginTop: '4px', width: '220px', 
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '6px', 
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, padding: '8px',
+                    maxHeight: '300px', overflowY: 'auto'
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={origenBajaFilter.length === origenBajaOptions.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setOrigenBajaFilter(origenBajaOptions);
+                          else setOrigenBajaFilter([]);
+                        }}
+                      />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Seleccionar todos</span>
+                    </label>
+                    
+                    {origenBajaOptions.map(origen => (
+                      <label key={origen} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={origenBajaFilter.includes(origen)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setOrigenBajaFilter([...origenBajaFilter, origen]);
+                            } else {
+                              setOrigenBajaFilter(origenBajaFilter.filter(o => o !== origen));
+                            }
+                          }}
+                        />
+                        <span style={{ fontSize: '0.8rem' }}>{origen}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
