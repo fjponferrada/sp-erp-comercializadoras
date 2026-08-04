@@ -908,7 +908,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     } else if (procesoBase === 'T1') {
       // Traspaso a la COR
       const contract = await prisma.contract.findFirst({
-        where: { supplyPointId: { in: possibleSpIds }, status: { notIn: ['FINALIZADO', 'Finalizado', 'BAJA', 'Baja', 'RECHAZADO', 'Rechazado'] } },
+        where: { supplyPointId: { in: possibleSpIds }, status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] } },
         orderBy: { createdAt: 'desc' }
       });
 
