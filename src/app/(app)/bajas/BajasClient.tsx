@@ -41,11 +41,19 @@ const getTariffStyle = (tarifa: string) => {
   return { background: 'rgba(107, 114, 128, 0.1)', color: '#9ca3af', border: '1px solid rgba(107, 114, 128, 0.2)' };
 };
 
+const tarifaOptions = ['2.0TD', '3.0TD', '6.1TD', '6.2TD', '6.3TD', '6.4TD', '3.0TDVE', '6.1TDVE'];
+
 export default function BajasClient({ initialBajas, initialTotalCount, initialTotalPenaltySum, initialStats, products = [], channels = [], origenBajaOptions = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialTotalPenaltySum?: number, initialStats: any, products?: any[], channels?: any[], origenBajaOptions?: string[] }) {
   const [search, setSearch] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_search') || '' : '');
   const [dateFrom, setDateFrom] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateFrom') || '' : '');
   const [dateTo, setDateTo] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateTo') || '' : '');
-  const [tarifaFilter, setTarifaFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_tarifaFilter') || 'TODAS' : 'TODAS');
+  const [tarifaFilter, setTarifaFilter] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('bajas_tarifaFilter');
+      if (stored) return JSON.parse(stored);
+    }
+    return tarifaOptions;
+  });
   const [motivoFilter, setMotivoFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_motivoFilter') || 'TODOS' : 'TODOS');
   const [canalFilter, setCanalFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_canalFilter') || 'TODOS' : 'TODOS');
   const [origenBajaFilter, setOrigenBajaFilter] = useState<string[]>(() => {
@@ -66,11 +74,12 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
     sessionStorage.setItem('bajas_page', page.toString());
     sessionStorage.setItem('bajas_dateFrom', dateFrom);
     sessionStorage.setItem('bajas_dateTo', dateTo);
-    sessionStorage.setItem('bajas_tarifaFilter', tarifaFilter);
+    sessionStorage.setItem('bajas_tarifaFilter', JSON.stringify(tarifaFilter));
   }, [search, motivoFilter, canalFilter, origenBajaFilter, page, dateFrom, dateTo, tarifaFilter]);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
   
   const [isOrigenDropdownOpen, setIsOrigenDropdownOpen] = useState(false);
+  const [isTarifaDropdownOpen, setIsTarifaDropdownOpen] = useState(false);
 
   const [bajas, setBajas] = useState<BajaData[]>(initialBajas);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
@@ -106,7 +115,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
   };
 
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && tarifaFilter === 'TODAS' && origenBajaFilter.length === origenBajaOptions.length && !dateFrom && !dateTo) return;
+    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && tarifaFilter.length === tarifaOptions.length && origenBajaFilter.length === origenBajaOptions.length && !dateFrom && !dateTo) return;
 
     const fetchBajas = async () => {
       setIsLoading(true);
@@ -180,22 +189,54 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
             </div>
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <select
-                className="form-input"
-                value={tarifaFilter}
-                onChange={(e) => setTarifaFilter(e.target.value)}
-                style={{ width: '150px', fontSize: '0.8rem' }}
-              >
-                <option value="TODAS">Todas las tarifas</option>
-                <option value="2.0TD">2.0TD</option>
-                <option value="3.0TD">3.0TD</option>
-                <option value="6.1TD">6.1TD</option>
-                <option value="6.2TD">6.2TD</option>
-                <option value="6.3TD">6.3TD</option>
-                <option value="6.4TD">6.4TD</option>
-                <option value="3.0TDVE">3.0TDVE</option>
-                <option value="6.1TDVE">6.1TDVE</option>
-              </select>
+              <div style={{ position: 'relative' }}>
+                <button 
+                  className="form-input" 
+                  style={{ width: '180px', fontSize: '0.8rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onClick={() => setIsTarifaDropdownOpen(!isTarifaDropdownOpen)}
+                >
+                  <span>Tarifas ({tarifaFilter.length === tarifaOptions.length ? 'Todas' : tarifaFilter.length})</span>
+                  <TrendingDown size={14} style={{ color: 'var(--text-muted)' }} />
+                </button>
+                
+                {isTarifaDropdownOpen && (
+                  <div style={{ 
+                    position: 'absolute', top: '100%', left: 0, marginTop: '4px', width: '200px', 
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '6px', 
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, padding: '8px',
+                    maxHeight: '300px', overflowY: 'auto'
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={tarifaFilter.length === tarifaOptions.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setTarifaFilter(tarifaOptions);
+                          else setTarifaFilter([]);
+                        }}
+                      />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Seleccionar todas</span>
+                    </label>
+                    
+                    {tarifaOptions.map(tarifa => (
+                      <label key={tarifa} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={tarifaFilter.includes(tarifa)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setTarifaFilter([...tarifaFilter, tarifa]);
+                            } else {
+                              setTarifaFilter(tarifaFilter.filter(t => t !== tarifa));
+                            }
+                          }}
+                        />
+                        <span style={{ fontSize: '0.8rem' }}>{tarifa}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <select
                 className="form-input"
