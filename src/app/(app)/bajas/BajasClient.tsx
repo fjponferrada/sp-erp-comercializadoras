@@ -104,7 +104,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
   };
 
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && origenBajaFilter.length === origenBajaOptions.length) return;
+    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && origenBajaFilter.length === origenBajaOptions.length && !dateFrom && !dateTo) return;
 
     const fetchBajas = async () => {
       setIsLoading(true);
