@@ -9,6 +9,7 @@ const motivos = ['Cese de actividad', 'Cambio de comercializadora', 'Venta del i
 
 export interface BajaData {
   id: string; // Contract ID
+  contractCode?: string;
   cups: string;
   cliente: string;
   clientId: string;
