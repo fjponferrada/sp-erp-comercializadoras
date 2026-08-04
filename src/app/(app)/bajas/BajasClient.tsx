@@ -38,10 +38,17 @@ const getTariffStyle = (tarifa: string) => {
   return { background: 'rgba(107, 114, 128, 0.1)', color: '#9ca3af', border: '1px solid rgba(107, 114, 128, 0.2)' };
 };
 
-export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [], channels = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[], channels?: any[] }) {
+export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [], channels = [], origenBajaOptions = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[], channels?: any[], origenBajaOptions?: string[] }) {
   const [search, setSearch] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_search') || '' : '');
   const [motivoFilter, setMotivoFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_motivoFilter') || 'TODOS' : 'TODOS');
   const [canalFilter, setCanalFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_canalFilter') || 'TODOS' : 'TODOS');
+  const [origenBajaFilter, setOrigenBajaFilter] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('bajas_origenFilter');
+      if (stored) return JSON.parse(stored);
+    }
+    return origenBajaOptions; // By default, select all
+  });
   const [page, setPage] = useState(() => typeof window !== 'undefined' ? Number(sessionStorage.getItem('bajas_page')) || 1 : 1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
 
@@ -49,21 +56,24 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
     sessionStorage.setItem('bajas_search', search);
     sessionStorage.setItem('bajas_motivoFilter', motivoFilter);
     sessionStorage.setItem('bajas_canalFilter', canalFilter);
+    sessionStorage.setItem('bajas_origenFilter', JSON.stringify(origenBajaFilter));
     sessionStorage.setItem('bajas_page', page.toString());
-  }, [search, motivoFilter, canalFilter, page]);
+  }, [search, motivoFilter, canalFilter, origenBajaFilter, page]);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
+  
+  const [isOrigenDropdownOpen, setIsOrigenDropdownOpen] = useState(false);
 
   const [bajas, setBajas] = useState<BajaData[]>(initialBajas);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS') return;
+    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && origenBajaFilter.length === origenBajaOptions.length) return;
 
     const fetchBajas = async () => {
       setIsLoading(true);
       try {
-        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter);
+        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter);
         if (result.success && result.bajas) {
           setBajas(result.bajas as BajaData[]);
           setTotalCount(result.totalCount || 0);
@@ -80,11 +90,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
     }, 300);
 
     return () => clearTimeout(debounceId);
-  }, [page, itemsPerPage, search, motivoFilter, canalFilter]);
+  }, [page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, motivoFilter, canalFilter]);
+  }, [search, motivoFilter, canalFilter, origenBajaFilter]);
 
   return (
     <>
@@ -124,6 +134,55 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
               <input className="form-input" placeholder="Buscar cliente o CUPS..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '32px', fontSize: '0.8rem' }} />
             </div>
             
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="form-input" 
+                style={{ width: '200px', fontSize: '0.8rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onClick={() => setIsOrigenDropdownOpen(!isOrigenDropdownOpen)}
+              >
+                <span>Orígenes ({origenBajaFilter.length === origenBajaOptions.length ? 'Todos' : origenBajaFilter.length})</span>
+                <TrendingDown size={14} style={{ color: 'var(--text-muted)' }} />
+              </button>
+              
+              {isOrigenDropdownOpen && (
+                <div style={{ 
+                  position: 'absolute', top: '100%', left: 0, marginTop: '4px', width: '220px', 
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '6px', 
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, padding: '8px',
+                  maxHeight: '300px', overflowY: 'auto'
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={origenBajaFilter.length === origenBajaOptions.length}
+                      onChange={(e) => {
+                        if (e.target.checked) setOrigenBajaFilter(origenBajaOptions);
+                        else setOrigenBajaFilter([]);
+                      }}
+                    />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Seleccionar todos</span>
+                  </label>
+                  
+                  {origenBajaOptions.map(origen => (
+                    <label key={origen} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={origenBajaFilter.includes(origen)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setOrigenBajaFilter([...origenBajaFilter, origen]);
+                          } else {
+                            setOrigenBajaFilter(origenBajaFilter.filter(o => o !== origen));
+                          }
+                        }}
+                      />
+                      <span style={{ fontSize: '0.8rem' }}>{origen}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <select
               className="form-input"
               value={canalFilter}

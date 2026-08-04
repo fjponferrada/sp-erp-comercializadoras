@@ -106,7 +106,7 @@ export async function executeFtpSync(configs: any[], jobId?: string, requestUrl?
   const MAX_EXECUTION_TIME_MS = isLocal ? 240000 : 50000;
 
   let results: any = {};
-  const PRIORIDAD_MAP = ['F1', 'C1', 'C2', 'M1', 'M2', 'A3', 'B1', 'B2', 'D1', 'E1', 'E2', 'Q1', 'R1', 'T1', 'W1', 'P0', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D'];
+  const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
   let hasMore = false;
 
   try {

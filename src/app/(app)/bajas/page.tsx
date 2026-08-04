@@ -14,12 +14,25 @@ export default async function BajasPage() {
     redirect('/');
   }
 
-  const [bajasResult, statsResult, products, channels] = await Promise.all([
-    getPaginatedBajasAction(1, 100, '', 'TODOS', 'TODOS'),
+  const [bajasResult, statsResult, products, channels, distinctOrigenesResult] = await Promise.all([
+    getPaginatedBajasAction(1, 100, '', 'TODOS', 'TODOS', []),
     getBajasStatsAction(),
     getAuthorizedProductsWhereClause().then(where => where ? prisma.product.findMany({ where, orderBy: { name: 'asc' } }) : []),
-    getChannelVisibilityFilter().then(where => prisma.channel.findMany({ where, orderBy: { name: 'asc' } }))
+    getChannelVisibilityFilter().then(where => prisma.channel.findMany({ where, orderBy: { name: 'asc' } })),
+    prisma.contract.findMany({
+      where: { status: { in: ['BAJA', 'FINALIZADO'] } },
+      select: { bajaProcess: true },
+      distinct: ['bajaProcess']
+    })
   ]);
+
+  const origenBajaOptions = Array.from(new Set(
+    distinctOrigenesResult
+      .map(o => o.bajaProcess)
+      .filter(Boolean)
+      .map(o => String(o).trim())
+  )).sort();
+  origenBajaOptions.push('Sin origen');
 
   return (
     <BajasClient 
@@ -28,6 +41,7 @@ export default async function BajasPage() {
       initialStats={statsResult.success ? statsResult.stats : { totalBajas: 0, bajasEsteMes: 0, totalMwhPerdido: 0, avgDias: 0, avgClientDias: 0 }}
       products={products}
       channels={channels}
+      origenBajaOptions={origenBajaOptions}
     />
   );
 }

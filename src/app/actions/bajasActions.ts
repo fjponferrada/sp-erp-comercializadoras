@@ -9,7 +9,8 @@ export async function getPaginatedBajasAction(
   itemsPerPage: number,
   search: string,
   motivoFilter: string,
-  canalFilter: string = 'TODOS'
+  canalFilter: string = 'TODOS',
+  origenBajaFilter: string[] = []
 ) {
   try {
     const visibilityFilter = await getUserVisibilityFilter();
@@ -39,6 +40,22 @@ export async function getPaginatedBajasAction(
 
     if (canalFilter !== 'TODOS') {
       whereClause.user = { channelId: canalFilter };
+    }
+
+    if (origenBajaFilter && origenBajaFilter.length > 0) {
+      if (origenBajaFilter.includes('Sin origen')) {
+        const otherOrigins = origenBajaFilter.filter(o => o !== 'Sin origen');
+        const processOr: any[] = [{ bajaProcess: null }];
+        if (otherOrigins.length > 0) {
+          processOr.push({ bajaProcess: { in: otherOrigins } });
+        }
+        whereClause.AND = [
+          ...(whereClause.AND || []),
+          { OR: processOr }
+        ];
+      } else {
+        whereClause.bajaProcess = { in: origenBajaFilter };
+      }
     }
 
     // Puesto que motivoFilter actual está hardcodeado a "Fin de permanencia", simulamos:
