@@ -362,8 +362,9 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600, display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      Baja: {b.fechaBaja}
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ color: '#10b981' }}>Alta: {b.fechaAlta}</span>
+                      <span style={{ color: 'var(--danger)' }}>Baja: {b.fechaBaja}</span>
                       {b.bajaProcess && <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontSize: '0.65rem' }}>{b.bajaProcess}</span>}
                     </div>
                     
@@ -400,6 +401,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                   <th>Tarifa</th>
                   <th>MWh/año</th>
                   <th>Producto</th>
+                  <th>Fecha Alta</th>
                   <th>Fecha Baja</th>
                   <th>Origen Baja</th>
                   <th style={{ minWidth: '130px' }}>
@@ -435,6 +437,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                     <td><span className="badge" style={getTariffStyle(b.tarifa)}>{b.tarifa}</span></td>
                     <td><span className="mono-cell" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{b.mwh}</span></td>
                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{b.producto}</td>
+                    <td className="mono-cell" style={{ fontSize: '0.78rem', color: '#10b981' }}>{b.fechaAlta}</td>
                     <td className="mono-cell" style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{b.fechaBaja}</td>
                     <td>
                       {b.bajaProcess ? (

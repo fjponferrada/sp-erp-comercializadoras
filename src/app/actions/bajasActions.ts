@@ -280,6 +280,10 @@ export async function getPaginatedBajasAction(
       const diffTime = Math.abs(dBaja.getTime() - dAlta.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+      let pStart = b.permanenceStartDate ? new Date(b.permanenceStartDate) : null;
+      const airtable = b.airtableData as any;
+      if (!pStart && airtable?.['INICIO_PERMANENCIA']) pStart = new Date(airtable['INICIO_PERMANENCIA']);
+
       return {
         id: b.id,
         contractCode: b.contractCode || 'S/N',
@@ -290,7 +294,7 @@ export async function getPaginatedBajasAction(
         email: b.client?.contactEmail || null,
         tarifa: b.supplyPoint?.tariff || '2.0TD',
         mwh: b.supplyPoint?.annualConsumption || 0,
-        fechaAlta: b.activationDate?.toISOString().split('T')[0] || '-',
+        fechaAlta: pStart ? pStart.toISOString().split('T')[0] : (b.activationDate?.toISOString().split('T')[0] || '-'),
         fechaBaja: b.terminationDate?.toISOString().split('T')[0] || '-',
         motivo: 'Fin de permanencia', // Airtable no tiene este campo exacto
         canal: b.user?.channel?.name || b.Lead?.source || 'Directo',
