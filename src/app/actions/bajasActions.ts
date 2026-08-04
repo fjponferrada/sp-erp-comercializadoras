@@ -12,7 +12,8 @@ export async function getPaginatedBajasAction(
   canalFilter: string = 'TODOS',
   origenBajaFilter: string[] = [],
   dateFrom?: string | null,
-  dateTo?: string | null
+  dateTo?: string | null,
+  tarifaFilter: string = 'TODAS'
 ) {
   try {
     const visibilityFilter = await getUserVisibilityFilter();
@@ -106,6 +107,10 @@ export async function getPaginatedBajasAction(
 
     if (canalFilter !== 'TODOS') {
       whereClause.user = { channelId: canalFilter };
+    }
+
+    if (tarifaFilter !== 'TODAS') {
+      whereClause.supplyPoint = { ...whereClause.supplyPoint, tariff: tarifaFilter };
     }
 
     if (origenBajaFilter && origenBajaFilter.length > 0) {

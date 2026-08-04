@@ -45,6 +45,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
   const [search, setSearch] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_search') || '' : '');
   const [dateFrom, setDateFrom] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateFrom') || '' : '');
   const [dateTo, setDateTo] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateTo') || '' : '');
+  const [tarifaFilter, setTarifaFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_tarifaFilter') || 'TODAS' : 'TODAS');
   const [motivoFilter, setMotivoFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_motivoFilter') || 'TODOS' : 'TODOS');
   const [canalFilter, setCanalFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_canalFilter') || 'TODOS' : 'TODOS');
   const [origenBajaFilter, setOrigenBajaFilter] = useState<string[]>(() => {
@@ -65,7 +66,8 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
     sessionStorage.setItem('bajas_page', page.toString());
     sessionStorage.setItem('bajas_dateFrom', dateFrom);
     sessionStorage.setItem('bajas_dateTo', dateTo);
-  }, [search, motivoFilter, canalFilter, origenBajaFilter, page, dateFrom, dateTo]);
+    sessionStorage.setItem('bajas_tarifaFilter', tarifaFilter);
+  }, [search, motivoFilter, canalFilter, origenBajaFilter, page, dateFrom, dateTo, tarifaFilter]);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
   
   const [isOrigenDropdownOpen, setIsOrigenDropdownOpen] = useState(false);
@@ -104,12 +106,12 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
   };
 
   useEffect(() => {
-    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && origenBajaFilter.length === origenBajaOptions.length && !dateFrom && !dateTo) return;
+    if (page === 1 && itemsPerPage === 100 && search === '' && motivoFilter === 'TODOS' && canalFilter === 'TODOS' && tarifaFilter === 'TODAS' && origenBajaFilter.length === origenBajaOptions.length && !dateFrom && !dateTo) return;
 
     const fetchBajas = async () => {
       setIsLoading(true);
       try {
-        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter, dateFrom || null, dateTo || null);
+        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter, dateFrom || null, dateTo || null, tarifaFilter);
         if (result.success && result.bajas) {
           setBajas(result.bajas as BajaData[]);
           setTotalCount(result.totalCount || 0);
@@ -127,11 +129,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
     }, 300);
 
     return () => clearTimeout(debounceId);
-  }, [page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter, dateFrom, dateTo]);
+  }, [page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter, dateFrom, dateTo, tarifaFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, motivoFilter, canalFilter, origenBajaFilter, dateFrom, dateTo]);
+  }, [search, motivoFilter, canalFilter, origenBajaFilter, dateFrom, dateTo, tarifaFilter]);
 
   return (
     <>
@@ -177,8 +179,24 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
               </div>
             </div>
 
-            {/* Fila secundaria: Filtros */}
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                className="form-input"
+                value={tarifaFilter}
+                onChange={(e) => setTarifaFilter(e.target.value)}
+                style={{ width: '150px', fontSize: '0.8rem' }}
+              >
+                <option value="TODAS">Todas las tarifas</option>
+                <option value="2.0TD">2.0TD</option>
+                <option value="3.0TD">3.0TD</option>
+                <option value="6.1TD">6.1TD</option>
+                <option value="6.2TD">6.2TD</option>
+                <option value="6.3TD">6.3TD</option>
+                <option value="6.4TD">6.4TD</option>
+                <option value="3.0TDVE">3.0TDVE</option>
+                <option value="6.1TDVE">6.1TDVE</option>
+              </select>
+
               <select
                 className="form-input"
                 value={canalFilter}
