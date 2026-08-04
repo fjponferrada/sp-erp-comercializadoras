@@ -18,6 +18,7 @@ export async function getPaginatedBajasAction(
     let whereClause: any = {
       ...visibilityFilter,
       status: { in: ['BAJA', 'FINALIZADO'] },
+      other_Contract: null,
       supplyPoint: {
         contracts: {
           none: {
@@ -188,6 +189,7 @@ export async function getBajasStatsAction() {
       where: {
         ...visibilityFilter,
         status: { in: ['BAJA', 'FINALIZADO'] },
+        other_Contract: null,
         supplyPoint: {
           contracts: {
             none: {
