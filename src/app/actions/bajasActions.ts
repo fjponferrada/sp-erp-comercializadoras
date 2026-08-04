@@ -15,17 +15,73 @@ export async function getPaginatedBajasAction(
   try {
     const visibilityFilter = await getUserVisibilityFilter();
 
-    let whereClause: any = {
-      ...visibilityFilter,
-      status: { in: ['BAJA', 'FINALIZADO'] },
-      other_Contract: null,
-      supplyPoint: {
-        contracts: {
-          none: {
-            status: { in: ['ACTIVO', 'TRAMITANDO', 'VERIFICANDO_FIRMA', 'ACEPTADO'] }
+    // 1. Fetch all lightweight contracts to calculate "net bajas" (same as Dashboard)
+    const allContracts = await prisma.contract.findMany({
+      where: {
+        ...visibilityFilter,
+        status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] }
+      },
+      select: {
+        id: true,
+        activationDate: true,
+        terminationDate: true,
+        supplyPointId: true
+      }
+    });
+
+    const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const contractsByCups: Record<string, typeof allContracts> = {};
+    allContracts.forEach(c => {
+      if (!c.supplyPointId || !c.activationDate) return;
+      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
+      contractsByCups[c.supplyPointId].push(c);
+    });
+
+    const realBajaContractIds: string[] = [];
+
+    Object.values(contractsByCups).forEach(cupsContracts => {
+      cupsContracts.sort((a, b) => a.activationDate!.getTime() - b.activationDate!.getTime());
+
+      let currentPeriod: { end: Date | null, endContractId: string | null } | null = null;
+
+      for (const c of cupsContracts) {
+        if (!currentPeriod) {
+          currentPeriod = { end: c.terminationDate || null, endContractId: c.id };
+          continue;
+        }
+
+        const startNext = c.activationDate!;
+        
+        if (currentPeriod.end === null) {
+          // Open period, remains open
+        } else {
+          if (startNext.getTime() <= currentPeriod.end.getTime() + GRACE_PERIOD_MS) {
+            // Merged period (Renewal / Continuation)
+            if (!c.terminationDate) {
+              currentPeriod.end = null;
+              currentPeriod.endContractId = c.id;
+            } else if (c.terminationDate.getTime() > currentPeriod.end.getTime()) {
+              currentPeriod.end = c.terminationDate;
+              currentPeriod.endContractId = c.id;
+            }
+          } else {
+            // Closed period -> Gap of more than 30 days -> Real Baja!
+            if (currentPeriod.endContractId) realBajaContractIds.push(currentPeriod.endContractId);
+            currentPeriod = { end: c.terminationDate || null, endContractId: c.id };
           }
         }
       }
+
+      // If the last period is closed, the client has left us -> Real Baja
+      if (currentPeriod && currentPeriod.end !== null && currentPeriod.endContractId) {
+        realBajaContractIds.push(currentPeriod.endContractId);
+      }
+    });
+
+    // 2. Build whereClause strictly for these real bajas
+    let whereClause: any = {
+      ...visibilityFilter,
+      id: { in: realBajaContractIds }
     };
 
     if (search) {
