@@ -60,50 +60,55 @@ export async function getPaginatedBajasAction(
 
     // --- Helper function to calculate penalty ---
     const calculatePenalty = (b: any): number => {
-      // If contract has no permanence start date or termination date, or no permanence months, penalty is 0
-      if (!b.permanenceStartDate || !b.terminationDate || !b.permanenceMonths) return 0;
+      // 1. Extract dates (fallback to Airtable data)
+      let pStart = b.permanenceStartDate ? new Date(b.permanenceStartDate) : null;
+      let bDate = b.terminationDate ? new Date(b.terminationDate) : null;
+      let pMonths = b.permanenceMonths || 12;
       
-      const pStart = new Date(b.permanenceStartDate);
+      const airtable = b.airtableData as any;
+      if (!pStart && airtable?.['INICIO_PERMANENCIA']) pStart = new Date(airtable['INICIO_PERMANENCIA']);
+      if (!bDate && airtable?.['BAJA COMERCIALIZADORA']) bDate = new Date(airtable['BAJA COMERCIALIZADORA']);
+      if (!b.permanenceMonths && airtable?.['Meses Permanencia']) pMonths = parseInt(airtable['Meses Permanencia']) || 12;
+
+      if (!pStart || !bDate) return 0;
+      
       const pEnd = new Date(pStart);
-      pEnd.setMonth(pEnd.getMonth() + b.permanenceMonths);
-      const bDate = new Date(b.terminationDate);
+      pEnd.setMonth(pEnd.getMonth() + pMonths);
 
       // If contract terminated after permanence ended, 0 penalty
       if (bDate >= pEnd) return 0;
 
       const isResidencial = b.supplyPoint?.tariff === '2.0TD' && b.client?.type === 'F';
-      const annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
+      
+      let annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
+      if (!annualCons && airtable?.['CONSUMO COMISION']) annualCons = parseFloat(airtable['CONSUMO COMISION']) * 1000;
+      
       const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
       const expectedEnergyRemaining = (annualCons / 365) * daysRemaining;
+
+      // Extract average price
+      let energyPrice = b.p1e;
+      if (!energyPrice && airtable?.['P1E (from PRODUCTOS)']) {
+        const p1eArr = airtable['P1E (from PRODUCTOS)'];
+        energyPrice = Array.isArray(p1eArr) ? parseFloat(p1eArr[0]) : parseFloat(p1eArr);
+      }
+      if (isNaN(energyPrice) || !energyPrice) energyPrice = isResidencial ? 0.15 : 0.05; // Fallback razonable si no hay datos
 
       if (isResidencial) {
         // Desistimiento: 14 days
         const daysFromStart = Math.ceil((bDate.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24));
         if (daysFromStart <= 14) return 0;
 
-        // Calc cost: energy + power
-        const energyPrice = b.p1e || 0.15; // fallback to 0.15 if missing
-        const energyCost = expectedEnergyRemaining * 1000 * energyPrice;
-        
-        // Power cost (daily power cost * days remaining)
-        // P1P..P6P are usually annual prices. So daily = price / 365
-        let annualPowerCost = 0;
-        if (b.p1p && b.p1c) annualPowerCost += b.p1p * b.p1c;
-        if (b.p2p && b.p2c) annualPowerCost += b.p2p * b.p2c;
-        if (b.p3p && b.p3c) annualPowerCost += b.p3p * b.p3c;
-        if (b.p4p && b.p4c) annualPowerCost += b.p4p * b.p4c;
-        if (b.p5p && b.p5c) annualPowerCost += b.p5p * b.p5c;
-        if (b.p6p && b.p6c) annualPowerCost += b.p6p * b.p6c;
-
-        const powerCost = (annualPowerCost / 365) * daysRemaining;
-        
-        const totalPendingCost = energyCost + powerCost;
-        return totalPendingCost * 1.21 * 0.05;
+        // La ley (RD 1435/2002) especifica "5% de la ENERGÍA pendiente de suministro". 
+        // No se puede incluir la potencia.
+        const energyCost = expectedEnergyRemaining * energyPrice;
+        return energyCost * 1.21 * 0.05;
       } else {
         // No Residencial (Resto)
-        const energyPrice = b.p1e || 0;
-        const totalPendingCost = expectedEnergyRemaining * 1000 * energyPrice;
-        return totalPendingCost * 1.21 * 0.05;
+        // Usamos la energía prorrateada porque consultar la suma de facturas es muy costoso (N queries)
+        // Matemáticamente: Energía Anual * (Días Restantes / 365) = Energía Anual - Energía Estimada Pasada
+        const energyCost = expectedEnergyRemaining * energyPrice;
+        return energyCost * 1.21 * 0.05;
       }
     };
     // ---------------------------------------------
