@@ -282,6 +282,7 @@ export async function getPaginatedBajasAction(
 
       return {
         id: b.id,
+        contractCode: b.contractCode || 'S/N',
         cups: b.supplyPoint?.cups || 'Desconocido',
         cliente: b.client?.businessName || `${b.client?.firstName || ''} ${b.client?.lastName || ''}`.trim() || 'Desconocido',
         clientId: b.clientId,

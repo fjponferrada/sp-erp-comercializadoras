@@ -358,6 +358,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
 
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     <strong>CUPS:</strong> <a href={`/contratos/${b.id}`} className="hover:text-amber-500 hover:underline transition-colors">{b.cups}</a>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{b.contractCode}</div>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
@@ -423,6 +424,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                       <a href={`/contratos/${b.id}`} className="hover:text-amber-500 hover:underline transition-colors" title="Ver detalle del contrato">
                         {b.cups}
                       </a>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{b.contractCode}</div>
                     </td>
                     <td className="primary-cell">
                       <div className="flex flex-col">
