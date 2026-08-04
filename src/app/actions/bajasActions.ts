@@ -92,7 +92,15 @@ export async function getPaginatedBajasAction(
         const p1eArr = airtable['P1E (from PRODUCTOS)'];
         energyPrice = Array.isArray(p1eArr) ? parseFloat(p1eArr[0]) : parseFloat(p1eArr);
       }
-      if (isNaN(energyPrice) || !energyPrice) energyPrice = isResidencial ? 0.15 : 0.05; // Fallback razonable si no hay datos
+      
+      if (isNaN(energyPrice) || !energyPrice) {
+        // Fallback para indexadas o contratos sin precio cargado
+        const t = b.supplyPoint?.tariff || '';
+        if (t === '2.0TD') energyPrice = 0.18;
+        else if (t === '3.0TD') energyPrice = 0.17;
+        else if (t.startsWith('6.')) energyPrice = 0.16;
+        else energyPrice = isResidencial ? 0.18 : 0.17; 
+      }
 
       if (isResidencial) {
         // Desistimiento: 14 days
