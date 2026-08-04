@@ -10,7 +10,9 @@ export async function getPaginatedBajasAction(
   search: string,
   motivoFilter: string,
   canalFilter: string = 'TODOS',
-  origenBajaFilter: string[] = []
+  origenBajaFilter: string[] = [],
+  dateFrom?: string | null,
+  dateTo?: string | null
 ) {
   try {
     const visibilityFilter = await getUserVisibilityFilter();
@@ -27,7 +29,7 @@ export async function getPaginatedBajasAction(
         terminationDate: true,
         permanenceStartDate: true,
         createdAt: true,
-        supplyPointId: true
+        supplyPoint: { select: { cups: true } }
       }
     });
 
@@ -35,12 +37,13 @@ export async function getPaginatedBajasAction(
     const contractsByCups: Record<string, (typeof allContracts[0] & { _effActDate: Date })[]> = {};
     
     allContracts.forEach(c => {
-      if (!c.supplyPointId) return;
+      const cupsStr = c.supplyPoint?.cups;
+      if (!cupsStr) return;
       const effActDate = c.activationDate || c.permanenceStartDate || c.createdAt;
       if (!effActDate) return;
       
-      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
-      contractsByCups[c.supplyPointId].push({ ...c, _effActDate: effActDate });
+      if (!contractsByCups[cupsStr]) contractsByCups[cupsStr] = [];
+      contractsByCups[cupsStr].push({ ...c, _effActDate: effActDate });
     });
 
     const realBajaContractIds: string[] = [];
@@ -207,11 +210,43 @@ export async function getPaginatedBajasAction(
     // Puesto que motivoFilter actual está hardcodeado a "Fin de permanencia", simulamos:
     if (motivoFilter !== 'TODOS') {
       if (motivoFilter !== 'Fin de permanencia') {
-        return { success: true, bajas: [], totalCount: 0 };
+        return { success: true, bajas: [], totalCount: 0, totalPenaltySum: 0 };
+      }
+    }
+
+    if (dateFrom || dateTo) {
+      whereClause.terminationDate = {};
+      if (dateFrom) whereClause.terminationDate.gte = new Date(dateFrom);
+      if (dateTo) {
+        const dTo = new Date(dateTo);
+        dTo.setHours(23, 59, 59, 999);
+        whereClause.terminationDate.lte = dTo;
       }
     }
 
     const totalCount = await prisma.contract.count({ where: whereClause });
+
+    // Sum total penalties for all matching contracts
+    const allFilteredForSum = await prisma.contract.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        permanenceStartDate: true,
+        terminationDate: true,
+        permanenceMonths: true,
+        annualConsumption: true,
+        p1e: true,
+        airtableData: true,
+        calculatedPenalty: true,
+        supplyPoint: { select: { tariff: true, annualConsumption: true, cnae: true } },
+        client: { select: { vatNumber: true } }
+      }
+    });
+
+    const totalPenaltySum = allFilteredForSum.reduce((acc, b) => {
+      const pen = b.calculatedPenalty !== null ? b.calculatedPenalty : calculatePenalty(b);
+      return acc + (Number(pen) || 0);
+    }, 0);
 
     const dbBajas = await prisma.contract.findMany({
       where: whereClause,
@@ -256,7 +291,12 @@ export async function getPaginatedBajasAction(
       };
     });
 
-    return { success: true, bajas: bajasData, totalCount };
+    return {
+      success: true,
+      bajas: bajasData,
+      totalCount,
+      totalPenaltySum
+    };
   } catch (error: any) {
     return { success: false, error: error.message };
   }

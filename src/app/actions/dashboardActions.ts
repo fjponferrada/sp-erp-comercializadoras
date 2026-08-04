@@ -34,16 +34,17 @@ export async function getDashboardMetricsAction() {
         id: true,
         activationDate: true,
         terminationDate: true,
-        supplyPointId: true
+        supplyPoint: { select: { cups: true } }
       }
     });
 
     const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
     const contractsByCups: Record<string, typeof contracts> = {};
     contracts.forEach(c => {
-      if (!c.supplyPointId || !c.activationDate) return;
-      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
-      contractsByCups[c.supplyPointId].push(c);
+      const cupsStr = c.supplyPoint?.cups;
+      if (!cupsStr || !c.activationDate) return;
+      if (!contractsByCups[cupsStr]) contractsByCups[cupsStr] = [];
+      contractsByCups[cupsStr].push(c);
     });
 
     let netBajasCount = 0;

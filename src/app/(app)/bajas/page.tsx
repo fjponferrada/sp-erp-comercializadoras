@@ -38,6 +38,7 @@ export default async function BajasPage() {
     <BajasClient 
       initialBajas={bajasResult.success ? (bajasResult.bajas || []) : []} 
       initialTotalCount={bajasResult.success ? (bajasResult.totalCount || 0) : 0}
+      initialTotalPenaltySum={bajasResult.success ? (bajasResult.totalPenaltySum || 0) : 0}
       initialStats={statsResult.success ? statsResult.stats : { totalBajas: 0, bajasEsteMes: 0, totalMwhPerdido: 0, avgDias: 0, avgClientDias: 0 }}
       products={products}
       channels={channels}

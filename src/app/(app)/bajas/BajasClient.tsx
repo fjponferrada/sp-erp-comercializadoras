@@ -41,8 +41,10 @@ const getTariffStyle = (tarifa: string) => {
   return { background: 'rgba(107, 114, 128, 0.1)', color: '#9ca3af', border: '1px solid rgba(107, 114, 128, 0.2)' };
 };
 
-export default function BajasClient({ initialBajas, initialTotalCount, initialStats, products = [], channels = [], origenBajaOptions = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialStats: any, products?: any[], channels?: any[], origenBajaOptions?: string[] }) {
+export default function BajasClient({ initialBajas, initialTotalCount, initialTotalPenaltySum, initialStats, products = [], channels = [], origenBajaOptions = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialTotalPenaltySum?: number, initialStats: any, products?: any[], channels?: any[], origenBajaOptions?: string[] }) {
   const [search, setSearch] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_search') || '' : '');
+  const [dateFrom, setDateFrom] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateFrom') || '' : '');
+  const [dateTo, setDateTo] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateTo') || '' : '');
   const [motivoFilter, setMotivoFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_motivoFilter') || 'TODOS' : 'TODOS');
   const [canalFilter, setCanalFilter] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_canalFilter') || 'TODOS' : 'TODOS');
   const [origenBajaFilter, setOrigenBajaFilter] = useState<string[]>(() => {
@@ -61,13 +63,16 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
     sessionStorage.setItem('bajas_canalFilter', canalFilter);
     sessionStorage.setItem('bajas_origenFilter', JSON.stringify(origenBajaFilter));
     sessionStorage.setItem('bajas_page', page.toString());
-  }, [search, motivoFilter, canalFilter, origenBajaFilter, page]);
+    sessionStorage.setItem('bajas_dateFrom', dateFrom);
+    sessionStorage.setItem('bajas_dateTo', dateTo);
+  }, [search, motivoFilter, canalFilter, origenBajaFilter, page, dateFrom, dateTo]);
   const [offerModalData, setOfferModalData] = useState<BajaData | null>(null);
   
   const [isOrigenDropdownOpen, setIsOrigenDropdownOpen] = useState(false);
 
   const [bajas, setBajas] = useState<BajaData[]>(initialBajas);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
+  const [totalPenaltySum, setTotalPenaltySum] = useState(initialTotalPenaltySum || 0);
   const [isLoading, setIsLoading] = useState(false);
   const [penaltyModalData, setPenaltyModalData] = useState<BajaData | null>(null);
   const [editingPenalty, setEditingPenalty] = useState<string>('');
@@ -104,10 +109,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
     const fetchBajas = async () => {
       setIsLoading(true);
       try {
-        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter);
+        const result = await getPaginatedBajasAction(page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter, dateFrom || null, dateTo || null);
         if (result.success && result.bajas) {
           setBajas(result.bajas as BajaData[]);
           setTotalCount(result.totalCount || 0);
+          setTotalPenaltySum(result.totalPenaltySum || 0);
         }
       } catch (err) {
         console.error("Error fetching bajas:", err);
@@ -121,11 +127,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
     }, 300);
 
     return () => clearTimeout(debounceId);
-  }, [page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter]);
+  }, [page, itemsPerPage, search, motivoFilter, canalFilter, origenBajaFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, motivoFilter, canalFilter, origenBajaFilter]);
+  }, [search, motivoFilter, canalFilter, origenBajaFilter, dateFrom, dateTo]);
 
   return (
     <>
@@ -233,6 +239,28 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   </div>
                 )}
               </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Desde:</span>
+                <input 
+                  type="date" 
+                  className="form-input" 
+                  style={{ fontSize: '0.8rem', padding: '6px 10px', height: 'auto' }}
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Hasta:</span>
+                <input 
+                  type="date" 
+                  className="form-input" 
+                  style={{ fontSize: '0.8rem', padding: '6px 10px', height: 'auto' }}
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
@@ -308,7 +336,12 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   <th>Producto</th>
                   <th>Fecha Baja</th>
                   <th>Origen Baja</th>
-                  <th>Penalización</th>
+                  <th style={{ minWidth: '130px' }}>
+                    Penalización<br />
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                      (Total: {totalPenaltySum.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })})
+                    </span>
+                  </th>
                   <th style={{ textAlign: 'center' }}>Acciones de Recuperación</th>
                 </tr>
               </thead>
