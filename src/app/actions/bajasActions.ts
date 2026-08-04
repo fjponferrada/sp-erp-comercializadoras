@@ -81,6 +81,7 @@ export async function getPaginatedBajasAction(
       const isResidencial = b.supplyPoint?.tariff === '2.0TD' && b.client?.type === 'F';
       
       let annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
+      annualCons = annualCons * 1000; // El ERP guarda este dato en MWh, lo pasamos a kWh
       if (!annualCons && airtable?.['CONSUMO COMISION']) annualCons = parseFloat(airtable['CONSUMO COMISION']) * 1000;
       
       const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
