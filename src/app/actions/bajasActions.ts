@@ -193,6 +193,13 @@ export async function getPaginatedBajasAction(
         else energyPrice = isResidencial ? 0.18 : 0.17; 
       }
 
+      const t = b.supplyPoint?.tariff || '';
+
+      if (t.startsWith('6.')) {
+        // Tarifas de alta tensión: 30 €/MWh (0.03 €/kWh) sobre la energía pendiente
+        return expectedEnergyRemaining * 0.03 * 1.21;
+      }
+
       if (isResidencial) {
         // Desistimiento: 14 days
         const daysFromStart = Math.ceil((bDate.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24));
