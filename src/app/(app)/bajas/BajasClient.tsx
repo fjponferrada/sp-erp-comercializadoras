@@ -387,6 +387,33 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                       )}
                     </div>
                   </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border)' }}>
+                    <button 
+                      className="badge hover:opacity-80 transition-opacity"
+                      style={{ 
+                        background: b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.1)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: b.penaltyStatus === 'FACTURADA' ? '#34d399' : b.penaltyStatus === 'DESCARTADA' ? '#9ca3af' : '#fbbf24',
+                        border: `1px solid ${b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.2)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+                        fontSize: '0.75rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setPenaltyModalData(b)}
+                      title="Gestionar Penalización"
+                    >
+                      <FileText size={12} />
+                      {b.penalization !== null && b.penalization !== undefined 
+                        ? `${b.penalization.toFixed(2)} €` 
+                        : b.calculatedPenalty ? `${b.calculatedPenalty.toFixed(2)} € (Auto)` : '0.00 €'}
+                    </button>
+
+                    <button onClick={() => setOfferModalData(b)} className="btn-secondary" style={{ padding: '4px 12px', fontSize: '0.75rem', gap: 6 }}>
+                      <Send size={12} /> Recuperar
+                    </button>
+                  </div>
                 </div>
               ))
             )}
