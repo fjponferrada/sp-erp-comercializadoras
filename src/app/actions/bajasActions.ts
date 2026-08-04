@@ -141,7 +141,26 @@ export async function getPaginatedBajasAction(
       // If contract terminated after permanence ended, 0 penalty
       if (bDate >= pEnd) return 0;
 
-      const isResidencial = b.supplyPoint?.tariff === '2.0TD' && b.client?.type === 'F';
+      const vat = (b.client?.vatNumber || '').toUpperCase().trim();
+      const cnae = (b.supplyPoint?.cnae || '').trim();
+
+      // 1. Clasificar por CIF/NIF
+      const isComunidad = vat.startsWith('H');
+      const isFisica = /^[0-9XYZ]/.test(vat);
+
+      // 2. Clasificar por CNAE
+      const isCnaeHogar = cnae === '9820' || cnae === '9821';
+
+      // 3. Conclusión Final
+      let isResidencial = false;
+      if (isComunidad) {
+        isResidencial = true;
+      } else if (isFisica && isCnaeHogar) {
+        isResidencial = true;
+      } else {
+        // Persona Jurídica, o Persona Física con otro CNAE (Resto / Negocio)
+        isResidencial = false;
+      }
       
       let annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
       annualCons = annualCons * 1000; // El ERP guarda este dato en MWh, lo pasamos a kWh
