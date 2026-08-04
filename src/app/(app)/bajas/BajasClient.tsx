@@ -50,7 +50,13 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
   const [tarifaFilter, setTarifaFilter] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       const stored = sessionStorage.getItem('bajas_tarifaFilter');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          return tarifaOptions;
+        }
+      }
     }
     return tarifaOptions;
   });
