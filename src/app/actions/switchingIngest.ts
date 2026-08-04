@@ -244,7 +244,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         } else if (parsedData.fechaActivacionBaja) {
           await prisma.contract.update({
             where: { id: activeContract.id },
-            data: { terminationDate: parsedData.fechaActivacionBaja, status: 'FINALIZADO' }
+            data: { terminationDate: parsedData.fechaActivacionBaja, status: 'FINALIZADO', bajaProcess: procesoBase }
           });
 
           // Rechazo en cadena: versiones M1 posteriores pendientes
@@ -556,6 +556,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
           const updateData: any = {};
           if (procesoBase === 'B1' || procesoBase === 'E1') {
             updateData.suspendido = true;
+            updateData.bajaProcess = procesoBase;
             // Guardamos la fecha real de aceptación del B1/E1 en el nuevo campo
             if (parsedData.fechaAR) {
               updateData.fechaAceptacionBaja = parsedData.fechaAR;
@@ -923,6 +924,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
             data: { 
               status: 'FINALIZADO',
               terminationDate: bajaDate,
+              bajaProcess: procesoBase,
               internalComments: `[Aviso] El punto de suministro ha sido traspasado a la COR (Paso 06). Contrato finalizado automáticamente.\n${contract.internalComments || ''}`
             }
           });

@@ -23,6 +23,7 @@ export interface BajaData {
   producto: string;
   diasVida: number;
   hasSelfConsumption: boolean;
+  bajaProcess?: string | null;
 }
 
 import WinbackOfferModal from '@/components/bajas/WinbackOfferModal';
@@ -171,8 +172,9 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600 }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600, display: 'flex', gap: '8px', alignItems: 'center' }}>
                       Baja: {b.fechaBaja}
+                      {b.bajaProcess && <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontSize: '0.65rem' }}>{b.bajaProcess}</span>}
                     </div>
                     
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -209,6 +211,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                   <th>MWh/año</th>
                   <th>Producto</th>
                   <th>Fecha Baja</th>
+                  <th>Origen Baja</th>
                   <th style={{ textAlign: 'center' }}>Acciones de Recuperación</th>
                 </tr>
               </thead>
@@ -236,6 +239,13 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialSt
                     <td><span className="mono-cell" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{b.mwh}</span></td>
                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{b.producto}</td>
                     <td className="mono-cell" style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{b.fechaBaja}</td>
+                    <td>
+                      {b.bajaProcess ? (
+                        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.72rem' }}>{b.bajaProcess}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>-</span>
+                      )}
+                    </td>
 
                     <td>
                       <div className="flex items-center justify-center gap-2">

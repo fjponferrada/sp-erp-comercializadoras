@@ -493,6 +493,7 @@ model Contract {
   annualConsumption          Float?
   additionalServicesSnapshot Json?
   fechaAceptacionBaja        DateTime?
+  bajaProcess                String?
   isTacitRenewal             Boolean                @default(false)
   tacitRenewalCommunicatedAt DateTime?
   Commission                 Commission?

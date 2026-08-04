@@ -85,7 +85,8 @@ export async function getPaginatedBajasAction(
         canal: b.user?.channel?.name || b.Lead?.source || 'Directo',
         producto: b.product?.name || 'Desconocido',
         diasVida: diffDays,
-        hasSelfConsumption: b.supplyPoint?.hasSelfConsumption || false
+        hasSelfConsumption: b.supplyPoint?.hasSelfConsumption || false,
+        bajaProcess: b.bajaProcess || null
       };
     });
 
