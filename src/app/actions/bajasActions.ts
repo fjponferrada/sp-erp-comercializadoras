@@ -25,22 +25,28 @@ export async function getPaginatedBajasAction(
         id: true,
         activationDate: true,
         terminationDate: true,
+        permanenceStartDate: true,
+        createdAt: true,
         supplyPointId: true
       }
     });
 
     const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    const contractsByCups: Record<string, typeof allContracts> = {};
+    const contractsByCups: Record<string, (typeof allContracts[0] & { _effActDate: Date })[]> = {};
+    
     allContracts.forEach(c => {
-      if (!c.supplyPointId || !c.activationDate) return;
+      if (!c.supplyPointId) return;
+      const effActDate = c.activationDate || c.permanenceStartDate || c.createdAt;
+      if (!effActDate) return;
+      
       if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
-      contractsByCups[c.supplyPointId].push(c);
+      contractsByCups[c.supplyPointId].push({ ...c, _effActDate: effActDate });
     });
 
     const realBajaContractIds: string[] = [];
 
     Object.values(contractsByCups).forEach(cupsContracts => {
-      cupsContracts.sort((a, b) => a.activationDate!.getTime() - b.activationDate!.getTime());
+      cupsContracts.sort((a, b) => a._effActDate.getTime() - b._effActDate.getTime());
 
       let currentPeriod: { end: Date | null, endContractId: string | null } | null = null;
 
@@ -50,7 +56,7 @@ export async function getPaginatedBajasAction(
           continue;
         }
 
-        const startNext = c.activationDate!;
+        const startNext = c._effActDate;
         
         if (currentPeriod.end === null) {
           // Open period, remains open
