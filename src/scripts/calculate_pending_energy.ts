@@ -186,8 +186,17 @@ export async function runCalculatePendingEnergy(onProgress?: (msg: string) => vo
       }
     }
 
-    const defaultPriceSubir = totalECompras > 0 ? totalCOblig / totalECompras : 0;
-    const defaultPriceBajar = totalEVentas > 0 ? totalCDerechos / totalEVentas : 0;
+    let defaultPriceSubir = totalECompras > 0 ? totalCOblig / totalECompras : 0;
+    let defaultPriceBajar = totalEVentas > 0 ? totalCDerechos / totalEVentas : 0;
+    
+    // Evitar singularidades matemáticas por bajo volumen mensual: 
+    // En el mercado español, el precio a cobrar (Bajar) nunca debe ser superior al precio a pagar (Subir).
+    if (defaultPriceBajar > defaultPriceSubir && defaultPriceSubir > 0) {
+      defaultPriceBajar = defaultPriceSubir;
+    }
+    // Cap de seguridad absoluto
+    if (defaultPriceSubir > 500) defaultPriceSubir = 100;
+    if (defaultPriceBajar > 500) defaultPriceBajar = 100;
     
     for (const matRecord of reganecuMatricialRecords) {
       const dayKey = format(matRecord.date, 'yyyy-MM-dd');
@@ -220,6 +229,11 @@ export async function runCalculatePendingEnergy(onProgress?: (msg: string) => vo
           
           let pSubir = data.eC > 0.05 ? data.cO / data.eC : defaultPriceSubir;
           let pBajar = data.eV > 0.05 ? data.cD / data.eV : defaultPriceBajar;
+
+          // En el mercado español, el precio de desvío a bajar nunca supera al de subir
+          if (pBajar > pSubir && pSubir > 0) {
+            pBajar = pSubir;
+          }
 
           // Fallback final de seguridad por si acaso hay un pico irreal
           if (pSubir > 3000 || pSubir < -3000) pSubir = defaultPriceSubir;
