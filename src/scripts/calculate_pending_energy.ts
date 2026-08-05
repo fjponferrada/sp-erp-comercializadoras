@@ -218,8 +218,12 @@ export async function runCalculatePendingEnergy(onProgress?: (msg: string) => vo
           const period = parseInt(p);
           const data = aggDsv[period];
           
-          let pSubir = data.eC > 0 ? data.cO / data.eC : defaultPriceSubir;
-          let pBajar = data.eV > 0 ? data.cD / data.eV : defaultPriceBajar;
+          let pSubir = data.eC > 0.05 ? data.cO / data.eC : defaultPriceSubir;
+          let pBajar = data.eV > 0.05 ? data.cD / data.eV : defaultPriceBajar;
+
+          // Fallback final de seguridad por si acaso hay un pico irreal
+          if (pSubir > 3000 || pSubir < -3000) pSubir = defaultPriceSubir;
+          if (pBajar > 3000 || pBajar < -3000) pBajar = defaultPriceBajar;
 
           dsvPriceSubirByDayPeriod.set(`${dayKey}_${period}`, pSubir);
           dsvPriceBajarByDayPeriod.set(`${dayKey}_${period}`, pBajar);
