@@ -9,8 +9,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
+    const today = new Date();
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+
     const results = await prisma.pendingEnergySummary.findMany({
-      where: { companyId: session.user.companyId },
+      where: { 
+        companyId: session.user.companyId,
+        month: { lte: lastMonthStr }
+      },
       orderBy: { month: 'desc' },
       take: 12
     });
