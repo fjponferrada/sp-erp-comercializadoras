@@ -8,8 +8,8 @@ export async function runCalculatePendingEnergy(onProgress?: (msg: string) => vo
   if (onProgress) onProgress('Iniciando cálculo de energía pendiente...');
   
   const today = new Date();
-  const endRange = endOfMonth(today);
-  const startRange = startOfMonth(subMonths(today, 11));
+  const endRange = endOfMonth(subMonths(today, 1));
+  const startRange = startOfMonth(subMonths(today, 12));
 
   let companiesToProcess = [];
   if (targetCompanyId) {

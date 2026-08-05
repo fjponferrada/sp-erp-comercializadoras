@@ -161,7 +161,7 @@ export default function EnergiaPendienteClient() {
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Demanda BC Estimada</th>
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Liquidado REE</th>
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Energía Pendiente</th>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Valoración Pendiente</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>B.I. Valoración Pendiente</th>
             </tr>
           </thead>
           <tbody>
