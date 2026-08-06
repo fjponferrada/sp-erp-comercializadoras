@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, FileText, Zap, Pencil } from 'lucide-react';
+import { Plus, Trash2, FileText, Zap, Pencil, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import PpaForm from '@/components/compras/PpaForm';
 import LiquidacionesPpa from '@/components/compras/LiquidacionesPpa';
@@ -190,8 +190,27 @@ export default function PpaClient() {
             </tbody>
           </table>
         </div>
-      )}
-        </>
+        </div>
+        
+        <div style={{ marginTop: '24px', padding: '20px', background: 'var(--bg-elevated)', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <h4 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Info size={20} style={{ color: 'var(--accent)' }}/>
+            Guía de Cobertura en el Cotizador Comercial (Pricing)
+          </h4>
+          <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6 }} className="space-y-4">
+            <p>
+              La casilla <strong>"Considerar este PPA en el Pricing"</strong> al editar un acuerdo determina cómo el orquestador simula los precios para ofertar a <strong>nuevos clientes</strong>:
+            </p>
+            <ul style={{ listStyleType: 'disc', paddingLeft: '24px' }} className="space-y-3">
+              <li>
+                <strong style={{ color: 'var(--text-primary)' }}>Activada (Cobertura Total):</strong> El cotizador asumirá que disponemos de esta energía. Si la energía de todos los PPAs activos supera el volumen de clientes actuales, el sistema asume que el exceso se vende a OMIE. <em>Ventaja:</em> Los ingresos por vender el exceso subvencionan el precio del cliente, permitiendo cotizar precios extremadamente agresivos y bajos (ideal para captación masiva rápida). <em>Riesgo:</em> Si la cartera de clientes crece mucho, el exceso desaparece y la empresa asumirá pérdidas estructurales.
+              </li>
+              <li>
+                <strong style={{ color: 'var(--text-primary)' }}>Desactivada (Mercado Puro / Coste de Reposición):</strong> El PPA se oculta temporalmente al cotizador. Las ofertas a nuevos clientes se construyen asumiendo un coste 100% OMIE. <em>Ventaja:</em> Cotizas un precio seguro a largo plazo. Cualquier beneficio extra que genere el PPA irá directamente al EBITDA (márgenes comerciales de la empresa) en lugar de regalarse en forma de descuento al cliente entrante.
+              </li>
+            </ul>
+          </div>
+        </div>
       )}
 
       {isFormOpen && (
