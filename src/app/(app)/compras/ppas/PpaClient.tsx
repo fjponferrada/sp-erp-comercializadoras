@@ -212,11 +212,9 @@ export default function PpaClient() {
         </div>
       </div>
     </>
-  ) : (
-    <LiquidacionesPpa />
   )}
 
-      {isFormOpen && (
+  {isFormOpen && (
         <PpaForm 
           initialData={editingPpa}
           onClose={() => { setIsFormOpen(false); setEditingPpa(null); }} 
