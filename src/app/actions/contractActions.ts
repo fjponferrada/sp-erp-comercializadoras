@@ -1507,6 +1507,27 @@ export async function getPaginatedContractsAction(
       }
     }
 
+    // Pre-calcular el mejor ID para cada contractCode
+    const bestIdForCode = new Map<string, string>();
+    const groupMap = new Map<string, typeof allMatching>();
+    
+    for (const item of allMatching) {
+      if (falseBajaIds.has(item.id)) continue;
+      if (item.contractCode) {
+        if (!groupMap.has(item.contractCode)) groupMap.set(item.contractCode, []);
+        groupMap.get(item.contractCode)!.push(item);
+      }
+    }
+
+    for (const [code, group] of groupMap.entries()) {
+      const activeOrFin = group.find(c => c.status === 'ACTIVO' || c.status === 'FINALIZADO');
+      if (activeOrFin) {
+        bestIdForCode.set(code, activeOrFin.id);
+      } else {
+        bestIdForCode.set(code, group[0].id);
+      }
+    }
+
     const seenCodes = new Set<string>();
     const deduplicatedIds: string[] = [];
 
@@ -1516,7 +1537,7 @@ export async function getPaginatedContractsAction(
       if (item.contractCode) {
         if (!seenCodes.has(item.contractCode)) {
           seenCodes.add(item.contractCode);
-          deduplicatedIds.push(item.id);
+          deduplicatedIds.push(bestIdForCode.get(item.contractCode)!);
         }
       } else {
         deduplicatedIds.push(item.id);
