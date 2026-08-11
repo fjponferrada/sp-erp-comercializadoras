@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { useDropzone } from 'react-dropzone';
 import Link from 'next/link';
 import Topbar from '@/components/Topbar';
+import JSZip from 'jszip';
 
 interface ImportarSwitchingClientProps {
   userRole: string;
@@ -88,10 +89,42 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
     if (!files || files.length === 0) return;
     setUploading(true);
     setFinished(false);
-    setTotalFiles(files.length);
+    setTotalFiles(0);
     setProcessedFiles(0);
     setResults([]);
     setProgress(0);
+
+    // 1. Extraer ZIPs localmente
+    const flattenedFiles: File[] = [];
+    for (const file of files) {
+      if (file.name.toLowerCase().endsWith('.zip')) {
+        setCurrentFile(`Descomprimiendo ${file.name}...`);
+        const zip = new JSZip();
+        try {
+          const contents = await zip.loadAsync(file);
+          for (const [relativePath, zipEntry] of Object.entries(contents.files)) {
+            if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.xml')) {
+              const blob = await zipEntry.async('blob');
+              // Quitamos las rutas del nombre del archivo en el zip
+              const cleanName = zipEntry.name.split('/').pop() || zipEntry.name;
+              flattenedFiles.push(new File([blob], cleanName, { type: 'text/xml' }));
+            }
+          }
+        } catch (e) {
+          toast.error(`Error descomprimiendo ${file.name}`);
+        }
+      } else {
+        flattenedFiles.push(file);
+      }
+    }
+
+    if (flattenedFiles.length === 0) {
+      setUploading(false);
+      toast.error('No se encontraron archivos XML válidos');
+      return;
+    }
+
+    setTotalFiles(flattenedFiles.length);
 
     let successCount = 0;
     let errorCount = 0;
@@ -99,8 +132,8 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
 
     const fileTypeStr = isF1 ? 'F1' : 'SCTD';
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    for (let i = 0; i < flattenedFiles.length; i++) {
+      const file = flattenedFiles[i];
       setCurrentFile(file.name);
       
       const formData = new FormData();
@@ -136,7 +169,7 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
       setResults([...newResults]);
       
       setProcessedFiles(i + 1);
-      setProgress(Math.round(((i + 1) / files.length) * 100));
+      setProgress(Math.round(((i + 1) / flattenedFiles.length) * 100));
     }
 
     if (!isF1 && successCount > 0) {
