@@ -354,20 +354,83 @@ export async function generateClaim(data: any) {
         }
       }
       
-      let dynamicFieldsXml = '';
+      const contactoXml = `\n<Contacto>\n<PersonaDeContacto>${escapeXml(companyContact)}</PersonaDeContacto>\n<Telefono>\n<PrefijoPais>34</PrefijoPais>\n<Numero>${escapeXml(companyPhone)}</Numero>\n</Telefono>\n<CorreoElectronico>${escapeXml(companyEmail)}</CorreoElectronico>\n</Contacto>`;
+
+      // Mapeo estricto y ordenado según XSD de VariableDetalleReclamacion
+      const XSD_ORDER = [
+        'NumExpedienteAcometida', 'NumExpedienteFraude', 'FechaIncidente', 'NumFacturaATR',
+        'TipoConceptoFacturado', 'FechaLectura', 'TipoDHEdM', 'CAU', 'LecturasAportadas',
+        'DisconformidadAutoconsumo', 'CodigoIncidencia', 'CodigoSolicitud', 'ParametroContratacion',
+        'ConceptoDisconformidad', 'TipoDeAtencionIncorrecta', 'MotivoConsulta', 'IBAN',
+        'Contacto', 'CodigoSolicitudReclamacion', 'FechaDesde', 'FechaHasta', 'ImporteReclamado',
+        'UbicacionIncidencia'
+      ];
+      
+      const uiToXsdMapping: Record<string, string> = {
+        'SOL. NUEVO SUMINISTRO': 'NumExpedienteAcometida',
+        'NUMERO EXPEDIENTE FRAUDE': 'NumExpedienteFraude',
+        'FECHA INCIDENTE': 'FechaIncidente',
+        'TIPO CONCEPTO FACTURADO': 'TipoConceptoFacturado',
+        'CAU': 'CAU',
+        'TIPO DISCONFORME AUTOCONSUMO': 'DisconformidadAutoconsumo',
+        'CODIGO INCIDENCIA': 'CodigoIncidencia',
+        'CODIGO SOLICITUD': 'CodigoSolicitud',
+        'CONCEPTO CONTRATACION': 'ParametroContratacion',
+        'TIPO ATENCION INCORRECTA': 'TipoDeAtencionIncorrecta',
+        'MOTIVO CONSULTA': 'MotivoConsulta',
+        'IBAN': 'IBAN',
+        'COD SOLICITUD RECLAMACION ANTERIOR': 'CodigoSolicitudReclamacion',
+        'FECHA DESDE': 'FechaDesde',
+        'FECHA HASTA': 'FechaHasta',
+        'IMPORTE RECLAMADO': 'ImporteReclamado',
+        'UBICACION INCIDENCIA': 'UbicacionIncidencia'
+      };
+
+      let variableDetalleElements: Record<string, string> = {};
+
+      if (numFacturaAtrXml) {
+        variableDetalleElements['NumFacturaATR'] = numFacturaAtrXml.trim();
+      }
+      if (lecturasXml) {
+        variableDetalleElements['LecturasAportadas'] = lecturasXml.trim();
+      }
+      if (fechaLectura) {
+        variableDetalleElements['FechaLectura'] = `<FechaLectura>${fechaLectura}</FechaLectura>`;
+      }
+      variableDetalleElements['Contacto'] = contactoXml.trim();
+
       if (dynamicFields) {
         for (const [key, value] of Object.entries(dynamicFields)) {
           if (value && typeof value === 'string' && value.trim() !== '') {
-            // Evitar duplicar NumFacturaATR ya que lo procesamos arriba
-            if (key === 'NUM FACTURA ATR') continue;
+            if (key === 'NUM FACTURA ATR' || key === 'LECTURA' || key === 'FECHA LECTURA') continue;
             
-            // Remove accents and convert e.g., "CÓDIGO INCIDENCIA" to "CodigoIncidencia"
-            const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const xmlTag = normalizedKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
-            dynamicFieldsXml += `\n<${xmlTag}>${escapeXml(value)}</${xmlTag}>`;
+            const xsdTag = uiToXsdMapping[key];
+            if (xsdTag) {
+              if (xsdTag === 'DisconformidadAutoconsumo') {
+                variableDetalleElements[xsdTag] = `<DisconformidadAutoconsumo>\n<TipoDisconformidadAutoconsumo>${escapeXml(value)}</TipoDisconformidadAutoconsumo>\n</DisconformidadAutoconsumo>`;
+              } else {
+                variableDetalleElements[xsdTag] = `<${xsdTag}>${escapeXml(value)}</${xsdTag}>`;
+              }
+            } else {
+              // Fallback for any unknown keys, although they might violate XSD order if we just append them.
+              // Try to normalize and guess.
+              const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              const xmlTag = normalizedKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+              if (XSD_ORDER.includes(xmlTag)) {
+                variableDetalleElements[xmlTag] = `<${xmlTag}>${escapeXml(value)}</${xmlTag}>`;
+              }
+            }
           }
         }
       }
+
+      let variablesDetalleReclamacionXml = '\n<VariableDetalleReclamacion>';
+      for (const tag of XSD_ORDER) {
+        if (variableDetalleElements[tag]) {
+          variablesDetalleReclamacionXml += `\n${variableDetalleElements[tag]}`;
+        }
+      }
+      variablesDetalleReclamacionXml += '\n</VariableDetalleReclamacion>';
 
       return `<MensajeReclamacionPeticion xmlns="http://localhost/elegibilidad">
 <CabeceraReclamacion>
@@ -387,17 +450,7 @@ export async function generateClaim(data: any) {
 <FechaLimite>${limitDate}</FechaLimite>
 <Prioritario>S</Prioritario>
 </DatosSolicitud>
-<VariablesDetalleReclamacion>
-<VariableDetalleReclamacion>
-<Contacto>
-<PersonaDeContacto>${escapeXml(companyContact)}</PersonaDeContacto>
-<Telefono>
-<PrefijoPais>34</PrefijoPais>
-<Numero>${escapeXml(companyPhone)}</Numero>
-</Telefono>
-<CorreoElectronico>${escapeXml(companyEmail)}</CorreoElectronico>
-</Contacto>
-${dynamicFieldsXml}${numFacturaAtrXml}${lecturasXml}</VariableDetalleReclamacion>
+<VariablesDetalleReclamacion>${variablesDetalleReclamacionXml}
 </VariablesDetalleReclamacion>
 <Cliente>
 <IdCliente>

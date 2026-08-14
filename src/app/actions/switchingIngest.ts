@@ -918,7 +918,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         
         if (paso === '06') {
           // ActivacionTraspasoCORSaliente: Nos notifican que el COR ha asumido el CUPS
-          const bajaDate = parsedData.fechaActivacionAlta || parsedData.fechaPrevActivacion || new Date();
+          const bajaDate = parsedData.fechaActivacionBaja || parsedData.fechaActivacionAlta || parsedData.fechaPrevActivacion || new Date();
           await prisma.contract.update({
             where: { id: contract.id },
             data: { 
