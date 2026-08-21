@@ -57,6 +57,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
   const { data: session } = useSession();
   const userRole = (session?.user as any)?.role || 'user';
   const showPaymentButtons = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+  const canForceResend = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
   const isClientRole = userRole === 'CLIENT' || userRole === 'CLIENTE';
   const showCommunicationStatus = !['CLIENT', 'CLIENTE', 'COMERCIAL', 'CANAL'].includes(userRole);
 
@@ -353,7 +354,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                       <Download size={16} />
                     </a>
                   )}
-                  {invoice.communicatedAt && (
+                  {invoice.communicatedAt && canForceResend && (
                     <div style={{ background: 'rgba(255,255,255,0.05)', padding: '6px', borderRadius: '6px' }}>
                       <ForceResendButton invoiceId={invoice.id} />
                     </div>
@@ -509,7 +510,7 @@ export default function FacturasClient({ initialInvoices, pendingCount, initialT
                           <RequestPaymentButton invoiceId={invoice.id} type="overdue" />
                         </>
                       )}
-                      {invoice.communicatedAt && (
+                      {invoice.communicatedAt && canForceResend && (
                         <ForceResendButton invoiceId={invoice.id} />
                       )}
                     </div>

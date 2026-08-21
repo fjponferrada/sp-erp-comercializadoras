@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import Topbar from '@/components/Topbar';
 import { Search, TrendingDown, Zap, ExternalLink, Calendar , Mail} from 'lucide-react';
 import PaginationFooter from '@/components/PaginationFooter';
+import { useSession } from 'next-auth/react';
 
 const motivos = ['Cese de actividad', 'Cambio de comercializadora', 'Venta del inmueble', 'Impago', 'Solicitud cliente', 'Fin de permanencia'];
 
@@ -45,6 +46,10 @@ const getTariffStyle = (tarifa: string) => {
 const tarifaOptions = ['2.0TD', '3.0TD', '6.1TD', '6.2TD', '6.3TD', '6.4TD', '3.0TDVE', '6.1TDVE'];
 
 export default function BajasClient({ initialBajas, initialTotalCount, initialTotalPenaltySum, initialStats, products = [], channels = [], origenBajaOptions = [] }: { initialBajas: BajaData[], initialTotalCount: number, initialTotalPenaltySum?: number, initialStats: any, products?: any[], channels?: any[], origenBajaOptions?: string[] }) {
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'user';
+  const isBackofficeOrAdmin = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+
   const [search, setSearch] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_search') || '' : '');
   const [dateFrom, setDateFrom] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateFrom') || '' : '');
   const [dateTo, setDateTo] = useState(() => typeof window !== 'undefined' ? sessionStorage.getItem('bajas_dateTo') || '' : '');
@@ -245,17 +250,19 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                 )}
               </div>
 
-              <select
-                className="form-input"
-                value={canalFilter}
-                onChange={(e) => setCanalFilter(e.target.value)}
-                style={{ width: '200px', fontSize: '0.8rem' }}
-              >
-                <option value="TODOS">Todos los canales</option>
-                {channels?.map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              {isBackofficeOrAdmin && (
+                <select
+                  className="form-input"
+                  value={canalFilter}
+                  onChange={(e) => setCanalFilter(e.target.value)}
+                  style={{ width: '200px', fontSize: '0.8rem' }}
+                >
+                  <option value="TODOS">Todos los canales</option>
+                  {channels?.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
 
               <div style={{ position: 'relative' }}>
                 <button 
@@ -388,32 +395,34 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border)' }}>
-                    <button 
-                      className="badge hover:opacity-80 transition-opacity"
-                      style={{ 
-                        background: b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.1)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                        color: b.penaltyStatus === 'FACTURADA' ? '#34d399' : b.penaltyStatus === 'DESCARTADA' ? '#9ca3af' : '#fbbf24',
-                        border: `1px solid ${b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.2)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
-                        fontSize: '0.75rem',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        cursor: 'pointer'
-                      }}
-                      onClick={() => setPenaltyModalData(b)}
-                      title="Gestionar Penalización"
-                    >
-                      <FileText size={12} />
-                      {b.penalization !== null && b.penalization !== undefined 
-                        ? `${b.penalization.toFixed(2)} €` 
-                        : b.calculatedPenalty ? `${b.calculatedPenalty.toFixed(2)} € (Auto)` : '0.00 €'}
-                    </button>
+                  {isBackofficeOrAdmin && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border)' }}>
+                      <button 
+                        className="badge hover:opacity-80 transition-opacity"
+                        style={{ 
+                          background: b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.1)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                          color: b.penaltyStatus === 'FACTURADA' ? '#34d399' : b.penaltyStatus === 'DESCARTADA' ? '#9ca3af' : '#fbbf24',
+                          border: `1px solid ${b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.2)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+                          fontSize: '0.75rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setPenaltyModalData(b)}
+                        title="Gestionar Penalización"
+                      >
+                        <FileText size={12} />
+                        {b.penalization !== null && b.penalization !== undefined 
+                          ? `${b.penalization.toFixed(2)} €` 
+                          : b.calculatedPenalty ? `${b.calculatedPenalty.toFixed(2)} € (Auto)` : '0.00 €'}
+                      </button>
 
-                    <button onClick={() => setOfferModalData(b)} className="btn-secondary" style={{ padding: '4px 12px', fontSize: '0.75rem', gap: 6 }}>
-                      <Send size={12} /> Recuperar
-                    </button>
-                  </div>
+                      <button onClick={() => setOfferModalData(b)} className="btn-secondary" style={{ padding: '4px 12px', fontSize: '0.75rem', gap: 6 }}>
+                        <Send size={12} /> Recuperar
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -432,12 +441,14 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                   <th>Fecha Alta</th>
                   <th>Fecha Baja</th>
                   <th>Origen Baja</th>
-                  <th style={{ minWidth: '130px' }}>
-                    Penalización<br />
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                      (Total: {totalPenaltySum.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })})
-                    </span>
-                  </th>
+                  {isBackofficeOrAdmin && (
+                    <th style={{ minWidth: '130px' }}>
+                      Penalización<br />
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                        (Total: {totalPenaltySum.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })})
+                      </span>
+                    </th>
+                  )}
                   <th style={{ textAlign: 'center' }}>Acciones de Recuperación</th>
                 </tr>
               </thead>
@@ -474,28 +485,30 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                         <span style={{ color: 'var(--text-muted)' }}>-</span>
                       )}
                     </td>
-                    <td>
-                      <button 
-                        className="badge hover:opacity-80 transition-opacity"
-                        style={{ 
-                          background: b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.1)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                          color: b.penaltyStatus === 'FACTURADA' ? '#34d399' : b.penaltyStatus === 'DESCARTADA' ? '#9ca3af' : '#fbbf24',
-                          border: `1px solid ${b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.2)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
-                          fontSize: '0.75rem',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          cursor: 'pointer'
-                        }}
-                        onClick={() => setPenaltyModalData(b)}
-                        title="Gestionar Penalización"
-                      >
-                        <FileText size={12} />
-                        {b.penalization !== null && b.penalization !== undefined 
-                          ? `${b.penalization.toFixed(2)} €` 
-                          : b.calculatedPenalty ? `${b.calculatedPenalty.toFixed(2)} € (Auto)` : '0.00 €'}
-                      </button>
-                    </td>
+                    {isBackofficeOrAdmin && (
+                      <td>
+                        <button 
+                          className="badge hover:opacity-80 transition-opacity"
+                          style={{ 
+                            background: b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.1)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                            color: b.penaltyStatus === 'FACTURADA' ? '#34d399' : b.penaltyStatus === 'DESCARTADA' ? '#9ca3af' : '#fbbf24',
+                            border: `1px solid ${b.penaltyStatus === 'FACTURADA' ? 'rgba(52, 211, 153, 0.2)' : b.penaltyStatus === 'DESCARTADA' ? 'rgba(107, 114, 128, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+                            fontSize: '0.75rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => setPenaltyModalData(b)}
+                          title="Gestionar Penalización"
+                        >
+                          <FileText size={12} />
+                          {b.penalization !== null && b.penalization !== undefined 
+                            ? `${b.penalization.toFixed(2)} €` 
+                            : b.calculatedPenalty ? `${b.calculatedPenalty.toFixed(2)} € (Auto)` : '0.00 €'}
+                        </button>
+                      </td>
+                    )}
 
                     <td>
                       <div className="flex items-center justify-center gap-2">
@@ -509,9 +522,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                             <MessageCircle size={14} />
                           </a>
                         )}
-                        <button onClick={() => setOfferModalData(b)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', gap: 4 }}>
-                          <Send size={12} /> Recuperar
-                        </button>
+                        {isBackofficeOrAdmin && (
+                          <button onClick={() => setOfferModalData(b)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', gap: 4 }}>
+                            <Send size={12} /> Recuperar
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
