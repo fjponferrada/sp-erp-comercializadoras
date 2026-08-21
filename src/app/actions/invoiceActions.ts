@@ -862,9 +862,6 @@ export async function getPaginatedInvoicesAction(
         { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
         { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
         { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
-        { invoiceData: { path: ['NOMBRE/RAZON SOCIAL'], string_contains: searchTerm } },
-        { invoiceData: { path: ['NIF/CIF'], string_contains: searchTerm } },
-        { invoiceData: { path: ['CUPS'], string_contains: searchTerm } },
       ];
     }
 
