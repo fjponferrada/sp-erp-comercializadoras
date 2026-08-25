@@ -159,9 +159,13 @@ export default function EnergiaPendienteClient() {
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Último Cierre</th>
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Energía Facturada</th>
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Demanda BC Estimada</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Demanda BC CCH recibidas</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Descuadre F1-CCH</th>
               <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Liquidado REE</th>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Energía Pendiente</th>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>B.I. Valoración Pendiente</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Energía Pte. según CCH</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>B.Imp. Pte. según CCH</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Energía Pte. Estimada</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>B.Imp. Pte. Estimada</th>
             </tr>
           </thead>
           <tbody>
@@ -169,14 +173,23 @@ export default function EnergiaPendienteClient() {
               const isPositiveEnergy = row.pendingMwh > 0;
               const isPositiveCost = row.estimatedPendingCostEur > 0;
               
-              // If we owe money to REE (they liquidated less than we consumed, we consumed more, so pendingMwh is > 0)
-              // Wait, if Demanda BC > Liquidado REE => We consumed more than we paid for.
-              // That means we OWE REE (negative impact on cash flow). Let's show as red?
-              // The user just said: "saldo a favor de REE, o a favor de comercializadora".
-              // If we consumed more (Demanda BC > Liquidado), we OWE REE.
-              // Let's color red if we owe REE, green if REE owes us.
-              const colorCode = isPositiveCost ? '#ef4444' : '#22c55e'; // Red if > 0, Green if < 0.
-
+              // Calculations for new columns
+              const invoicedMwh = row.invoicedMwh || 0;
+              const demandaBcEstimada = invoicedMwh * 1.15; // Estimación 15% pérdidas grosso modo
+              const demandaBcCch = row.estimatedBcMwh;
+              const descuadre = demandaBcEstimada - demandaBcCch;
+              
+              const energiaPteEstimada = row.pendingMwh + descuadre;
+              
+              // Avg price calculation
+              const avgPrice = row.pendingMwh !== 0 ? Math.abs(row.estimatedPendingCostEur / row.pendingMwh) : 60;
+              const bImpPteEstimada = row.estimatedPendingCostEur + (descuadre * avgPrice);
+              
+              const isPositiveEstEnergy = energiaPteEstimada > 0;
+              const isPositiveEstCost = bImpPteEstimada > 0;
+              const colorCode = isPositiveCost ? '#ef4444' : '#22c55e';
+              const colorCodeEst = isPositiveEstCost ? '#ef4444' : '#22c55e';
+              
               return (
                 <tr key={row.month} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontWeight: 600 }}>
@@ -192,10 +205,16 @@ export default function EnergiaPendienteClient() {
                     </span>
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    {formatMwh(row.invoicedMwh || 0)} MWh
+                    {formatMwh(invoicedMwh)} MWh
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    {formatMwh(row.estimatedBcMwh)} MWh
+                    {formatMwh(demandaBcEstimada)} MWh
+                  </td>
+                  <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                    {formatMwh(demandaBcCch)} MWh
+                  </td>
+                  <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right', fontWeight: descuadre > 0 ? 600 : 400, color: descuadre > 0 ? '#ef4444' : 'var(--text-secondary)' }}>
+                    {descuadre > 0 ? '+' : ''}{formatMwh(descuadre)} MWh
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right' }}>
                     {row.cierre !== 'N/A' ? `${formatMwh(row.liquidatedMwh)} MWh` : '-'}
@@ -207,13 +226,20 @@ export default function EnergiaPendienteClient() {
                   <td style={{ padding: '16px', fontWeight: 600, color: colorCode, textAlign: 'right' }}>
                     {formatEur(Math.abs(row.estimatedPendingCostEur))} {isPositiveCost ? '(A pagar)' : '(A cobrar)'}
                   </td>
+                  <td style={{ padding: '16px', fontWeight: 600, textAlign: 'right', color: colorCodeEst, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                    {isPositiveEstEnergy ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                    {formatMwh(Math.abs(energiaPteEstimada))} MWh
+                  </td>
+                  <td style={{ padding: '16px', fontWeight: 600, color: colorCodeEst, textAlign: 'right' }}>
+                    {formatEur(Math.abs(bImpPteEstimada))} {isPositiveEstCost ? '(A pagar)' : '(A cobrar)'}
+                  </td>
                 </tr>
               );
             })}
             
             {data.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                   No hay datos disponibles para los últimos 12 meses.
                 </td>
               </tr>
@@ -224,10 +250,22 @@ export default function EnergiaPendienteClient() {
       
       <div style={{ marginTop: '24px', padding: '16px', background: 'var(--bg-base)', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
         <p style={{ marginBottom: '8px' }}>
-          <strong>Nota:</strong> Los valores positivos ("A pagar" en rojo) indican que el consumo real medido (elevado a BC) es mayor que la energía que REE nos ha liquidado hasta la fecha. Esto significa que en próximos cierres nos facturarán esa diferencia. Los valores "A cobrar" en verde significan que REE nos ha liquidado más energía de la consumida, por lo que nos devolverán la diferencia en futuros cierres.
+          <strong>Demanda BC CCH recibidas:</strong> Consumo real extraído de las curvas de telemedida (CCH) elevadas a barras de central con las pérdidas reglamentarias del BOE.
         </p>
-        <p>
-          <strong>Importante:</strong> Este cálculo es una estimación. La agregación de la demanda BC y la valoración del coste del desvío y energía se ha calculado hora a hora basándonos en las curvas de carga sumadas por segmento tarifario. Los datos se precalculan cada noche para mejorar el rendimiento de la plataforma.
+        <p style={{ marginBottom: '8px' }}>
+          <strong>Demanda BC Estimada:</strong> Estimación de la energía demandada basada en la facturación a clientes, suponiendo un 15% de pérdidas promedio.
+        </p>
+        <p style={{ marginBottom: '8px' }}>
+          <strong>Descuadre F1-CCH:</strong> Diferencia entre la energía facturada (elevada a BC) y el consumo físico real que marcan los contadores CCH. Si es positivo, indica que se han facturado más MWh de los que existen en curvas CCH (normalmente por estimaciones altas de distribuidora).
+        </p>
+        <p style={{ marginBottom: '8px' }}>
+          <strong>Energía y B.Imp Pte. según CCH:</strong> Diferencia entre la energía física medida y liquidada. Refleja tu deuda con REE basada estrictamente en la realidad física.
+        </p>
+        <p style={{ marginBottom: '8px' }}>
+          <strong>Energía y B.Imp Pte. Estimada:</strong> Tu deuda real final que aflorará cuando la distribuidora y REE regularicen esos MWh facturados sin respaldo en CCH. Al facturar "energía fantasma" sin que REE te la haya liquidado todavía, este saldo ajusta tu deuda asumiendo que eventualmente tendrás que pagar a REE por esa energía que tú ya has cobrado al cliente.
+        </p>
+        <p style={{ marginBottom: '8px' }}>
+          <strong>Nota de saldos:</strong> Los valores positivos ("A pagar" en rojo) indican un saldo a favor de REE. Los valores en verde significan saldo a favor de la comercializadora.
         </p>
       </div>
     </div>
