@@ -31,7 +31,22 @@ export async function POST(req: NextRequest) {
         if (!zip.files[filename].dir) {
           const innerUpper = filename.toUpperCase();
           if (PRIORIDAD_MAP.some(pat => innerUpper.includes(pat))) {
-            const content = await zip.files[filename].async('string');
+            let content = '';
+            if (innerUpper.endsWith('.BZ2')) {
+              const bz2 = require('unbzip2-stream');
+              content = await new Promise<string>((resolve, reject) => {
+                const stream = zip.files[filename].nodeStream();
+                const dest = bz2();
+                let data = '';
+                dest.on('data', (chunk: any) => data += chunk.toString('utf8'));
+                dest.on('end', () => resolve(data));
+                dest.on('error', reject);
+                stream.pipe(dest);
+              });
+            } else {
+              content = await zip.files[filename].async('string');
+            }
+            
             const fileResult = await processCchCsv(content, filename, 'UPLOAD_ZIP');
             results.success += fileResult.success;
             results.skipped += fileResult.skipped;
@@ -42,11 +57,23 @@ export async function POST(req: NextRequest) {
     } else {
       const filenameUpper = file.name.toUpperCase();
       const lower = file.name.toLowerCase();
-      if (PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || lower.endsWith('.csv') || lower.endsWith('.txt') || lower.endsWith('.gz') || lower.endsWith('.xlsx')) {
+      if (PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || lower.endsWith('.csv') || lower.endsWith('.txt') || lower.endsWith('.gz') || lower.endsWith('.xlsx') || lower.endsWith('.bz2')) {
         let content = '';
         if (lower.endsWith('.gz')) {
           const zlib = require('zlib');
           content = zlib.gunzipSync(Buffer.from(arrayBuffer)).toString('utf8');
+        } else if (lower.endsWith('.bz2')) {
+          const bz2 = require('unbzip2-stream');
+          const { Readable } = require('stream');
+          content = await new Promise<string>((resolve, reject) => {
+            const stream = Readable.from(Buffer.from(arrayBuffer));
+            const dest = bz2();
+            let data = '';
+            dest.on('data', (chunk: any) => data += chunk.toString('utf8'));
+            dest.on('end', () => resolve(data));
+            dest.on('error', reject);
+            stream.pipe(dest);
+          });
         } else if (lower.endsWith('.xlsx')) {
           const XLSX = require('xlsx');
           const workbook = XLSX.read(arrayBuffer, { type: 'buffer' });
