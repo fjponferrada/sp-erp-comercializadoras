@@ -548,7 +548,7 @@ async function ingestF1Core(file: File) {
                   baseImponible: invBase,
                   totalPeajes: invPeajes,
                   totalCargos: invCargos,
-                  xmlUrl: originalF1.xmlUrl,
+                  xmlUrl: f.xmlUrl, // Point to the R invoice instead of the original N invoice
                   jsonData: clonedJson,
                   supplyPointId: originalF1.supplyPointId,
                   contractId: originalF1.contractId,
