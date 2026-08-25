@@ -294,6 +294,11 @@ export async function generateClaim(data: any) {
       if (!zip || zip === '00000') {
           zip = cAirtable['Código Postal Titular'] || cAirtable['Código Postal Instalación'] || sp?.postalCode || '00000';
       }
+      if (zip) {
+          zip = String(zip).trim().padStart(5, '0');
+      } else {
+          zip = '00000';
+      }
       if (!province || province === '00') {
           province = cAirtable['PROVINCIA SOC'] || sp?.province || '00';
       }
