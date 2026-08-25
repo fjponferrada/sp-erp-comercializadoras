@@ -12,6 +12,7 @@ interface MonthlyData {
   pendingMwh: number;
   estimatedPendingCostEur: number;
   invoicedMwh?: number;
+  lossRatio?: number;
 }
 
 export default function EnergiaPendienteClient() {
