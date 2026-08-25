@@ -175,7 +175,8 @@ export default function EnergiaPendienteClient() {
               
               // Calculations for new columns
               const invoicedMwh = row.invoicedMwh || 0;
-              const demandaBcEstimada = invoicedMwh * 1.15; // Estimación 15% pérdidas grosso modo
+              const lossRatio = row.lossRatio || 1.15;
+              const demandaBcEstimada = invoicedMwh * lossRatio; // Pérdidas exactas promedio del mes según CCH
               const demandaBcCch = row.estimatedBcMwh;
               const descuadre = demandaBcEstimada - demandaBcCch;
               
@@ -253,7 +254,7 @@ export default function EnergiaPendienteClient() {
           <strong>Demanda BC CCH recibidas:</strong> Consumo real extraído de las curvas de telemedida (CCH) elevadas a barras de central con las pérdidas reglamentarias del BOE.
         </p>
         <p style={{ marginBottom: '8px' }}>
-          <strong>Demanda BC Estimada:</strong> Estimación de la energía demandada basada en la facturación a clientes, suponiendo un 15% de pérdidas promedio.
+          <strong>Demanda BC Estimada:</strong> Estimación de la energía demandada basada en la facturación a clientes, elevada a Barras de Central utilizando el porcentaje de pérdidas reales de ese mes según las curvas CCH.
         </p>
         <p style={{ marginBottom: '8px' }}>
           <strong>Descuadre F1-CCH:</strong> Diferencia entre la energía facturada (elevada a BC) y el consumo físico real que marcan los contadores CCH. Si es positivo, indica que se han facturado más MWh de los que existen en curvas CCH (normalmente por estimaciones altas de distribuidora).
