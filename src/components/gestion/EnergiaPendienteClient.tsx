@@ -213,7 +213,7 @@ export default function EnergiaPendienteClient() {
                   <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right' }}>
                     {formatMwh(demandaBcCch)} MWh
                   </td>
-                  <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right', fontWeight: descuadre > 0 ? 600 : 400, color: descuadre > 0 ? '#ef4444' : 'var(--text-secondary)' }}>
+                  <td style={{ padding: '16px', textAlign: 'right', fontWeight: descuadre > 0 ? 600 : 400, color: descuadre > 0 ? '#ef4444' : 'var(--text-secondary)' }}>
                     {descuadre > 0 ? '+' : ''}{formatMwh(descuadre)} MWh
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-secondary)', textAlign: 'right' }}>
