@@ -121,7 +121,9 @@ export async function getPaginatedClientsAction(page: number, limit: number, sea
             { businessName: { contains: term, mode: 'insensitive' } },
             { firstName: { contains: term, mode: 'insensitive' } },
             { lastName: { contains: term, mode: 'insensitive' } },
-            { vatNumber: { contains: term, mode: 'insensitive' } }
+            { vatNumber: { contains: term, mode: 'insensitive' } },
+            { contactEmail: { contains: term, mode: 'insensitive' } },
+            { contactPhone: { contains: term, mode: 'insensitive' } }
           ]
         });
       });

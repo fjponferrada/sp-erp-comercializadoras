@@ -229,7 +229,7 @@ export default function ClientesClient({
               <input
                 className="form-input w-full"
                 style={{ paddingLeft: 32, fontSize: '0.85rem' }}
-                placeholder="Buscar por nombre o NIF/CIF…"
+                placeholder="Buscar por nombre, NIF, teléfono o email..."
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
               />
