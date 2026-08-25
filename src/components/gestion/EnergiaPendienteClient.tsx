@@ -183,8 +183,10 @@ export default function EnergiaPendienteClient() {
               
               const energiaPteEstimada = row.pendingMwh + descuadre;
               
-              // Avg price calculation
-              const avgPrice = row.pendingMwh !== 0 ? Math.abs(row.estimatedPendingCostEur / row.pendingMwh) : 60;
+              // Avg price calculation with safety cap for near-zero division
+              let avgPrice = row.pendingMwh !== 0 ? Math.abs(row.estimatedPendingCostEur / row.pendingMwh) : 60;
+              if (avgPrice > 150) avgPrice = 100; // Cap it to a sensible market price if it explodes
+              
               const bImpPteEstimada = row.estimatedPendingCostEur + (descuadre * avgPrice);
               
               const isPositiveEstEnergy = energiaPteEstimada > 0;
