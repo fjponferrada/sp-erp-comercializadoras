@@ -855,13 +855,18 @@ export async function getPaginatedInvoicesAction(
     }
 
     if (searchTerm) {
+      let effectiveSearchTerm = searchTerm.trim();
+      if (effectiveSearchTerm.toUpperCase().startsWith('ES') && effectiveSearchTerm.length > 20) {
+        effectiveSearchTerm = effectiveSearchTerm.substring(0, 20);
+      }
+
       whereClause.OR = [
-        { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
-        { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
-        { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
-        { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
-        { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
-        { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
+        { invoiceNumber: { contains: effectiveSearchTerm, mode: 'insensitive' } },
+        { client: { businessName: { contains: effectiveSearchTerm, mode: 'insensitive' } } },
+        { client: { firstName: { contains: effectiveSearchTerm, mode: 'insensitive' } } },
+        { client: { lastName: { contains: effectiveSearchTerm, mode: 'insensitive' } } },
+        { client: { vatNumber: { contains: effectiveSearchTerm, mode: 'insensitive' } } },
+        { supplyPoint: { cups: { contains: effectiveSearchTerm, mode: 'insensitive' } } },
       ];
     }
 

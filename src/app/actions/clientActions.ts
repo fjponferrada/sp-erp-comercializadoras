@@ -116,14 +116,19 @@ export async function getPaginatedClientsAction(page: number, limit: number, sea
     if (searchTerm) {
       const terms = searchTerm.split(/\s+/).filter(Boolean);
       terms.forEach(term => {
+        let effectiveTerm = term;
+        if (effectiveTerm.toUpperCase().startsWith('ES') && effectiveTerm.length > 20) {
+          effectiveTerm = effectiveTerm.substring(0, 20);
+        }
         whereClause.AND.push({
           OR: [
-            { businessName: { contains: term, mode: 'insensitive' } },
-            { firstName: { contains: term, mode: 'insensitive' } },
-            { lastName: { contains: term, mode: 'insensitive' } },
-            { vatNumber: { contains: term, mode: 'insensitive' } },
-            { contactEmail: { contains: term, mode: 'insensitive' } },
-            { contactPhone: { contains: term, mode: 'insensitive' } }
+            { businessName: { contains: effectiveTerm, mode: 'insensitive' } },
+            { firstName: { contains: effectiveTerm, mode: 'insensitive' } },
+            { lastName: { contains: effectiveTerm, mode: 'insensitive' } },
+            { vatNumber: { contains: effectiveTerm, mode: 'insensitive' } },
+            { contactEmail: { contains: effectiveTerm, mode: 'insensitive' } },
+            { contactPhone: { contains: effectiveTerm, mode: 'insensitive' } },
+            { contracts: { some: { supplyPoint: { cups: { contains: effectiveTerm, mode: 'insensitive' } } } } }
           ]
         });
       });
