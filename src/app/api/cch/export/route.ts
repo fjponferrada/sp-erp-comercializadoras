@@ -29,7 +29,6 @@ export async function GET(req: Request) {
     const loadCurves = await prisma.loadCurve.findMany({
       where: {
         cups: { startsWith: searchCups },
-        type: 'CONSUMPTION',
         date: {
           gte: startDate,
           lte: endDate
@@ -44,31 +43,63 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'No data found for this period' }, { status: 404 });
     }
 
-    // Prepare CSV content matching the python script format exactly
-    let csvContent = 'fecha_hora;consumo_kwh;segmento\n';
+    const consumptionCurves = loadCurves.filter(lc => lc.type === 'CONSUMPTION');
+    const surplusCurves = loadCurves.filter(lc => lc.type === 'SURPLUS');
 
-    for (const lc of loadCurves) {
-      // lc.date is a UTC Date representing the day (e.g., 2025-04-12T00:00:00.000Z)
-      // We must treat this as "April 12th Local Time" to avoid DST shifts
-      const ymd = lc.date.toISOString().split('T')[0];
+    let hasSurplus = false;
+    for (const sc of surplusCurves) {
+      if (sc.readings.some(val => val > 0)) {
+        hasSurplus = true;
+        break;
+      }
+    }
+
+    // Prepare CSV content matching the python script format exactly
+    let csvContent = hasSurplus 
+      ? 'fecha_hora;consumo_kwh;excedentes_kwh;segmento\n' 
+      : 'fecha_hora;consumo_kwh;segmento\n';
+
+    const uniqueDates = Array.from(new Set(loadCurves.map(lc => lc.date.toISOString().split('T')[0]))).sort();
+    
+    const consumptionMap = new Map();
+    for (const cc of consumptionCurves) {
+      consumptionMap.set(cc.date.toISOString().split('T')[0], cc);
+    }
+    
+    const surplusMap = new Map();
+    for (const sc of surplusCurves) {
+      surplusMap.set(sc.date.toISOString().split('T')[0], sc);
+    }
+
+    for (const ymd of uniqueDates) {
+      const cc = consumptionMap.get(ymd);
+      const sc = surplusMap.get(ymd);
+      const refCurve = cc || sc; // At least one must exist for this date
+      
       const localMidnight = fromZonedTime(ymd + ' 00:00:00', 'Europe/Madrid');
       
-      const isHourly = lc.resolution === 'HOURLY';
-      const intervals = lc.readings.length;
+      const isHourly = refCurve.resolution === 'HOURLY';
+      const intervals = refCurve.readings.length;
       const minutesPerInterval = isHourly ? 60 : 15;
 
       for (let i = 0; i < intervals; i++) {
         // En España el estándar (y REE) suele usar "Hour-Ending" (Fin de hora)
-        // Por tanto, la hora 1 (00:00 - 01:00) se etiqueta como 01:00.
         const intervalTime = addMinutes(localMidnight, (i + 1) * minutesPerInterval);
         const localTime = toZonedTime(intervalTime, 'Europe/Madrid');
         const dateStr = format(localTime, 'yyyy-MM-dd HH:mm:ss');
         
-        const consumo = lc.readings[i];
+        const consumo = cc ? (cc.readings[i] || 0) : 0;
         const consumoStr = consumo.toString().replace('.', ',');
+        
         const segmento = ''; 
         
-        csvContent += `${dateStr};${consumoStr};${segmento}\n`;
+        if (hasSurplus) {
+          const surplus = sc ? (sc.readings[i] || 0) : 0;
+          const surplusStr = surplus.toString().replace('.', ',');
+          csvContent += `${dateStr};${consumoStr};${surplusStr};${segmento}\n`;
+        } else {
+          csvContent += `${dateStr};${consumoStr};${segmento}\n`;
+        }
       }
     }
 
