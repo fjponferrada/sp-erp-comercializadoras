@@ -57,7 +57,7 @@ export async function processCchCsv(
     throw new Error('Failed to parse CSV');
   }
 
-  const dailyData = new Map<string, { cups: string, date: string, readings: number[] }>();
+  const dailyData = new Map<string, { cups: string, date: string, type: string, readings: number[] }>();
 
   let skipped = 0;
   let errors = 0;
@@ -80,14 +80,30 @@ export async function processCchCsv(
       continue;
     }
 
-    // Lógica del entrenador de Python V22:
-    // Si es 5D, cols=[0,1,3], si no, cols=[0,2,4]
+    // Lógica CNMC:
+    // 5D (F5D/P5D): CUPS(0), Fecha(1), Bandera(2), AE(3), AS(4), R1(5)
+    // No-5D (F1/C1): CUPS(0), Tipo(1), Fecha(2), Bandera(3), AE(4), AS(5), R1(6)
+    // Diarios (P1/P1D/P2): CUPS(0), Tipo(1), Fecha(2), Bandera(3), AE(4), CalidadAE(5), AS(6), CalidadAS(7)
+    const upperName = filename.toUpperCase();
+    const isP1 = upperName.includes('P1') || upperName.includes('P2');
+    const isF1 = upperName.includes('F1') || upperName.includes('C1') || upperName.includes('Q1');
+    
     const idxDate = is5D ? 1 : 2;
     const idxConsumo = is5D ? 3 : 4;
+    
+    let idxSurplus = -1;
+    if (is5D) {
+      idxSurplus = 4;
+    } else if (isP1) {
+      idxSurplus = 6;
+    } else if (isF1) {
+      idxSurplus = 5;
+    }
 
     const cups = row[0]?.trim()?.substring(0, 20);
     const dateStr = row[idxDate]?.trim();
     const consumoStr = row[idxConsumo]?.trim()?.replace(',', '.');
+    const surplusStr = row[idxSurplus]?.trim()?.replace(',', '.');
 
     if (!cups || !dateStr || !consumoStr) {
       skipped++;
@@ -96,13 +112,23 @@ export async function processCchCsv(
 
     let consumo = parseFloat(consumoStr);
     if (isNaN(consumo) || consumo < 0) {
-      skipped++;
-      continue;
+      consumo = 0; // Fallback para no saltar la fila si hay excedentes válidos
     }
 
-    // --- LÓGICA DE UNIDADES V22 ---
+    let surplus = 0;
+    let hasSurplusColumn = false;
+    if (surplusStr !== undefined && surplusStr !== '') {
+      hasSurplusColumn = true;
+      surplus = parseFloat(surplusStr);
+      if (isNaN(surplus) || surplus < 0) {
+        surplus = 0;
+      }
+    }
+
+    // --- LÓGICA DE UNIDADES ---
     if (is5D) {
       consumo = consumo / 1000.0;
+      if (hasSurplusColumn) surplus = surplus / 1000.0;
     } else {
       const seg = (segmentMap.get(cups) || '').toUpperCase();
       const isVip = seg.includes('VIP') || seg.includes('>50');
@@ -111,37 +137,32 @@ export async function processCchCsv(
       if (consumo > currentUmbral) {
         consumo = consumo / 1000.0;
       }
+      if (hasSurplusColumn && surplus > currentUmbral) {
+        surplus = surplus / 1000.0;
+      }
     }
 
     // --- PARSEO Y AJUSTE DE FECHA (UTC -1h) ---
-    // Las distribuidoras españolas envían DD/MM/YYYY (o YYYY/MM/DD).
-    // Si usamos new Date() directo con DD/MM/YYYY, JS lo interpreta como MM/DD/YYYY (US) si DD <= 12.
-    // Esto provoca que el 07/05/2026 (7 de Mayo) se parsee como 5 de Julio (en el futuro).
-    
     let dateObj: Date;
     const parts = dateStr.split(' ');
     
     if (parts[0].includes('/')) {
       const dParts = parts[0].split('/');
       if (dParts[0] && dParts[0].length === 4) {
-        // Formato YYYY/MM/DD
         dateObj = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T${parts[1] || '00:00'}Z`);
       } else if (dParts[2] && dParts[2].length === 4) {
-        // Formato DD/MM/YYYY
         dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}Z`);
       } else {
-        dateObj = new Date(dateStr); // Fallback
+        dateObj = new Date(dateStr); 
       }
     } else if (parts[0].includes('-')) {
       const dParts = parts[0].split('-');
       if (dParts[0] && dParts[0].length === 4) {
-        // Formato YYYY-MM-DD
         dateObj = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T${parts[1] || '00:00'}Z`);
       } else if (dParts[2] && dParts[2].length === 4) {
-        // Formato DD-MM-YYYY
         dateObj = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1] || '00:00'}Z`);
       } else {
-        dateObj = new Date(dateStr); // Fallback
+        dateObj = new Date(dateStr); 
       }
     } else {
       dateObj = new Date(dateStr);
@@ -156,20 +177,26 @@ export async function processCchCsv(
     dateObj.setHours(dateObj.getHours() - 1);
 
     const dayKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-    const mapKey = `${cups}_${dayKey}`;
-
-    if (!dailyData.has(mapKey)) {
-      const emptyReadings = new Array(96).fill(0);
-      dailyData.set(mapKey, { cups, date: dayKey, readings: emptyReadings });
-    }
-
-    const entry = dailyData.get(mapKey)!;
     
     const hours = dateObj.getHours();
     const minutes = dateObj.getMinutes();
     const index = (hours * 4) + Math.floor(minutes / 15);
-    
-    entry.readings[index] = consumo;
+
+    // Consumo (CONSUMPTION)
+    const mapKeyConsumo = `${cups}_${dayKey}_CONSUMPTION`;
+    if (!dailyData.has(mapKeyConsumo)) {
+      dailyData.set(mapKeyConsumo, { cups, date: dayKey, type: 'CONSUMPTION', readings: new Array(96).fill(0) });
+    }
+    dailyData.get(mapKeyConsumo)!.readings[index] = consumo;
+
+    // Excedentes (SURPLUS) - Solo registrar si la columna existe en el fichero
+    if (hasSurplusColumn) {
+      const mapKeySurplus = `${cups}_${dayKey}_SURPLUS`;
+      if (!dailyData.has(mapKeySurplus)) {
+        dailyData.set(mapKeySurplus, { cups, date: dayKey, type: 'SURPLUS', readings: new Array(96).fill(0) });
+      }
+      dailyData.get(mapKeySurplus)!.readings[index] = surplus;
+    }
   }
 
   let success = 0;
@@ -194,6 +221,7 @@ export async function processCchCsv(
     return {
       cups: data.cups,
       dateIso: new Date(`${data.date}T00:00:00.000Z`),
+      type: data.type as 'CONSUMPTION' | 'SURPLUS',
       finalReadings,
       resolution,
       isProvisional,
@@ -201,9 +229,19 @@ export async function processCchCsv(
     };
   });
 
+  // Optimizacion: Si una curva de SURPLUS es 100% ceros, la filtramos para no inundar la BD.
+  // Pero OJO: Si ya existe en la BD un archivo con SURPLUS > 0, esto no lo sobreescribirá con ceros.
+  // Como los excedentes no suelen "desaparecer", y para no generar un volumen brutal de datos inútiles, filtramos.
+  const allDataFiltered = allData.filter(d => {
+    if (d.type === 'SURPLUS') {
+      return d.finalReadings.some(val => val > 0);
+    }
+    return true;
+  });
+
   const BATCH_SIZE = 250;
-  for (let i = 0; i < allData.length; i += BATCH_SIZE) {
-    const batch = allData.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < allDataFiltered.length; i += BATCH_SIZE) {
+    const batch = allDataFiltered.slice(i, i + BATCH_SIZE);
     
     try {
       // 1. Fetch existing records for this batch
@@ -215,12 +253,12 @@ export async function processCchCsv(
           cups: { in: uniqueCups },
           date: { in: uniqueDates.map(d => new Date(d)) }
         },
-        select: { id: true, cups: true, date: true, isProvisional: true, readings: true, resolution: true, source: true }
+        select: { id: true, cups: true, date: true, type: true, isProvisional: true, readings: true, resolution: true, source: true }
       });
 
       const existingMap = new Map();
       for (const rec of existingRecords) {
-        existingMap.set(`${rec.cups}_${rec.date.toISOString()}`, rec);
+        existingMap.set(`${rec.cups}_${rec.date.toISOString()}_${rec.type}`, rec);
       }
 
       // 2. Separate into creates and updates
@@ -228,7 +266,7 @@ export async function processCchCsv(
       const updates: any[] = [];
 
       for (const item of batch) {
-        const key = `${item.cups}_${item.dateIso.toISOString()}`;
+        const key = `${item.cups}_${item.dateIso.toISOString()}_${item.type}`;
         const existing = existingMap.get(key);
 
         if (existing) {
@@ -286,6 +324,7 @@ export async function processCchCsv(
           creates.push({
             cups: item.cups,
             date: item.dateIso,
+            type: item.type,
             readings: item.finalReadings,
             resolution: item.resolution,
             isProvisional: item.isProvisional,
