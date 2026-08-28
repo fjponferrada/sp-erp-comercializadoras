@@ -695,7 +695,12 @@ export async function savePenaltyAction(contractId: string, penalization: number
         clientPostalCode: contract.client.billingPostalCode || contract.supplyPoint.postalCode,
         cups: contract.supplyPoint.cups,
         dailyConsumption,
-        daysRemaining
+        daysRemaining,
+        banks: [
+          { name: contract.brand.bankName1, iban: contract.brand.bankIban1 },
+          { name: contract.brand.bankName2, iban: contract.brand.bankIban2 },
+          { name: contract.brand.bankName3, iban: contract.brand.bankIban3 }
+        ].filter(b => b.name && b.iban)
       };
 
       // 3. Generate PDF

@@ -109,6 +109,19 @@ export const PenaltyInvoicePDF = ({ data }: { data: any }) => (
         </View>
       </View>
 
+      {data.banks && data.banks.length > 0 && (
+        <View style={{ marginTop: 30, padding: 12, backgroundColor: '#F9FAFB', border: '1pt solid #E5E7EB', borderRadius: 4 }}>
+          <Text style={{ fontSize: 9, color: '#4B5563', lineHeight: 1.5, marginBottom: 8 }}>
+            Si la forma de pago que tenía contratada era por transferencia bancaria, o si teniendo domiciliación bancaria prefiere liquidar por transferencia, deberá hacerla a cualquiera de los siguientes números de cuenta, indicando en el concepto el número de esta factura:
+          </Text>
+          {data.banks.map((bank: any, i: number) => (
+            <Text key={i} style={{ fontSize: 9, fontWeight: 'bold', color: '#111827', marginBottom: 4 }}>
+              {bank.name}: {bank.iban}
+            </Text>
+          ))}
+        </View>
+      )}
+
       <View style={styles.footer}>
         <Text>Este documento es una factura válida a todos los efectos legales.</Text>
         <Text>Inscrita en el Registro Mercantil. {data.brandName} - {data.brandVat}</Text>
