@@ -182,23 +182,38 @@ export async function getPaginatedBajasAction(
       const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
       const expectedEnergyRemaining = (annualCons / 365) * daysRemaining;
 
-      // Extract average price
-      let energyPrice = b.p1e;
-      if (!energyPrice && airtable?.['P1E (from PRODUCTOS)']) {
-        const p1eArr = airtable['P1E (from PRODUCTOS)'];
-        energyPrice = Array.isArray(p1eArr) ? parseFloat(p1eArr[0]) : parseFloat(p1eArr);
-      }
+      const t = b.supplyPoint?.tariff || '';
+      let energyPrice = 0;
       
-      if (isNaN(energyPrice) || !energyPrice) {
-        // Fallback para indexadas o contratos sin precio cargado
-        const t = b.supplyPoint?.tariff || '';
-        if (t === '2.0TD') energyPrice = 0.18;
-        else if (t === '3.0TD') energyPrice = 0.17;
-        else if (t.startsWith('6.')) energyPrice = 0.16;
-        else energyPrice = isResidencial ? 0.18 : 0.17; 
+      const getP = (field: string, airtableField: string) => {
+        let val = b[field];
+        if (!val && airtable?.[airtableField]) {
+          const arr = airtable[airtableField];
+          val = Array.isArray(arr) ? parseFloat(arr[0]) : parseFloat(arr);
+        }
+        return val || 0;
+      };
+
+      const p1 = getP('p1e', 'P1E (from PRODUCTOS)');
+      const p2 = getP('p2e', 'P2E (from PRODUCTOS)');
+      const p3 = getP('p3e', 'P3E (from PRODUCTOS)');
+      const p4 = getP('p4e', 'P4E (from PRODUCTOS)');
+      const p5 = getP('p5e', 'P5E (from PRODUCTOS)');
+      const p6 = getP('p6e', 'P6E (from PRODUCTOS)');
+
+      if (t === '2.0TD' && p1 && p2 && p3) {
+        energyPrice = (p1 * 0.25) + (p2 * 0.25) + (p3 * 0.50);
+      } else if (t !== '2.0TD' && p1 && p6) {
+        energyPrice = (p1 * 0.10) + (p2 * 0.10) + (p3 * 0.10) + (p4 * 0.10) + (p5 * 0.10) + (p6 * 0.50);
       }
 
-      const t = b.supplyPoint?.tariff || '';
+      if (!energyPrice || isNaN(energyPrice)) {
+        // Fallback para indexadas o contratos sin precio cargado
+        if (t === '2.0TD') energyPrice = 0.16;
+        else if (t === '3.0TD') energyPrice = 0.15;
+        else if (t.startsWith('6.')) energyPrice = 0.14;
+        else energyPrice = isResidencial ? 0.16 : 0.15; 
+      }
 
       if (t.startsWith('6.')) {
         // Tarifas de alta tensión: 30 €/MWh (0.03 €/kWh) sobre la energía pendiente
