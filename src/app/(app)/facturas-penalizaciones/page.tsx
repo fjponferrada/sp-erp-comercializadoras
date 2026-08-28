@@ -30,7 +30,7 @@ export default async function FacturasPenalizacionesPage() {
       { issueDate: 'desc' },
       { invoiceNumber: 'desc' }
     ],
-    take: 100
+    take: 500
   });
 
   return (

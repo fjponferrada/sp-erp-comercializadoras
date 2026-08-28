@@ -143,32 +143,37 @@ export async function getPaginatedBajasAction(
 
       if (!pStart || !bDate) return 0;
       
-      const pEnd = new Date(pStart);
-      pEnd.setMonth(pEnd.getMonth() + pMonths);
-
-      // If contract terminated after permanence ended, 0 penalty
-      if (bDate >= pEnd) return 0;
-
       const vat = (b.client?.vatNumber || '').toUpperCase().trim();
       const cnae = (b.supplyPoint?.cnae || '').trim();
 
-      // 1. Clasificar por CIF/NIF
       const isComunidad = vat.startsWith('H');
       const isFisica = /^[0-9XYZ]/.test(vat);
-
-      // 2. Clasificar por CNAE
       const isCnaeHogar = cnae === '9820' || cnae === '9821';
 
-      // 3. Conclusión Final
       let isResidencial = false;
-      if (isComunidad) {
-        isResidencial = true;
-      } else if (isFisica && isCnaeHogar) {
-        isResidencial = true;
-      } else {
-        // Persona Jurídica, o Persona Física con otro CNAE (Resto / Negocio)
-        isResidencial = false;
+      if (isComunidad) isResidencial = true;
+      else if (isFisica && isCnaeHogar) isResidencial = true;
+
+      let pEnd = new Date(pStart);
+      pEnd.setMonth(pEnd.getMonth() + pMonths);
+
+      if (!isResidencial) {
+        let currentCycle = 1;
+        let thresholdDate = new Date(pStart);
+        thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths - 1));
+
+        while (bDate > thresholdDate) {
+          currentCycle++;
+          pEnd = new Date(pStart);
+          pEnd.setMonth(pEnd.getMonth() + (pMonths * currentCycle));
+          
+          thresholdDate = new Date(pStart);
+          thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths * currentCycle - 1));
+        }
       }
+
+      // If contract terminated after permanence ended, 0 penalty
+      if (bDate >= pEnd) return 0;
       
       let annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
       annualCons = annualCons * 1000; // El ERP guarda este dato en MWh, lo pasamos a kWh
@@ -294,11 +299,17 @@ export async function getPaginatedBajasAction(
       else if (isFisica && isCnaeHogar) isResidencial = true;
 
       let isPreavisoBreached = false;
-      if (!isResidencial && dAlta && dBaja) {
-        const thresholdDate = new Date(dAlta);
-        thresholdDate.setMonth(thresholdDate.getMonth() + 11);
-        if (dBaja > thresholdDate) {
+      if (!isResidencial && pStart && dBaja) {
+        let pMonths = b.permanenceMonths || parseInt(airtable?.['Meses Permanencia']) || 12;
+        let currentCycle = 1;
+        let thresholdDate = new Date(pStart);
+        thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths - 1));
+
+        while (dBaja > thresholdDate) {
           isPreavisoBreached = true;
+          currentCycle++;
+          thresholdDate = new Date(pStart);
+          thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths * currentCycle - 1));
         }
       }
 
