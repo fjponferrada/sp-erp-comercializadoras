@@ -50,6 +50,7 @@ El panel de **Bajas** se alimenta directamente de los eventos del motor de Switc
     *   **Tarifas Fijas**: Muestran la tabla de precios (P1 a P6).
     *   **Tarifas Indexadas**: Ocultan la tabla a 0€ y muestran el texto legal: *"facturado a precio de mercado (Indexado) más un margen de comercialización (Fee)"*.
 *   **Navegación Fluida**: El CUPS es clicable para auditar el contrato en detalle, y el botón de volver (`router.back()`) recuerda el estado del buscador y los filtros de la tabla de bajas.
+*   **Seguridad de Datos (RBAC)**: Para proteger la información confidencial de la empresa, los KPIs superiores (Bajas del mes, MWh perdidos, Vida media) y la columna de **Penalización** económica están ocultos de forma segura para los usuarios con rol `COMERCIAL` y `CANAL`. Solo los perfiles de `BACKOFFICE` y `SUPERADMIN` tienen acceso a estas métricas sensibles.
 
 ---
 
