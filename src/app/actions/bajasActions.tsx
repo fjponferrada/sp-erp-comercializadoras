@@ -601,7 +601,7 @@ import { PenaltyInvoicePDF } from '@/components/pdf/PenaltyInvoicePDF';
 import { uploadFileToR2 } from '@/lib/r2';
 import React from 'react';
 
-export async function savePenaltyAction(contractId: string, penalization: number, status: string) {
+export async function savePenaltyAction(contractId: string, penalization: number, status: string, generatePdf: boolean = true) {
   try {
     const visibilityFilter = await getUserVisibilityFilter();
     
@@ -633,21 +633,23 @@ export async function savePenaltyAction(contractId: string, penalization: number
     });
 
     // If status is FACTURADA, generate the PDF and the PenaltyInvoice record
-    if (status === 'FACTURADA' && penalization > 0) {
+    if (status === 'FACTURADA' && penalization > 0 && generatePdf) {
       // 1. Generate Invoice Number
       const year = new Date().getFullYear().toString().slice(-2);
-      // Find latest penalty invoice for this year/brand to get next number
-      const latestInvoice = await prisma.penaltyInvoice.findFirst({
+      // Find all penalty invoices for this year to get next number
+      const allInvoices = await prisma.penaltyInvoice.findMany({
         where: { invoiceNumber: { startsWith: `A${year}PEN` } },
-        orderBy: { invoiceNumber: 'desc' }
+        select: { invoiceNumber: true }
       });
       
       let nextNum = 1;
-      if (latestInvoice && latestInvoice.invoiceNumber) {
-        const match = latestInvoice.invoiceNumber.match(/PEN(\d+)$/);
-        if (match) {
-          nextNum = parseInt(match[1], 10) + 1;
-        }
+      const nums = allInvoices.map(inv => {
+        const match = inv.invoiceNumber.match(/PEN(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      });
+      
+      if (nums.length > 0) {
+        nextNum = Math.max(...nums) + 1;
       }
       
       const invoiceNumber = `A${year}PEN${nextNum.toString().padStart(3, '0')}`;
