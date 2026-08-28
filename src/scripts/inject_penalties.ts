@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const data = `PRPR257211225KC0F	23/4/2026	A26PEN025	€9,20	€11,14	CARMEN  PEREZ  PEREZ	44371480H
 PRPR259181025GF0F	23/4/2026	A26PEN024	€28,94	€35,02	JOSE ANTONIO ARJONA  BAYO	80146634Y
