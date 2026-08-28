@@ -35,27 +35,35 @@ export async function importInvoicesAction(invoicesData: any[]) {
       activeCompanyId = b?.companyId || null;
     }
 
-      const vatNumbers = invoicesData.map(r => r['CIF'] || r['NIF'] || r['DNI']).filter(Boolean);
+      const vatNumbers = invoicesData.map(r => {
+        const v = r['CIF'] || r['NIF'] || r['DNI'];
+        return v ? String(v).trim().toUpperCase() : null;
+      }).filter(Boolean);
       const cupsRaw = invoicesData.map(r => r['CUPS']).filter(Boolean);
       const cupsSet = Array.from(new Set(cupsRaw.map(c => String(c).trim().substring(0, 20))));
       const vatSet = Array.from(new Set(vatNumbers));
 
       const existingClients = await prisma.client.findMany({
-        where: { vatNumber: { in: vatSet }, brandId: activeBrandId }
+        where: { vatNumber: { in: vatSet as string[] }, brandId: activeBrandId }
       });
       const clientMap = new Map(existingClients.map(c => [c.vatNumber, c]));
 
       const existingSupplyPoints = await prisma.supplyPoint.findMany({
-        where: { cups: { in: cupsSet } }
+        where: { clientId: { in: existingClients.map(c => c.id) } }
       });
-      const supplyPointMap = new Map(existingSupplyPoints.map(sp => [sp.cups, sp]));
+      const supplyPointMap = new Map();
+      for (const sp of existingSupplyPoints) {
+        supplyPointMap.set(sp.cups.substring(0, 20), sp);
+      }
 
       for (const row of invoicesData) {
         // Mapeo defensivo de columnas
         const invoiceNumber = row['Numero Factura'] || row['Número Factura'] || row['NUMERO FACTURA'];
         const cupsRaw = row['CUPS'];
         const cups = cupsRaw ? String(cupsRaw).trim().substring(0, 20) : null;
-        const vatNumber = row['CIF'] || row['NIF'] || row['DNI'];
+        
+        const rawVat = row['CIF'] || row['NIF'] || row['DNI'];
+        const vatNumber = rawVat ? String(rawVat).trim().toUpperCase() : null;
         
         if (!invoiceNumber || !cups) {
           results.errors.push(`Fila sin Numero de Factura o CUPS (CIF: ${vatNumber})`);
