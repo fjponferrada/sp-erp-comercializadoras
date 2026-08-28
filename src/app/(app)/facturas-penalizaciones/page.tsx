@@ -26,7 +26,10 @@ export default async function FacturasPenalizacionesPage() {
       },
       supplyPoint: true
     },
-    orderBy: { issueDate: 'desc' },
+    orderBy: [
+      { issueDate: 'desc' },
+      { invoiceNumber: 'desc' }
+    ],
     take: 100
   });
 
