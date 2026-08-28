@@ -76,7 +76,17 @@ export const PenaltyInvoicePDF = ({ data }: { data: any }) => (
         <View style={styles.tableRow}>
           <View style={styles.colConcept}>
             <Text style={{ fontSize: 10, color: '#111827', marginBottom: 4 }}>Penalización por baja anticipada</Text>
-            <Text style={{ fontSize: 9, color: '#6B7280' }}>Resolución de contrato antes del fin de la permanencia</Text>
+            <Text style={{ fontSize: 9, color: '#6B7280', marginBottom: 2 }}>Resolución de contrato antes del fin de la permanencia</Text>
+            {data.daysRemaining !== undefined && (
+              <Text style={{ fontSize: 9, color: '#6B7280', marginTop: 4 }}>
+                Base de consumo diario considerado: {data.dailyConsumption ? data.dailyConsumption.toFixed(2) : '0.00'} kWh/día
+              </Text>
+            )}
+            {data.daysRemaining !== undefined && (
+              <Text style={{ fontSize: 9, color: '#6B7280' }}>
+                Días restantes hasta finalización de contrato: {data.daysRemaining} días
+              </Text>
+            )}
           </View>
           <View style={styles.colAmount}>
             <Text style={{ fontSize: 10 }}>{data.baseAmount.toFixed(2)} €</Text>

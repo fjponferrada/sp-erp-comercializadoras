@@ -130,22 +130,18 @@ export async function getPaginatedBajasAction(
     }
 
     // --- Helper function to calculate penalty ---
-    const calculatePenalty = (b: any): number => {
-      // 1. Extract dates (fallback to Airtable data)
+    const calculatePenaltyDetailed = (b: any): { amount: number, dailyConsumption: number, daysRemaining: number } => {
       let pStart = b.permanenceStartDate ? new Date(b.permanenceStartDate) : null;
-      let bDate = b.terminationDate ? new Date(b.terminationDate) : null;
-      let pMonths = b.permanenceMonths || 12;
-      
       const airtable = b.airtableData as any;
       if (!pStart && airtable?.['INICIO_PERMANENCIA']) pStart = new Date(airtable['INICIO_PERMANENCIA']);
-      if (!bDate && airtable?.['BAJA COMERCIALIZADORA']) bDate = new Date(airtable['BAJA COMERCIALIZADORA']);
-      if (!b.permanenceMonths && airtable?.['Meses Permanencia']) pMonths = parseInt(airtable['Meses Permanencia']) || 12;
+      const dAlta = pStart || (b.activationDate ? new Date(b.activationDate) : new Date());
+      const bDate = b.terminationDate ? new Date(b.terminationDate) : new Date();
+      if (!pStart) pStart = dAlta;
 
-      if (!pStart || !bDate) return 0;
-      
+      let pMonths = b.permanenceMonths || parseInt(airtable?.['Meses Permanencia']) || 12;
+
       const vat = (b.client?.vatNumber || '').toUpperCase().trim();
       const cnae = (b.supplyPoint?.cnae || '').trim();
-
       const isComunidad = vat.startsWith('H');
       const isFisica = /^[0-9XYZ]/.test(vat);
       const isCnaeHogar = cnae === '9820' || cnae === '9821';
@@ -172,16 +168,17 @@ export async function getPaginatedBajasAction(
         }
       }
 
-      // If contract terminated after permanence ended, 0 penalty
-      if (bDate >= pEnd) return 0;
-      
       let annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
-      annualCons = annualCons * 1000; // El ERP guarda este dato en MWh, lo pasamos a kWh
+      annualCons = annualCons * 1000;
       if (!annualCons && airtable?.['CONSUMO COMISION']) annualCons = parseFloat(airtable['CONSUMO COMISION']) * 1000;
       
+      const dailyConsumption = annualCons / 365;
       const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const expectedEnergyRemaining = (annualCons / 365) * daysRemaining;
+      const expectedEnergyRemaining = dailyConsumption * daysRemaining;
 
+      // If contract terminated after permanence ended, 0 penalty
+      if (bDate >= pEnd) return { amount: 0, dailyConsumption, daysRemaining: 0 };
+      
       const t = b.supplyPoint?.tariff || '';
       let energyPrice = 0;
       
@@ -208,35 +205,27 @@ export async function getPaginatedBajasAction(
       }
 
       if (!energyPrice || isNaN(energyPrice)) {
-        // Fallback para indexadas o contratos sin precio cargado
         if (t === '2.0TD') energyPrice = 0.16;
         else if (t === '3.0TD') energyPrice = 0.15;
         else if (t.startsWith('6.')) energyPrice = 0.14;
         else energyPrice = isResidencial ? 0.16 : 0.15; 
       }
 
+      let amount = 0;
       if (t.startsWith('6.')) {
-        // Tarifas de alta tensión: 30 €/MWh (0.03 €/kWh) sobre la energía pendiente
-        return expectedEnergyRemaining * 0.03; // Base Imponible
-      }
-
-      if (isResidencial) {
-        // Desistimiento: 14 days
-        const daysFromStart = Math.ceil((bDate.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysFromStart <= 14) return 0;
-
-        // La ley (RD 1435/2002) especifica "5% de la ENERGÍA pendiente de suministro". 
-        // No se puede incluir la potencia.
-        const energyCost = expectedEnergyRemaining * energyPrice;
-        return energyCost * 0.05; // Base Imponible
+        amount = expectedEnergyRemaining * 0.03;
       } else {
-        // No Residencial (Resto)
-        // Usamos la energía prorrateada porque consultar la suma de facturas es muy costoso (N queries)
-        // Matemáticamente: Energía Anual * (Días Restantes / 365) = Energía Anual - Energía Estimada Pasada
-        const energyCost = expectedEnergyRemaining * energyPrice;
-        return energyCost * 0.05; // Base Imponible
+        const daysFromStart = Math.ceil((bDate.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24));
+        if (isResidencial && daysFromStart <= 14) {
+          amount = 0;
+        } else {
+          amount = expectedEnergyRemaining * energyPrice * 0.05;
+        }
       }
+      return { amount, dailyConsumption, daysRemaining };
     };
+
+    const calculatePenalty = (b: any): number => calculatePenaltyDetailed(b).amount;
     // ---------------------------------------------
 
     // Puesto que motivoFilter actual está hardcodeado a "Fin de permanencia", simulamos:
@@ -654,6 +643,35 @@ export async function savePenaltyAction(contractId: string, penalization: number
       
       const invoiceNumber = `A${year}PEN${nextNum.toString().padStart(3, '0')}`;
       
+      // Calculate daily consumption and days remaining for the PDF
+      let annualCons = contract.annualConsumption || contract.supplyPoint?.annualConsumption || 0;
+      annualCons = annualCons * 1000;
+      const dailyConsumption = annualCons / 365;
+      
+      let pStart = contract.permanenceStartDate || contract.activationDate || new Date();
+      let pMonths = contract.permanenceMonths || 12;
+      let bDate = contract.terminationDate || new Date();
+      let pEnd = new Date(pStart);
+      pEnd.setMonth(pEnd.getMonth() + pMonths);
+      
+      const vat = (contract.client?.vatNumber || '').toUpperCase().trim();
+      const cnae = (contract.supplyPoint?.cnae || '').trim();
+      let isResidencial = vat.startsWith('H') || (/^[0-9XYZ]/.test(vat) && (cnae === '9820' || cnae === '9821'));
+
+      if (!isResidencial) {
+        let currentCycle = 1;
+        let thresholdDate = new Date(pStart);
+        thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths - 1));
+        while (bDate > thresholdDate) {
+          currentCycle++;
+          pEnd = new Date(pStart);
+          pEnd.setMonth(pEnd.getMonth() + (pMonths * currentCycle));
+          thresholdDate = new Date(pStart);
+          thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths * currentCycle - 1));
+        }
+      }
+      const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
+
       // 2. Prepare Data
       const baseAmount = penalization;
       const taxAmount = baseAmount * 0.21;
@@ -676,6 +694,8 @@ export async function savePenaltyAction(contractId: string, penalization: number
         clientCity: contract.client.billingCity || contract.supplyPoint.city,
         clientPostalCode: contract.client.billingPostalCode || contract.supplyPoint.postalCode,
         cups: contract.supplyPoint.cups,
+        dailyConsumption,
+        daysRemaining
       };
 
       // 3. Generate PDF
