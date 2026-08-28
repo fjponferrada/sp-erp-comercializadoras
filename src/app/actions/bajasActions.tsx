@@ -551,19 +551,31 @@ export async function generateBajaXml(data: {
   }
 }
 
+import { renderToStream } from '@react-pdf/renderer';
+import { PenaltyInvoicePDF } from '@/components/pdf/PenaltyInvoicePDF';
+import { uploadFileToR2 } from '@/lib/r2';
+import React from 'react';
+
 export async function savePenaltyAction(contractId: string, penalization: number, status: string) {
   try {
     const visibilityFilter = await getUserVisibilityFilter();
     
-    // Check permission/existence
+    // Check permission/existence and include relations needed for PDF
     const contract = await prisma.contract.findFirst({
       where: {
         id: contractId,
         ...visibilityFilter
+      },
+      include: {
+        client: true,
+        supplyPoint: true,
+        brand: {
+          include: { company: true }
+        },
       }
     });
 
-    if (!contract) {
+    if (!contract || !contract.brand || !contract.client || !contract.supplyPoint) {
       return { success: false, error: 'Contract not found or access denied' };
     }
 
@@ -575,8 +587,79 @@ export async function savePenaltyAction(contractId: string, penalization: number
       }
     });
 
+    // If status is FACTURADA, generate the PDF and the PenaltyInvoice record
+    if (status === 'FACTURADA' && penalization > 0) {
+      // 1. Generate Invoice Number
+      const year = new Date().getFullYear().toString().slice(-2);
+      // Find latest penalty invoice for this year/brand to get next number
+      const latestInvoice = await prisma.penaltyInvoice.findFirst({
+        where: { invoiceNumber: { startsWith: `A${year}PEN` } },
+        orderBy: { invoiceNumber: 'desc' }
+      });
+      
+      let nextNum = 1;
+      if (latestInvoice && latestInvoice.invoiceNumber) {
+        const match = latestInvoice.invoiceNumber.match(/PEN(\d+)$/);
+        if (match) {
+          nextNum = parseInt(match[1], 10) + 1;
+        }
+      }
+      
+      const invoiceNumber = `A${year}PEN${nextNum.toString().padStart(3, '0')}`;
+      
+      // 2. Prepare Data
+      const baseAmount = penalization;
+      const taxAmount = baseAmount * 0.21;
+      const totalAmount = baseAmount + taxAmount;
+      const issueDate = new Date().toLocaleDateString('es-ES');
+      
+      const pdfData = {
+        invoiceNumber,
+        issueDate,
+        baseAmount,
+        taxAmount,
+        totalAmount,
+        brandName: contract.brand.company.name || contract.brand.name,
+        brandVat: contract.brand.company.cif || '',
+        brandAddress: contract.brand.company.address || contract.brand.address || '',
+        brandLogo: contract.brand.logoUrl || null,
+        clientName: contract.client.businessName,
+        clientVat: contract.client.vatNumber,
+        clientAddress: contract.client.billingAddress || contract.supplyPoint.address,
+        clientCity: contract.client.billingCity || contract.supplyPoint.city,
+        clientPostalCode: contract.client.billingPostalCode || contract.supplyPoint.postalCode,
+        cups: contract.supplyPoint.cups,
+      };
+
+      // 3. Generate PDF
+      const stream = await renderToStream(<PenaltyInvoicePDF data={pdfData} />);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const pdfBuffer = Buffer.concat(chunks);
+
+      // 4. Upload to R2
+      const fileName = `penalizaciones/${new Date().getFullYear()}/${invoiceNumber}.pdf`;
+      const pdfUrl = await uploadFileToR2(fileName, pdfBuffer, 'application/pdf');
+
+      // 5. Save to DB
+      await prisma.penaltyInvoice.create({
+        data: {
+          invoiceNumber,
+          amount: totalAmount,
+          pdfUrl,
+          contractId: contract.id,
+          clientId: contract.client.id,
+          supplyPointId: contract.supplyPoint.id,
+          status: 'EMITIDA'
+        }
+      });
+    }
+
     return { success: true };
   } catch (error: any) {
+    console.error("Error saving penalty:", error);
     return { success: false, error: error.message };
   }
 }

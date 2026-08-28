@@ -172,6 +172,7 @@ model Client {
   contracts                 Contract[]
   documents                 Document[]
   internalInvoices          InternalInvoice[]
+  penaltyInvoices           PenaltyInvoice[]
   invoices                  Invoice[]
   solarQuotes               SolarQuote[]
   supplyPoints              SupplyPoint[]
@@ -353,6 +354,7 @@ model SupplyPoint {
   documents           Document[]
   f1Invoices          F1Invoice[]
   internalInvoices    InternalInvoice[]
+  penaltyInvoices     PenaltyInvoice[]
   invoices            Invoice[]
   solarQuotes         SolarQuote[]
   client              Client            @relation(fields: [clientId], references: [id])
@@ -510,6 +512,7 @@ model Contract {
   documents                  Document[]
   f1Invoices                 F1Invoice[]
   internalInvoices           InternalInvoice[]
+  penaltyInvoices            PenaltyInvoice[]
   invoices                   Invoice[]
   Lead                       Lead?
   switchingEvents            SwitchingEvent[]
@@ -1149,4 +1152,21 @@ enum InternalInvoiceStatus {
   EMITIDA
   ABONO
   REQUIERE_REPARACION
+}
+model PenaltyInvoice {
+  id             String       @id @default(cuid())
+  invoiceNumber  String       @unique
+  amount         Float
+  issueDate      DateTime     @default(now())
+  pdfUrl         String?
+  contractId     String
+  clientId       String
+  supplyPointId  String
+  status         String       @default("EMITIDA")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  contract       Contract     @relation(fields: [contractId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id])
+  supplyPoint    SupplyPoint  @relation(fields: [supplyPointId], references: [id])
 }

@@ -68,6 +68,7 @@ const baseNavGroups = [
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
       { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/bajas', icon: TrendingDown, label: 'Bajas', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
+      { href: '/facturas-penalizaciones', icon: Receipt, label: 'Facturas Penalizaciones' },
     ],
   },
   {
