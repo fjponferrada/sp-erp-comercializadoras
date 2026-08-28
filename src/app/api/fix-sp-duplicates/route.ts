@@ -45,7 +45,7 @@ export async function GET(req: Request) {
         sps.sort((a, b) => {
           if (b.contracts.length !== a.contracts.length) return b.contracts.length - a.contracts.length;
           if (b.cups.length !== a.cups.length) return b.cups.length - a.cups.length;
-          return a.createdAt.getTime() - b.createdAt.getTime();
+          return 0; // SupplyPoint doesn't have createdAt
         });
 
         const primarySp = sps[0];
