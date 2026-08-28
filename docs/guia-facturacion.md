@@ -49,3 +49,12 @@ El importador está dividido en dos módulos visuales que trabajan en conjunto p
    - Una vez creados los registros, el operador arrastra los documentos PDF físicos de las facturas (se pueden procesar cientos a la vez).
    - El ERP lee el nombre de cada archivo PDF (por ejemplo, `F-2026-0455.pdf`).
    - Busca en la base de datos una factura que tenga ese mismo número y **enlaza el PDF al registro**. A partir de ese momento, la factura queda 100% completada y lista para ser visualizada o enviada desde la página de CRM Ventas.
+
+---
+
+## 4. Reglas Críticas de Negocio en Base de Datos (Integridad CUPS + CIF)
+
+Para evitar duplicidades y fallos de vinculación entre contratos y facturas, el ERP aplica internamente dos reglas estrictas de consolidación de datos:
+
+1. **Unicidad por CUPS + CIF (Cliente):** Un Punto de Suministro puede estar duplicado en base de datos **solo si** pertenece a diferentes clientes (diferente CIF). Esto permite preservar el histórico de un CUPS cuando hay un cambio de titular. El ERP siempre buscará el suministro cruzando el CUPS con el CIF del cliente actual que viene en la factura.
+2. **Regla de los 20 Caracteres:** A la hora de comparar CUPS (que en ocasiones vienen con 22 caracteres incluyendo los dígitos de control, y en otras con 20 caracteres), el motor de importación y el calculador de Energía Pendiente **solo tendrán en cuenta los primeros 20 caracteres**. Esto garantiza que si se sube un Excel con CUPS recortados, las facturas se sigan enlazando mágicamente a su Punto de Suministro y a su Contrato sin crear suministros huérfanos.
