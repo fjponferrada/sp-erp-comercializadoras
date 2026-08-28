@@ -35,11 +35,21 @@ La prioridad (de mayor a menor) es la siguiente:
 
 El parseo de los archivos CCH implica complejas reglas de estandarización defensiva:
 
-### A. Naturaleza Dual (Consumo vs. Excedentes)
-Los archivos CCH **no son exclusivos de consumo**. Una misma fila de un fichero (ej. P5D) puede contener simultáneamente columnas de Energía Activa Entrante (Consumo) y Energía Activa Saliente (Excedentes Solares). 
-El `cchParser.ts` lee ambas columnas a la vez y genera **DOS** curvas independientes en la base de datos para el mismo CUPS y fecha:
+### A. Naturaleza Dual y Posiciones (Consumo vs. Excedentes)
+Los archivos CCH **no son exclusivos de consumo**. Una misma fila de un fichero puede contener simultáneamente columnas de Energía Activa Entrante (Consumo) y Energía Activa Saliente (Excedentes Solares). 
+
+**Atención a la nomenclatura de columnas (REE vs Código)**:
+La documentación oficial de Red Eléctrica (REE / CNMC v4.3) lista las columnas utilizando letras (A, B, C, D...). Sin embargo, a nivel de programación (JavaScript/TypeScript), los arrays se indexan desde el cero. Por tanto, la correspondencia es: `A=0, B=1, C=2, D=3, E=4, F=5, G=6`, etc.
+
+Además, la posición de estas magnitudes varía erráticamente según el tipo de fichero. El sistema lo detecta dinámicamente:
+- **Ficheros F5D / P5D**: La Activa Entrante es la letra D (columna `3`) y la Saliente la letra E (columna `4`).
+- **Ficheros F1 / C1**: La Activa Entrante es la letra E (columna `4`) y la Saliente la letra F (columna `5`).
+- **Ficheros P1 / P1D**: La Activa Entrante es la letra E (columna `4`), pero la Saliente es la letra G (columna `6`), porque la letra F la ocupa un indicador de calidad.
+
+Para cada fila válida, el `cchParser.ts` lee estas magnitudes a la vez y genera **DOS** curvas independientes en la base de datos para el mismo CUPS y fecha:
 - `type = CONSUMPTION` (Consumo)
 - `type = SURPLUS` (Excedentes)
+(Solo se insertará la curva `SURPLUS` si contiene al menos un cuarto de hora con inyección mayor que cero, para evitar saturar la base de datos).
 
 ### B. Corrección de Unidades (Wh a kWh)
 La base de datos almacena estricta y únicamente en **kWh**. Algunas distribuidoras envían los ficheros diarios (P1D) en Vatios-hora (Wh). El parser implementa un umbral heurístico: si la suma diaria excede un límite ilógico (ej. > 2000 para tarifa VIP, > 300 para PYME), el motor deduce que está en Wh y aplica automáticamente un divisor `/ 1000`.

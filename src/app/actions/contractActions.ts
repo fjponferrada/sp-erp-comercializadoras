@@ -962,8 +962,9 @@ export async function updateContractDatesAction(
         });
       } else {
         // Clonar y crear un nuevo Supply Point para evitar fuga de datos
+        const cups20 = contract.supplyPoint.cups.substring(0, 20);
         const existingSp = await prisma.supplyPoint.findFirst({
-          where: { cups: contract.supplyPoint.cups, clientId: contract.clientId }
+          where: { cups: { startsWith: cups20 }, clientId: contract.clientId }
         });
 
         let newSupplyPointId = contract.supplyPointId;

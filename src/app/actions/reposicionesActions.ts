@@ -158,8 +158,9 @@ export async function respondToE2_14(eventId: string, isAccept: boolean, motivos
 
 export async function generateE2_01(cups: string, codigoRef: string, tipoReposicion: string) {
   try {
+    const cups20 = cups.substring(0, 20);
     const supplyPoint = await prisma.supplyPoint.findFirst({
-      where: { cups: cups },
+      where: { cups: { startsWith: cups20 } },
       include: {
         client: true
       }

@@ -32,8 +32,9 @@ export async function searchCupsForClaim(cups: string) {
       return { success: false, error: 'No autorizado' };
     }
 
+    const cups20 = cups.substring(0, 20);
     const supplyPoints = await prisma.supplyPoint.findMany({
-      where: { cups: { equals: cups, mode: 'insensitive' } },
+      where: { cups: { startsWith: cups20, mode: 'insensitive' } },
       include: {
         client: true,
         contracts: true,
@@ -217,8 +218,9 @@ export async function generateClaim(data: any) {
       const subtipo = claimSubmotivo ? claimSubmotivo.split('-')[0].trim() : '';
 
       // Obtener todos los SupplyPoints para ese CUPS
+      const cups20 = claimCups.substring(0, 20);
       const supplyPoints = await prisma.supplyPoint.findMany({
-        where: { cups: { equals: claimCups, mode: 'insensitive' } },
+        where: { cups: { startsWith: cups20, mode: 'insensitive' } },
         include: { 
           client: { include: { brand: { include: { company: true } } } },
           contracts: {

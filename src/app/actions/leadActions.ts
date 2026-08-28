@@ -164,7 +164,8 @@ export async function createLeadAction(formData: FormData, apiContext?: { userId
     });
 
     if (cups && type === 'LUZ') {
-      const sp = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: user.brandId } } });
+      const cups20 = cups.substring(0, 20);
+      const sp = await tx.supplyPoint.findFirst({ where: { cups: { startsWith: cups20 }, client: { brandId: user.brandId } } });
       if (!sp) {
         const { calculateSegment } = await import('@/lib/services/SegmentService');
         const newSegment = calculateSegment(
@@ -253,7 +254,8 @@ export async function createLeadAction(formData: FormData, apiContext?: { userId
         else if (forceSelfConsumption === 'NO') autoConsumo = null;
         else if (autoConsumo && String(autoConsumo).includes('41')) autoConsumo = '12';
 
-        let sp = await prisma.supplyPoint.findFirst({ where: { cups, client: { brandId: user.brandId } } });
+        const cups20 = cups.substring(0, 20);
+        let sp = await prisma.supplyPoint.findFirst({ where: { cups: { startsWith: cups20 }, client: { brandId: user.brandId } } });
         // ELIMINADO: No sobrescribimos la información base del SupplyPoint existente al crear un Lead.
         // La actualización de SupplyPoint solo se hace si no existía, o cuando el contrato se activa definitivamente.
         
@@ -722,7 +724,8 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
     // Actualizar Suministro si hay CUPS
     if (cups) {
       const user = await prisma.user.findUnique({ where: { email: session.user.email! }});
-      const sp = await tx.supplyPoint.findFirst({ where: { cups, client: { brandId: user!.brandId } } });
+      const cups20 = cups.substring(0, 20);
+      const sp = await tx.supplyPoint.findFirst({ where: { cups: { startsWith: cups20 }, client: { brandId: user!.brandId } } });
       if (!sp) {
         const { calculateSegment } = await import('@/lib/services/SegmentService');
         const newSegment = calculateSegment(
