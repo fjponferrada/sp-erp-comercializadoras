@@ -577,12 +577,15 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                 type="number" 
                 step="0.01" 
                 className="form-input" 
-                style={{ width: '100%', fontSize: '1rem', padding: '10px' }}
+                style={{ width: '100%', fontSize: '1rem', padding: '10px', opacity: penaltyModalData.penaltyStatus === 'FACTURADA' ? 0.6 : 1 }}
                 value={editingPenalty}
                 onChange={e => setEditingPenalty(e.target.value)}
+                disabled={penaltyModalData.penaltyStatus === 'FACTURADA'}
               />
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-                Puedes ajustar manualmente el importe antes de confirmarlo.
+              <div style={{ fontSize: '0.75rem', color: penaltyModalData.penaltyStatus === 'FACTURADA' ? '#10b981' : 'var(--text-muted)', marginTop: '6px' }}>
+                {penaltyModalData.penaltyStatus === 'FACTURADA' 
+                  ? 'Esta penalización ya ha sido facturada y no puede modificarse.'
+                  : 'Puedes ajustar manualmente el importe antes de confirmarlo.'}
               </div>
             </div>
 
@@ -592,22 +595,25 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                 onClick={() => setPenaltyModalData(null)}
                 disabled={savingPenalty}
               >
-                Cancelar
+                {penaltyModalData.penaltyStatus === 'FACTURADA' ? 'Cerrar' : 'Cancelar'}
               </button>
-              <button 
-                className="btn-secondary" 
-                style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)' }}
-                onClick={() => handleSavePenalty('DESCARTADA')}
-                disabled={savingPenalty}
-              >
-                Descartar (No Cobrar)
-              </button>
+              {penaltyModalData.penaltyStatus !== 'FACTURADA' && (
+                <button 
+                  className="btn-secondary" 
+                  style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)' }}
+                  onClick={() => handleSavePenalty('DESCARTADA')}
+                  disabled={savingPenalty}
+                >
+                  Descartar (No Cobrar)
+                </button>
+              )}
               <button 
                 className="btn-primary" 
                 onClick={() => handleSavePenalty('FACTURADA')}
-                disabled={savingPenalty}
+                disabled={savingPenalty || penaltyModalData.penaltyStatus === 'FACTURADA'}
+                style={penaltyModalData.penaltyStatus === 'FACTURADA' ? { background: '#10b981', borderColor: '#10b981', opacity: 0.8 } : {}}
               >
-                {savingPenalty ? 'Guardando...' : 'Confirmar y Facturar'}
+                {savingPenalty ? 'Guardando...' : penaltyModalData.penaltyStatus === 'FACTURADA' ? '✓ Ya Facturada' : 'Confirmar y Facturar'}
               </button>
             </div>
           </div>
