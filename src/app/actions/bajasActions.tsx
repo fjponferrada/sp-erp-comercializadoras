@@ -217,7 +217,7 @@ export async function getPaginatedBajasAction(
 
       if (t.startsWith('6.')) {
         // Tarifas de alta tensión: 30 €/MWh (0.03 €/kWh) sobre la energía pendiente
-        return expectedEnergyRemaining * 0.03 * 1.21;
+        return expectedEnergyRemaining * 0.03; // Base Imponible
       }
 
       if (isResidencial) {
@@ -228,13 +228,13 @@ export async function getPaginatedBajasAction(
         // La ley (RD 1435/2002) especifica "5% de la ENERGÍA pendiente de suministro". 
         // No se puede incluir la potencia.
         const energyCost = expectedEnergyRemaining * energyPrice;
-        return energyCost * 1.21 * 0.05;
+        return energyCost * 0.05; // Base Imponible
       } else {
         // No Residencial (Resto)
         // Usamos la energía prorrateada porque consultar la suma de facturas es muy costoso (N queries)
         // Matemáticamente: Energía Anual * (Días Restantes / 365) = Energía Anual - Energía Estimada Pasada
         const energyCost = expectedEnergyRemaining * energyPrice;
-        return energyCost * 1.21 * 0.05;
+        return energyCost * 0.05; // Base Imponible
       }
     };
     // ---------------------------------------------

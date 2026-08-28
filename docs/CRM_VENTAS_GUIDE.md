@@ -54,7 +54,21 @@ El panel de **Bajas** se alimenta directamente de los eventos del motor de Switc
 
 ---
 
-## 5. Rendimiento y Base de Datos (Prisma Postgres / Vercel)
+## 5. Penalizaciones, Preavisos y Cálculo Energético
+
+El sistema cuenta con un motor de cálculo de penalizaciones por incumplimiento de permanencia, adaptado estrictamente a la normativa legal y validado para su facturación directa.
+
+*   **Periodo de Preaviso y Prórrogas**: Los clientes no residenciales (empresas, CIFs y personas físicas con CNAE 9820/9821) deben preavisar con 1 mes de antelación si no desean renovar el contrato. Si causan baja pasada esta ventana de preaviso (ej. a los 11 meses y medio), el ERP detecta el incumplimiento, muestra una alerta visual (⚠️) y prorroga internamente las fechas de permanencia del contrato por un nuevo ciclo completo (ej. 12 meses, 24 meses...) para calcular la penalización basándose en todos los días de prórroga incumplidos. Los clientes residenciales están exentos legalmente de penalización durante las prórrogas tácitas.
+*   **Cálculo Legal de la Penalización**:
+    *   **Tarifas de Baja Tensión (2.0TD, 3.0TD)**: La ley (RD 1435/2002) permite penalizar con un máximo del **5% sobre el precio del contrato por la energía estimada pendiente**.
+    *   **Tarifas de Alta Tensión (6.XTD)**: Por cláusula contractual, se aplica un precio fijo de **30 €/MWh (0,03 €/kWh)** sobre la energía estimada pendiente.
+*   **Media Ponderada de Precios**: Para que la estimación sea lo más fiel a la realidad de consumo del cliente, no se usa el precio del periodo P1, sino que el ERP extrae una media ponderada de todos los precios (ej. en 2.0TD, 50% P3 + 25% P1 + 25% P2) a la que multiplica por la energía diaria estimada (Consumo Anual / 365 * Días Restantes).
+*   **Trazabilidad Financiera**: El cálculo base del sistema es **siempre la Base Imponible**. El 21% de IVA se inyecta de forma dinámica exclusivamente en el momento de generar y pintar el documento PDF final de la factura de penalización, evitando descuadres y cruces de "peras con manzanas" en los listados del CRM.
+*   **Integridad de Facturación**: Una vez que una penalización se marca como "Ya Facturada", el input numérico se bloquea y se emite la factura (deduplicando sufijos si un mismo PDF engloba a múltiples CUPS o contratos).
+
+---
+
+## 6. Rendimiento y Base de Datos (Prisma Postgres / Vercel)
 
 Al alojar la base de datos en **Prisma Postgres (`db.prisma.io`)** y la web en **Vercel (Serverless)**, la gestión de conexiones es crítica:
 

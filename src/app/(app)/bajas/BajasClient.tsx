@@ -573,7 +573,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
             </h3>
             
             <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-elevated)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Cálculo Automático ERP</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Cálculo Automático ERP (Base Imponible)</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {penaltyModalData.calculatedPenalty ? penaltyModalData.calculatedPenalty.toFixed(2) : '0.00'} €
               </div>
@@ -581,7 +581,7 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>
-                Penalización a Aplicar (€)
+                Penalización a Aplicar (Base Imponible en €)
               </label>
               <input 
                 type="number" 
