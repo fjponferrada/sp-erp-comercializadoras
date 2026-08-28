@@ -284,6 +284,24 @@ export async function getPaginatedBajasAction(
       const airtable = b.airtableData as any;
       if (!pStart && airtable?.['INICIO_PERMANENCIA']) pStart = new Date(airtable['INICIO_PERMANENCIA']);
 
+      const vat = (b.client?.vatNumber || '').toUpperCase().trim();
+      const cnae = (b.supplyPoint?.cnae || '').trim();
+      const isComunidad = vat.startsWith('H');
+      const isFisica = /^[0-9XYZ]/.test(vat);
+      const isCnaeHogar = cnae === '9820' || cnae === '9821';
+      let isResidencial = false;
+      if (isComunidad) isResidencial = true;
+      else if (isFisica && isCnaeHogar) isResidencial = true;
+
+      let isPreavisoBreached = false;
+      if (!isResidencial && dAlta && dBaja) {
+        const thresholdDate = new Date(dAlta);
+        thresholdDate.setMonth(thresholdDate.getMonth() + 11);
+        if (dBaja > thresholdDate) {
+          isPreavisoBreached = true;
+        }
+      }
+
       return {
         id: b.id,
         contractCode: b.contractCode || 'S/N',
@@ -304,7 +322,8 @@ export async function getPaginatedBajasAction(
         bajaProcess: b.bajaProcess || null,
         calculatedPenalty: b.calculatedPenalty !== null ? b.calculatedPenalty : calculatePenalty(b),
         penalization: b.penalization,
-        penaltyStatus: b.penaltyStatus || 'PENDIENTE'
+        penaltyStatus: b.penaltyStatus || 'PENDIENTE',
+        isPreavisoBreached
       };
     });
 

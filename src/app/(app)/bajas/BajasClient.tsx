@@ -29,6 +29,7 @@ export interface BajaData {
   calculatedPenalty?: number;
   penalization?: number | null;
   penaltyStatus?: string;
+  isPreavisoBreached?: boolean;
 }
 
 import WinbackOfferModal from '@/components/bajas/WinbackOfferModal';
@@ -477,7 +478,16 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                     <td><span className="mono-cell" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{b.mwh}</span></td>
                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{b.producto}</td>
                     <td className="mono-cell" style={{ fontSize: '0.78rem', color: '#10b981' }}>{b.fechaAlta}</td>
-                    <td className="mono-cell" style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{b.fechaBaja}</td>
+                    <td className="mono-cell" style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {b.fechaBaja}
+                        {b.isPreavisoBreached && (
+                          <span title="Posible incumplimiento de preaviso de 1 mes antes de la fecha de vencimiento" style={{ color: '#f59e0b', fontSize: '1rem', lineHeight: 1 }}>
+                            ⚠️
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       {b.bajaProcess ? (
                         <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.72rem' }}>{b.bajaProcess}</span>
