@@ -11,8 +11,10 @@ A diferencia de CRMs genéricos, este sistema utiliza un modelo de **Trazabilida
 *   **Versionado (`version`)**: Todo contrato nuevo e independiente nace en su versión base (0 o 1). Si un cliente se va y vuelve años después a la misma casa (mismo CUPS), firmará un contrato totalmente nuevo que volverá a nacer en su versión base. Cualquier modificación posterior sobre un contrato vivo (Cambio de titular, cambio de tarifa) genera un nuevo registro de contrato con `version + 1`.
 *   **Encadenamiento (`previousContractId`)**: El nuevo borrador se enlaza al contrato anterior. Esto permite saber de dónde viene un contrato y trazar su árbol genealógico. Dos contratos sin parentesco para el mismo CUPS nunca se cruzarán en sus versiones.
 *   **Tipos de Modificación (M1)**: 
-    *   **Administrativa (Cambio de Titular)**: Hereda las fechas contractuales (`expectedEndDate`, `permanenceStartDate`) pero cambia el `client` asociado.
+    *   **Administrativa (Cambio de Titular)**: Hereda las fechas contractuales (`expectedEndDate`, `permanenceStartDate`) pero cambia el `client` asociado. **Importante:** Debido a la regla de integridad del ERP, un cambio de CIF requiere la creación de un nuevo `SupplyPoint` que apunte al mismo CUPS pero con el nuevo cliente, manteniendo así el histórico de facturación de cada propietario separado.
     *   **Técnica (Cambio de Tarifa/Potencia)**: Modifica los parámetros técnicos (P1-P6) pero mantiene al mismo cliente.
+
+*   **Identidad Unívoca de Suministros**: A nivel de base de datos, los Puntos de Suministro son únicos por la combinación de **CUPS + CIF**. Además, todas las búsquedas y cruces de información (importadores, cálculos de energía) leen **únicamente los primeros 20 caracteres** del CUPS para evitar fallos de vinculación por culpa de los dígitos de control.
 
 ---
 
