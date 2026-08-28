@@ -35,18 +35,18 @@ export default async function FacturasPenalizacionesPage() {
       <Topbar title="Facturas de Penalizaciones" subtitle="Historial de penalizaciones facturadas" />
       <div style={{ padding: '24px' }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div className="table-responsive">
-            <table className="table">
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th>FACTURA</th>
-                  <th>FECHA</th>
-                  <th>CLIENTE</th>
+                  <th>Factura</th>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
                   <th>CUPS</th>
-                  <th>PRODUCTO</th>
-                  <th>IMPORTE (CON IVA)</th>
-                  <th>ESTADO</th>
-                  <th>ACCIONES</th>
+                  <th>Producto</th>
+                  <th>Importe (con IVA)</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
