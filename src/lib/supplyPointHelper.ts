@@ -5,11 +5,10 @@ export async function findOrUpdateSupplyPointByCups(prisma: any, targetCups: str
   
   const cups20 = targetCups.substring(0, 20).toUpperCase();
 
-  // Buscar por los primeros 20 caracteres y el cliente
+  // Buscar por los primeros 20 caracteres independientemente del cliente actual
   let supplyPoint = await prisma.supplyPoint.findFirst({
     where: { 
-      cups: { startsWith: cups20 },
-      clientId: clientId 
+      cups: { startsWith: cups20 }
     },
     include: { contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }
   });

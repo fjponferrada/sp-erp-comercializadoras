@@ -57,12 +57,11 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
       JOIN "SupplyPoint" sp ON c."supplyPointId" = sp.id
       JOIN "Brand" b ON c."brandId" = b.id
       LEFT JOIN (
-        SELECT sp2."cups", MAX(i2."billingEnd") as "lastBilledDate"
+        SELECT SUBSTRING(sp2."cups", 1, 20) as "baseCups", MAX(i2."billingEnd") as "lastBilledDate"
         FROM "Invoice" i2
-        JOIN "Contract" c2 ON i2."contractId" = c2.id
-        JOIN "SupplyPoint" sp2 ON c2."supplyPointId" = sp2.id
-        GROUP BY sp2."cups"
-      ) i_max ON i_max."cups" = sp."cups"
+        JOIN "SupplyPoint" sp2 ON i2."supplyPointId" = sp2.id
+        GROUP BY SUBSTRING(sp2."cups", 1, 20)
+      ) i_max ON i_max."baseCups" = SUBSTRING(sp."cups", 1, 20)
       WHERE c.status IN ('ACTIVO', 'FINALIZADO', 'Finalizado', 'Activo')
       AND c."activationDate" IS NOT NULL
       AND b."companyId" = ${activeCompanyId}
@@ -72,7 +71,7 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
 
     const historyM12 = await prisma.$queryRaw`
       SELECT 
-        sp."cups",
+        SUBSTRING(sp."cups", 1, 20) as "cups",
         EXTRACT(MONTH FROM i."billingEnd") as "month",
         SUM(
           CASE 
@@ -91,7 +90,7 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
       WHERE i."billingEnd" >= ${subMonths(today, 15)}
         AND i."billingStart" IS NOT NULL
         AND i."billingEnd" IS NOT NULL
-      GROUP BY sp."cups", EXTRACT(MONTH FROM i."billingEnd")
+      GROUP BY SUBSTRING(sp."cups", 1, 20), EXTRACT(MONTH FROM i."billingEnd")
     `;
 
     const m12Map = new Map<string, number>();
@@ -269,7 +268,7 @@ export async function getPendingEnergyAction(): Promise<{ success: true; data: P
         if (!annualConsumption || annualConsumption < 40) return dailyConsumption;
         
         const monthNum = targetMonth.getMonth() + 1;
-        const seasonalDaily = m12Map.get(`${cups}_${monthNum}`);
+        const seasonalDaily = m12Map.get(`${cups.substring(0, 20)}_${monthNum}`);
         return seasonalDaily !== undefined ? seasonalDaily : dailyConsumption;
       };
 
