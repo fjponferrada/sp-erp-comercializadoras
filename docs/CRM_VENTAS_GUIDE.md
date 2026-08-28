@@ -15,6 +15,7 @@ A diferencia de CRMs genéricos, este sistema utiliza un modelo de **Trazabilida
     *   **Técnica (Cambio de Tarifa/Potencia)**: Modifica los parámetros técnicos (P1-P6) pero mantiene al mismo cliente.
 
 *   **Identidad Unívoca de Suministros**: A nivel de base de datos, los Puntos de Suministro son únicos por la combinación de **CUPS + CIF**. Además, todas las búsquedas y cruces de información (importadores, cálculos de energía) leen **únicamente los primeros 20 caracteres** del CUPS para evitar fallos de vinculación por culpa de los dígitos de control.
+*   **Normalización Estricta de NIFs**: En todos los importadores y lógicas de matching, el CIF/NIF debe procesarse siempre con `.trim().toUpperCase()` antes de buscarse en la base de datos. Un espacio invisible accidental en un Excel (ej. `"B12345678 "`) generaría un cliente nuevo fantasma y duplicaría los Puntos de Suministro al no coincidir exactamente.
 
 ---
 
