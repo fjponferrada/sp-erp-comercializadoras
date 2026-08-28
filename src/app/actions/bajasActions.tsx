@@ -687,7 +687,7 @@ export async function savePenaltyAction(contractId: string, penalization: number
         brandName: contract.brand.company.name || contract.brand.name,
         brandVat: contract.brand.company.cif || '',
         brandAddress: contract.brand.company.address || contract.brand.address || '',
-        brandLogo: contract.brand.logoUrl || null,
+        brandLogo: contract.brand.invoiceLogoUrl || contract.brand.logoUrl || null,
         clientName: contract.client.businessName,
         clientVat: contract.client.vatNumber,
         clientAddress: contract.client.billingAddress || contract.supplyPoint.address,
