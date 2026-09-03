@@ -112,11 +112,11 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
     }
   }, [penaltyModalData]);
 
-  const handleSavePenalty = async (status: string) => {
+  const handleSavePenalty = async (status: string, generatePdf: boolean = true) => {
     if (!penaltyModalData) return;
     setSavingPenalty(true);
     const val = parseFloat(editingPenalty);
-    const result = await savePenaltyAction(penaltyModalData.id, isNaN(val) ? 0 : val, status);
+    const result = await savePenaltyAction(penaltyModalData.id, isNaN(val) ? 0 : val, status, generatePdf);
     if (result.success) {
       // Update local state
       setBajas(prev => prev.map(b => b.id === penaltyModalData.id ? { ...b, penalization: isNaN(val) ? 0 : val, penaltyStatus: status } : b));
@@ -608,14 +608,28 @@ export default function BajasClient({ initialBajas, initialTotalCount, initialTo
                 {penaltyModalData.penaltyStatus === 'FACTURADA' ? 'Cerrar' : 'Cancelar'}
               </button>
               {penaltyModalData.penaltyStatus !== 'FACTURADA' && (
-                <button 
-                  className="btn-secondary" 
-                  style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)' }}
-                  onClick={() => handleSavePenalty('DESCARTADA')}
-                  disabled={savingPenalty}
-                >
-                  Descartar (No Cobrar)
-                </button>
+                <>
+                  <button 
+                    className="btn-secondary" 
+                    style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.2)', background: 'rgba(16, 185, 129, 0.05)' }}
+                    onClick={() => {
+                      if (window.confirm('Atención: Si marcas esta penalización como facturada por otro medio, se guardará el importe pero NO se emitirá una factura PDF en el sistema ni aparecerá en la tabla de facturas emitidas. ¿Deseas continuar?')) {
+                        handleSavePenalty('FACTURADA', false);
+                      }
+                    }}
+                    disabled={savingPenalty}
+                  >
+                    Marcar como Facturada
+                  </button>
+                  <button 
+                    className="btn-secondary" 
+                    style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)' }}
+                    onClick={() => handleSavePenalty('DESCARTADA')}
+                    disabled={savingPenalty}
+                  >
+                    Descartar (No Cobrar)
+                  </button>
+                </>
               )}
               <button 
                 className="btn-primary" 

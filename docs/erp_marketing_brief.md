@@ -6,11 +6,13 @@ Este documento está diseñado para proporcionar al equipo de desarrollo web y m
 
 ## 1. ¿Qué es SP ERP Comercializadoras?
 
-Es un **ERP (Enterprise Resource Planning) de última generación diseñado específicamente para el sector eléctrico español**. Está construido con una arquitectura moderna en la nube (Serverless) y preparado para funcionar bajo un modelo **SaaS (Software as a Service) multi-tenant** (multimarca). 
+Es un **ERP (Enterprise Resource Planning) de última generación diseñado específicamente para el sector eléctrico español**. Está construido con una arquitectura moderna en la nube (Serverless) y preparado para funcionar bajo dos modelos de comercialización:
+1. **Modelo SaaS (Software as a Service) multi-tenant:** Alojado y mantenido por nosotros.
+2. **Venta Directa (On-Premise / Servidor Propio):** Licencia de pago único sin cuotas mensuales recurrentes, donde el cliente asume el alojamiento y mantenimiento en su propia infraestructura.
 
 **Público objetivo:** Pequeñas y medianas comercializadoras eléctricas independientes que no tienen la capacidad tecnológica para desarrollar su propio ERP desde cero o que están pagando licencias muy costosas por software obsoleto.
 
-**Propuesta de valor principal:** Automatización extrema. El software se encarga de conectar con las distribuidoras, descargar consumos, cruzar datos de mercado (OMIE/ESIOS), facturar de forma automatizada, y liquidar las comisiones de los comerciales, todo ello cumpliendo con la estricta regulación de la CNMC.
+**Propuesta de valor principal:** Automatización extrema y libertad tecnológica. El software se encarga de conectar con las distribuidoras, descargar consumos, cruzar datos de mercado (OMIE/ESIOS), facturar de forma automatizada y liquidar comisiones, cumpliendo la regulación de la CNMC. Todo esto permitiendo a la comercializadora elegir si delega la infraestructura o si adquiere el código fuente para una independencia total.
 
 ---
 
@@ -44,7 +46,7 @@ La landing page debería destacar los siguientes "Súper Poderes" o Módulos del
 
 Esta sección es ideal para dar confianza sobre la robustez tecnológica del producto:
 
-* **SaaS Multimarca Nativo:** Una sola instancia del software puede albergar diferentes "marcas" o comercializadoras de forma aislada. La información de los clientes y las tarifas están encriptadas y separadas lógicamente.
+* **SaaS o Adquisición Total:** Una sola instancia del software puede albergar diferentes "marcas" o comercializadoras de forma aislada. El cliente elige si prefiere pagar una cuota y delegar el servidor (SaaS), o pagar una licencia única y alojarlo en sus propios servidores con total independencia y seguridad de sus datos.
 * **Arquitectura Serverless (Vercel & Postgres):** Diseñado para escalar automáticamente a 0 o al infinito, lo que significa tiempos de respuesta ultra-rápidos (<10ms) y sin cuelgues durante los picos de facturación de principio de mes.
 * **Interfaz Moderna e Intuitiva:** A diferencia de los clásicos ERPs del sector eléctrico (que parecen hojas de Excel de los años 90), SP ERP cuenta con un diseño limpio, moderno, *Dark Mode* y componentes altamente interactivos.
 

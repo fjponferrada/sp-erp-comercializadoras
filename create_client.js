@@ -1,19 +1,19 @@
-'use client';
+﻿const fs = require('fs');
+
+const content = "use client";
 
 import React, { useState, useMemo } from 'react';
 import { Search, Download, CheckCircle, Mail, Loader2 } from 'lucide-react';
 import DeletePenaltyButton from '@/components/DeletePenaltyButton';
-import { sendSelectedPenaltyInvoicesAction, markSelectedPenaltyInvoicesAsComunicatedAction } from '@/app/actions/penaltyInvoiceActions';
+import { sendSelectedPenaltyInvoicesAction, markSelectedPenaltyInvoicesAsCommunicatedAction } from '@/app/actions/penaltyInvoiceActions';
 
-export default function FacturasPenalizacionesClient({ initialInvoices, userRole }: { initialInvoices: any[], userRole: string }) {
-  const canManage = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
-
+export default function FacturasPenalizacionesClient({ initialInvoices }: { initialInvoices: any[] }) {
   const [clientInvoices, setClientInvoices] = useState(initialInvoices);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [message, setMessage] = useState(null);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
 
   const filteredInvoices = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -33,7 +33,7 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
     }
   };
 
-  const toggleOne = (id: string, index: number, shiftKey: boolean) => {
+  const toggleOne = (id, index, shiftKey) => {
     const newSet = new Set(selectedIds);
     if (shiftKey && lastSelectedIndex !== null) {
       const start = Math.min(lastSelectedIndex, index);
@@ -51,11 +51,11 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
 
   const handleMarkAsCommunicated = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`¿Seguro que quieres marcar ${selectedIds.size} facturas como comunicadas SIN enviar email?`)) return;
+    if (!confirm(\¿Seguro que quieres marcar \ facturas como comunicadas SIN enviar email?\)) return;
 
     setLoading(true);
     setMessage(null);
-    const res = await markSelectedPenaltyInvoicesAsComunicatedAction(Array.from(selectedIds));
+    const res = await markSelectedPenaltyInvoicesAsCommunicatedAction(Array.from(selectedIds));
     setLoading(false);
     
     if (res.success) {
@@ -72,7 +72,7 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
 
   const handleSend = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`¿Seguro que quieres enviar ${selectedIds.size} facturas a los clientes?`)) return;
+    if (!confirm(\¿Seguro que quieres enviar \ facturas a los clientes?\)) return;
 
     setLoading(true);
     setMessage(null);
@@ -109,26 +109,22 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
 
           <div className="flex items-center gap-2">
             {message && <span className="text-sm text-emerald-400 flex items-center gap-1 mr-4"><CheckCircle size={14} /> {message}</span>}
-            {canManage && (
-              <>
-                <button 
-                  onClick={handleMarkAsCommunicated}
-                  disabled={loading || selectedIds.size === 0}
-                  className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-                >
-                  {loading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
-                  Marcar Comunicadas ({selectedIds.size})
-                </button>
-                <button 
-                  onClick={handleSend}
-                  disabled={loading || selectedIds.size === 0}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-                >
-                  {loading ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
-                  Comunicar ({selectedIds.size})
-                </button>
-              </>
-            )}
+            <button 
+              onClick={handleMarkAsCommunicated}
+              disabled={loading || selectedIds.size === 0}
+              className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+              Marcar Comunicadas ({selectedIds.size})
+            </button>
+            <button 
+              onClick={handleSend}
+              disabled={loading || selectedIds.size === 0}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
+              Comunicar ({selectedIds.size})
+            </button>
           </div>
         </div>
       </div>
@@ -138,16 +134,14 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
           <table className="data-table">
             <thead>
               <tr>
-                {canManage && (
-                  <th style={{ width: '40px', textAlign: 'center' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={selectedIds.size === filteredInvoices.length && filteredInvoices.length > 0}
-                      onChange={toggleAll}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </th>
-                )}
+                <th style={{ width: '40px', textAlign: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.size === filteredInvoices.length && filteredInvoices.length > 0}
+                    onChange={toggleAll}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
                 <th>Factura</th>
                 <th>Fecha</th>
                 <th>Cliente</th>
@@ -160,23 +154,21 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
             <tbody>
               {filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 8 : 7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                     No hay facturas de penalización generadas
                   </td>
                 </tr>
               ) : (
                 filteredInvoices.map((inv, index) => (
                   <tr key={inv.id} style={{ background: selectedIds.has(inv.id) ? 'rgba(99, 102, 241, 0.05)' : '', transition: 'background 0.2s ease' }}>
-                    {canManage && (
-                      <td style={{ textAlign: 'center' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={selectedIds.has(inv.id)} 
-                          onChange={(e: any) => {e.stopPropagation(); toggleOne(inv.id, index, e.nativeEvent.shiftKey)}}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </td>
-                    )}
+                    <td style={{ textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.has(inv.id)} 
+                        onChange={(e) => {e.stopPropagation(); toggleOne(inv.id, index, e.nativeEvent.shiftKey)}}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
                     <td>
                       <div style={{ fontWeight: 600 }}>{inv.invoiceNumber}</div>
                       {inv.status === 'COMUNICADA' && (
@@ -203,9 +195,7 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
                         ) : (
                           <span style={{ color: 'var(--text-muted)' }}>-</span>
                         )}
-                        {canManage && (
-                          <DeletePenaltyButton id={inv.id} invoiceNumber={inv.invoiceNumber} />
-                        )}
+                        <DeletePenaltyButton id={inv.id} invoiceNumber={inv.invoiceNumber} />
                       </div>
                     </td>
                   </tr>
@@ -218,3 +208,6 @@ export default function FacturasPenalizacionesClient({ initialInvoices, userRole
     </div>
   );
 }
+;
+
+fs.writeFileSync('src/app/(app)/facturas-penalizaciones/FacturasPenalizacionesClient.tsx', content, 'utf8');

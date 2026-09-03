@@ -13,6 +13,7 @@ interface MonthlyData {
   estimatedPendingCostEur: number;
   invoicedMwh?: number;
   lossRatio?: number;
+  marketPrice?: number;
 }
 
 export default function EnergiaPendienteClient() {
@@ -183,9 +184,8 @@ export default function EnergiaPendienteClient() {
               
               const energiaPteEstimada = row.pendingMwh + descuadre;
               
-              // Avg price calculation with safety cap for near-zero division
-              let avgPrice = row.pendingMwh !== 0 ? Math.abs(row.estimatedPendingCostEur / row.pendingMwh) : 60;
-              if (avgPrice > 150) avgPrice = 100; // Cap it to a sensible market price if it explodes
+              // Valorar el descuadre utilizando el precio medio real del mercado (OMIE + Restricciones) para ese mes
+              const avgPrice = row.marketPrice || 75; // 75 fallback si no hay datos
               
               const bImpPteEstimada = row.estimatedPendingCostEur + (descuadre * avgPrice);
               

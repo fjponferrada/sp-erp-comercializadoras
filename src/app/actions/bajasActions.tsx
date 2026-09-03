@@ -153,21 +153,6 @@ export async function getPaginatedBajasAction(
       let pEnd = new Date(pStart);
       pEnd.setMonth(pEnd.getMonth() + pMonths);
 
-      if (!isResidencial) {
-        let currentCycle = 1;
-        let thresholdDate = new Date(pStart);
-        thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths - 1));
-
-        while (bDate > thresholdDate) {
-          currentCycle++;
-          pEnd = new Date(pStart);
-          pEnd.setMonth(pEnd.getMonth() + (pMonths * currentCycle));
-          
-          thresholdDate = new Date(pStart);
-          thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths * currentCycle - 1));
-        }
-      }
-
       let annualCons = b.annualConsumption || b.supplyPoint?.annualConsumption || 0;
       annualCons = annualCons * 1000;
       if (!annualCons && airtable?.['CONSUMO COMISION']) annualCons = parseFloat(airtable['CONSUMO COMISION']) * 1000;
@@ -657,19 +642,7 @@ export async function savePenaltyAction(contractId: string, penalization: number
       const vat = (contract.client?.vatNumber || '').toUpperCase().trim();
       const cnae = (contract.supplyPoint?.cnae || '').trim();
       let isResidencial = vat.startsWith('H') || (/^[0-9XYZ]/.test(vat) && (cnae === '9820' || cnae === '9821'));
-
-      if (!isResidencial) {
-        let currentCycle = 1;
-        let thresholdDate = new Date(pStart);
-        thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths - 1));
-        while (bDate > thresholdDate) {
-          currentCycle++;
-          pEnd = new Date(pStart);
-          pEnd.setMonth(pEnd.getMonth() + (pMonths * currentCycle));
-          thresholdDate = new Date(pStart);
-          thresholdDate.setMonth(thresholdDate.getMonth() + (pMonths * currentCycle - 1));
-        }
-      }
+      
       const daysRemaining = Math.max(0, Math.ceil((pEnd.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24)));
 
       // 2. Prepare Data

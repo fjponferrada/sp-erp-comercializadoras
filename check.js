@@ -1,11 +1,10 @@
-const sqlite3 = require('sqlite3');
-const db = new sqlite3.Database('./prisma/dev.db');
-
-db.all("SELECT * FROM Contract WHERE contractCode = 'AEDJP221171941A0F'", (err, rows) => {
-  if (err) console.error(err);
-  else {
-    const c = rows[0];
-    console.log(c);
-  }
-  db.close();
-});
+const {Client} = require('pg');
+require('dotenv').config();
+const c = new Client({connectionString: process.env.DATABASE_URL});
+c.connect().then(() => 
+  c.query('SELECT "invoiceNumber" FROM "PenaltyInvoice" WHERE "invoiceNumber" LIKE \'A26PEN%\' ORDER BY "invoiceNumber" DESC LIMIT 15')
+    .then(res => {
+       console.log(res.rows.map(r=>r.invoiceNumber)); 
+       c.end();
+    })
+);

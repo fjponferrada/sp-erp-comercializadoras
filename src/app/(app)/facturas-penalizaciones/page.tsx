@@ -36,7 +36,7 @@ export default async function FacturasPenalizacionesPage() {
   return (
     <>
       <Topbar title="Facturas de Penalizaciones" subtitle="Historial de penalizaciones facturadas" />
-      <FacturasPenalizacionesClient initialInvoices={invoices} />
+      <FacturasPenalizacionesClient initialInvoices={invoices} userRole={session.user.role} />
     </>
   );
 }

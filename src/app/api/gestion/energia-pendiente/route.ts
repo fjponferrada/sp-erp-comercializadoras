@@ -49,7 +49,35 @@ export async function GET(req: Request) {
         lossRatio = row.estimatedBcMwh / rawMwh;
       }
       
-      return { ...row, lossRatio };
+      const componentPrices = await prisma.systemComponentPrice.findMany({
+        where: {
+          component: { in: ['OMIE', 'RESTRICCIONES'] },
+          date: { gte: startDate, lte: endDate }
+        },
+        select: { component: true, values: true }
+      });
+
+      let omieSum = 0, omieCount = 0;
+      let resSum = 0, resCount = 0;
+
+      for (const cp of componentPrices) {
+        const values = cp.values as number[];
+        if (!values || values.length === 0) continue;
+        const dailySum = values.reduce((a, b) => a + b, 0);
+        if (cp.component === 'OMIE') {
+          omieSum += dailySum;
+          omieCount += values.length;
+        } else if (cp.component === 'RESTRICCIONES') {
+          resSum += dailySum;
+          resCount += values.length;
+        }
+      }
+
+      const omieAvg = omieCount > 0 ? omieSum / omieCount : 60;
+      const resAvg = resCount > 0 ? resSum / resCount : 15;
+      const marketPrice = omieAvg + resAvg;
+
+      return { ...row, lossRatio, marketPrice };
     }));
 
     return NextResponse.json({ success: true, data: enrichedResults });
