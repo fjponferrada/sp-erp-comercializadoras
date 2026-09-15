@@ -8,6 +8,7 @@ import { es } from 'date-fns/locale';
 import { FileWarning, Search, RefreshCcw, Download } from 'lucide-react';
 import { getClaimsAction, ClaimSummary } from '@/app/actions/claimsActions';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 interface ReclamacionesClientProps {
   initialClaims: ClaimSummary[];
@@ -54,6 +55,27 @@ export default function ReclamacionesClient({
     }
   };
 
+  const handleExportExcel = () => {
+    const data = claims.map(c => ({
+      'Código Solicitud': c.codigoSolicitud,
+      'CUPS': c.cups,
+      'Tipo': c.tipoReclamacion || 'Genérica',
+      'Subtipo': c.subtipoReclamacion || c.codigoReclamacion || '',
+      'Estado': c.estadoIntegrado,
+      'Días Abierta': c.diasAbierta ?? '',
+      'Paso 01 (Fecha)': c.paso01?.fecha ? format(new Date(c.paso01.fecha), 'dd/MM/yyyy HH:mm') : '',
+      'Mensaje Enviado (Paso 01)': c.paso01?.comentario || '',
+      'Paso 02 (Fecha)': c.paso02?.fecha ? format(new Date(c.paso02.fecha), 'dd/MM/yyyy HH:mm') : '',
+      'Respuesta (Paso 02)': c.paso02?.comentario || '',
+      'Resolución (Paso 03/05)': c.paso05?.comentario || c.paso03?.comentario || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Reclamaciones");
+    XLSX.writeFile(wb, `Reclamaciones_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   
   return (
     <div className="min-h-screen relative outline-none flex flex-col" style={{ background: 'var(--bg-base)' }}>
@@ -85,6 +107,13 @@ export default function ReclamacionesClient({
               title="Recargar"
             >
               <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border)] text-gray-300 font-semibold rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Descargar Excel
             </button>
             <a
               href="/reclamaciones/generar"

@@ -8,9 +8,10 @@ async function main() {
     await client.connect();
 
     const res = await client.query(`
-        SELECT "id", "fechaActivacionBaja", "fechaActivacionAlta", "fechaAviso"
-        FROM "SwitchingEvent"
-        WHERE "procesoBase" = 'T1' AND "paso" = '06' AND "codigoSolicitud" = '202600000155';
+        SELECT c."id", c."terminationDate"
+        FROM "Contract" c
+        JOIN "SwitchingEvent" se ON se."contractId" = c."id"
+        WHERE se."codigoSolicitud" = '202600000155' AND se."paso" = '06';
     `);
 
     console.log(res.rows);

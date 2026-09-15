@@ -1,0 +1,1 @@
+const { PrismaClient } = require("@prisma/client"); const prisma = new PrismaClient(); async function main() { const job = await prisma.scrapingJob.findUnique({ where: { id: "cmtuabfp1gqeyo841qsnyhgoo" } }); console.log(JSON.stringify(job, null, 2)); } main().catch(e => console.error(e)).finally(() => prisma.$disconnect());

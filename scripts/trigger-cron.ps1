@@ -1,4 +1,4 @@
-param (
+﻿param (
     [string]$CronName
 )
 
@@ -30,15 +30,7 @@ if (-not $portCheck) {
     Start-Sleep -Seconds 20
 }
 
-if ($CronName -eq "trigger-scraping") {
-    "[$dateStr] Arrancando worker de scraping (C:\Scrapping\run_worker.bat)..." | Out-File -FilePath $logFile -Append
-    if (Test-Path "C:\Scrapping\run_worker.bat") {
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c C:\Scrapping\run_worker.bat" -WorkingDirectory "C:\Scrapping" -WindowStyle Hidden
-        Start-Sleep -Seconds 10
-    } else {
-        "[$dateStr] ADVERTENCIA: No se encontró C:\Scrapping\run_worker.bat" | Out-File -FilePath $logFile -Append
-    }
-}
+
 
 $method = "Get"
 if ($CronName -in @("trigger-scraping", "update-portfolio", "scraping-upload")) {
@@ -84,3 +76,4 @@ while ($hasMore -and $retryCount -lt $maxRetries) {
         }
     }
 }
+

@@ -14,11 +14,13 @@ export interface ClaimSummary {
   paso01: {
     fecha: Date | null;
     xmlUrl: string | null;
+    comentario: string | null;
   } | null;
   paso02: {
     fecha: Date | null;
     xmlUrl: string | null;
     estadoAR: string | null;
+    comentario: string | null;
   } | null;
   paso03: {
     comentario: string | null;
@@ -96,9 +98,9 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
       }
 
       if (event.paso === '01') {
-        claim.paso01 = { fecha: event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl };
+        claim.paso01 = { fecha: event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl, comentario: event.observaciones || null };
       } else if (event.paso === '02') {
-        claim.paso02 = { fecha: event.fechaAR || event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl, estadoAR: event.estadoAR };
+        claim.paso02 = { fecha: event.fechaAR || event.fechaSolicitud || event.createdAt, xmlUrl: event.xmlUrl, estadoAR: event.estadoAR, comentario: event.observaciones || null };
       } else if (event.paso === '03') {
         claim.paso03 = { comentario: event.observaciones || null, xmlUrl: event.xmlUrl };
       } else if (event.paso === '05') {

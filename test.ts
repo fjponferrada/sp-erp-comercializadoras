@@ -1,15 +1,6 @@
-import { prisma } from './src/lib/prisma';
-async function run() { 
-  const c = await prisma.contract.findMany({ 
-    where: { contractCode: 'PRJAV26210193FJ0F' }, 
-    select: { id: true, version: true, status: true, tipo: true, tipoC2: true, fechaAceptacion: true, airtableData: true } 
-  }); 
-  console.log(JSON.stringify(c.map((x: any) => ({
-    ...x, 
-    airtableData: undefined, 
-    tipoC2_from_json: x.airtableData?.tipoC2, 
-    isSubrogation: x.airtableData?.isSubrogation
-  })), null, 2)); 
-  await prisma.$disconnect(); 
-} 
-run();
+import fs from 'fs';
+import { parseSwitchingXml } from './src/lib/switching/parser';
+
+const xmlString = fs.readFileSync('test.xml', 'utf-8');
+const parsed = parseSwitchingXml(xmlString);
+console.log(JSON.stringify(parsed, null, 2));

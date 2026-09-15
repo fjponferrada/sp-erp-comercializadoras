@@ -1,0 +1,22 @@
+<MensajeActivacionComercializadorSalienteT1 xmlns="http://localhost/elegibilidad">
+<Cabecera>
+<CodigoREEEmpresaEmisora>0143</CodigoREEEmpresaEmisora>
+<CodigoREEEmpresaDestino>1713</CodigoREEEmpresaDestino>
+<CodigoDelProceso>T1</CodigoDelProceso>
+<CodigoDePaso>06</CodigoDePaso>
+<CodigoDeSolicitud>202600000155</CodigoDeSolicitud>
+<SecuencialDeSolicitud>01</SecuencialDeSolicitud>
+<FechaSolicitud>2026-08-03T13:39:08</FechaSolicitud>
+<CUPS>ES0143000000110594SY0F</CUPS>
+</Cabecera>
+<NotificacionComercializadorSalienteT1>
+<DatosNotificacion>
+<FechaActivacion>2026-07-28</FechaActivacion>
+</DatosNotificacion>
+<Contrato>
+<IdContrato>
+<CodContrato>2593890</CodContrato>
+</IdContrato>
+</Contrato>
+</NotificacionComercializadorSalienteT1>
+</MensajeActivacionComercializadorSalienteT1>
