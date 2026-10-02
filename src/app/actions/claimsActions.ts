@@ -116,18 +116,6 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
     now.setHours(0, 0, 0, 0);
 
     for (const claim of claims) {
-      if (!claim.paso05 && claim.paso02?.fecha) {
-        const d2 = new Date(claim.paso02.fecha);
-        d2.setHours(0, 0, 0, 0);
-        const diffTime = Math.abs(now.getTime() - d2.getTime());
-        claim.diasAbierta = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      } else if (!claim.paso05 && claim.paso01?.fecha) {
-        const d1 = new Date(claim.paso01.fecha);
-        d1.setHours(0, 0, 0, 0);
-        const diffTime = Math.abs(now.getTime() - d1.getTime());
-        claim.diasAbierta = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      }
-
       // Calculate estadoIntegrado
       if (claim.paso05) {
         claim.estadoIntegrado = 'Cerrada';
@@ -141,6 +129,19 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
         }
       } else if (claim.paso01) {
         claim.estadoIntegrado = 'En Proceso';
+      }
+
+      // Calculate diasAbierta solo para reclamaciones abiertas
+      if (claim.estadoIntegrado === 'En Proceso' || claim.estadoIntegrado === 'Aceptada') {
+        const refDateStr = claim.paso02?.fecha || claim.paso01?.fecha;
+        if (refDateStr) {
+          const refDate = new Date(refDateStr);
+          refDate.setHours(0, 0, 0, 0);
+          const diffTime = Math.abs(now.getTime() - refDate.getTime());
+          claim.diasAbierta = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+      } else {
+        claim.diasAbierta = null;
       }
     }
 

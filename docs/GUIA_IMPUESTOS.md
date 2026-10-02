@@ -25,6 +25,12 @@ La declaración del Modelo 560 que se presenta en la **AEAT Central** no debe in
 - Cuando se declaran exenciones o reducciones (por ejemplo, usos industriales o riegos bajo la clave 98.1E), Hacienda exige trazabilidad absoluta.
 - **Regla:** Queda prohibido agrupar toda la energía y base imponible exenta en una única línea totalizadora. Cada exención debe ir desglosada individualmente con el **NIF del destinatario** y su **CIE** (Código de Identificación de la Electricidad). La omisión de estos datos provoca un requerimiento automático de la AEAT.
 
+### 1.4 Bug del Validador Web AEAT (Separación de Mínimos y Truncamiento)
+- **Problema de Agrupación:** Aunque el ERP agrega correctamente las cuotas, el validador web de la AEAT rechaza los ficheros TXT si se declaran en una misma línea (ej. `SBFO`) la cuota por porcentaje (Columna 11) y la cuota mínima (Columna 12). La normativa (artículos 99.1 y 99.2) exige que el impuesto se liquide por el mayor de los dos importes. Por tanto, los abonos o facturas que apliquen la cuota mínima deben exportarse obligatoriamente en **líneas independientes** con Base Liquidable = 0.
+- **Bug de Truncamiento en la AEAT:** La pasarela web de la AEAT padece un bug matemático crítico: valida la suma de las cuotas de las líneas (las cuales están redondeadas a 2 decimales) comparándola contra un cálculo global donde **trunca** los decimales (`Base Liquidable Total * Tipo Impositivo`). Esto provoca rechazos por descuadres artificiales de 1 céntimo (errores 39652 y 39641).
+- **Workaround actual:** Para sortear el bug en periodos con abonos de cuota mínima, se ha tenido que modificar el TXT a mano para "netear" las cuotas (eliminando la Columna 12 y pasándolo todo a la 11) y sumar estratégicamente unos céntimos a la Base Liquidable para que el cálculo global truncado coincida milimétricamente con la cuota a ingresar.
+- **⚠️ ACCIÓN REQUERIDA (DEUDA TÉCNICA):** En algún momento se deberá refactorizar el código del exportador del Modelo 560 (`route.ts`) para separar automáticamente las líneas de cuota mínima en el TXT e incluir una red de seguridad algorítmica que ajuste los céntimos de la base total, previniendo el rechazo por truncamiento en la sede electrónica.
+
 ---
 
 ## 2. TASA MUNICIPAL (1.5% POR UTILIZACIÓN PRIVATIVA)

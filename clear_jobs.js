@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function main() { const res = await prisma.scrapingJob.updateMany({ where: { status: { in: ['PENDING', 'PROCESSING'] } }, data: { status: 'COMPLETED' } }); console.log('Cleared: ', res.count); } main().finally(() => prisma.$disconnect());
