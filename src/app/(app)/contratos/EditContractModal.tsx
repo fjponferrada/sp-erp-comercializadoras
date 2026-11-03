@@ -339,7 +339,8 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
                     >
                       <option value="">Seleccionar...</option>
                       <option value="2.0TD">2.0TD</option>
-                      <option value="3.0 A">2.0 A</option>
+                      <option value="2.0 A">2.0 A</option>
+                      <option value="3.0 A">3.0 A</option>
                       <option value="3.0TD">3.0TD</option>
                       <option value="6.1TD">6.1TD</option>
                       <option value="3.0TDVE">3.0TDVE</option>

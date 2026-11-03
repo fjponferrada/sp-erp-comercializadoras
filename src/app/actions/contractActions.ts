@@ -1407,7 +1407,17 @@ export async function getPaginatedContractsAction(
     }
 
     if (estadoFilter && estadoFilter !== 'Todos') {
-      whereClause.status = estadoFilter;
+      if (estadoFilter === 'FINALIZADO' || estadoFilter === 'BAJA') {
+        whereClause.status = { in: ['FINALIZADO', 'Finalizado', 'BAJA'] };
+      } else if (estadoFilter === 'RECHAZO_DISTRIBUIDORA') {
+        whereClause.status = { in: ['RECHAZO_DISTRIBUIDORA', 'Rechazo Distribuidora'] };
+      } else if (estadoFilter === 'ACTIVO') {
+        whereClause.status = { in: ['ACTIVO', 'Activo'] };
+      } else if (estadoFilter === 'TRAMITANDO') {
+        whereClause.status = { in: ['TRAMITANDO', 'Tramitando'] };
+      } else {
+        whereClause.status = estadoFilter;
+      }
     }
 
     if (tarifaFilter && tarifaFilter !== 'Todas') {
@@ -1439,6 +1449,8 @@ export async function getPaginatedContractsAction(
       else if (sortCol === 'cliente') orderBy = { client: { businessName: sortDir } };
       else if (sortCol === 'producto') orderBy = { product: { name: sortDir } };
       else if (sortCol === 'consumoMwh') orderBy = { supplyPoint: { annualConsumption: sortDir } };
+      else if (sortCol === 'canal') orderBy = { user: { channel: { name: sortDir } } };
+      else if (sortCol === 'comercial') orderBy = { user: { name: sortDir } };
       // Fallback
       else orderBy = { createdAt: 'desc' };
     } else {
@@ -1459,39 +1471,60 @@ export async function getPaginatedContractsAction(
     // This allows us to keep the complex filtering/sorting from Prisma
     const allMatching = await prisma.contract.findMany({
       where: whereClause,
-      select: { id: true, contractCode: true, status: true, supplyPointId: true, activationDate: true, terminationDate: true },
+      select: {
+        id: true,
+        contractCode: true,
+        version: true,
+        status: true,
+        supplyPointId: true,
+        activationDate: true,
+        terminationDate: true,
+        supplyPoint: { select: { cups: true } }
+      },
       orderBy: orderByParams
     });
 
-    // Filtramos FALSAS BAJAS (Lógica del Dashboard: si hay otro contrato dentro de 30 días de gracia, no es baja)
-    const bajaContracts = allMatching.filter(c => c.status === 'BAJA' && c.supplyPointId);
+    // Filtramos FALSAS BAJAS (Regla 47 y Regla 55: si hay otro contrato dentro de 30 días de gracia en el mismo CUPS, no es baja)
+    const bajaContracts = allMatching.filter(c => ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId));
     const falseBajaIds = new Set<string>();
 
     if (bajaContracts.length > 0) {
       const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
-      const bajaSupplyPointIds = [...new Set(bajaContracts.map(c => c.supplyPointId))];
-
-      const siblingContracts = await prisma.contract.findMany({
-        where: { supplyPointId: { in: bajaSupplyPointIds as string[] } },
-        select: { id: true, supplyPointId: true, activationDate: true, terminationDate: true }
+      const allContractsForCups = await prisma.contract.findMany({
+        where: {
+          ...visibilityFilter,
+          status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
+        },
+        select: {
+          id: true,
+          contractCode: true,
+          supplyPointId: true,
+          activationDate: true,
+          terminationDate: true,
+          supplyPoint: { select: { cups: true } }
+        }
       });
 
-      const contractsByCups: Record<string, typeof siblingContracts> = {};
-      for (const c of siblingContracts) {
-        if (!contractsByCups[c.supplyPointId!]) contractsByCups[c.supplyPointId!] = [];
-        contractsByCups[c.supplyPointId!].push(c);
+      const contractsByCups: Record<string, typeof allContractsForCups> = {};
+      for (const c of allContractsForCups) {
+        const key = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
+        if (!key) continue;
+        if (!contractsByCups[key]) contractsByCups[key] = [];
+        contractsByCups[key].push(c);
       }
 
       for (const baja of bajaContracts) {
         if (!baja.terminationDate) continue;
 
-        const siblings = contractsByCups[baja.supplyPointId!] || [];
+        const key = baja.supplyPoint?.cups?.substring(0, 20) || baja.supplyPointId;
+        const siblings = contractsByCups[key] || [];
         const bajaTermTime = baja.terminationDate.getTime();
         const bajaActTime = baja.activationDate ? baja.activationDate.getTime() : 0;
 
         let isFalseBaja = false;
         for (const sibling of siblings) {
           if (sibling.id === baja.id) continue;
+          if (sibling.contractCode && sibling.contractCode === baja.contractCode) continue;
           if (!sibling.activationDate) continue;
 
           const siblingActTime = sibling.activationDate.getTime();
@@ -1508,7 +1541,7 @@ export async function getPaginatedContractsAction(
       }
     }
 
-    // Pre-calcular el mejor ID para cada contractCode
+    // Pre-calcular el mejor ID para cada contractCode (priorizando ACTIVO > TRAMITANDO/ACEPTADO > mayor versión)
     const bestIdForCode = new Map<string, string>();
     const groupMap = new Map<string, typeof allMatching>();
     
@@ -1521,12 +1554,12 @@ export async function getPaginatedContractsAction(
     }
 
     for (const [code, group] of groupMap.entries()) {
-      const activeOrFin = group.find(c => c.status === 'ACTIVO' || c.status === 'FINALIZADO');
-      if (activeOrFin) {
-        bestIdForCode.set(code, activeOrFin.id);
-      } else {
-        bestIdForCode.set(code, group[0].id);
-      }
+      const sortedByVersion = [...group].sort((a, b) => (b.version || 0) - (a.version || 0));
+      const active = sortedByVersion.find(c => c.status === 'ACTIVO' || c.status === 'Activo');
+      const inProgress = sortedByVersion.find(c => c.status === 'TRAMITANDO' || c.status === 'ACEPTADO');
+      const fin = sortedByVersion.find(c => c.status === 'FINALIZADO' || c.status === 'Finalizado');
+      const chosen = active || inProgress || fin || sortedByVersion[0];
+      bestIdForCode.set(code, chosen.id);
     }
 
     const seenCodes = new Set<string>();
@@ -1634,33 +1667,35 @@ export async function getContractStatsAction() {
     const visibilityFilter = await getUserVisibilityFilter();
 
     const activos = await prisma.contract.count({
-      where: { ...visibilityFilter, status: 'ACTIVO' }
+      where: { ...visibilityFilter, status: { in: ['ACTIVO', 'Activo'] } }
     });
 
     const tramitando = await prisma.contract.count({
-      where: { ...visibilityFilter, status: 'TRAMITANDO' }
+      where: { ...visibilityFilter, status: { in: ['TRAMITANDO', 'Tramitando'] } }
     });
 
-    // Bajas: Net Bajas logic
+    // Bajas: Net Bajas logic (agrupado por primeros 20 caracteres del CUPS, Regla 17 y Regla 124)
     const contracts = await prisma.contract.findMany({
       where: {
         ...visibilityFilter,
-        status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] }
+        status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
       },
       select: {
         id: true,
         activationDate: true,
         terminationDate: true,
-        supplyPointId: true
+        supplyPointId: true,
+        supplyPoint: { select: { cups: true } }
       }
     });
 
     const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
     const contractsByCups: Record<string, typeof contracts> = {};
     contracts.forEach(c => {
-      if (!c.supplyPointId || !c.activationDate) return;
-      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
-      contractsByCups[c.supplyPointId].push(c);
+      const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
+      if (!cupsKey || !c.activationDate) return;
+      if (!contractsByCups[cupsKey]) contractsByCups[cupsKey] = [];
+      contractsByCups[cupsKey].push(c);
     });
 
     let netBajasCount = 0;
@@ -1697,15 +1732,20 @@ export async function getContractStatsAction() {
 
     const bajas = netBajasCount;
 
-    // MWh: Solamente de contratos activos (misma cartera viva que dashboard)
+    // MWh: Solamente de contratos activos (misma cartera viva que dashboard, deduplicado por CUPS)
     const activeContracts = await prisma.contract.findMany({
-      where: { ...visibilityFilter, status: 'ACTIVO' },
-      select: { supplyPoint: { select: { annualConsumption: true } } }
+      where: { ...visibilityFilter, status: { in: ['ACTIVO', 'Activo'] } },
+      select: { supplyPointId: true, supplyPoint: { select: { cups: true, annualConsumption: true } } }
     });
     
     let totalMwh = 0;
+    const countedCups = new Set<string>();
     activeContracts.forEach(c => {
-      totalMwh += c.supplyPoint?.annualConsumption || 0;
+      const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
+      if (cupsKey && !countedCups.has(cupsKey)) {
+        totalMwh += c.supplyPoint?.annualConsumption || 0;
+        countedCups.add(cupsKey);
+      }
     });
 
     return { success: true, activos, tramitando, bajas, totalMwh };
@@ -1815,7 +1855,17 @@ export async function exportContractsExcelAction(
     }
 
     if (estadoFilter && estadoFilter !== 'Todos') {
-      whereClause.status = estadoFilter;
+      if (estadoFilter === 'FINALIZADO' || estadoFilter === 'BAJA') {
+        whereClause.status = { in: ['FINALIZADO', 'Finalizado', 'BAJA'] };
+      } else if (estadoFilter === 'RECHAZO_DISTRIBUIDORA') {
+        whereClause.status = { in: ['RECHAZO_DISTRIBUIDORA', 'Rechazo Distribuidora'] };
+      } else if (estadoFilter === 'ACTIVO') {
+        whereClause.status = { in: ['ACTIVO', 'Activo'] };
+      } else if (estadoFilter === 'TRAMITANDO') {
+        whereClause.status = { in: ['TRAMITANDO', 'Tramitando'] };
+      } else {
+        whereClause.status = estadoFilter;
+      }
     }
 
     if (tarifaFilter && tarifaFilter !== 'Todas') {
@@ -1849,7 +1899,7 @@ export async function exportContractsExcelAction(
       const code = c.contractCode || c.id;
       if (!byCode.has(code)) {
         byCode.set(code, c);
-        if (c.status === 'BAJA' && c.supplyPointId) {
+        if (['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId)) {
           bajaContracts.push(c);
         }
       }
@@ -1858,40 +1908,45 @@ export async function exportContractsExcelAction(
     const falseBajaIds = new Set<string>();
     if (bajaContracts.length > 0) {
       const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
-      const bajaSupplyPointIds = [...new Set(bajaContracts.map(c => c.supplyPointId))];
-
       const siblingContracts = await prisma.contract.findMany({
-        where: { supplyPointId: { in: bajaSupplyPointIds as string[] } },
-        select: { id: true, supplyPointId: true, activationDate: true, terminationDate: true, contractCode: true }
+        where: {
+          ...visibilityFilter,
+          status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
+        },
+        select: {
+          id: true,
+          supplyPointId: true,
+          activationDate: true,
+          terminationDate: true,
+          contractCode: true,
+          supplyPoint: { select: { cups: true } }
+        }
       });
 
       const contractsByCups: Record<string, typeof siblingContracts> = {};
       for (const c of siblingContracts) {
-        if (!contractsByCups[c.supplyPointId!]) contractsByCups[c.supplyPointId!] = [];
-        contractsByCups[c.supplyPointId!].push(c);
+        const key = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
+        if (!key) continue;
+        if (!contractsByCups[key]) contractsByCups[key] = [];
+        contractsByCups[key].push(c);
       }
 
       for (const bc of bajaContracts) {
-        const siblings = contractsByCups[bc.supplyPointId!];
+        if (!bc.terminationDate) continue;
+        const key = bc.supplyPoint?.cups?.substring(0, 20) || bc.supplyPointId;
+        const siblings = contractsByCups[key];
         if (!siblings) continue;
 
         let isFalseBaja = false;
-        const bcTermination = bc.terminationDate ? new Date(bc.terminationDate).getTime() : null;
+        const bcTermination = new Date(bc.terminationDate).getTime();
+        const bcActivation = bc.activationDate ? new Date(bc.activationDate).getTime() : 0;
         
         for (const sib of siblings) {
-          if (sib.contractCode === bc.contractCode) continue;
-          if (sib.activationDate) {
-            const sibActivation = new Date(sib.activationDate).getTime();
-            if (bcTermination) {
-               if (sibActivation >= bcTermination - GRACE_PERIOD_MS && sibActivation <= bcTermination + GRACE_PERIOD_MS) {
-                 isFalseBaja = true;
-                 break;
-               }
-            } else {
-               isFalseBaja = true; 
-               break;
-            }
-          } else {
+          if (sib.id === bc.id) continue;
+          if (sib.contractCode && sib.contractCode === bc.contractCode) continue;
+          if (!sib.activationDate) continue;
+          const sibActivation = new Date(sib.activationDate).getTime();
+          if (sibActivation >= bcActivation && sibActivation <= bcTermination + GRACE_PERIOD_MS) {
             isFalseBaja = true;
             break;
           }

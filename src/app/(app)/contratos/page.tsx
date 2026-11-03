@@ -1,7 +1,7 @@
 import { auth } from '@/auth';
 import { getContractStatsAction, getPaginatedContractsAction } from '@/app/actions/contractActions';
 import ContractsClient from './ContractsClient';
-
+import { getChannelVisibilityFilter, getUserVisibilityFilter } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -10,11 +10,16 @@ export default async function ContratosPage() {
   const session = await auth();
   const userRole = session?.user?.role || 'CANAL';
 
+  const [channelFilter, contractFilter] = await Promise.all([
+    getChannelVisibilityFilter(),
+    getUserVisibilityFilter()
+  ]);
+
   const [statsResult, contractsResult, channelsResult, tiposResult] = await Promise.all([
     getContractStatsAction(),
     getPaginatedContractsAction(1, 100, '', 'Todos', 'Todas', 'Todos', 'Todos', 'fechaRegistro', 'desc'),
-    prisma.channel.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
-    prisma.contract.findMany({ select: { tipo: true }, distinct: ['tipo'], where: { tipo: { not: null } } })
+    prisma.channel.findMany({ where: channelFilter, select: { name: true }, orderBy: { name: 'asc' } }),
+    prisma.contract.findMany({ select: { tipo: true }, distinct: ['tipo'], where: { ...contractFilter, tipo: { not: null } } })
   ]);
 
   const stats = statsResult.success ? statsResult : { activos: 0, tramitando: 0, bajas: 0, totalMwh: 0 };

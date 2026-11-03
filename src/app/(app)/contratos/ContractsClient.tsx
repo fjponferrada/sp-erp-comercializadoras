@@ -31,6 +31,7 @@ const ESTADO_CONFIG: Record<string, { label: string; badge: string }> = {
   FINALIZADO: { label: 'Finalizado',  badge: 'badge badge-finalizado' },
   RECHAZADO:  { label: 'Rechazado',   badge: 'badge badge-danger'   },
   RECHAZO_DISTRIBUIDORA: { label: 'Rechazo Distribuidora', badge: 'badge badge-danger' },
+  'RECHAZO DISTRIBUIDORA': { label: 'Rechazo Distribuidora', badge: 'badge badge-danger' },
   RECHAZO_COMERCIALIZADORA: { label: 'Rechazo Comercializadora', badge: 'badge badge-danger' },
   RECHAZO_RIESGOS: { label: 'Rechazo Riesgos', badge: 'badge badge-danger' },
   RECHAZADO_POR_CLIENTE: { label: 'Rechazado por Cliente', badge: 'badge badge-danger' },
@@ -117,7 +118,7 @@ export default function ContractsClient({
   const canalesDropdown = useMemo(() => ['Todos', ...initialChannels], [initialChannels]);
   const tiposDropdown = useMemo(() => ['Todos', ...initialTipos], [initialTipos]);
 
-  const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const canEdit = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
   const showStats = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole as string);
 
   const handleEditContract = async (contractId: string) => {
@@ -451,7 +452,7 @@ export default function ContractsClient({
                 ) : paginated.map((c) => {
                   const estUpper = String(c.estado).toUpperCase();
                   const est = ESTADO_CONFIG[estUpper] || ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
-                  const hasSignedDoc = !!c.signedUrl || ['FIRMADO', 'ACEPTADO', 'ACTIVO', 'FINALIZADO', 'TRAMITANDO'].includes(estUpper);
+                  const hasSignedDoc = !!c.signedUrl;
 
                   return (
                     <tr key={c.id} style={{ transition: 'background 0.15s ease' }} className="hover:bg-white/[0.02]">
@@ -591,24 +592,21 @@ export default function ContractsClient({
                               <>
                                 <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
                                 <div className="absolute right-0 top-full mt-1 w-56 bg-[#2A2A2A] border border-white/10 rounded-lg shadow-2xl py-1 z-20 animate-in fade-in zoom-in-95 text-left">
-                                  {hasSignedDoc ? (
-                                    <>
-                                      <a href={c.signedUrl || '#'} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
-                                        <Download size={14} /> Descargar doc. firmado
-                                      </a>
-                                      {c.annexUrl && (
-                                        <a href={`/api/documents/smart-download?url=${encodeURIComponent(c.annexUrl)}`} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
-                                          <Download size={14} /> Descargar Anexo firmado
-                                        </a>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button onClick={() => { setOpenDropdown(null); if (canEdit) handleEditContract(c.raw.id); else alert("Contacte al backoffice para subir documentos."); }} className="w-full text-left px-4 py-2.5 text-xs text-[var(--lime)] hover:text-white hover:bg-[rgba(132,204,22,0.1)] flex items-center gap-2">
-                                        <Upload size={14} /> 
-                                        {c.tramitacion === 'M1' || c.tramitacion === 'M1N' ? 'Subir Anexo firmado' : 'Subir contrato firmado'}
-                                      </button>
-                                    </>
+                                  {hasSignedDoc && (
+                                    <a href={c.signedUrl} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
+                                      <Download size={14} /> Descargar doc. firmado
+                                    </a>
+                                  )}
+                                  {c.annexUrl && (
+                                    <a href={`/api/documents/smart-download?url=${encodeURIComponent(c.annexUrl)}`} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
+                                      <Download size={14} /> Descargar Anexo firmado
+                                    </a>
+                                  )}
+                                  {!hasSignedDoc && (
+                                    <button onClick={() => { setOpenDropdown(null); if (canEdit) handleEditContract(c.raw.id); else alert("Contacte al backoffice para subir documentos."); }} className="w-full text-left px-4 py-2.5 text-xs text-[var(--lime)] hover:text-white hover:bg-[rgba(132,204,22,0.1)] flex items-center gap-2">
+                                      <Upload size={14} /> 
+                                      {c.tramitacion === 'M1' || c.tramitacion === 'M1N' ? 'Subir Anexo firmado' : 'Subir contrato firmado'}
+                                    </button>
                                   )}
                                   {c.draftUrl && (
                                     <a href={c.draftUrl} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
