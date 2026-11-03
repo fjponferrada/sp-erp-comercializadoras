@@ -16,6 +16,11 @@ A diferencia de CRMs genéricos, este sistema utiliza un modelo de **Trazabilida
 
 *   **Identidad Unívoca de Suministros**: A nivel de base de datos, los Puntos de Suministro son únicos por la combinación de **CUPS + CIF**. Además, todas las búsquedas y cruces de información (importadores, cálculos de energía) leen **únicamente los primeros 20 caracteres** del CUPS para evitar fallos de vinculación por culpa de los dígitos de control.
 *   **Normalización Estricta de NIFs**: En todos los importadores y lógicas de matching, el CIF/NIF debe procesarse siempre con `.trim().toUpperCase()` antes de buscarse en la base de datos. Un espacio invisible accidental en un Excel (ej. `"B12345678 "`) generaría un cliente nuevo fantasma y duplicaría los Puntos de Suministro al no coincidir exactamente.
+*   **Exclusión de «Falsas Bajas» y Deduplicación**: En los listados y métricas de **Contratos** (`/contratos`), si un contrato figura en estado `BAJA` o `FINALIZADO` pero existe un contrato hermano para el mismo CUPS (20 primeros caracteres) activado dentro del periodo de gracia de 30 días (renovación, cambio de tarifa o titular), el contrato antiguo se omite automáticamente como «falsa baja» para no inflar la tasa de bajas ni duplicar filas históricas.
+*   **Consulta de Cartera Histórica («Activos a fecha»)**: En la barra de filtros de `CRM Ventas > Contratos` se incluye el selector **Activos a fecha**. Al elegir cualquier día (`YYYY-MM-DD`):
+    *   La tabla filtra todos los contratos que estaban vigentes en esa fecha exacta (`activationDate <= fecha 23:59:59` y `terminationDate === null` o `> fecha 23:59:59`), incluyendo tanto contratos con comisión activa > 0 € como contratos con comisión 0 €.
+    *   No se descartan por «falsa baja» contratos que estuvieran activos en la fecha consultada aunque meses después hayan sido renovados.
+    *   Las tarjetas superiores de **Contratos Activos** y **MWh Totales** (deduplicados por CUPS de 20 caracteres) se actualizan dinámicamente para reflejar la foto exacta de la cartera en esa fecha, y el botón **Exportar XLSX** descarga el detalle completo de dichos contratos (`Exportacion_Contratos_Activos_YYYY-MM-DD.xlsx`).
 
 ---
 
@@ -58,13 +63,13 @@ El panel de **Bajas** se alimenta directamente de los eventos del motor de Switc
 
 El sistema cuenta con un motor de cálculo de penalizaciones por incumplimiento de permanencia, adaptado estrictamente a la normativa legal y validado para su facturación directa.
 
-*   **Periodo de Preaviso y Prórrogas**: Los clientes no residenciales (empresas, CIFs y personas físicas con CNAE 9820/9821) deben preavisar con 1 mes de antelación si no desean renovar el contrato. Si causan baja pasada esta ventana de preaviso (ej. a los 11 meses y medio), el ERP detecta el incumplimiento, muestra una alerta visual (⚠️) y prorroga internamente las fechas de permanencia del contrato por un nuevo ciclo completo (ej. 12 meses, 24 meses...) para calcular la penalización basándose en todos los días de prórroga incumplidos. Los clientes residenciales están exentos legalmente de penalización durante las prórrogas tácitas.
+*   **Alerta de Preaviso y Cálculo Unificado**: Los clientes no residenciales (empresas, CIFs y personas físicas con CNAE 9820/9821) tienen cláusula de preaviso de 1 mes antes del vencimiento. Si causan baja dentro de esa ventana de preaviso (ej. en los últimos 30 días antes de `expectedEndDate`), el ERP detecta el incumplimiento y muestra un icono de alerta visual (⚠️) en la tabla de Bajas; no obstante, el **cálculo automático de la penalización económica se unifica para todos los clientes** (residenciales y no residenciales) computando exclusivamente los días reales pendientes hasta el fin de la permanencia original (1 año desde `permanenceStartDate` o `activationDate`), sin encadenar prórrogas automáticas de 12 meses en el importe sugerido.
 *   **Cálculo Legal de la Penalización**:
     *   **Tarifas de Baja Tensión (2.0TD, 3.0TD)**: La ley (RD 1435/2002) permite penalizar con un máximo del **5% sobre el precio del contrato por la energía estimada pendiente**.
     *   **Tarifas de Alta Tensión (6.XTD)**: Por cláusula contractual, se aplica un precio fijo de **30 €/MWh (0,03 €/kWh)** sobre la energía estimada pendiente.
 *   **Media Ponderada de Precios**: Para que la estimación sea lo más fiel a la realidad de consumo del cliente, no se usa el precio del periodo P1, sino que el ERP extrae una media ponderada de todos los precios (ej. en 2.0TD, 50% P3 + 25% P1 + 25% P2) a la que multiplica por la energía diaria estimada (Consumo Anual / 365 * Días Restantes).
 *   **Trazabilidad Financiera**: El cálculo base del sistema es **siempre la Base Imponible**. El 21% de IVA se inyecta de forma dinámica exclusivamente en el momento de generar y pintar el documento PDF final de la factura de penalización, evitando descuadres y cruces de "peras con manzanas" en los listados del CRM.
-*   **Integridad de Facturación**: Una vez que una penalización se marca como "Ya Facturada", el input numérico se bloquea y se emite la factura (deduplicando sufijos si un mismo PDF engloba a múltiples CUPS o contratos).
+*   **Integridad y Seguridad en Facturas de Penalización (`/facturas-penalizaciones`)**: Una vez que una penalización se marca como "Ya Facturada", el input numérico se bloquea y se emite la factura (deduplicando sufijos si un mismo PDF engloba a múltiples CUPS o contratos). En el histórico de **Facturas de Penalizaciones**, los usuarios con rol `COMERCIAL` o `CANAL` tienen acceso de **solo lectura y descarga de PDF**: los selectores múltiples (checkboxes), los botones de **Marcar Comunicadas**, **Comunicar** por email y **Eliminar** factura están restringidos exclusivamente a `SUPERADMIN`, `COMPANYADMIN` y `BACKOFFICE`.
 
 ---
 
@@ -78,11 +83,12 @@ Al alojar la base de datos en **Prisma Postgres (`db.prisma.io`)** y la web en *
 
 ---
 
-## 6. Permisos y Visibilidad (Row Level Security en App)
+## 7. Permisos y Visibilidad (Row Level Security en App)
 
 El CRM Ventas asegura que la información esté encapsulada mediante filtros en las "Actions" (ej. `getDashboardMetricsAction`, `historicalInvoices`):
 
 *   **COMERCIAL**: Solo ve los contratos, leads y facturas donde su `userId` coincida.
 *   **CANAL**: Ve lo suyo y todo lo de los comerciales que cuelgan de su `channelId`.
-*   **BACKOFFICE / SUPERADMIN**: Visibilidad total de la comercializadora.
+*   **BACKOFFICE / COMPANYADMIN / SUPERADMIN**: Visibilidad total de la comercializadora (respetando la marca seleccionada en el selector de marcas).
+*   **Gráfica de Evolución de Cartera en Dashboard**: En el panel principal y de análisis, la gráfica **Evolución de Cartera (MWh y Contratos)** muestra en el eje vertical izquierdo el número de **Contratos Activos** y en el eje vertical derecho los **MWh** (`Total Activos MWh`, `Altas MWh` y `Bajas MWh`), reflejando ambos indicadores en el tooltip interactivo de cada mes.
 *   Esta arquitectura convierte al sistema en un **CRM propietario multi-tenant**, ahorrando costes de licencias externas (Salesforce, HubSpot) y manteniendo toda la lógica adaptada nativamente al sector eléctrico español.
