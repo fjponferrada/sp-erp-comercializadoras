@@ -105,21 +105,62 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Gráfico 1: Evolución de Cartera */}
         <div className="card" style={{ padding: '24px' }}>
-          <h3 className="text-lg font-bold text-white mb-6">Evolución de Cartera (MWh)</h3>
+          <h3 className="text-lg font-bold text-white mb-6">Evolución de Cartera (Contratos y MWh)</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                 <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="left" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v/1000}k`} />
-                <YAxis yAxisId="right" orientation="right" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis 
+                  yAxisId="left" 
+                  stroke="#38bdf8" 
+                  fontSize={12} 
+                  tickLine={false} 
+                  axisLine={false} 
+                  tickFormatter={(v) => `${Math.round(v).toLocaleString('es-ES')}`}
+                />
+                <YAxis 
+                  yAxisId="right" 
+                  orientation="right" 
+                  stroke="#94a3b8" 
+                  fontSize={12} 
+                  tickLine={false} 
+                  axisLine={false} 
+                  tickFormatter={(v) => `${Math.round(v).toLocaleString('es-ES')}`}
+                />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc' }}
-                  itemStyle={{ color: '#f8fafc' }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || payload.length === 0) return null;
+                    const row = payload[0]?.payload;
+                    return (
+                      <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '0.75rem', padding: '12px 16px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.4)' }}>
+                        <p style={{ fontWeight: 700, marginBottom: '8px', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: '4px' }}>{label}</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+                            <span style={{ color: '#38bdf8', fontWeight: 600 }}>Contratos Activos:</span>
+                            <span style={{ fontWeight: 700 }}>{(row?.contratosActivos ?? 0).toLocaleString('es-ES')} <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>(+{row?.altas ?? 0} / -{row?.bajas ?? 0})</span></span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+                            <span style={{ color: '#818cf8', fontWeight: 600 }}>Total Activos MWh:</span>
+                            <span style={{ fontWeight: 700 }}>{Number(row?.mwhActivos ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+                            <span style={{ color: '#10b981' }}>Altas MWh:</span>
+                            <span>{Number(row?.mwhAltas ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+                            <span style={{ color: '#f43f5e' }}>Bajas MWh:</span>
+                            <span>{Number(row?.mwhBajas ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }}
                 />
                 <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                <Bar yAxisId="left" dataKey="mwhAltas" name="Altas MWh" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
-                <Bar yAxisId="left" dataKey="mwhBajas" name="Bajas MWh" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar yAxisId="right" dataKey="mwhAltas" name="Altas MWh" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar yAxisId="right" dataKey="mwhBajas" name="Bajas MWh" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20} />
+                <Line yAxisId="left" type="monotone" dataKey="contratosActivos" name="Contratos Activos" stroke="#38bdf8" strokeWidth={2.5} dot={{ r: 3, fill: '#38bdf8', strokeWidth: 1.5, stroke: '#1e293b' }} />
                 <Line yAxisId="right" type="monotone" dataKey="mwhActivos" name="Total Activos MWh" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: '#6366f1', strokeWidth: 2, stroke: '#1e293b' }} />
               </ComposedChart>
             </ResponsiveContainer>

@@ -17,11 +17,16 @@ import Link from 'next/link';
 const statusBadge = (status: string) => {
   const map: Record<string, string> = {
     ACTIVO: 'badge-active',
+    Activo: 'badge-active',
     TRAMITANDO: 'badge-process',
+    Tramitando: 'badge-process',
     BORRADOR: 'badge-draft',
     BAJA: 'badge-danger',
+    FINALIZADO: 'badge-danger',
+    Finalizado: 'badge-danger',
     RECHAZADO: 'badge-danger',
     RECHAZO_DISTRIBUIDORA: 'badge-danger',
+    'Rechazo Distribuidora': 'badge-danger',
     RECHAZO_COMERCIALIZADORA: 'badge-danger',
   };
   return `badge ${map[status] ?? 'badge-draft'}`;
@@ -174,6 +179,7 @@ export default function DashboardPage() {
                     transition: 'border-color 0.2s, background 0.2s',
                     border: '1px solid rgba(245,158,11,0.2)',
                   }}
+                    onClick={() => r.internalId && router.push(`/contratos/${r.internalId}`)}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-surface)')}
                   >

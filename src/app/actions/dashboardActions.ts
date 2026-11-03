@@ -7,33 +7,42 @@ export async function getDashboardMetricsAction() {
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const filter = await getUserVisibilityFilter();
 
-
-    // 1. Contratos Activos y Total
+    // 1. Contratos Activos, Tramitando y Rechazos
     const activosCount = await prisma.contract.count({
-      where: { ...filter, status: 'ACTIVO' }
+      where: { ...filter, status: { in: ['ACTIVO', 'Activo'] } }
     });
 
     const tramitandoCount = await prisma.contract.count({
-      where: { ...filter, status: 'TRAMITANDO' }
+      where: { ...filter, status: { in: ['TRAMITANDO', 'Tramitando'] } }
     });
 
     const rechazosCount = await prisma.contract.count({
       where: {
         ...filter,
-        status: { in: ['RECHAZADO', 'RECHAZO_DISTRIBUIDORA', 'RECHAZO_COMERCIALIZADORA', 'RECHAZO_RIESGOS', 'RECHAZADO_POR_CLIENTE'] }
+        status: {
+          in: [
+            'RECHAZADO',
+            'RECHAZO_DISTRIBUIDORA',
+            'Rechazo Distribuidora',
+            'RECHAZO_COMERCIALIZADORA',
+            'RECHAZO_RIESGOS',
+            'RECHAZADO_POR_CLIENTE'
+          ]
+        }
       }
     });
 
-    // 2. Fetch contracts for Net Bajas logic
+    // 2. Fetch contracts for Net Bajas logic (Regla 47 y Regla 124: agrupar por 20 primeros caracteres del CUPS)
     const contracts = await prisma.contract.findMany({
       where: {
         ...filter,
-        status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] }
+        status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
       },
       select: {
         id: true,
         activationDate: true,
         terminationDate: true,
+        supplyPointId: true,
         supplyPoint: { select: { cups: true } }
       }
     });
@@ -41,7 +50,7 @@ export async function getDashboardMetricsAction() {
     const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
     const contractsByCups: Record<string, typeof contracts> = {};
     contracts.forEach(c => {
-      const cupsStr = c.supplyPoint?.cups;
+      const cupsStr = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
       if (!cupsStr || !c.activationDate) return;
       if (!contractsByCups[cupsStr]) contractsByCups[cupsStr] = [];
       contractsByCups[cupsStr].push(c);
@@ -89,26 +98,24 @@ export async function getDashboardMetricsAction() {
 
     const bajasCount = netBajasCount;
 
-    // 2. MWh Activos (Requiere join con SupplyPoint, no se puede con aggregate en relaciones profundas en prisma tan fácil,
-    // usaremos findMany y sumaremos en JS si no son demasiados, o agrupado por DB)
-    // Para no traer todos, usaremos un raw query o suma de campo directo si podemos
-    // Usamos findMany seleccionando solo annualConsumption de los activos
+    // 3. MWh Activos
     const activeContracts = await prisma.contract.findMany({
-      where: { ...filter, status: 'ACTIVO' },
-      select: { supplyPointId: true, supplyPoint: { select: { annualConsumption: true } } }
+      where: { ...filter, status: { in: ['ACTIVO', 'Activo'] } },
+      select: { supplyPointId: true, supplyPoint: { select: { cups: true, annualConsumption: true } } }
     });
     
     let totalMWh = 0;
     const countedCups = new Set<string>();
 
     activeContracts.forEach(c => {
-      if (c.supplyPointId && !countedCups.has(c.supplyPointId)) {
+      const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
+      if (cupsKey && !countedCups.has(cupsKey)) {
         totalMWh += c.supplyPoint?.annualConsumption || 0;
-        countedCups.add(c.supplyPointId);
+        countedCups.add(cupsKey);
       }
     });
 
-    // 3. Contratos Recientes
+    // 4. Contratos Recientes
     const recentContracts = await prisma.contract.findMany({
       where: filter,
       orderBy: { updatedAt: 'desc' },
@@ -121,58 +128,7 @@ export async function getDashboardMetricsAction() {
       }
     });
 
-    // 5. Análisis Económico (Facturación)
-    // Agrupamos las facturas por mes (basado en issueDate)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-
-    const recentInvoices = await prisma.invoice.findMany({
-      where: {
-        contract: filter,
-        issueDate: { gte: sixMonthsAgo }
-      },
-      select: {
-        issueDate: true,
-        subtotal1: true,
-        invoiceType: true,
-        margin: true,
-      }
-    });
-
-    const monthlyStats: Record<string, { revenue: number, margin: number, invoiceCount: number }> = {};
-    
-    // Inicializar los últimos 6 meses en orden
-    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      monthlyStats[key] = { revenue: 0, margin: 0, invoiceCount: 0 };
-    }
-
-    recentInvoices.forEach(inv => {
-      if (!inv.issueDate) return;
-      const key = `${monthNames[inv.issueDate.getMonth()]} ${inv.issueDate.getFullYear()}`;
-      if (monthlyStats[key]) {
-        let revenue = inv.subtotal1 || 0;
-        if (inv.invoiceType === 'Abono' && revenue > 0) {
-            revenue = -revenue;
-        }
-        monthlyStats[key].revenue += revenue;
-        monthlyStats[key].margin += inv.margin || 0;
-        monthlyStats[key].invoiceCount += 1;
-      }
-    });
-
-    const billingStats = Object.keys(monthlyStats).map(key => ({
-      month: key,
-      revenue: monthlyStats[key].revenue,
-      margin: monthlyStats[key].margin,
-      newContracts: monthlyStats[key].invoiceCount // Using it to show invoice count
-    }));
-
-    // 4. Renovaciones Críticas (a 45 días vista, y hasta -15 días pasados)
+    // 5. Renovaciones Críticas (a 45 días vista, y hasta -15 días pasados)
     const next45Days = new Date();
     next45Days.setDate(next45Days.getDate() + 45);
     
@@ -182,7 +138,7 @@ export async function getDashboardMetricsAction() {
     const renewalAlerts = await prisma.contract.findMany({
       where: {
         ...filter,
-        status: 'ACTIVO',
+        status: { in: ['ACTIVO', 'Activo'] },
         expectedEndDate: { not: null, lte: next45Days, gte: past15Days }
       },
       orderBy: { expectedEndDate: 'asc' },
@@ -204,13 +160,13 @@ export async function getDashboardMetricsAction() {
           mwh: totalMWh,
         },
         recentContracts: recentContracts.map(c => ({
-          id: c.contractCode || c.supplyPoint.cups,
+          id: c.contractCode || c.supplyPoint?.cups || '-',
           internalId: c.id,
-          client: c.client.businessName,
+          client: c.client?.businessName || 'Sin cliente',
           status: c.status,
-          tariff: c.product.tariff || '-',
-          mwh: c.supplyPoint.annualConsumption || 0,
-          canal: c.user.channel?.name || c.user.name,
+          tariff: c.product?.tariff || '-',
+          mwh: c.supplyPoint?.annualConsumption || 0,
+          canal: c.user?.channel?.name || c.user?.name || '-',
           updatedAt: c.updatedAt
         })),
         renewals: renewalAlerts.map(c => {
@@ -218,13 +174,12 @@ export async function getDashboardMetricsAction() {
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           return {
             internalId: c.id,
-            client: c.client.businessName,
-            cups: c.supplyPoint.cups,
+            client: c.client?.businessName || 'Sin cliente',
+            cups: c.supplyPoint?.cups || '-',
             expiresIn: `${diffDays} días`,
-            mwh: c.supplyPoint.annualConsumption || 0
+            mwh: c.supplyPoint?.annualConsumption || 0
           };
-        }),
-        billingStats
+        })
       }
     };
   } catch (error: any) {

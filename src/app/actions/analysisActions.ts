@@ -59,14 +59,14 @@ export async function getEconomicAnalysis() {
     const contracts = await prisma.contract.findMany({
       where: {
         ...filter,
-        status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] }
+        status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
       },
       select: {
         activationDate: true,
         terminationDate: true,
         supplyPointId: true,
         supplyPoint: {
-          select: { annualConsumption: true }
+          select: { cups: true, annualConsumption: true }
         }
       }
     });
@@ -77,9 +77,10 @@ export async function getEconomicAnalysis() {
 
     const contractsByCups: Record<string, typeof contracts> = {};
     contracts.forEach(c => {
-      if (!c.supplyPointId || !c.activationDate) return;
-      if (!contractsByCups[c.supplyPointId]) contractsByCups[c.supplyPointId] = [];
-      contractsByCups[c.supplyPointId].push(c);
+      const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
+      if (!cupsKey || !c.activationDate) return;
+      if (!contractsByCups[cupsKey]) contractsByCups[cupsKey] = [];
+      contractsByCups[cupsKey].push(c);
     });
 
     Object.values(contractsByCups).forEach(cupsContracts => {
