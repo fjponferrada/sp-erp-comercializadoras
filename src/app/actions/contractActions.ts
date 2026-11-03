@@ -1505,6 +1505,7 @@ export async function getPaginatedContractsAction(
         version: true,
         status: true,
         supplyPointId: true,
+        signatureDate: true,
         activationDate: true,
         terminationDate: true,
         supplyPoint: { select: { cups: true, annualConsumption: true } }
@@ -1592,7 +1593,7 @@ export async function getPaginatedContractsAction(
     }
 
     const seenCodes = new Set<string>();
-    const deduplicatedIds: string[] = [];
+    const rawDeduplicatedIds: string[] = [];
 
     for (const item of allMatching) {
       if (falseBajaIds.has(item.id)) continue; // Omitir las falsas bajas de la tabla
@@ -1600,29 +1601,52 @@ export async function getPaginatedContractsAction(
       if (item.contractCode) {
         if (!seenCodes.has(item.contractCode)) {
           seenCodes.add(item.contractCode);
-          deduplicatedIds.push(bestIdForCode.get(item.contractCode)!);
+          rawDeduplicatedIds.push(bestIdForCode.get(item.contractCode)!);
         }
       } else {
-        deduplicatedIds.push(item.id);
+        rawDeduplicatedIds.push(item.id);
       }
     }
 
-    const totalCount = deduplicatedIds.length;
+    let deduplicatedIds: string[] = rawDeduplicatedIds;
     let activeOnDateMwh: number | null = null;
+
     if (activeOnDate) {
+      const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
       const itemById = new Map(allMatching.map(i => [i.id, i]));
-      const seenCups = new Set<string>();
-      let sumMwh = 0;
-      for (const id of deduplicatedIds) {
+      const bestByCups = new Map<string, typeof allMatching[0]>();
+
+      for (const id of rawDeduplicatedIds) {
         const item = itemById.get(id);
         if (!item) continue;
+        // Si es una renovación o contrato distinto cuya fecha de firma es posterior a la fecha consultada, aún no había entrado en vigor en esa fecha
+        if (item.signatureDate && item.signatureDate.getTime() > targetEndOfDay.getTime()) {
+          continue;
+        }
         const cupsKey = item.supplyPoint?.cups?.substring(0, 20) || item.supplyPointId || item.id;
-        if (seenCups.has(cupsKey)) continue;
-        seenCups.add(cupsKey);
+        if (!bestByCups.has(cupsKey)) {
+          bestByCups.set(cupsKey, item);
+        } else {
+          const existing = bestByCups.get(cupsKey)!;
+          const itemAct = item.activationDate ? item.activationDate.getTime() : 0;
+          const existAct = existing.activationDate ? existing.activationDate.getTime() : 0;
+          if (itemAct > existAct) {
+            bestByCups.set(cupsKey, item);
+          }
+        }
+      }
+
+      const validIdSet = new Set(Array.from(bestByCups.values()).map(i => i.id));
+      deduplicatedIds = rawDeduplicatedIds.filter(id => validIdSet.has(id));
+
+      let sumMwh = 0;
+      for (const item of bestByCups.values()) {
         sumMwh += item.supplyPoint?.annualConsumption || 0;
       }
       activeOnDateMwh = sumMwh;
     }
+
+    const totalCount = deduplicatedIds.length;
 
     const offset = (page - 1) * limit;
     const pageIds = deduplicatedIds.slice(offset, offset + limit);
@@ -2040,7 +2064,32 @@ export async function exportContractsExcelAction(
       }
     }
 
-    const finalContracts = Array.from(byCode.values()).filter(c => !falseBajaIds.has(c.id));
+    let finalContracts = Array.from(byCode.values()).filter(c => !falseBajaIds.has(c.id));
+
+    if (activeOnDate) {
+      const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
+      const bestByCups = new Map<string, any>();
+
+      for (const c of finalContracts) {
+        if (c.signatureDate && new Date(c.signatureDate).getTime() > targetEndOfDay.getTime()) {
+          continue;
+        }
+        const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId || c.id;
+        if (!bestByCups.has(cupsKey)) {
+          bestByCups.set(cupsKey, c);
+        } else {
+          const existing = bestByCups.get(cupsKey);
+          const itemAct = c.activationDate ? new Date(c.activationDate).getTime() : 0;
+          const existAct = existing.activationDate ? new Date(existing.activationDate).getTime() : 0;
+          if (itemAct > existAct) {
+            bestByCups.set(cupsKey, c);
+          }
+        }
+      }
+
+      const validIdSet = new Set(Array.from(bestByCups.values()).map((c: any) => c.id));
+      finalContracts = finalContracts.filter(c => validIdSet.has(c.id));
+    }
 
     const exportData = finalContracts.map(c => {
       const cd = {
