@@ -1965,16 +1965,25 @@ export async function exportContractsExcelAction(
       orderBy: [{ createdAt: 'desc' }, { version: 'desc' }]
     });
 
+    const groupMap = new Map<string, any[]>();
+    for (const c of allMatching) {
+      const code = c.contractCode || c.id;
+      if (!groupMap.has(code)) groupMap.set(code, []);
+      groupMap.get(code)!.push(c);
+    }
+
     const byCode = new Map<string, any>();
     const bajaContracts: any[] = [];
     
-    for (const c of allMatching) {
-      const code = c.contractCode || c.id;
-      if (!byCode.has(code)) {
-        byCode.set(code, c);
-        if (!activeOnDate && ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId)) {
-          bajaContracts.push(c);
-        }
+    for (const [code, group] of groupMap.entries()) {
+      const sortedByVersion = [...group].sort((a, b) => (b.version || 0) - (a.version || 0));
+      const active = sortedByVersion.find(c => c.status === 'ACTIVO' || c.status === 'Activo');
+      const inProgress = sortedByVersion.find(c => c.status === 'TRAMITANDO' || c.status === 'ACEPTADO');
+      const fin = sortedByVersion.find(c => c.status === 'FINALIZADO' || c.status === 'Finalizado');
+      const chosen = active || inProgress || fin || sortedByVersion[0];
+      byCode.set(code, chosen);
+      if (!activeOnDate && ['BAJA', 'FINALIZADO', 'Finalizado'].includes(chosen.status) && (chosen.supplyPoint?.cups || chosen.supplyPointId)) {
+        bajaContracts.push(chosen);
       }
     }
 
@@ -2047,7 +2056,9 @@ export async function exportContractsExcelAction(
         return val.toString().replace('.', ',');
       };
 
-      const isJuridica = c.client?.clientType?.toUpperCase() === 'EMPRESA';
+      const ctUpper = (c.client?.clientType || '').toUpperCase().trim();
+      const vatFirst = (c.client?.vatNumber || '').trim().toUpperCase().charAt(0);
+      const isJuridica = ctUpper === 'EMPRESA' || ctUpper === 'J' || ctUpper === 'JURÍDICA' || ctUpper === 'JURIDICA' || (!ctUpper && /^[ABCDEFGHJNPQRSUVW]/.test(vatFirst));
       const rawNombreRep = formatStr(cd["Nombre Contacto"]) || formatStr(cd["Nombre Wp"]) || formatStr(cd["Nombre"]) || (c.client?.representativeName || c.client?.contactName || '').split(' ')[0] || '';
       const rawApellidosRep = formatStr(cd["Apellidos Contacto"]) || formatStr(cd["apellidos"]) || (c.client?.representativeName || c.client?.contactName || '').split(' ').slice(1).join(' ') || '';
       const repName = formatStr(cd["NOMBRE Y APELLIDOS"]) || formatStr(cd["Nombre_y_apellidos"]) || c.client?.representativeName || c.client?.contactName || (rawNombreRep + (rawApellidosRep ? ' ' + rawApellidosRep : ''));
@@ -2069,15 +2080,18 @@ export async function exportContractsExcelAction(
         cleanDist = distMap.get(finalReeCode);
       }
 
-      // Mapear código CNMC a Tarifa (Airtable guarda a veces '018', '019' en lugar del string)
+      // Mapear código CNMC a Tarifa (según tabla oficial CNMC: 018=2.0TD, 019=3.0TD, 020=6.1TD, 021=6.2TD, 022=6.3TD, 023=6.4TD, 024=3.0TDVE, 025=6.1TDVE)
       const cnmcToTariff = (code: string) => {
         const c = String(code).trim();
         if (c === '018') return '2.0TD';
         if (c === '019') return '3.0TD';
-        if (c === '024') return '6.1TD';
-        if (c === '025') return '6.2TD';
-        if (c === '026') return '6.3TD';
-        if (c === '027') return '6.4TD';
+        if (c === '020') return '6.1TD';
+        if (c === '021') return '6.2TD';
+        if (c === '022') return '6.3TD';
+        if (c === '023') return '6.4TD';
+        if (c === '024') return '3.0TDVE';
+        if (c === '025') return '6.1TDVE';
+        if (['2.0TD', '3.0TD', '3.0TDVE', '6.1TD', '6.1TDVE', '6.2TD', '6.3TD', '6.4TD'].includes(c)) return c;
         return null;
       };
       const mappedTarifa = cnmcToTariff(formatStr(cd["Código Tarifa"]) || formatStr(cd["Codigo Tarifa"]));
@@ -2100,10 +2114,10 @@ export async function exportContractsExcelAction(
             : (c.client?.firstName || formatStr(cd["NOMBRERAZON SOCIAL"])),
         "Primer Apellido": isJuridica 
             ? "" 
-            : (c.client?.lastName?.trim().split(/\\s+/)[0] || formatStr(cd["Primer Apellido"])),
+            : (c.client?.lastName?.trim().split(/\s+/)[0] || formatStr(cd["Primer Apellido"])),
         "Segundo Apellido": isJuridica 
             ? "" 
-            : (c.client?.lastName?.trim().split(/\\s+/).slice(1).join(" ") || formatStr(cd["Segundo Apellido"])),
+            : (c.client?.lastName?.trim().split(/\s+/).slice(1).join(" ") || formatStr(cd["Segundo Apellido"])),
         "CIF": c.client?.vatNumber || formatStr(cd["CIF"]),
         "DOMICILIO SOC": cleanDomSoc,
         "CP SOC": c.client?.billingPostalCode || c.client?.postalCode || formatStr(cd["CP SOC"]),
@@ -2140,7 +2154,7 @@ export async function exportContractsExcelAction(
         "fecha_firma": formatDate(c.signatureDate) || formatStr(cd["fecha_firma"]),
         "autoconsumo": c.supplyPoint?.hasSelfConsumption ? (c.supplyPoint?.selfConsumptionType || "") : "",
         "autoconsumo_fijo_index": c.supplyPoint?.selfConsumptionType || formatStr(cd["autoconsumo_fijo_index"]),
-        "tarifa": mappedTarifa || formatStr(cd["tarifa"]) || formatStr(cd["Tarifa"]) || c.product?.tariff || c.supplyPoint?.tariff,
+        "tarifa": c.supplyPoint?.tariff || c.product?.tariff || formatStr(cd["tarifa"]) || formatStr(cd["Tarifa"]) || mappedTarifa,
         "consumo_anual": fmtNum(c.supplyPoint?.annualConsumption) || formatStr(cd["consumo_anual"]),
         "FIJO  INDEX": (c.product?.pricingModel === "FIXED" || c.product?.type === "FIJO") ? "F" : "I",
         "atr_comer": "SI",
