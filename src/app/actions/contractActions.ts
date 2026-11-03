@@ -1613,25 +1613,30 @@ export async function getPaginatedContractsAction(
 
     if (activeOnDate) {
       const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
+      const targetTime = targetEndOfDay.getTime();
       const itemById = new Map(allMatching.map(i => [i.id, i]));
       const bestByCups = new Map<string, typeof allMatching[0]>();
 
       for (const id of rawDeduplicatedIds) {
         const item = itemById.get(id);
         if (!item) continue;
-        // Si es una renovación o contrato distinto cuya fecha de firma es posterior a la fecha consultada, aún no había entrado en vigor en esa fecha
-        if (item.signatureDate && item.signatureDate.getTime() > targetEndOfDay.getTime()) {
-          continue;
-        }
         const cupsKey = item.supplyPoint?.cups?.substring(0, 20) || item.supplyPointId || item.id;
         if (!bestByCups.has(cupsKey)) {
           bestByCups.set(cupsKey, item);
         } else {
           const existing = bestByCups.get(cupsKey)!;
-          const itemAct = item.activationDate ? item.activationDate.getTime() : 0;
-          const existAct = existing.activationDate ? existing.activationDate.getTime() : 0;
-          if (itemAct > existAct) {
+          // Si dos contratos del mismo CUPS solapan en la fecha consultada, priorizar el que ya estaba firmado en esa fecha
+          const itemSignedByTarget = !item.signatureDate || item.signatureDate.getTime() <= targetTime;
+          const existSignedByTarget = !existing.signatureDate || existing.signatureDate.getTime() <= targetTime;
+
+          if (itemSignedByTarget && !existSignedByTarget) {
             bestByCups.set(cupsKey, item);
+          } else if (itemSignedByTarget === existSignedByTarget) {
+            const itemAct = item.activationDate ? item.activationDate.getTime() : 0;
+            const existAct = existing.activationDate ? existing.activationDate.getTime() : 0;
+            if (itemAct > existAct) {
+              bestByCups.set(cupsKey, item);
+            }
           }
         }
       }
@@ -2068,21 +2073,26 @@ export async function exportContractsExcelAction(
 
     if (activeOnDate) {
       const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
+      const targetTime = targetEndOfDay.getTime();
       const bestByCups = new Map<string, any>();
 
       for (const c of finalContracts) {
-        if (c.signatureDate && new Date(c.signatureDate).getTime() > targetEndOfDay.getTime()) {
-          continue;
-        }
         const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId || c.id;
         if (!bestByCups.has(cupsKey)) {
           bestByCups.set(cupsKey, c);
         } else {
           const existing = bestByCups.get(cupsKey);
-          const itemAct = c.activationDate ? new Date(c.activationDate).getTime() : 0;
-          const existAct = existing.activationDate ? new Date(existing.activationDate).getTime() : 0;
-          if (itemAct > existAct) {
+          const itemSignedByTarget = !c.signatureDate || new Date(c.signatureDate).getTime() <= targetTime;
+          const existSignedByTarget = !existing.signatureDate || new Date(existing.signatureDate).getTime() <= targetTime;
+
+          if (itemSignedByTarget && !existSignedByTarget) {
             bestByCups.set(cupsKey, c);
+          } else if (itemSignedByTarget === existSignedByTarget) {
+            const itemAct = c.activationDate ? new Date(c.activationDate).getTime() : 0;
+            const existAct = existing.activationDate ? new Date(existing.activationDate).getTime() : 0;
+            if (itemAct > existAct) {
+              bestByCups.set(cupsKey, c);
+            }
           }
         }
       }
