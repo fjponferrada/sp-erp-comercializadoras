@@ -19,7 +19,9 @@ import {
   Upload,
   Download,
   MoreVertical,
-  ArrowUpDown
+  ArrowUpDown,
+  Calendar,
+  X
 } from 'lucide-react';
 import EditContractModal from './EditContractModal';
 import PaginationFooter from '@/components/PaginationFooter';
@@ -101,6 +103,8 @@ export default function ContractsClient({
   const [tarifaFilter, setTarifa]   = useState('Todas');
   const [canalFilter, setCanal]     = useState('Todos');
   const [tipoFilter, setTipo]       = useState('Todos');
+  const [activeOnDate, setActiveOnDate] = useState('');
+  const [activeOnDateMwh, setActiveOnDateMwh] = useState<number | null>(null);
   
   const [sortCol, setSortCol]       = useState<string | null>('fechaRegistro');
   const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc');
@@ -141,17 +145,18 @@ export default function ContractsClient({
     setIsLoading(true);
     try {
       const { getPaginatedContractsAction } = await import('@/app/actions/contractActions');
-      const result = await getPaginatedContractsAction(page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir);
+      const result = await getPaginatedContractsAction(page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir, activeOnDate || undefined);
       if (result.success && result.contracts) {
         setContracts(result.contracts);
         setTotalCount(result.totalCount || 0);
+        setActiveOnDateMwh(result.activeOnDateMwh ?? null);
       }
     } catch (err) {
       console.error("Error fetching contracts:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir]);
+  }, [page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir, activeOnDate]);
 
   useEffect(() => {
     const s = sessionStorage.getItem('c_search'); if (s !== null) setSearch(s);
@@ -159,6 +164,7 @@ export default function ContractsClient({
     const t = sessionStorage.getItem('c_tarifa'); if (t !== null) setTarifa(t);
     const c = sessionStorage.getItem('c_canal'); if (c !== null) setCanal(c);
     const tp = sessionStorage.getItem('c_tipo'); if (tp !== null) setTipo(tp);
+    const aod = sessionStorage.getItem('c_activeOnDate'); if (aod !== null) setActiveOnDate(aod);
     const p = sessionStorage.getItem('c_page'); if (p !== null) setPage(Number(p));
     setIsHydrated(true);
   }, []);
@@ -170,15 +176,17 @@ export default function ContractsClient({
     sessionStorage.setItem('c_tarifa', tarifaFilter);
     sessionStorage.setItem('c_canal', canalFilter);
     sessionStorage.setItem('c_tipo', tipoFilter);
+    sessionStorage.setItem('c_activeOnDate', activeOnDate);
     sessionStorage.setItem('c_page', String(page));
-  }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, page, isHydrated]);
+  }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate, page, isHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;
     
-    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && tipoFilter === 'Todos' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
+    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && tipoFilter === 'Todos' && activeOnDate === '' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
       setContracts(initialContracts);
       setTotalCount(initialTotalCount);
+      setActiveOnDateMwh(null);
       return;
     }
 
@@ -186,7 +194,7 @@ export default function ContractsClient({
       fetchContracts();
     }, 300);
     return () => clearTimeout(debounceId);
-  }, [fetchContracts, page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir, initialContracts, initialTotalCount, isHydrated]);
+  }, [fetchContracts, page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate, sortCol, sortDir, initialContracts, initialTotalCount, isHydrated]);
 
   // Using a ref to track if it's the initial hydration to prevent resetting page
   const initialHydrationDone = React.useRef(false);
@@ -198,7 +206,7 @@ export default function ContractsClient({
       }
       setPage(1);
     }
-  }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, isHydrated]);
+  }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate, isHydrated]);
 
   const paginated = useMemo(() => {
     return contracts.map(c => {
@@ -238,10 +246,26 @@ export default function ContractsClient({
   }
 
   const STATS = [
-    { label: 'Contratos Activos', value: stats.activos.toString(), delta: 'Actualizado', positive: true, icon: Zap, color: 'var(--success)', glow: 'rgba(34,197,94,0.12)' },
+    { 
+      label: 'Contratos Activos', 
+      value: activeOnDate ? totalCount.toString() : stats.activos.toString(), 
+      delta: activeOnDate ? `Activos a ${formatDate(activeOnDate)}` : 'Actualizado', 
+      positive: true, 
+      icon: Zap, 
+      color: 'var(--success)', 
+      glow: 'rgba(34,197,94,0.12)' 
+    },
     { label: 'En Tramitación', value: stats.tramitando.toString(), delta: 'Pendientes de activación', positive: null, icon: Loader2, color: 'var(--info)', glow: 'rgba(59,130,246,0.12)' },
     { label: 'Bajas', value: stats.bajas.toString(), delta: 'Histórico', positive: true, icon: TrendingDown, color: 'var(--danger)', glow: 'rgba(239,68,68,0.10)' },
-    { label: 'MWh Totales', value: stats.totalMwh.toLocaleString('es-ES', { maximumFractionDigits: 0 }), delta: 'Cartera actual', positive: true, icon: BarChart3, color: 'var(--lime)', glow: 'var(--lime-glow)' },
+    { 
+      label: 'MWh Totales', 
+      value: (activeOnDate && activeOnDateMwh !== null ? activeOnDateMwh : stats.totalMwh).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 
+      delta: activeOnDate ? `Cartera a ${formatDate(activeOnDate)}` : 'Cartera actual', 
+      positive: true, 
+      icon: BarChart3, 
+      color: 'var(--lime)', 
+      glow: 'var(--lime-glow)' 
+    },
   ];
 
   const [isExporting, setIsExporting] = useState(false);
@@ -256,13 +280,14 @@ export default function ContractsClient({
     const loadingToast = toast.loading('Generando exportación Excel...');
     try {
       const { exportContractsExcelAction } = await import('@/app/actions/contractActions');
-      const result = await exportContractsExcelAction(search, estadoFilter, tarifaFilter, canalFilter, tipoFilter);
+      const result = await exportContractsExcelAction(search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate || undefined);
       if (result.success && result.data) {
         const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(result.data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Contratos");
-        XLSX.writeFile(wb, `Exportacion_Contratos_${new Date().toISOString().split('T')[0]}.xlsx`);
+        const suffix = activeOnDate ? `Activos_${activeOnDate}` : new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `Exportacion_Contratos_${suffix}.xlsx`);
         toast.success('Excel generado correctamente', { id: loadingToast });
       } else {
         toast.error('Error: ' + result.error, { id: loadingToast });
@@ -357,6 +382,38 @@ export default function ContractsClient({
                     {tiposDropdown.map(t => <option key={t} value={t}>{t === 'Todos' ? 'Tipo: Todos' : t}</option>)}
                   </select>
                   <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: activeOnDate ? 'rgba(163, 230, 53, 0.08)' : 'var(--bg-surface)', border: activeOnDate ? '1px solid rgba(163, 230, 53, 0.35)' : '1px solid var(--border)', borderRadius: '8px', padding: '0 10px', height: '38px' }}>
+                  <Calendar size={14} style={{ color: activeOnDate ? 'var(--lime)' : 'var(--text-muted)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.78rem', color: activeOnDate ? 'var(--lime)' : 'var(--text-muted)', fontWeight: activeOnDate ? 600 : 500, whiteSpace: 'nowrap' }}>
+                    Activos a fecha:
+                  </span>
+                  <input
+                    type="date"
+                    value={activeOnDate}
+                    onChange={e => { setActiveOnDate(e.target.value); setPage(1); }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      fontFamily: "'JetBrains Mono', monospace"
+                    }}
+                    title="Filtrar contratos que estaban activos en la fecha seleccionada"
+                  />
+                  {activeOnDate && (
+                    <button
+                      type="button"
+                      onClick={() => { setActiveOnDate(''); setPage(1); }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                      title="Limpiar filtro de fecha"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             )}

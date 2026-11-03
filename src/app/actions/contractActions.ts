@@ -1373,7 +1373,8 @@ export async function getPaginatedContractsAction(
   canalFilter: string,
   tipoFilter: string,
   sortCol: string | null,
-  sortDir: 'asc' | 'desc'
+  sortDir: 'asc' | 'desc',
+  activeOnDate?: string
 ) {
   try {
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
@@ -1417,6 +1418,33 @@ export async function getPaginatedContractsAction(
         whereClause.status = { in: ['TRAMITANDO', 'Tramitando'] };
       } else {
         whereClause.status = estadoFilter;
+      }
+    }
+
+    if (activeOnDate) {
+      const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
+      if (!isNaN(targetEndOfDay.getTime())) {
+        if (!estadoFilter || estadoFilter === 'Todos') {
+          whereClause.status = { in: ['ACTIVO', 'Activo', 'FINALIZADO', 'Finalizado', 'BAJA'] };
+        }
+        const activeConditions = [
+          { activationDate: { lte: targetEndOfDay } },
+          {
+            OR: [
+              { terminationDate: null },
+              { terminationDate: { gt: targetEndOfDay } }
+            ]
+          }
+        ];
+        if (whereClause.AND) {
+          if (Array.isArray(whereClause.AND)) {
+            whereClause.AND = [...whereClause.AND, ...activeConditions];
+          } else {
+            whereClause.AND = [whereClause.AND, ...activeConditions];
+          }
+        } else {
+          whereClause.AND = activeConditions;
+        }
       }
     }
 
@@ -1479,13 +1507,14 @@ export async function getPaginatedContractsAction(
         supplyPointId: true,
         activationDate: true,
         terminationDate: true,
-        supplyPoint: { select: { cups: true } }
+        supplyPoint: { select: { cups: true, annualConsumption: true } }
       },
       orderBy: orderByParams
     });
 
     // Filtramos FALSAS BAJAS (Regla 47 y Regla 55: si hay otro contrato dentro de 30 días de gracia en el mismo CUPS, no es baja)
-    const bajaContracts = allMatching.filter(c => ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId));
+    // Si se consulta activos a una fecha específica (activeOnDate), NO excluimos contratos que renovaron posteriormente, ya que en esa fecha sí eran el contrato activo vigente.
+    const bajaContracts = activeOnDate ? [] : allMatching.filter(c => ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId));
     const falseBajaIds = new Set<string>();
 
     if (bajaContracts.length > 0) {
@@ -1579,6 +1608,22 @@ export async function getPaginatedContractsAction(
     }
 
     const totalCount = deduplicatedIds.length;
+    let activeOnDateMwh: number | null = null;
+    if (activeOnDate) {
+      const itemById = new Map(allMatching.map(i => [i.id, i]));
+      const seenCups = new Set<string>();
+      let sumMwh = 0;
+      for (const id of deduplicatedIds) {
+        const item = itemById.get(id);
+        if (!item) continue;
+        const cupsKey = item.supplyPoint?.cups?.substring(0, 20) || item.supplyPointId || item.id;
+        if (seenCups.has(cupsKey)) continue;
+        seenCups.add(cupsKey);
+        sumMwh += item.supplyPoint?.annualConsumption || 0;
+      }
+      activeOnDateMwh = sumMwh;
+    }
+
     const offset = (page - 1) * limit;
     const pageIds = deduplicatedIds.slice(offset, offset + limit);
 
@@ -1628,7 +1673,7 @@ export async function getPaginatedContractsAction(
       };
     });
 
-    return { success: true, contracts: uiContracts, totalCount };
+    return { success: true, contracts: uiContracts, totalCount, activeOnDateMwh };
   } catch (error: any) {
     console.error("Error fetching paginated contracts:", error);
     return { success: false, error: error.message };
@@ -1818,7 +1863,8 @@ export async function exportContractsExcelAction(
   estadoFilter: string,
   tarifaFilter: string,
   canalFilter: string,
-  tipoFilter: string
+  tipoFilter: string,
+  activeOnDate?: string
 ) {
   try {
     const { prisma } = await import('@/lib/prisma');
@@ -1868,6 +1914,33 @@ export async function exportContractsExcelAction(
       }
     }
 
+    if (activeOnDate) {
+      const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
+      if (!isNaN(targetEndOfDay.getTime())) {
+        if (!estadoFilter || estadoFilter === 'Todos') {
+          whereClause.status = { in: ['ACTIVO', 'Activo', 'FINALIZADO', 'Finalizado', 'BAJA'] };
+        }
+        const activeConditions = [
+          { activationDate: { lte: targetEndOfDay } },
+          {
+            OR: [
+              { terminationDate: null },
+              { terminationDate: { gt: targetEndOfDay } }
+            ]
+          }
+        ];
+        if (whereClause.AND) {
+          if (Array.isArray(whereClause.AND)) {
+            whereClause.AND = [...whereClause.AND, ...activeConditions];
+          } else {
+            whereClause.AND = [whereClause.AND, ...activeConditions];
+          }
+        } else {
+          whereClause.AND = activeConditions;
+        }
+      }
+    }
+
     if (tarifaFilter && tarifaFilter !== 'Todas') {
       whereClause.supplyPoint = { ...whereClause.supplyPoint, tariff: tarifaFilter };
     }
@@ -1899,7 +1972,7 @@ export async function exportContractsExcelAction(
       const code = c.contractCode || c.id;
       if (!byCode.has(code)) {
         byCode.set(code, c);
-        if (['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId)) {
+        if (!activeOnDate && ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId)) {
           bajaContracts.push(c);
         }
       }
