@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Send, Upload, FileUp } from 'lucide-react';
+import Topbar from '@/components/Topbar';
+import { Search, Send, Upload, FileUp, ArrowLeft } from 'lucide-react';
 import { searchCupsForClaim, generateClaim, searchInvoicesForMassClaim, searchCupsWithBillingDelay } from '@/app/actions/reclamacionesActions';
 import toast from 'react-hot-toast';
 import { SUBTIPO_REQUIREMENTS } from '../utils/casuisticas';
@@ -60,7 +61,7 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
 
   const [submitting, setSubmitting] = useState(false);
 
-  // Efecto para autocompletar comentarios
+  // Efecto para autocompletar comentarios y ajustar pestañas masivas según submotivo
   React.useEffect(() => {
     if (mode === 'Masiva' && submotivo.includes('009')) {
       setComentarios('El Cliente niega haber imposibilitado el acceso para la toma de lectura, tampoco tiene aviso de ausencia, ni se le ofrece alternativa o tlf para concertar cita. La Distribuidora está incumpliendo su obligación de mantenimiento del equipo de medida (incidencia de comunicaciones persistente). Según el RD 1110/2007 y la Resolución de 18 de diciembre de 2019, ante la falta de lectura real por fallo del equipo, deben proceder a su reparación inmediata. SOLICITAMOS: 1) Anulación de la lectura estimada por ser materialmente errónea. 2) Reparación urgente del sistema de telegestión. 3) Refacturación con lectura REAL. De persistir la estimación sin subsanar la avería del contador, se elevará denuncia ante el órgano competente de Energía de la Junta de Andalucía');
@@ -71,11 +72,25 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
     } else if (motivo.startsWith('05') && submotivo.includes('039')) {
       setComentarios('Solicitud informe / certificado sobre incidencias por averías técnicas en las redes de distribución eléctrica en el periodo indicado en la solicitud');
     }
+
+    if (mode === 'Masiva') {
+      if (masivaInputMode === 'facturas' && !submotivo.includes('009')) {
+        setMasivaInputMode('csv');
+      } else if (masivaInputMode === 'retrasos' && !submotivo.includes('006')) {
+        setMasivaInputMode('csv');
+      }
+    }
   }, [mode, submotivo, motivo]);
 
   const handleSearchCups = async () => {
     if (!cups) return toast.error('Introduce un CUPS');
     setSearching(true);
+    setSelectedF1Id('');
+    setDynamicFields(prev => {
+      const next = { ...prev };
+      delete next['NUM FACTURA ATR'];
+      return next;
+    });
     const res = await searchCupsForClaim(cups);
     if (res.success && res.data) {
       setClientData(res.data);
@@ -126,8 +141,17 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
     setSubmitting(true);
     
     let csvContent = '';
-    if (mode === 'Masiva' && csvFile) {
+    if (mode === 'Masiva' && masivaInputMode === 'csv' && csvFile) {
       csvContent = await csvFile.text();
+    }
+
+    const submotivoCode = submotivo.split('-')[0].trim();
+    const allowedReqs = SUBTIPO_REQUIREMENTS[submotivoCode] || [];
+    const filteredDynamicFields: Record<string, string> = {};
+    for (const reqKey of allowedReqs) {
+      if (dynamicFields[reqKey]) {
+        filteredDynamicFields[reqKey] = dynamicFields[reqKey];
+      }
     }
 
     const payload = {
@@ -136,14 +160,14 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       submotivo,
       cups: mode === 'Individual' ? cups : undefined,
       clientData: mode === 'Individual' ? clientData : undefined,
-      selectedF1Id: mode === 'Individual' ? selectedF1Id : undefined,
+      selectedF1Id: mode === 'Individual' && allowedReqs.includes('NUM FACTURA ATR') ? selectedF1Id : undefined,
       comentarios,
-      csvContent,
+      csvContent: mode === 'Masiva' && masivaInputMode === 'csv' ? csvContent : undefined,
       invoiceIds: mode === 'Masiva' && masivaInputMode === 'facturas' ? selectedInvoiceIds : undefined,
       cupsIds: mode === 'Masiva' && masivaInputMode === 'retrasos' ? selectedCupsIds : undefined,
-      dynamicFields,
-      fechaLectura: submotivo.includes('036') ? fechaLectura : undefined,
-      lecturas: submotivo.includes('036') ? lecturas : undefined
+      dynamicFields: filteredDynamicFields,
+      fechaLectura: allowedReqs.includes('FECHA LECTURA') ? fechaLectura : undefined,
+      lecturas: allowedReqs.includes('LECTURA') ? lecturas : undefined
     };
 
     const res = await generateClaim(payload);
@@ -166,10 +190,6 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
-      
-      // Opcional: resetear algunos campos si fuera necesario
-      // setCups('');
-      // setClientData(null);
     } else {
       toast.error(res.error || 'Error al generar');
     }
@@ -205,12 +225,12 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
     }
   };
 
-  // Mapeo estricto definido por el usuario
+  // Mapeo estricto definido por el usuario (excluyendo subtipos dados de baja 055 y 056)
   const strictMapping: Record<string, string[]> = {
     '01': ['001', '002', '038'],
     '02': [
       '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', 
-      '036', '037', '040', '046', '047', '049', '055', '056', '057', '067', 
+      '036', '037', '040', '046', '047', '049', '057', '067', 
       '068', '069', '073', '075', '101', '102', '103', '104', '105', '109', '110'
     ],
     '03': [
@@ -222,7 +242,6 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
     '05': ['020', '021', '022', '023', '039'],
     '06': ['024', '025', '026', '041', '042', '043', '044'],
     '07': ['027', '028', '029', '030', '031', '032', '063', '070']
-    // El resto se irán rellenando según indicaciones
   };
 
   const allowedSubmotivos = motivo ? strictMapping[motivo.split('-')[0].trim()] || [] : [];
@@ -234,20 +253,22 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
 
   const otherSubmotivos = submotivos.filter(sm => !suggestedSubmotivos.includes(sm));
 
-  const selectedF1 = f1Invoices.find(f => f.id === selectedF1Id);
-
   return (
-    <div className="min-h-screen relative outline-none pb-20" style={{ background: 'var(--bg-base)' }}>
-      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-            Generación de Reclamaciones
-          </h1>
-          <p className="text-[var(--text-muted)] mt-2">
-            Configure los parámetros para generar reclamaciones a distribuidora.
-          </p>
-        </div>
+    <div className="min-h-screen relative outline-none pb-20 flex flex-col" style={{ background: 'var(--bg-base)' }}>
+      <Topbar
+        title="Generación de Reclamaciones"
+        subtitle="Configure los parámetros para generar reclamaciones a distribuidora (Proceso R1)."
+        customActions={
+          <a
+            href="/reclamaciones"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border)] text-gray-300 font-semibold rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver a Reclamaciones
+          </a>
+        }
+      />
+      <div className="p-6 md:p-8 max-w-[1400px] w-full mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         
         <div className="bg-[var(--bg-elevated)] p-6 md:p-8 rounded-2xl border border-[var(--border)] shadow-lg space-y-8">
           
@@ -284,7 +305,11 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
               <select 
                 className="w-full border border-[var(--border)] bg-[#111827] rounded-xl px-4 py-3 text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--lime)] focus:border-transparent transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
+                onChange={(e) => {
+                  setMotivo(e.target.value);
+                  setSubmotivo('');
+                  setDynamicFields(selectedF1Id && dynamicFields['NUM FACTURA ATR'] ? { 'NUM FACTURA ATR': dynamicFields['NUM FACTURA ATR'] } : {});
+                }}
                 disabled={mode === 'Masiva'}
               >
                 {mode === 'Masiva' ? (
@@ -313,7 +338,14 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
               <select 
                 className="w-full border border-[var(--border)] bg-[#111827] rounded-xl px-4 py-3 text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--lime)] focus:border-transparent transition-all shadow-sm"
                 value={submotivo}
-                onChange={(e) => setSubmotivo(e.target.value)}
+                onChange={(e) => {
+                  const newSub = e.target.value;
+                  setSubmotivo(newSub);
+                  const selectedF1 = f1Invoices.find(f => f.id === selectedF1Id);
+                  setDynamicFields(selectedF1?.codigoFiscal ? { 'NUM FACTURA ATR': selectedF1.codigoFiscal } : {});
+                  setFechaLectura('');
+                  setLecturas({ P1: '', P2: '', P3: '', P4: '', P5: '', P6: '' });
+                }}
               >
                 <option value="" className="bg-[#111827] text-gray-400">Seleccione un submotivo</option>
                 {motivo && suggestedSubmotivos.length > 0 && (
@@ -349,6 +381,7 @@ export default function GenerarReclamacionClient({ motivos, submotivos }: Genera
                     type="text" 
                     value={cups}
                     onChange={(e) => setCups(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchCups()}
                     className="flex-1 border border-[var(--border)] border-r-0 bg-[#111827] rounded-l-xl px-4 py-3 text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--lime)] focus:border-transparent transition-all"
                     placeholder="ES0000000000000000..."
                   />

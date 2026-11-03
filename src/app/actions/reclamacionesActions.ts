@@ -25,6 +25,11 @@ const removeAccentsAndEscape = (str: string | null | undefined) => {
   return escapeXml(noAccents);
 };
 
+const cleanPhone = (raw: string | null | undefined, fallback: string) => {
+  const digits = String(raw || '').replace(/\D/g, '').replace(/^34(\d{9})$/, '$1');
+  return digits.length >= 6 ? digits.slice(0, 12) : fallback;
+};
+
 export async function searchCupsForClaim(cups: string) {
   try {
     const session = await auth();
@@ -32,12 +37,15 @@ export async function searchCupsForClaim(cups: string) {
       return { success: false, error: 'No autorizado' };
     }
 
-    const cups20 = cups.substring(0, 20);
+    const cups20 = cups.trim().substring(0, 20);
     const supplyPoints = await prisma.supplyPoint.findMany({
       where: { cups: { startsWith: cups20, mode: 'insensitive' } },
       include: {
         client: true,
-        contracts: true,
+        contracts: {
+          orderBy: { activationDate: 'desc' },
+          include: { client: true }
+        },
         f1Invoices: {
           orderBy: { fechaEmision: 'desc' },
           // Limitamos a las facturas más recientes para no saturar
@@ -66,14 +74,17 @@ export async function searchCupsForClaim(cups: string) {
        if (!supplyPoint) supplyPoint = supplyPoints[0];
     }
 
+    const activeContract = supplyPoint.contracts?.find(c => c.status === 'ACTIVO') || supplyPoint.contracts?.[0];
+    const activeClient = activeContract?.client || supplyPoint.client;
+
     return {
       success: true,
       data: {
         supplyPointId: supplyPoint.id,
         cups: supplyPoint.cups,
-        tariff: supplyPoint.tariff || (supplyPoint.client as any)?.airtableData?.TARIFA || '',
-        clientName: supplyPoint.client.businessName || `${supplyPoint.client.firstName || ''} ${supplyPoint.client.lastName || ''}`.trim(),
-        clientVat: supplyPoint.client.vatNumber,
+        tariff: supplyPoint.tariff || (activeClient as any)?.airtableData?.TARIFA || '',
+        clientName: activeClient.businessName || `${activeClient.firstName || ''} ${activeClient.lastName || ''}`.trim(),
+        clientVat: activeClient.vatNumber,
         f1Invoices: supplyPoint.f1Invoices.map(f1 => {
           const jsonData: any = f1.jsonData || {};
           const dGenFact = jsonData?.DatosGeneralesFacturaATR?.DatosGeneralesFactura || {};
@@ -212,13 +223,13 @@ export async function generateClaim(data: any) {
       const limitLocalISO = (new Date(limitDateObj.getTime() - limitDateObj.getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
       const limitDate = limitLocalISO.split('T')[0];
       
-      const code = Math.random().toString().slice(2, 14); // 12 digits
+      const code = Math.random().toString().slice(2, 14).padEnd(12, '0'); // 12 digits guaranteed
       
       const tipo = claimMotivo ? claimMotivo.split('-')[0].trim() : '';
       const subtipo = claimSubmotivo ? claimSubmotivo.split('-')[0].trim() : '';
 
       // Obtener todos los SupplyPoints para ese CUPS
-      const cups20 = claimCups.substring(0, 20);
+      const cups20 = claimCups.trim().substring(0, 20);
       const supplyPoints = await prisma.supplyPoint.findMany({
         where: { cups: { startsWith: cups20, mode: 'insensitive' } },
         include: { 
@@ -251,14 +262,16 @@ export async function generateClaim(data: any) {
         }
       }
 
-      // El titular real es el del contrato más reciente
-      const activeClient = sp?.contracts?.[0]?.client || sp?.client;
+      // El titular real es el del contrato activo o más reciente
+      const activeContract = sp?.contracts?.find(c => c.status === 'ACTIVO') || sp?.contracts?.[0];
+      const activeClient = activeContract?.client || sp?.client;
 
       const emisora = activeClient?.brand?.company?.codigoRee || '1713';
       const destino = sp?.distributorReeCode || (claimCups && claimCups.length >= 6 ? claimCups.substring(2, 6) : '0031');
       
-      const vat = activeClient?.vatNumber || '00000000T';
-      const isCif = /^[A-Z]/.test(vat);
+      const vat = (activeClient?.vatNumber || '00000000T').trim().toUpperCase();
+      // Los CIF de personas jurídicas empiezan por A, B, C, D, E, F, G, H, J, N, P, Q, R, S, U, V, W (no X, Y, Z de NIE ni K, L, M de NIF especiales)
+      const isCif = /^[ABCDEFGHJNPQRSUVW]/i.test(vat);
       
       // En el estándar CNMC, tanto NIF como CIF se envían como 'NI' (o 'NV' si es NIF-IVA, pero por defecto 'NI').
       // No existe el código 'CI'.
@@ -267,7 +280,7 @@ export async function generateClaim(data: any) {
       
       let xmlNombre = '';
       if (tipoPersona === 'J') {
-        const razonSocial = activeClient?.businessName || 'DESCONOCIDO';
+        const razonSocial = activeClient?.businessName || `${activeClient?.firstName || ''} ${activeClient?.lastName || ''}`.trim() || 'DESCONOCIDO';
         xmlNombre = `<RazonSocial>${removeAccentsAndEscape(razonSocial)}</RazonSocial>`;
       } else {
         const nombrePila = activeClient?.firstName || activeClient?.businessName || 'DESCONOCIDO';
@@ -280,7 +293,7 @@ export async function generateClaim(data: any) {
         }
       }
 
-      const phone = activeClient?.contactPhone || '000000000';
+      const phone = cleanPhone(activeClient?.contactPhone, '000000000');
       
       // Titular Address Logic
       // Try to get address from Client first, then Client's AirtableData, then SupplyPoint
@@ -320,7 +333,7 @@ export async function generateClaim(data: any) {
       const normTipoVia = normalizeTipoVia(streetType);
 
       const companyContact = activeClient?.brand?.company?.contactPerson || activeClient?.brand?.contactPerson || 'RESPONSABLE DE RECLAMACIONES';
-      const companyPhone = activeClient?.brand?.company?.phone || activeClient?.brand?.phone || '900000000';
+      const companyPhone = cleanPhone(activeClient?.brand?.company?.phone || activeClient?.brand?.phone, '900000000');
       const companyEmail = activeClient?.brand?.company?.email || activeClient?.brand?.email || 'reclamaciones@comercializadora.com';
 
       let numFacturaAtrXml = '';
@@ -334,19 +347,16 @@ export async function generateClaim(data: any) {
           } 
         });
         if (f1 && f1.numeroFactura) {
-          numFacturaAtrXml = `\n<NumFacturaATR>${f1.numeroFactura}</NumFacturaATR>`;
+          numFacturaAtrXml = `\n<NumFacturaATR>${escapeXml(f1.numeroFactura)}</NumFacturaATR>`;
         } else {
           // Fallback para CSV: asume que es el código fiscal directamente
-          numFacturaAtrXml = `\n<NumFacturaATR>${f1Id}</NumFacturaATR>`;
+          numFacturaAtrXml = `\n<NumFacturaATR>${escapeXml(f1Id)}</NumFacturaATR>`;
         }
       } else if (dynamicFields && dynamicFields['NUM FACTURA ATR']) {
-          numFacturaAtrXml = `\n<NumFacturaATR>${dynamicFields['NUM FACTURA ATR']}</NumFacturaATR>`;
+          numFacturaAtrXml = `\n<NumFacturaATR>${escapeXml(dynamicFields['NUM FACTURA ATR'])}</NumFacturaATR>`;
       }
       
       let lecturasXml = '';
-      if (fechaLectura) {
-        lecturasXml += `\n<FechaLectura>${fechaLectura}</FechaLectura>`;
-      }
       if (lecturas) {
         const periodos = Object.keys(lecturas).filter(k => lecturas[k] !== '');
         if (periodos.length > 0) {
@@ -355,7 +365,7 @@ export async function generateClaim(data: any) {
             const pNum = p.replace('P', ''); // '1', '2'...
             // Para tarifas TD actuales, el estándar CNMC exige 91, 92, 93...
             const codPeriodo = `9${pNum}`;
-            lecturasXml += `\n<LecturaAportada>\n<Integrador>AE</Integrador>\n<CodigoPeriodoDH>${codPeriodo}</CodigoPeriodoDH>\n<LecturaPropuesta>${lecturas[p]}</LecturaPropuesta>\n</LecturaAportada>`;
+            lecturasXml += `\n<LecturaAportada>\n<Integrador>AE</Integrador>\n<CodigoPeriodoDH>${codPeriodo}</CodigoPeriodoDH>\n<LecturaPropuesta>${escapeXml(lecturas[p])}</LecturaPropuesta>\n</LecturaAportada>`;
           }
           lecturasXml += '\n</LecturasAportadas>';
         }
@@ -402,7 +412,7 @@ export async function generateClaim(data: any) {
         variableDetalleElements['LecturasAportadas'] = lecturasXml.trim();
       }
       if (fechaLectura) {
-        variableDetalleElements['FechaLectura'] = `<FechaLectura>${fechaLectura}</FechaLectura>`;
+        variableDetalleElements['FechaLectura'] = `<FechaLectura>${escapeXml(fechaLectura)}</FechaLectura>`;
       }
       variableDetalleElements['Contacto'] = contactoXml.trim();
 
@@ -415,12 +425,13 @@ export async function generateClaim(data: any) {
             if (xsdTag) {
               if (xsdTag === 'DisconformidadAutoconsumo') {
                 variableDetalleElements[xsdTag] = `<DisconformidadAutoconsumo>\n<TipoDisconformidadAutoconsumo>${escapeXml(value)}</TipoDisconformidadAutoconsumo>\n</DisconformidadAutoconsumo>`;
+              } else if (xsdTag === 'UbicacionIncidencia') {
+                variableDetalleElements[xsdTag] = `<UbicacionIncidencia>\n<DesUbicacionIncidencia>${removeAccentsAndEscape(value).substring(0, 45)}</DesUbicacionIncidencia>\n<Provincia>${normProvincia}</Provincia>\n<Municipio>${normMunicipio}</Municipio>\n<CodPostal>${zip}</CodPostal>\n</UbicacionIncidencia>`;
               } else {
                 variableDetalleElements[xsdTag] = `<${xsdTag}>${escapeXml(value)}</${xsdTag}>`;
               }
             } else {
-              // Fallback for any unknown keys, although they might violate XSD order if we just append them.
-              // Try to normalize and guess.
+              // Fallback for any unknown keys
               const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               const xmlTag = normalizedKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
               if (XSD_ORDER.includes(xmlTag)) {
@@ -448,7 +459,7 @@ export async function generateClaim(data: any) {
 <CodigoDeSolicitud>${code}</CodigoDeSolicitud>
 <SecuencialDeSolicitud>01</SecuencialDeSolicitud>
 <FechaSolicitud>${formattedDate}</FechaSolicitud>
-<CUPS>${claimCups || ''}</CUPS>
+<CUPS>${escapeXml((claimCups || '').trim())}</CUPS>
 </CabeceraReclamacion>
 <SolicitudReclamacion>
 <DatosSolicitud>
@@ -462,7 +473,7 @@ export async function generateClaim(data: any) {
 <Cliente>
 <IdCliente>
 <TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
-<Identificador>${vat}</Identificador>
+<Identificador>${escapeXml(vat)}</Identificador>
 <TipoPersona>${tipoPersona}</TipoPersona>
 </IdCliente>
 <Nombre>

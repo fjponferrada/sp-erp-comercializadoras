@@ -5,7 +5,7 @@ import Topbar from '@/components/Topbar';
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { FileWarning, Search, RefreshCcw, Download } from 'lucide-react';
+import { Search, RefreshCcw, Download } from 'lucide-react';
 import { getClaimsAction, ClaimSummary } from '@/app/actions/claimsActions';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -59,6 +59,7 @@ export default function ReclamacionesClient({
     const data = claims.map(c => ({
       'Código Solicitud': c.codigoSolicitud,
       'CUPS': c.cups,
+      'Titular': c.titular || '',
       'Tipo': c.tipoReclamacion || 'Genérica',
       'Subtipo': c.subtipoReclamacion || c.codigoReclamacion || '',
       'Estado': c.estadoIntegrado,
@@ -67,7 +68,8 @@ export default function ReclamacionesClient({
       'Mensaje Enviado (Paso 01)': c.paso01?.comentario || '',
       'Paso 02 (Fecha)': c.paso02?.fecha ? format(new Date(c.paso02.fecha), 'dd/MM/yyyy HH:mm') : '',
       'Respuesta (Paso 02)': c.paso02?.comentario || '',
-      'Resolución (Paso 03/05)': c.paso05?.comentario || c.paso03?.comentario || ''
+      'Información Adicional (Paso 03)': c.paso03?.comentario || '',
+      'Resolución Cierre (Paso 05)': c.paso05?.comentario || ''
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -76,7 +78,6 @@ export default function ReclamacionesClient({
     XLSX.writeFile(wb, `Reclamaciones_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
   };
 
-  
   return (
     <div className="min-h-screen relative outline-none flex flex-col" style={{ background: 'var(--bg-base)' }}>
       <Topbar 
@@ -145,13 +146,20 @@ export default function ReclamacionesClient({
               <tbody className="divide-y divide-[var(--border)] text-gray-300">
                 {claims.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-5 py-8 text-center text-gray-500">
                       No se encontraron reclamaciones.
                     </td>
                   </tr>
                 )}
-                {claims.map((claim) => (
-                    <tr key={claim.codigoSolicitud} className="hover:bg-[rgba(255,255,255,0.01)] transition-colors">
+                {claims.map((claim, idx) => {
+                  const resolucionTexto =
+                    claim.paso05?.comentario ||
+                    claim.paso03?.comentario ||
+                    (claim.estadoIntegrado === 'Rechazada' ? claim.paso02?.comentario : null) ||
+                    '-';
+
+                  return (
+                    <tr key={`${claim.codigoSolicitud}_${idx}`} className="hover:bg-[rgba(255,255,255,0.01)] transition-colors">
                       <td className="px-5 py-4 font-mono text-gray-400">
                         <div className="flex items-center gap-2">
                           {claim.codigoSolicitud}
@@ -198,8 +206,8 @@ export default function ReclamacionesClient({
                       </td>
                       <td className="px-5 py-4 text-gray-400">
                         <div className="flex flex-col gap-2">
-                          <div className="max-w-xs truncate text-sm" title={claim.paso05?.comentario || claim.paso03?.comentario || '-'}>
-                            {claim.paso05?.comentario || claim.paso03?.comentario || '-'}
+                          <div className="max-w-xs truncate text-sm" title={resolucionTexto}>
+                            {resolucionTexto}
                           </div>
                           {(claim.paso05?.xmlUrl || claim.paso03?.xmlUrl) && (
                             <a href={claim.paso05?.xmlUrl || claim.paso03?.xmlUrl || ''} target="_blank" rel="noreferrer" title="Descargar XML Resolución" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
@@ -209,10 +217,26 @@ export default function ReclamacionesClient({
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {claims.length < totalCount && (
+            <div className="px-5 py-4 border-t border-[var(--border)] flex items-center justify-between bg-[rgba(255,255,255,0.01)]">
+              <span className="text-xs text-gray-400">
+                Mostrando {claims.length} de {totalCount} reclamaciones
+              </span>
+              <button
+                onClick={() => fetchClaims(false)}
+                disabled={loading}
+                className="px-4 py-2 bg-[var(--bg-base)] border border-[var(--border)] rounded-lg text-xs font-semibold text-gray-300 hover:border-[var(--lime)] hover:text-[var(--lime)] transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Cargando...' : 'Cargar más reclamaciones'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

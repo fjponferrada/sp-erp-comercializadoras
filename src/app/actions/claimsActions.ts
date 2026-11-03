@@ -6,6 +6,7 @@ import { auth } from '@/auth';
 export interface ClaimSummary {
   codigoSolicitud: string;
   cups: string;
+  titular?: string | null;
   codigoReclamacion: string | null;
   diasAbierta: number | null;
   tipoReclamacion: string | null;
@@ -48,14 +49,27 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
       where: whereClause,
       orderBy: { createdAt: 'asc' },
       include: {
-        supplyPoint: true,
+        supplyPoint: {
+          include: {
+            client: {
+              select: { businessName: true, firstName: true, lastName: true, lastName2: true, vatNumber: true }
+            }
+          }
+        },
+        contract: {
+          include: {
+            client: {
+              select: { businessName: true, firstName: true, lastName: true, lastName2: true, vatNumber: true }
+            }
+          }
+        }
       }
     });
 
     const claimsMap = new Map<string, ClaimSummary>();
 
     for (const event of events) {
-      const codigo = event.codigoSolicitud || 'SIN_CODIGO';
+      const codigo = event.codigoSolicitud || `SIN_CODIGO_${event.id}`;
       
       let cupsFallback = event.supplyPoint?.cups || '';
       if (!cupsFallback && event.uniqueProcess) {
@@ -66,11 +80,17 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
         const match = event.xmlUrl.match(/ES[a-zA-Z0-9]{18,22}/);
         if (match) cupsFallback = match[0];
       }
+
+      const evClient = event.contract?.client || event.supplyPoint?.client;
+      const titularFallback = evClient
+        ? (evClient.businessName || `${evClient.firstName || ''} ${evClient.lastName || ''} ${evClient.lastName2 || ''}`.trim() || null)
+        : null;
       
       if (!claimsMap.has(codigo)) {
         claimsMap.set(codigo, {
-          codigoSolicitud: codigo,
+          codigoSolicitud: event.codigoSolicitud || 'SIN_CODIGO',
           cups: cupsFallback,
+          titular: titularFallback,
           codigoReclamacion: null,
           diasAbierta: null,
           tipoReclamacion: null,
@@ -84,6 +104,13 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
       }
 
       const claim = claimsMap.get(codigo)!;
+
+      if (!claim.cups && cupsFallback) {
+        claim.cups = cupsFallback;
+      }
+      if (!claim.titular && titularFallback) {
+        claim.titular = titularFallback;
+      }
       
       if (event.codigoReclamacion && !claim.codigoReclamacion) {
          claim.codigoReclamacion = event.codigoReclamacion;
@@ -152,19 +179,20 @@ export async function getClaimsAction(contractId?: string, page: number = 1, lim
       finalClaims = claims.filter(c => 
         (c.codigoSolicitud && c.codigoSolicitud.toLowerCase().includes(lowerTerm)) ||
         (c.cups && c.cups.toLowerCase().includes(lowerTerm)) ||
-        (c.codigoReclamacion && c.codigoReclamacion.toLowerCase().includes(lowerTerm))
+        (c.codigoReclamacion && c.codigoReclamacion.toLowerCase().includes(lowerTerm)) ||
+        (c.titular && c.titular.toLowerCase().includes(lowerTerm))
       );
     }
 
-    // Sort descending by paso01 date
+    // Sort descending by paso01 date (fallback to paso02 date)
     finalClaims.sort((a, b) => {
-      const dateA = a.paso01?.fecha || new Date(0);
-      const dateB = b.paso01?.fecha || new Date(0);
+      const dateA = a.paso01?.fecha || a.paso02?.fecha || new Date(0);
+      const dateB = b.paso01?.fecha || b.paso02?.fecha || new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
 
     const totalCount = finalClaims.length; 
-    const paginatedClaims = finalClaims.slice((page - 1) * limit, page * limit); 
+    const paginatedClaims = limit > 0 ? finalClaims.slice((page - 1) * limit, page * limit) : finalClaims; 
     
     return { success: true, data: paginatedClaims, totalCount };
 
