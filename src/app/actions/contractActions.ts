@@ -1240,13 +1240,16 @@ export async function updateContractFull(formData: FormData) {
     let filePdfSignedUrl: string | undefined = fileUrlStr || undefined;
     let fileAnexoFirmadoUrl: string | undefined = anexoUrlStr || undefined;
 
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
     // First fetch the existing contract to get client and supply point IDs
-    const existing = await prisma.contract.findUnique({
-      where: { id: contractId },
+    const existing = await prisma.contract.findFirst({
+      where: { id: contractId, ...visibilityFilter },
       include: { client: true, supplyPoint: true }
     });
 
-    if (!existing) throw new Error('Contract not found');
+    if (!existing) throw new Error('Contract not found or unauthorized');
 
     // Handle file upload
     if (fileUrlStr && fileNameStr) {
@@ -1319,7 +1322,40 @@ export async function updateContractFull(formData: FormData) {
       cDataObj['Código Tarifa'] = [tariff];
     }
 
-    // Contract data is a snapshot. We no longer update Client or SupplyPoint from here.
+    // Update SupplyPoint if technical fields were edited
+    if (existing.supplyPointId && (tariff || annualConsumptionStr || cnae || distributor || iban || p1c !== undefined)) {
+      const spUpdate: any = {};
+      if (tariff) spUpdate.tariff = tariff;
+      if (annualConsumptionStr && !isNaN(parseFloat(annualConsumptionStr))) spUpdate.annualConsumption = parseFloat(annualConsumptionStr);
+      if (cnae) spUpdate.cnae = cnae;
+      if (distributor) spUpdate.distributor = distributor;
+      if (iban) spUpdate.iban = iban;
+      if (p1c !== undefined) spUpdate.p1c = p1c;
+      if (p2c !== undefined) spUpdate.p2c = p2c;
+      if (p3c !== undefined) spUpdate.p3c = p3c;
+      if (p4c !== undefined) spUpdate.p4c = p4c;
+      if (p5c !== undefined) spUpdate.p5c = p5c;
+      if (p6c !== undefined) spUpdate.p6c = p6c;
+
+      await prisma.supplyPoint.update({
+        where: { id: existing.supplyPointId },
+        data: spUpdate
+      });
+    }
+
+    // Update Client if contact fields were edited
+    if (existing.clientId && (contactEmail || invoiceEmail || contactPhone)) {
+      const clUpdate: any = {};
+      if (contactEmail) clUpdate.contactEmail = contactEmail;
+      if (invoiceEmail) clUpdate.invoiceEmail = invoiceEmail;
+      if (contactPhone) clUpdate.contactPhone = contactPhone;
+
+      await prisma.client.update({
+        where: { id: existing.clientId },
+        data: clUpdate
+      });
+    }
+
     // Update Contract
     await prisma.contract.update({
       where: { id: contractId },
@@ -1831,8 +1867,10 @@ export async function getContractStatsAction() {
 export async function getFullContractAction(id: string) {
   try {
     const { prisma } = await import('@/lib/prisma');
-    const contract = await prisma.contract.findUnique({
-      where: { id },
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+    const contract = await prisma.contract.findFirst({
+      where: { id, ...visibilityFilter },
       include: {
         Lead: true,
         product: true,

@@ -24,8 +24,14 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     }
   }
 
-  const contract = await prisma.contract.findUnique({
-    where: { id: resolvedParams.id },
+  const { getUserVisibilityFilter } = await import('@/lib/permissions');
+  const visibilityFilter = await getUserVisibilityFilter();
+
+  const contract = await prisma.contract.findFirst({
+    where: {
+      id: resolvedParams.id,
+      ...visibilityFilter
+    },
     include: {
       Lead: {
         include: {

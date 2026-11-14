@@ -18,16 +18,24 @@ const statusBadge = (status: string) => {
   const map: Record<string, string> = {
     ACTIVO: 'badge-active',
     Activo: 'badge-active',
+    ACEPTADO: 'badge-process',
+    Aceptado: 'badge-process',
     TRAMITANDO: 'badge-process',
     Tramitando: 'badge-process',
     BORRADOR: 'badge-draft',
+    Borrador: 'badge-draft',
+    VERIFICANDO_FIRMA: 'badge-warning',
+    RENOVACION: 'badge-warning',
     BAJA: 'badge-danger',
-    FINALIZADO: 'badge-danger',
-    Finalizado: 'badge-danger',
+    FINALIZADO: 'badge-finalizado',
+    Finalizado: 'badge-finalizado',
     RECHAZADO: 'badge-danger',
     RECHAZO_DISTRIBUIDORA: 'badge-danger',
     'Rechazo Distribuidora': 'badge-danger',
+    'RECHAZO DISTRIBUIDORA': 'badge-danger',
     RECHAZO_COMERCIALIZADORA: 'badge-danger',
+    RECHAZO_RIESGOS: 'badge-danger',
+    RECHAZADO_POR_CLIENTE: 'badge-danger',
   };
   return `badge ${map[status] ?? 'badge-draft'}`;
 };
@@ -269,7 +277,7 @@ export default function DashboardPage() {
                   { label: 'Integración SIPS', ok: true },
                   { label: 'Firmas Contratos', ok: true },
                   { label: 'Cloudflare R2', ok: true },
-                  { label: 'Módulo Facturación', ok: false },
+                  { label: 'Módulo Facturación', ok: true },
                 ].map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{s.label}</span>

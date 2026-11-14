@@ -11,6 +11,8 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
   
   // Extraemos KPIs del último mes disponible (o acumulado global)
   const lastMonth = data.length > 0 ? data[data.length - 1] : null;
+  // Para el Margen Medio / MWh tomamos el último mes que tenga facturación real emitida
+  const lastInvoicedMonth = [...data].reverse().find(m => m.facturacionMwh > 0) || lastMonth;
   const totalFacturacion = data.reduce((acc, curr) => acc + curr.facturacionEur, 0);
   const totalMwhActivos = lastMonth ? lastMonth.mwhActivos : 0;
   const totalContratosActivos = lastMonth ? lastMonth.contratosActivos : 0;
@@ -88,7 +90,7 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
             <div>
               <p className="text-sm font-medium text-slate-400">Margen Medio / MWh</p>
               <h3 className="text-3xl font-bold text-white mt-1">
-                {lastMonth?.facturacionMwh ? ((lastMonth.margenEur / lastMonth.facturacionMwh) * 1000).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '0,00 €'}
+                {lastInvoicedMonth?.facturacionMwh ? ((lastInvoicedMonth.margenEur / lastInvoicedMonth.facturacionMwh) * 1000).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '0,00 €'}
               </h3>
             </div>
             <div className="bg-amber-500/20 p-3 rounded-xl">
@@ -96,7 +98,9 @@ export default function AnalysisDashboard({ data }: { data: any[] }) {
             </div>
           </div>
           <div className="flex items-center text-sm">
-            <span className="text-slate-400 font-medium">En el último mes cerrado</span>
+            <span className="text-slate-400 font-medium">
+              {lastInvoicedMonth?.month ? `Mes facturado (${lastInvoicedMonth.month})` : 'En el último mes cerrado'}
+            </span>
           </div>
         </div>
       </div>

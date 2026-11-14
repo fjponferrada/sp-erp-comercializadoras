@@ -59,9 +59,11 @@ export default function ContractDetailClient({
   const [version, setVersion] = useState(initialContract.version || '');
   const [modType, setModType] = useState('M1N');
 
-  const isAdmin = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const isAdmin = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
   const isAdvancedUser = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
   const showSips = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole);
+  const [sipsRawData, setSipsRawData] = useState<any>(initialContract.supplyPoint?.sipsRawData || null);
+  const [isUpdatingSips, setIsUpdatingSips] = useState(false);
   const isWithinRenewalPeriod = () => {
     if (!initialContract.expectedEndDate) return false;
     const end = new Date(initialContract.expectedEndDate).getTime();
@@ -498,7 +500,7 @@ export default function ContractDetailClient({
                   <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">
                     {displayTariff}
                   </span>} />
-                  <DataItem label="Consumo Anual Estimado (MWh)" value={lead.estimatedMWh} />
+                  <DataItem label="Consumo Anual Estimado (MWh)" value={supplyPoint.annualConsumption ?? lead.estimatedMWh} />
                   <DataItem label="Distribuidora" value={supplyPoint.distributorName ? supplyPoint.distributorName.replace(/^\[.*?\]\s*/, '') : (supplyPoint.distributor ? supplyPoint.distributor.replace(/^\[.*?\]\s*/, '') : 'EDISTRIBUCION')} />
                   
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Dirección de Suministro</h3></div>
@@ -706,26 +708,125 @@ export default function ContractDetailClient({
         )}
 
         {activeTab === 'Sips' && (
-          <div className="card p-6 animate-fade-in-up max-w-3xl">
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+          <div className="card p-6 animate-fade-in-up">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-[var(--border)]">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Search className="text-gray-400" /> SIPS
+                <Search className="text-gray-400" /> Datos SIPS ({supplyPoint.cups || lead.cups || 'Sin CUPS'})
               </h2>
-            </div>
-            
-            <p className="text-gray-400 mb-6">
-              Actualiza los datos SIPS (Sistema de Información de Puntos de Suministro) directamente para este contrato. El CUPS asociado es <span className="font-mono text-gray-200">{supplyPoint.cups}</span>.
-            </p>
-            
-            <div className="bg-[var(--bg-elevated)] p-5 border border-[var(--border)] rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h4 className="text-sm font-bold text-gray-200">Consultar / Actualizar SIPS</h4>
-                <p className="text-xs text-gray-400 mt-1">Se realizará una petición al endpoint de SIPS para refrescar consumos y potencias.</p>
-              </div>
-              <button className="btn-primary flex items-center gap-2 whitespace-nowrap">
-                <RefreshCw size={16} /> Actualizar Datos SIPS
+              <button
+                disabled={isUpdatingSips || !supplyPoint.id}
+                onClick={async () => {
+                  if (!supplyPoint.id) {
+                    toast.error('Este contrato no tiene un punto de suministro vinculado');
+                    return;
+                  }
+                  setIsUpdatingSips(true);
+                  const loadingToast = toast.loading('Actualizando SIPS desde INGEBAU...');
+                  try {
+                    const { updateSupplyPointSipsAction } = await import('@/app/actions/supplyPointActions');
+                    const res = await updateSupplyPointSipsAction(supplyPoint.id);
+                    if (res.success) {
+                      toast.success('Datos SIPS actualizados correctamente', { id: loadingToast });
+                      setSipsRawData(res.sipsData);
+                    } else {
+                      toast.error(res.error || 'Error al actualizar SIPS', { id: loadingToast });
+                    }
+                  } catch (e: any) {
+                    toast.error('Error al actualizar SIPS', { id: loadingToast });
+                  } finally {
+                    setIsUpdatingSips(false);
+                  }
+                }}
+                className="btn-primary flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={isUpdatingSips ? 'animate-spin' : ''} />
+                {isUpdatingSips ? 'Consultando SIPS...' : 'Actualizar Datos SIPS'}
               </button>
             </div>
+            
+            {sipsRawData ? (
+              (() => {
+                const raw: any = sipsRawData;
+                let psData: any = null;
+                if (raw.data && raw.data.ps && raw.data.ps.length > 0) psData = raw.data.ps[0];
+                else if (raw.ps && raw.ps.length > 0) psData = raw.ps[0];
+                else if (raw.CUPS || raw.CNAE) psData = raw;
+
+                if (!psData) {
+                  return (
+                    <div className="bg-black/50 p-4 rounded-xl border border-white/5 overflow-x-auto">
+                      <pre className="text-xs text-lime-400 font-mono">
+                        {JSON.stringify(sipsRawData, null, 2)}
+                      </pre>
+                    </div>
+                  );
+                }
+
+                const periodos = [1, 2, 3, 4, 5, 6];
+                const powerKeys = periodos.flatMap(p => [`ConsumoAnualP${p}kWh`, `PotenciaContratadaP${p}kW`]);
+                const generalData = Object.entries(psData).filter(([key, value]) => 
+                  typeof value !== 'object' && !powerKeys.includes(key)
+                );
+
+                return (
+                  <div className="space-y-6">
+                    <div className="bg-white/[0.01] border border-white/5 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
+                        <h3 className="text-sm font-semibold text-white">Potencias y Consumos por Período</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[500px]">
+                          <thead>
+                            <tr className="bg-black/40 border-b border-white/5">
+                              <th className="p-3 text-xs font-semibold text-white/40 uppercase tracking-wider">Métrica</th>
+                              {periodos.map(p => (
+                                <th key={`th-${p}`} className="p-3 text-xs font-semibold text-white/40 uppercase tracking-wider text-center">P{p}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 text-sm text-white/70 font-medium">Potencia Contratada (kW)</td>
+                              {periodos.map(p => (
+                                <td key={`pot-${p}`} className="p-3 text-sm text-white font-medium text-center">
+                                  {psData[`PotenciaContratadaP${p}kW`] ?? '-'}
+                                </td>
+                              ))}
+                            </tr>
+                            <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 text-sm text-white/70 font-medium">Consumo Anual (kWh)</td>
+                              {periodos.map(p => (
+                                <td key={`cons-${p}`} className="p-3 text-sm text-white font-medium text-center">
+                                  {psData[`ConsumoAnualP${p}kWh`] ?? '-'}
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="bg-white/[0.01] border border-white/5 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
+                        <h3 className="text-sm font-semibold text-white">Otros Datos SIPS</h3>
+                      </div>
+                      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {generalData.map(([key, value]) => (
+                          <div key={key} className="bg-white/[0.02] border border-white/5 rounded-lg p-3 hover:bg-white/[0.04] transition-colors">
+                            <p className="text-[10px] text-white/40 font-semibold mb-1 uppercase tracking-wider truncate" title={key}>{key}</p>
+                            <p className="text-sm text-white font-medium truncate" title={String(value)}>{String(value) || '-'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="p-8 text-center text-gray-400 border border-dashed border-[var(--border-strong)] rounded-lg">
+                No hay datos SIPS cacheados para este suministro. Pulsa <strong>Actualizar Datos SIPS</strong> para consultarlos en tiempo real.
+              </div>
+            )}
           </div>
         )}
 

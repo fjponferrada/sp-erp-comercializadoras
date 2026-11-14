@@ -34,10 +34,10 @@ export async function getEconomicAnalysis() {
                 CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA CORR', ''), ',', '.') AS NUMERIC), 
                 subtotal1, 
                 0
-              ) * CASE WHEN "invoiceType" = 'Abono' THEN -1 ELSE 1 END
+              ) * CASE WHEN UPPER(COALESCE("invoiceType", '')) = 'ABONO' THEN -1 ELSE 1 END
             ) as total_eur,
             SUM(
-              COALESCE("totalMWh", 0) * CASE WHEN "invoiceType" = 'Abono' THEN -1 ELSE 1 END
+              COALESCE("totalMWh", 0) * CASE WHEN UPPER(COALESCE("invoiceType", '')) = 'ABONO' THEN -1 ELSE 1 END
             ) as total_mwh,
             SUM(COALESCE("margin", 0)) as margin
           FROM "Invoice"

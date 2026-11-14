@@ -121,8 +121,8 @@ export async function getDashboardMetricsAction() {
       orderBy: { updatedAt: 'desc' },
       take: 8,
       include: {
-        client: { select: { businessName: true } },
-        supplyPoint: { select: { cups: true, annualConsumption: true } },
+        client: { select: { businessName: true, firstName: true, lastName: true } },
+        supplyPoint: { select: { cups: true, annualConsumption: true, tariff: true } },
         product: { select: { tariff: true } },
         user: { select: { channel: { select: { name: true } }, name: true } }
       }
@@ -144,10 +144,17 @@ export async function getDashboardMetricsAction() {
       orderBy: { expectedEndDate: 'asc' },
       take: 10,
       include: {
-        client: { select: { businessName: true } },
+        client: { select: { businessName: true, firstName: true, lastName: true } },
         supplyPoint: { select: { cups: true, annualConsumption: true } }
       }
     });
+
+    const formatClientName = (cl?: { businessName?: string | null, firstName?: string | null, lastName?: string | null } | null) => {
+      if (!cl) return 'Sin cliente';
+      if (cl.businessName && cl.businessName.trim()) return cl.businessName.trim();
+      const fullName = `${cl.firstName || ''} ${cl.lastName || ''}`.trim();
+      return fullName || 'Sin cliente';
+    };
 
     return {
       success: true,
@@ -162,9 +169,9 @@ export async function getDashboardMetricsAction() {
         recentContracts: recentContracts.map(c => ({
           id: c.contractCode || c.supplyPoint?.cups || '-',
           internalId: c.id,
-          client: c.client?.businessName || 'Sin cliente',
+          client: formatClientName(c.client),
           status: c.status,
-          tariff: c.product?.tariff || '-',
+          tariff: c.supplyPoint?.tariff || c.product?.tariff || '-',
           mwh: c.supplyPoint?.annualConsumption || 0,
           canal: c.user?.channel?.name || c.user?.name || '-',
           updatedAt: c.updatedAt
@@ -174,7 +181,7 @@ export async function getDashboardMetricsAction() {
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           return {
             internalId: c.id,
-            client: c.client?.businessName || 'Sin cliente',
+            client: formatClientName(c.client),
             cups: c.supplyPoint?.cups || '-',
             expiresIn: `${diffDays} días`,
             mwh: c.supplyPoint?.annualConsumption || 0
