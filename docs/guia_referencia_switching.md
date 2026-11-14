@@ -1,6 +1,6 @@
-# Guía de Referencia de Ficheros Switching de la CNMC (Sector Eléctrico)
+# Guía de Referencia de Ficheros Switching de la CNMC (Sector Eléctrico — V3.0)
 
-Esta guía detalla la documentación clave sobre los procedimientos de Switching regulados por la CNMC, incluyendo rutas y resúmenes de información técnica para su implementación en parsers y sistemas de la comercializadora.
+Esta guía detalla la documentación clave sobre los procedimientos de Switching regulados por la CNMC (versión `V3.0 2024.05.16`), incluyendo rutas, esquemas XSD, tablas maestras y notas técnicas de implementación en los parsers y generadores del ERP.
 
 ---
 
@@ -37,7 +37,14 @@ Estos documentos definen los flujogramas, plazos, actores (Entrante, Saliente, D
 *   **CNMC - E - Formato Fichero Q1 2024.05.16.pdf**
     *   **Resumen:** Procedimiento de **Saldos y Lecturas**.
 *   **CNMC - E - Formato Fichero R1 2024.05.16.pdf**
-    *   **Resumen:** Procedimiento de **Reclamaciones**. Flujo para gestionar reclamaciones entre cliente, comercializadora y distribuidora (Petición, Aceptación, Información Adicional y Cierre).
+    *   **Resumen:** Procedimiento de **Reclamaciones / Peticiones** entre Comercializadora y Distribuidora.
+    *   **Flujo completo soportado en el ERP (`procesoBase === 'R1'`):**
+        *   **Paso 01 (`TipoMensajeR101.xsd` / `ReclamacionPeticion.xsd`):** Apertura desde Comercializadora (`CabeceraReclamacion`, `DatosSolicitud`, `VariablesDetalleReclamacion`, `Cliente`, `Comentarios`, `RegistrosDocumento`).
+        *   **Paso 02 (`AceptacionReclamacion.xsd` / `RechazoReclamacion.xsd`):** Respuesta de Distribuidora aceptando (`CodigoReclamacionDistribuidora`) o rechazando (`<Rechazos><Rechazo>` con `CodigoMotivo` Tabla 27).
+        *   **Paso 03 (`PeticionInformacionAdicionalReclamacion.xsd`):** Comunicación intermedia de Distribuidora (`TipoComunicacion` Tabla 84: `01` Solicitud info adicional con `FechaLimiteEnvio`, `02` Estado intermedio, `03` Retipificación de `Tipo`/`Subtipo`, `04` Desestimación info).
+        *   **Paso 04 (`EnvioInformacionReclamacion.xsd`):** Respuesta de Comercializadora aportando información o documentos adicionales (`INFO_ENVIADA`).
+        *   **Paso 05 (`CierreReclamacion.xsd`):** Cierre definitivo de Distribuidora (`DatosCierre`: `ResultadoReclamacion` Tabla 80 `01..05`, `DetalleResultado` Tabla 73, `IndemnizacionAbonada`, `Observaciones` y `Comentarios`).
+        *   **Pasos 08 y 09 (`AnulacionSolicitudReclamacion.xsd` / `AceptacionAnulacion.xsd` / `RechazoReclamacion.xsd`):** Solicitud de anulación desde Comercializadora y respuesta de Distribuidora (`isAnnulled = true` si Paso 09 es aceptado).
 *   **CNMC - E - Formato Fichero T1 2024.05.16.pdf**
     *   **Resumen:** Procedimiento de **Traspaso a la COR** (Comercializadora de Referencia). Casos de impago prolongado, o extinciones de contrato.
 *   **CNMC - E - Formato Fichero W1 2024.05.16.pdf**
@@ -45,39 +52,55 @@ Estos documentos definen los flujogramas, plazos, actores (Entrante, Saliente, D
 
 ---
 
-## 2. Esquemas y Definición de Nodos XML (Excel)
-Estos ficheros definen campo por campo la estructura del XML (XSD) para cada paso del flujograma: nombre del tag, formato (X(2), AAAA-MM-DD...), si es obligatorio, y si está referenciado en las Tablas Maestras.
+## 2. Esquemas XSD y Definición de Nodos XML (Excel y `.xsd`)
+Estos ficheros definen campo por campo la estructura del XML (XSD) para cada paso del flujograma: nombre del tag, orden secuencial (`xs:sequence`), formato (`X(2)`, `X(22)`, `AAAA-MM-DD`, etc.), si es obligatorio, y a qué Tabla Maestra está referenciado.
 
-**Ruta base:** `Z:\AED\Switching\CNMC - E - V3.0 2024.05.16\CNMC - E - Anexos 2024.05.16\CNMC - E - Procesos 2024.05.16\`
-
-*   **CNMC - E - Proceso [A3, B1, B2, C1, C2, D1, E1, E2, F1, M1, M2, P0, Q1, R1, T1, W1] 2024.05.16.xlsx**
-    *   **Resumen:** Existe un fichero Excel por proceso. Cada pestaña de Excel representa un mensaje/paso (ej: `01_CambiodeComercializador`, `02_Aceptacion`, `06_ActivacionComerSaliente`).
-    *   **Uso práctico en parsers:** Aquí es donde se consulta exactamente si el tag de fecha se llama `FechaActivacionPrevista`, `FechaFinalizacion` o `Fecha`, o si el identificador es `CodigoREEEmpresaEmisora` en lugar del genérico `Remitente`.
+*   **Ruta Excel por Proceso:** `Z:\AED\Switching\CNMC - E - V3.0 2024.05.16\CNMC - E - Anexos 2024.05.16\CNMC - E - Procesos 2024.05.16\`
+    *   **CNMC - E - Proceso [A3, B1, B2, C1, C2, D1, E1, E2, F1, M1, M2, P0, Q1, R1, T1, W1] 2024.05.16.xlsx**
+    *   **Uso práctico en parsers y generadores:** Permite verificar si el nodo de cabecera es `Cabecera` o `CabeceraReclamacion` (donde `<CUPS>` es opcional en submotivos de acometida sin suministro), el orden exacto de hijos en `TiposComplejos.xsd` y las obligatoriedades condicionales por subtipo.
+*   **Ruta Esquemas XSD Oficiales:** `Z:\AED\Switching\CNMC - E - V3.0 2024.05.16\CNMC - E - Anexos 2024.05.16\CNMC - E - XSD 2024.05.16\`
+    *   Contiene `TiposSencillos.xsd`, `TiposComplejos.xsd` y los esquemas raíz de cada mensaje (autoridad final para facetas `minLength`, `maxLength` y enumeraciones).
 *   **Archivos `.docx` (CNMC - E - A5D, B5D, F5D, P5D)**
     *   **Resumen:** Documentos que detallan la estructura plana (o CSV/XML) de las Curvas de Carga Horaria (`CCH_FACT`, `CCH_VAL`, etc.).
 
 ---
 
-## 3. Tablas Maestras de Códigos (Documento Maestro)
-Es el "Diccionario de Datos" de todo el switching.
+## 3. Tablas Maestras de Códigos (Documento Maestro y Catálogos ERP)
+Es el "Diccionario de Datos" de todo el switching, volcado en `docs/cnmc_dictionary.json` y tipado específicamente para R1 en `src/app/(app)/reclamaciones/utils/cnmc_codes.ts`.
 
 **Ruta base:** `Z:\AED\Switching\CNMC - E - V3.0 2024.05.16\CNMC - E - Anexos 2024.05.16\CNMC - E - Tablas de Codigos  2024.05.16\CNMC - E - Tablas de códigos 2024.05.16.docx`
 
-*   **Resumen:** Contiene 89 tablas maestras que proporcionan los catálogos de valores permitidos para las comunicaciones:
-    *   **Tabla 2:** Código de Proceso (C1, M1, B1, etc.)
-    *   **Tabla 3:** Código de Paso (01, 02, 05, 06, 11, etc.)
-    *   **Tabla 10:** Motivo de Baja (01 Cese, 02 Fin, 03 Corte impago, 04 Baja impago)
-    *   **Tabla 17:** Tarifas ATR (códigos 018 para 2.0TD, 019 para 3.0TD, 020 para 6.1TD, etc.)
-    *   **Tabla 27:** Motivos de Rechazo (Más de 100 códigos. Ej: 01: No existe PS, 11: Comercializadora incorrecta, G4: Suministro Mínimo Vital).
-    *   **Tabla 28:** Motivos de Incidencia en Campo (Ej: 01 Cliente ausente).
-    *   **Tabla 35:** Discriminación Horaria del equipo de medida.
-    *   **Tabla 73:** Detalle Resultado de Reclamaciones.
+*   **Tablas Generales de Contratación y Medida:**
+    *   **Tabla 2:** Código de Proceso (`C1`, `C2`, `M1`, `B1`, `R1`, etc.).
+    *   **Tabla 3:** Código de Paso (`01`, `02`, `03`, `04`, `05`, `06`, `08`, `09`, `11`, etc.).
+    *   **Tabla 10:** Motivo de Baja (`01` Cese, `02` Fin, `03` Corte impago, `04` Baja impago).
+    *   **Tabla 17:** Tarifas ATR (`018` para `2.0TD`, `019` para `3.0TD`, `020` para `6.1TD`, etc.).
+    *   **Tabla 27:** Motivos de Rechazo (`MOTIVOS_RECHAZO_CNMC`: más de 100 códigos compartidos entre contratación y Paso `02`/`09` de `R1`).
+    *   **Tabla 28:** Motivos de Incidencia en Campo (Ej: `01` Cliente ausente).
+    *   **Tabla 35:** Discriminación Horaria del equipo de medida (`TipoDHEdM`).
+    *   **Tabla 61:** Tipos de Documentación Aportada (`TIPOS_DOCUMENTACION_CNMC`: `01` CIE, `02` Acta puesta en marcha, `04` NIF/NIE/CIF, `07` Otra documentación del cliente, `08` Otros, etc., usada en `<RegistrosDocumento>`).
     *   **Tabla 113:** Tipo de Autoconsumo.
+*   **Tablas Específicas del Proceso R1 (Reclamaciones / Peticiones):**
+    *   **Tabla 73:** Detalle del Resultado de Cierre (`DetalleResultado` en Paso `05`).
+    *   **Tabla 77:** Tipo de Concepto Facturado (`TipoConceptoFacturado`).
+    *   **Tabla 79:** Parámetro de Contratación reclamado (`ParametroContratacion`).
+    *   **Tabla 80:** Resultado de la Reclamación en Paso `05` (`RESULTADOS_R1`: `01` Procedente/Favorable, `02` Improcedente/Desfavorable, `03` Duplicada, `04` No gestionable, `05` Otros).
+    *   **Tabla 81:** Tipos / Motivos de Reclamación Electricidad (`MOTIVOS_R1`: `01` Atención personal, `02` Facturación y medida, `03` Contratación, `04` Gestión de acometidas, `05` Calidad de suministro, `06` Situación de instalaciones, `07` Atención reglamentaria).
+    *   **Tabla 82:** Subtipos / Submotivos de Reclamación Electricidad (`SUBMOTIVOS_R1`: catálogo eléctrico depurado excluyendo códigos exclusivos de Gas `033, 050, 054, 068`).
+    *   **Tabla 84:** Tipo de Comunicación Intermedia en Paso `03` (`TIPOS_COMUNICACION_R1`: `01` Solicitud info adicional, `02` Comunicación estado intermedio, `03` Retipificación, `04` Desestimación info enviada).
+    *   **Tabla 86:** Código de Incidencia (`CodigoIncidencia`).
+    *   **Tabla 87:** Tipo de Atención Incorrecta (`TipoDeAtencionIncorrecta`).
+    *   **Tabla 139:** Disconformidad en Autoconsumo (`DisconformidadAutoconsumo`).
+    *   **Tabla 140:** Motivo de Consulta (`MotivoConsulta`, clave para obligatoriedad dinámica en submotivo `076`).
 
 > [!TIP]
-> Cuando haya errores en el parser del sistema o un XML retorne valores numéricos que no entiendas, busca el número en el documento de *Tablas Maestras* bajo la tabla correspondiente. Cuando busques cómo extraer un dato concreto de un archivo XML para añadir a la base de datos, revisa la hoja de Excel (`CNMC - E - Procesos 2024.05.16`) que corresponde a ese Proceso y Paso para conocer el "Nombre de Campo" exacto.
+> Cuando haya errores en el parser del sistema o un XML retorne valores numéricos que no entiendas, busca el número en el documento de *Tablas Maestras* bajo la tabla correspondiente. Cuando busques cómo extraer un dato concreto de un archivo XML para añadir a la base de datos, revisa la hoja de Excel (`CNMC - E - Procesos 2024.05.16`) y el `.xsd` correspondiente a ese Proceso y Paso para conocer el nombre y secuencia exactos de cada etiqueta.
 
-## 4. Notas de Implementación para el ERP
-- **Motor de Estados**: El backend debe basarse en el `Código de Proceso` (Tabla 2) y el `Código de Paso` (Tabla 3) para realizar transiciones de estado en la Base de Datos. Por ejemplo, al recibir un XML con Proceso `C1` y Paso `05` (Activación), el contrato asociado debe pasar a estado `Activo`.
-- **D1 y Autoconsumo**: La ingesta de archivos `NotificacionCambiosATRDesdeDistribuidor.xsd` (D1, Paso 01) debe asociar automáticamente los acuerdos de reparto y coeficientes a los `Client` o `Contract` correspondientes, disparando una notificación en el Dashboard del backoffice, ya que el comercializador tiene un reloj de 10 días para enviar un rechazo (`RechazoD1.xsd` Paso 02) si existe disconformidad del cliente.
-- **Evitar Dependencias**: Esta lógica reemplaza nativamente a Make, garantizando validación estricta XSD y permitiendo al usuario final ver en qué paso exacto se encuentra la activación de su luz.
+---
+
+## 4. Notas de Implementación en el ERP
+- **Motor de Estados Aislado por Proceso (`Regla 125`):** `src/lib/switching/parser.ts` y `src/app/actions/switchingIngest.ts` evalúan siempre `procesoBase` + `paso` conjuntamente. En concreto, los pasos de `R1` (`01, 02, 03, 04, 05, 08, 09`) tienen una semántica propia completamente aislada de `C1/C2/M1/A3/B1/E1/E2` (por ejemplo, en `R1` los pasos enviados por comercializadora son `01, 04, 08` y el Paso `04` es aportación de información `INFO_ENVIADA`, no un rechazo).
+- **Decodificación Automática de XMLs (`decodeXmlBuffer`):** Muchas distribuidoras emiten XMLs en `ISO-8859-1` / `Windows-1252`. El ingestor detecta la cabecera `encoding=...` o la presencia de `\uFFFD` antes de parsear, preservando tildes y `ñ` sin corrupción en base de datos.
+- **Deduplicación con Soporte de Secuencial (`buildSwitchingUniqueProcess`):** Para pasos iterativos de `R1` (`03, 04, 08, 09`) con `SecuencialDeSolicitud > 01` o expedientes sin CUPS (`SINCUPS`), el identificador único añade el sufijo `#Sxx`, evitando sobrescribir segundas peticiones de información mientras conserva compatibilidad total con secuencial `01`.
+- **Proxy Seguro de Documentos Adjuntos (`/api/cnmc/document`):** Soporta tanto `GET` como `POST` autenticado (`Basic Auth` o parámetros `user`/`password`) para servir desde Cloudflare R2 (`cnmc/`) los ficheros declarados en `<RegistrosDocumento>` respetando el límite XSD `X255`.
+- **D1 y Autoconsumo:** La ingesta de archivos `NotificacionCambiosATRDesdeDistribuidor.xsd` (`D1`, Paso `01`) asocia acuerdos de reparto y coeficientes a los suministros correspondientes, controlando el plazo normativo de respuesta.
