@@ -940,6 +940,7 @@ export class InternalBillingEngine {
           : [];
 
         let initialTargetCode: string | null = null;
+        let parentRF1: any = null;
 
         // Para AR/S priorizamos localizar el R padre cuyo CodigoFacturaAbono coincide con f1.numeroFactura
         // (evita códigos heredados cuando un AR sintético se clonó desde un R1 intermedio)
@@ -958,6 +959,7 @@ export class InternalBillingEngine {
               || (rOrig ? `AR-${rOrig}` : undefined);
             if (codAbono && String(codAbono) === f1.numeroFactura && rOrig) {
               initialTargetCode = String(rOrig);
+              parentRF1 = r;
               break;
             }
           }
@@ -986,7 +988,22 @@ export class InternalBillingEngine {
               })
             : [];
 
-          const isAlreadyCredited = (normCode: string, billedInvoiceNumber?: string | null): boolean => {
+          const parentRAlreadyBilledInLegacy = Boolean(
+            parentRF1 &&
+              legacySpInvs.some((li) => {
+                if ((li.invoiceType || '').trim().toLowerCase() === 'abono') return false;
+                if (li.origin === 'INTERNAL_ENGINE') return false;
+                if (li.f1InvoiceId === parentRF1.id) return true;
+                const cfNorm = normalizeFiscalCode((li.invoiceData as any)?.['Codigo Fiscal']);
+                return cfNorm === normalizeFiscalCode(parentRF1.numeroFactura);
+              })
+          );
+
+          const isAlreadyCredited = (
+            normCode: string,
+            billedInvoiceNumber?: string | null,
+            isDirectTargetStep: boolean = true
+          ): boolean => {
             const normInvNum = (billedInvoiceNumber || '').trim().toUpperCase();
             for (const ii of emittedInternalInvs) {
               if (ii.f1InvoiceId === f1.id) continue;
@@ -1000,6 +1017,13 @@ export class InternalBillingEngine {
                 return true;
               }
             }
+
+            // En el paso directo (o si el propio R padre ya fue facturado en Ingebau y estamos simulando en Shadow Billing),
+            // NO descartamos la factura original por existir el Abono paralelo R26... de Ingebau en prisma.invoice.
+            if (isDirectTargetStep || parentRAlreadyBilledInLegacy) {
+              return false;
+            }
+
             for (const li of legacySpInvs) {
               if ((li.invoiceType || '').trim().toLowerCase() !== 'abono') continue;
               const ld = ((li.invoiceData as any) || {}) as Record<string, any>;
@@ -1025,6 +1049,7 @@ export class InternalBillingEngine {
             const normCode = normalizeFiscalCode(currentCode);
             if (!normCode || visitedCodes.has(normCode)) break;
             visitedCodes.add(normCode);
+            const isDirectTargetStep = visitedCodes.size === 1;
 
             const targetF1: any =
               allSpF1s.find(
@@ -1054,7 +1079,7 @@ export class InternalBillingEngine {
             if (
               internalInvoice &&
               internalInvoice.invoiceData &&
-              !isAlreadyCredited(normCode, internalInvoice.invoiceNumber)
+              !isAlreadyCredited(normCode, internalInvoice.invoiceNumber, isDirectTargetStep)
             ) {
               if (returnHourlyDetails && targetF1) {
                 try {
@@ -1100,7 +1125,10 @@ export class InternalBillingEngine {
               });
             }
 
-            if (legacyInvoice && !isAlreadyCredited(normCode, legacyInvoice.invoiceNumber)) {
+            if (
+              legacyInvoice &&
+              !isAlreadyCredited(normCode, legacyInvoice.invoiceNumber, isDirectTargetStep)
+            ) {
               const legacyResult = buildBillingResultFromLegacyInvoice(
                 legacyInvoice,
                 contract,
