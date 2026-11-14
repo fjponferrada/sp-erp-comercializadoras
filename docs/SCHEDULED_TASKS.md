@@ -7,14 +7,17 @@ Este documento detalla todas las tareas automatizadas configuradas a nivel de si
 El sistema de Scraping para recuperar archivos F1 de las distribuidoras se divide en varias piezas para asegurar que siempre haya un motor gráfico activo:
 
 ### 1. `AED_Worker_Persistent`
-- **Descripción**: Mantiene encendido de forma permanente e invisible el Worker local de Node.js (`C:\Scrapping\scraping_worker.js`) que ejecuta los scripts de scraping en modo `--headless=new`.
+- **Descripción**: Mantiene encendido de forma permanente e invisible el Worker local de Node.js (`C:\Scrapping\scraping_worker.js`) que ejecuta los scripts de scraping (`SCTD`, `F1` y `J1`) en modo `--headless=new`.
 - **Desencadenador (Trigger)**: Se ejecuta automáticamente *Al iniciar sesión* el usuario Administrator. Configuración sin límite de tiempo de ejecución (`ExecutionTimeLimit = PT0S`, evitando el corte por defecto de 72 horas de Windows) y permitido en cualquier estado de energía.
-- **Acción (Action)**: Ejecuta `wscript.exe "C:\Scrapping\worker_hidden.vbs"`, que lanza `C:\Scrapping\run_worker.bat` con ventana 100% oculta (`0`) sin abrir consolas CMD en el escritorio.
+- **Acción (Action)**: Ejecuta `wscript.exe "C:\Scrapping\worker_hidden.vbs"`, que lanza `C:\Scrapping\run_worker.bat` con ventana 100% oculta (`0`) sin abrir consolas CMD ni bloquear el archivo de log con redirección `>>` de `cmd.exe`.
 - **Mecanismos Internos**:
   - Reserva el puerto local `127.0.0.1:59999` como mutex para evitar instancias duplicadas.
-  - Consulta cada 60 segundos `GET http://127.0.0.1:3000/api/cron/scraping-worker`.
+  - Gestiona directamente `C:\Scrapping\worker_output.log` con rotación automática (`fs.renameSync` hacia `worker_output.old.log` al superar `5 MB`) y reduce el log en reposo a 1 línea cada 30 ciclos (`15 minutos`).
+  - Consulta cada **30 segundos** `GET http://127.0.0.1:3000/api/cron/scraping-worker` autenticado con `Authorization: Bearer <WORKER_SECRET_TOKEN || CRON_SECRET>`.
+  - Ejecuta los 4 scrapers Python en serie estricta vía `execFile` pasando credenciales en `SCRAPER_USER` / `SCRAPER_PASS` (nunca en línea de comandos), con subcarpetas temporales aisladas `_raw_<dist>`, caché SHA-256 persistente post-subida (`C:\Scrapping\cache\<dist>_hashes.json`, 45 días) y terminación completa del árbol de subprocesos (`taskkill /PID <pid> /T /F`) si supera 10 minutos.
+  - Reporta estados `COMPLETED`, `PARTIAL` o `ERROR` (actualizando `webLastSyncAt` solo en `successfulDistributors`) y, al cerrar el ciclo en `/api/cron/scraping-worker`, dispara automáticamente el barrido `retryUnresolvedSwitchingEventsInternal()`.
   - Si detecta que el puerto `3000` no responde en 2 intentos consecutivos, limpia procesos zombis de Next.js (`next dev` / `start-server.js`), elimina `.next\dev\lock` y levanta `npm.cmd run dev` oculto.
-  - Si pasan más de 6,2 horas sin recibir un trabajo, auto-dispara `POST /api/cron/trigger-scraping`.
+  - Si pasan más de 6,2 horas sin recibir un trabajo, auto-dispara `POST /api/cron/trigger-scraping` autenticado con `CRON_SECRET`.
 
 ### 2. `SPEnergia_Cron_RestartWorker`
 - **Descripción**: Watchdog no destructivo del Worker. Verifica que el Worker siga vivo antes de cada ciclo de scraping sin interrumpir ejecuciones activas.
@@ -46,27 +49,27 @@ Todas las tareas `SPEnergia_Cron_*` (excepto `RestartWorker`) delegan su ejecuci
 Las siguientes tareas se encargan de automatizar la facturación, los correos y los análisis de mercado, llamando a la API de Next.js (`/api/cron/`):
 
 ### 4. `SPEnergia_Cron_ActivateRenewals`
-- **Descripción**: Comprueba diariamente los contratos que vencen y aplica la lógica de Renovación Automática enviando notificaciones.
+- **Descripción**: Comprueba periódicamente (`/api/cron/activate-renewals`) los contratos en renovación cuya fecha de inicio ha llegado: pasa el contrato padre saliente a `FINALIZADO` con `terminationDate = expectedEndDate` (cierre anual inclusivo reconocido como 365 días por `CommissionEngine`), activa el contrato renovado (`ACTIVO`), dispara automáticamente el cálculo y snapshot de su nueva comisión anual (`calculateAndSnapshotContractCommission` con `{ onlyIfEmpty: true }`) y envía las notificaciones correspondientes.
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `01:00` (01:00, 07:00, 13:00, 19:00).
 
 ### 5. `SPEnergia_Cron_UpdatePortfolio`
-- **Descripción**: Ejecuta el Orquestador Financiero Multi-Empresa (`/api/cron/update-portfolio`) autenticado con `CRON_SECRET` / token local del programador. Recorre todas las comercializadoras activas y regenera de forma atómica (`prisma.$transaction`) las **30.000 horas (1.250 días)** de `PortfolioBaseCurve` por `companyId` en huso `Europe/Madrid`, combinando la cartera viva en Barras de Central, el patrón histórico de `AggregatedLoadCurve`, los futuros `FuturePrice` modulados con la curva de pato OMIE de los últimos 365 días y las coberturas `Ppa` marcadas con `includeInPricing: true` (`ppaEngine.ts`).
+- **Descripción**: Ejecuta el Orquestador Financiero Multi-Empresa (`/api/cron/update-portfolio`) autenticado con `CRON_SECRET` / token local del programador. Recorre todas las comercializadoras activas y regenera de forma atómica (`prisma.$transaction`) las **30.000 horas (1.250 días)** de `PortfolioBaseCurve` por `companyId` en huso `Europe/Madrid`, combinando la cartera viva en Barras de Central, el patrón histórico de `AggregatedLoadCurve`, los futuros `FuturePrice` modulados con la curva de pato OMIE de los últimos 365 días y las coberturas `Ppa` marcadas con `includeInPricing: true` (`ppaEngine.ts`), descontando del volumen físico OMIE (`compraOmieMwh` y `ppaMwh`) **únicamente los PPAs Físicos (`FISICO`)** mientras que los **PPAs Financieros (`FINANCIERO` / CfD)** liquidan por diferencias (`cfdOrMtmEur`) sin alterar la compra física (Regla 244).
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `02:00` (02:00, 08:00, 14:00, 20:00), además de dispararse bajo demanda desde `/pricing`, `/compras/ppas` y automáticamente al guardar futuros en `/ajustes/costes-regulados`.
 
-### 6. `SPEnergia_Cron_SyncEsios` *(Legacy)*
-- **Descripción**: Descargaba los precios de OMIE desde ESIOS. **Actualmente desactivado** ya que se usa el Importador nativo COMPODEM.
-- **Desencadenador (Trigger)**: Cada 6 horas empezando a las `02:00`.
+### 6. `SPEnergia_Cron_SyncEsios` *(Legacy — Deshabilitada en Windows Task Scheduler)*
+- **Descripción**: Descargaba los precios de OMIE desde ESIOS. **Deshabilitada explícitamente (`State: Disabled`)** en el Programador de Tareas de Windows (`Regla 187`), ya que toda la ingesta de precios del sistema se realiza mediante el Importador nativo COMPODEM.
+- **Desencadenador (Trigger)**: Inactivo (`Disabled`).
 
 ### 7. `SPEnergia_Cron_FtpSync`
-- **Descripción**: Recorre todas las configuraciones FTP/SFTP activas por comercializadora (`DistributorCompanyConfig`), reutilizando un `SyncJob` (`type = 'CRON_FTP_SYNC'`) entre bloques `hasMore` para descargar, descomprimir en RAM (`.zip`, `.gz`, `.bz2`, `.xlsx`, CSV) e ingerir curvas de carga CNMC (`F1`, `F1QH`, `F5D`, `RF5D`, `P5D`, `P1D`, `P2D`, etc.) en `LoadCurve` (consumo y excedentes) respetando prioridades y husos horarios.
+- **Descripción**: Recorre todas las configuraciones FTP/SFTP activas por comercializadora (`DistributorCompanyConfig`), aplicando un filtro incremental estricto `fileDate <= effectiveSince` cuando existe `ftpLastSyncAt` previo (evitando re-descargar el último lote en cada ciclo) y reutilizando un `SyncJob` (`type = 'CRON_FTP_SYNC'`) entre bloques `hasMore` para descargar, descomprimir en RAM (`.zip`, `.gz`, `.bz2`, `.xlsx`, CSV) e ingerir curvas de carga CNMC (`F1`, `F1QH`, `F5D`, `RF5D`, `P5D`, `P1D`, `P2D`, etc.) en `LoadCurve` (consumo y excedentes) respetando prioridades y husos horarios. Acumula las fechas reales afectadas (`affectedDates`) entre lotes y, al concluir la cola (`hasMore === false`), dispara `AggregationService.regenerateForDates` y `runCalculatePendingEnergy` sobre los meses impactados.
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `03:00` (03:00, 09:00, 15:00, 21:00).
 
 ### 8. `SPEnergia_Cron_AggregateHistory`
-- **Descripción**: Ejecuta `AggregationService.regenerateAggregates` sobre todas las comercializadoras, consolidando las curvas `CONSUMPTION` de `LoadCurve` en `AggregatedLoadCurve` por `companyId`, `segment`, `province` y `tariff` sobre fechas exactas `@db.Date` (`YYYY-MM-DDT00:00:00.000Z` del calendario `Europe/Madrid`), filtrando contratos válidos en vigor en cada fecha y cruzando con `WeatherHistory`.
+- **Descripción**: Ejecuta `AggregationService.regenerateAggregates` (`/api/cron/aggregate-history`, soportando también ventanas acotadas `?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`) sobre todas las comercializadoras: sincroniza automáticamente temperaturas horarias reales desde Open-Meteo Archive (`WeatherSyncService.syncWeatherHistoryRange` sobre las **52 provincias canónicas** resueltas por `normalizeProvinceName`), consolida las curvas `CONSUMPTION` (`totalConsumption`) y `SURPLUS` (`totalSurplus`) de `LoadCurve` en `AggregatedLoadCurve` por `companyId`, `segment`, `province` y `tariff` en fechas exactas `@db.Date` (`YYYY-MM-DDT00:00:00.000Z`), y recalcula la energía pendiente de liquidar con REE (`runCalculatePendingEnergy` → `PendingEnergySummary`).
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `04:00` (04:00, 10:00, 16:00, 22:00).
 
 ### 9. `SPEnergia_Cron_TrainForecast`
-- **Descripción**: Entrena la IA (modelo Random Forest / LSTM) con los datos consolidados para afinar las previsiones de compra de energía del día siguiente.
+- **Descripción**: Ejecuta `/api/cron/train-forecast` (protegido estrictamente por `CRON_SECRET` / cabecera oficial / rol de Compras, sin `fallback_secret`): auto-repara `WeatherHistory` si estuviera vacía, comprime en UTC puro los últimos 365 días de `AggregatedLoadCurve` (excluyendo `VIP`/`VE`, gestionados por `SDA`) ponderando por volumen real de suministros (`sumCons / sumClients`), aplica muestreo sistemático determinista PPS a `10.000` muestras y entrena el árbol de regresión `DecisionTreeRegression` (`ml-cart`) guardando el modelo y su telemetría `_meta` en `ForecastModelCache` (Reglas 204, 205 y 244).
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `05:00` (05:00, 11:00, 17:00, 23:00).
 
 ---
@@ -81,4 +84,13 @@ Todas las tareas locales de Windows están escalonadas hora a hora cada 6 horas 
 5. **03:00 / 09:00 / 15:00 / 21:00** -> Consolidación de curvas de consumo (`SPEnergia_Cron_AggregateHistory`).
 6. **04:00 / 10:00 / 16:00 / 22:00** -> Entrenamiento de previsión de demanda (`SPEnergia_Cron_TrainForecast`).
 
-*(En horario de verano UTC+2 los triggers `PT6H` corren +1h manteniendo exactamente la misma separación secuencial de 1 hora entre tareas; `SPEnergia_Cron_SyncEsios` permanece en estado `Disabled`).*
+*(En horario de verano UTC+2 los triggers `PT6H` corren +1h manteniendo exactamente la misma separación secuencial de 1 hora entre tareas; `SPEnergia_Cron_SyncEsios` permanece en estado `Disabled`, y los ficheros de bloqueo `/logs/*.lock` y `/logs/crons/*.lock` están excluidos en `.gitignore`).*
+
+### Tabla de Respaldo Cloud en `vercel.json` (Plan Hobby)
+| Endpoint | Expresión Cron (UTC) | Propósito |
+| :--- | :--- | :--- |
+| `/api/cron/activate-renewals` | `30 1 * * *` | Activación diaria de respaldo para renovaciones vencidas |
+| `/api/cron/update-portfolio` | `30 2 * * *` | Regeneración diaria de respaldo de `PortfolioBaseCurve` |
+| `/api/cron/ftp-sync` | `30 3 * * *` | Sincronización FTP diaria de respaldo fuera de `:00` |
+| `/api/cron/aggregate-history` | `30 4 * * *` | Consolidación diaria de respaldo de `AggregatedLoadCurve` |
+| `/api/cron/train-forecast` | `30 5 * * *` | Reentrenamiento diario de respaldo del modelo de previsión |

@@ -17,7 +17,7 @@ El usuario interactúa con la plataforma desde `/compras/importar-compodem` (`Im
 
 - **Control de acceso:** Tanto la página SSR `/compras/importar-compodem` como el endpoint `POST /api/compodem/import` verifican sesión activa y rol autorizado de Compras (`SUPERADMIN`, `COMPANYADMIN` o `BACKOFFICE` mediante `isComprasAuthorized`).
 - **Extracción recursiva y limpieza:** `CompodemService.getCompodemFiles()` desempaqueta en memoria el ZIP (incluyendo ZIPs anidados dentro de un ZIP maestro), ignora directorios y basura de macOS (`__MACOSX`, `._*`) y decodifica los CSV en `latin1`.
-- **Refresco inmediato:** Al finalizar la importación, el backend ejecuta `revalidatePath('/compras/importar-compodem')` y `revalidatePath('/compras/precios-componentes')`, y el cliente invoca `router.refresh()` para actualizar al instante los indicadores en pantalla.
+- **Recálculo reactivo y refresco inmediato:** `CompodemService.processZipBuffer()` devuelve la lista exacta de meses afectados (`affectedMonths`), disparando automáticamente `runCalculatePendingEnergy({ targetMonths: affectedMonths })` para actualizar `PendingEnergySummary`. Al finalizar, el backend ejecuta `revalidatePath('/compras/importar-compodem')`, `revalidatePath('/compras/precios-componentes')` y `revalidatePath('/gestion/energia-pendiente')`, y el cliente invoca `router.refresh()` para actualizar al instante los indicadores en pantalla.
 
 ### 2.1 Archivos Extraídos del ZIP
 El servicio extrae dos familias de ficheros:
@@ -82,9 +82,11 @@ La tabla define la clave única compuesta `@@unique([component, date])`. Durante
 
 ## 5. Casos de Uso del Dato
 
-Una vez almacenados en `SystemComponentPrice`, los datos alimentan tres módulos principales:
+Una vez almacenados en `SystemComponentPrice`, los datos alimentan cuatro módulos principales:
 - **`PricingEngine`:** Emplea `smartMergeDB` para leer el histórico de `RESTRICCIONES`, `OS` y `K`, calcular medias estadísticas según el perfil de riesgo y proyectar precios a 12 meses vista en el cotizador.
 - **`InternalBillingEngine`:** Recupera las curvas reales del periodo facturado para trasladar con precisión horaria/cuartohoraria los costes *pass-through* de REE y la modulación de pérdidas `K`.
+- **Motor de Predicción y *Backtesting* OMIE (`/compras` — `ForecastService.ts`, Regla 244):** Combina el coeficiente horario/cuartohorario **`K`** (`SystemComponentPrice` con `component = 'K'`, aplicando en predicción el día equivalente `-364d` o fallback automático al mismo día de la semana más reciente publicado) con las pérdidas reguladas BOE vigentes (`RegulatedCost` `PERDIDAS`) evaluadas en `Europe/Madrid` y por prefijo provincial (`Península`, `Canarias`, `Ceuta/Melilla`) para elevar la demanda prevista y las curvas de *backtesting* a **Barras de Central (`BC`)**.
+- **Motor de Energía Pendiente de Liquidar REE (`/gestion/energia-pendiente` — `src/scripts/calculate_pending_energy.ts`):** Promedia los 4 cuartos de cada hora del Factor `K` (`96qh -> 24h`) para elevar las curvas agregadas `CCH` a Barras de Central y combina el promedio mensual normalizado por días de `RESTRICCIONES` junto a `OMIE` (`OMIE + Restricciones`) para valorar económicamente el `Descuadre F1-CCH` (véase [`docs/GUIA_ENERGIA_PENDIENTE_REE.md`](./GUIA_ENERGIA_PENDIENTE_REE.md)).
 - **Visor de Precios (`/compras/precios-componentes`):** Permite auditar visualmente y exportar cualquier serie temporal almacenada.
 
 ## 6. Página de Precio Componentes (Visor de Precios)

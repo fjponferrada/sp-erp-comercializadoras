@@ -16,6 +16,11 @@ El algoritmo actúa contrato por contrato de la siguiente manera:
 3. **Estimación de Consumo:** El sistema revisa el consumo total del último año (12 meses) de ese CUPS y extrae la **media de consumo diario**. Multiplica esta media por los Días Pendientes para obtener los MWh estimados pendientes de cobro.
 4. **Estimación Económica:** Cruza esos MWh estimados con los precios horarios del mercado OMIE de los días exactos de retraso, sumando los costes regulados (peajes y cargos) para ofrecer una Base Imponible proyectada y un total con impuestos desglosado por meses (Mes actual, M-1, M-2).
 
+### 1.1 Energía Pendiente de Liquidar frente a REE (`/gestion/energia-pendiente`)
+En el mismo bloque de **Gestión**, el módulo **Energía Pendiente Liquidar (REE)** (`/gestion/energia-pendiente`) concilia la posición mayorista de la comercializadora frente al Operador del Sistema (**REE / REGANECU**) a lo largo del ciclo completo de **18 meses (`A1..C8`)**:
+- Cruza hora a hora la **Demanda BC CCH Recibidas** (elevada a Barras de Central en `Europe/Madrid` con Factor `K` promedio horario y minorada por excedentes solares `SURPLUS` a `1.0x` según **P.O. 14.8**) contra el componente **`CAD` liquidado por REE** día a día (`mergeDailyReganecuRecords`), valorando los desvíos pendientes a precios horarios `DSV` (con ancla en `OMIE + CAD + PC3`).
+- Calcula el **Descuadre F1–CCH** prorrateando la facturación (`Invoice` + `InternalInvoice` en calendario `Europe/Madrid`) y lo valora al precio medio mensual **`OMIE + Restricciones`**, separando en KPIs ejecutivos la provisión de **cierres vivos (`A1–C3`)** frente a **cierres maduros (`A4–C8`)** e incorporando un **Modal de Auditoría Mensual** por Distribuidora y Top 50 CUPS. Para el detalle completo, consúltese [`docs/GUIA_ENERGIA_PENDIENTE_REE.md`](./GUIA_ENERGIA_PENDIENTE_REE.md).
+
 ---
 
 ## 2. Motor de Facturación Interna (`/facturacion/interna`) e Histórico (`/facturas-internas`)

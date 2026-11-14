@@ -27,9 +27,9 @@ Para estimar el precio horario futuro (ej. 14:00 de un martes de Febrero de 2027
 3.  **Normalización Unitaria:** Calcula el peso relativo de cada hora respecto a la media diaria (`suma de 24 ratios = 24`).
 4.  **Escalado sobre Futuro FTB:** Multiplica `Futuro_YYYYMM × Ratio_m_w_h`.
 
-### 2.2 Mezcla de Cobertura PPA y Reemplazo Atómico
-*   Filtra exclusivamente contratos activos (`brand.companyId = company.id`), curvas agregadas (`AggregatedLoadCurve`) y acuerdos PPA con `includeInPricing = true` pertenecientes a esa comercializadora.
-*   Hora a hora calcula compras faltantes y ventas excedentarias contra OMIE proyectado para obtener `basePriceEurMwh`.
+### 2.2 Mezcla de Cobertura PPA (Separación Física vs Financiera) y Reemplazo Atómico
+*   Filtra exclusivamente contratos activos (`brand.companyId = company.id`, excluyendo suspendidos), curvas agregadas (`AggregatedLoadCurve`) y acuerdos PPA con `includeInPricing = true` pertenecientes a esa comercializadora.
+*   **Separación Estricta `FISICO` vs `FINANCIERO` (Reglas 143, 234 y 244):** El orquestador segrega hora a hora `ppaFisicoHoraMwh` (`type = 'FISICO'`) de `ppaFinancieroHoraMwh` (`type = 'FINANCIERO'`). **Únicamente los PPAs Físicos** reducen la compra física en el mercado diario (`compraOmieMwh = max(0, demandaBc - ppaFisicoHoraMwh)` y `PortfolioBaseCurve.ppaMwh = ppaFisicoHoraMwh`), mientras que los **PPAs Financieros (`CfD`)** jamás alteran el volumen físico comprado en OMIE y aportan su cobertura económica exclusivamente a través de su liquidación por diferencias (`cfdOrMtmEur`) al calcular `basePriceEurMwh`.
 *   **Transacción Atómica (`prisma.$transaction`):** El borrado y la inserción por lotes (`batchSize = 5000`) se ejecutan dentro de una única transacción por empresa, impidiendo que `/pricing` o `/api/ppas/proyeccion` lean una tabla vacía durante la regeneración.
 
 ---
@@ -85,6 +85,7 @@ Al seleccionar cualquier PPA en la pestaña *Liquidaciones OMIE y Proyección Mt
 *   `src/app/api/ppas/route.ts` y `src/app/api/ppas/[id]/route.ts`: CRUD multi-empresa con RBAC (`SUPERADMIN` / `COMPANYADMIN` / `BACKOFFICE` para escritura).
 *   `src/app/api/ppas/liquidaciones/route.ts`: Liquidación real contra `SystemComponentPrice` (`OMIE`) con intersección automática de vigencia contractual y resumen diario + cuarto-horario.
 *   `src/app/api/ppas/proyeccion/route.ts`: Proyección financiera a 12 meses y cálculo de exposición neta `MtM` descontada.
-*   `src/app/api/cron/update-portfolio/route.ts`: Orquestador multi-empresa transaccional de `PortfolioBaseCurve`.
-*   `src/lib/services/ForecastService.ts` y `src/components/compras/ComprasDashboard.tsx`: Descuento horario automático de PPAs Físicos en `TOTAL_OMIE` (Regla 143).
+*   `src/app/api/cron/update-portfolio/route.ts`: Orquestador multi-empresa transaccional de `PortfolioBaseCurve` con separación estricta entre cobertura física (`ppaFisicoHoraMwh`) y cobertura financiera CfD (`ppaFinancieroHoraMwh`).
+*   `src/lib/services/ForecastService.ts` y `src/components/compras/ComprasDashboard.tsx`: Descuento horario exclusivo de PPAs Físicos (`FISICO`) en `TOTAL_OMIE` e interpolación cuarto-horaria centrada (`Q1`–`Q96`) estrictamente en **`MW` de potencia** (Reglas 143, 234 y 244).
 *   `src/components/compras/PpaForm.tsx`, `src/components/compras/LiquidacionesPpa.tsx` y `src/app/(app)/compras/ppas/PpaClient.tsx`: Interfaz completa con lector Excel resiliente, visor `12×24`, custodia PDF en R2 y exportación Excel `.xlsx` de 4 pestañas.
+*   *Documentación complementaria de conciliación mayorista REE:* Para el cruce entre liquidaciones `REGANECU` (`A1..C8`), curvas agregadas en Barras de Central (`AggregatedLoadCurve`), valoración `OMIE + Restricciones` y auditoría de descuadres `F1–CCH`, consúltese [`docs/GUIA_ENERGIA_PENDIENTE_REE.md`](./GUIA_ENERGIA_PENDIENTE_REE.md).
