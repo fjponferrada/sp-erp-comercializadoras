@@ -38,7 +38,8 @@ import {
   Database,
   Calendar,
   FileBarChart,
-  Mail
+  Mail,
+  Search
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -82,6 +83,13 @@ const baseNavGroups = [
       { href: '/bajas', icon: TrendingDown, label: 'Bajas' },
       { href: '/productos', icon: Package, label: 'Productos', roles: ['COMERCIAL', 'CANAL'] },
       { href: '/facturas-penalizaciones', icon: Receipt, label: 'Facturas Penalizaciones', roles: ['BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
+    ],
+  },
+  {
+    label: 'SIPS',
+    roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'],
+    items: [
+      { href: '/consulta-cups', icon: Search, label: 'Consulta de CUPS' },
     ],
   },
   {

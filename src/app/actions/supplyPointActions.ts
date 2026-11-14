@@ -231,7 +231,7 @@ export async function updateSupplyPointSipsAction(id: string) {
     if (!sipsData || sipsData.result === 'ERROR') {
       return { 
         success: false, 
-        error: sipsData?.message || 'Error al consultar INGEBAU (SIPS)' 
+        error: sipsData?.message || 'Error al consultar SIPS' 
       };
     }
 

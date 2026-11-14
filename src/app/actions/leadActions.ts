@@ -289,7 +289,7 @@ export async function createLeadAction(formData: FormData, apiContext?: { userId
           where: { id: lead.id },
           data: {
             sipsOk: false,
-            sipsMessages: sipsData?.messages || 'Error desconocido en INGEBAU'
+            sipsMessages: sipsData?.messages || 'Error desconocido en SIPS'
           }
         });
         console.warn(`[SIPS] Fallo validando SIPS para CUPS ${cups}: ${sipsData?.messages}`);

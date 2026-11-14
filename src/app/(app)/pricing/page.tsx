@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell
@@ -55,7 +56,8 @@ function extractIsoDatePrefix(raw: any): string | undefined {
   return undefined;
 }
 
-export default function PricingPage() {
+function PricingPageContent() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -95,8 +97,9 @@ export default function PricingPage() {
   const [cchData, setCchData] = useState<number[] | null>(null);
   const [cchStartDate, setCchStartDate] = useState<string | undefined>(undefined);
 
-  const handleFetchSips = async () => {
-    if (!cupsInput || cupsInput.trim().length < 20) {
+  const handleFetchSips = useCallback(async (overrideCups?: string) => {
+    const targetCups = (typeof overrideCups === 'string' ? overrideCups : cupsInput).trim().toUpperCase();
+    if (!targetCups || targetCups.length < 20) {
       toast.error('Por favor introduce un CUPS válido (al menos 20 caracteres)');
       return;
     }
@@ -106,8 +109,8 @@ export default function PricingPage() {
     setCupsClientName(null);
 
     try {
-      const loadingToast = toast.loading('Consultando ERP y SIPS (INGEBAU)...');
-      const res: any = await fetchSipsForPricingAction(cupsInput.trim().toUpperCase());
+      const loadingToast = toast.loading('Consultando ERP y SIPS...');
+      const res: any = await fetchSipsForPricingAction(targetCups);
       toast.dismiss(loadingToast);
 
       if (res.success) {
@@ -148,7 +151,18 @@ export default function PricingPage() {
     } finally {
       setFetchingSips(false);
     }
-  };
+  }, [cupsInput]);
+
+  const urlCupsParam = searchParams.get('cups');
+  useEffect(() => {
+    if (urlCupsParam && urlCupsParam.trim().length >= 20) {
+      const clean = urlCupsParam.trim().toUpperCase();
+      setQuoteMode('cups');
+      setCupsInput(clean);
+      handleFetchSips(clean);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlCupsParam]);
 
   const handleSyncPortfolio = async () => {
     setSyncing(true);
@@ -752,7 +766,7 @@ export default function PricingPage() {
                     />
                     <button
                       type="button"
-                      onClick={handleFetchSips}
+                      onClick={() => handleFetchSips()}
                       disabled={fetchingSips || !cupsInput}
                       className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/20 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
                       title="Consultar ERP y SIPS"
@@ -1641,5 +1655,19 @@ export default function PricingPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+          <Topbar title="Pricing & Cotizador" />
+        </div>
+      }
+    >
+      <PricingPageContent />
+    </Suspense>
   );
 }

@@ -203,7 +203,7 @@ export default function SupplyPointDetailClient({
               onClick={async () => {
                 const toast = (await import('react-hot-toast')).default;
                 const { updateSupplyPointSipsAction } = await import('@/app/actions/supplyPointActions');
-                const loadingToast = toast.loading('Actualizando SIPS desde INGEBAU...');
+                const loadingToast = toast.loading('Actualizando datos desde SIPS...');
                 try {
                   const res = await updateSupplyPointSipsAction(supplyPoint.id);
                   if (res.success) {

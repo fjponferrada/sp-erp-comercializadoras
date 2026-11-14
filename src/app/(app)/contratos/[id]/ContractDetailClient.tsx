@@ -763,7 +763,7 @@ export default function ContractDetailClient({
                     return;
                   }
                   setIsUpdatingSips(true);
-                  const loadingToast = toast.loading('Actualizando SIPS desde INGEBAU...');
+                  const loadingToast = toast.loading('Actualizando datos desde SIPS...');
                   try {
                     const { updateSupplyPointSipsAction } = await import('@/app/actions/supplyPointActions');
                     const res = await updateSupplyPointSipsAction(supplyPoint.id);
