@@ -194,6 +194,7 @@ function PricingPageContent() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      transformHeader: (h) => h.replace(/^\uFEFF/, '').trim(),
       complete: (results) => {
         const rows = results.data as any[];
         let p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0;
@@ -285,6 +286,7 @@ function PricingPageContent() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      transformHeader: (h) => h.replace(/^\uFEFF/, '').trim(),
       complete: (results) => {
         const rows = results.data as any[];
         if (!rows || rows.length === 0) {

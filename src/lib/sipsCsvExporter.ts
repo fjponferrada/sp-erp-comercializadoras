@@ -63,9 +63,25 @@ export const INGEBAU_PS_HEADERS = [
   'aplicacionBonoSocial',
 ] as const;
 
-function csvQuote(value: unknown): string {
-  const str = value === null || value === undefined ? '' : String(value);
-  return `"${str.replace(/"/g, '""')}"`;
+const UTF8_BOM = '\uFEFF';
+
+function formatCsvCell(value: unknown, delimiter: ';' | ','): string {
+  if (value === null || value === undefined || value === '') {
+    return '';
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '0';
+    return delimiter === ';' ? String(value).replace('.', ',') : String(value);
+  }
+  const str = String(value);
+  // Si es un decimal numérico guardado como string (ej. PotenciaContratadaP1kW = "4.4") y usamos ';', adaptar coma decimal para Excel ES
+  if (delimiter === ';' && /^-?\d+\.\d+$/.test(str.trim())) {
+    return str.trim().replace('.', ',');
+  }
+  if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
 }
 
 export function mapReadingCodeToIngebauLabel(code: unknown, existingLabel?: unknown): string {
@@ -81,13 +97,21 @@ export function mapReadingCodeToIngebauLabel(code: unknown, existingLabel?: unkn
 
 /**
  * Genera el CSV de consumos ({CUPS}_consumos.csv) con las 23 columnas exactas
- * de Ingebau, 100% compatible con el importador "SIPS CSV" de /pricing.
+ * de Ingebau + BOM UTF-8 y separador ';' por defecto para apertura directa en
+ * columnas en Microsoft Excel (España) y 100% compatible con /pricing "SIPS CSV".
  */
-export function buildIngebauConsumosCsv(sipsPayload: any): string {
+export function buildIngebauConsumosCsv(
+  sipsPayload: any,
+  options?: { delimiter?: ';' | ','; includeBom?: boolean }
+): string {
+  const delimiter = options?.delimiter ?? ';';
+  const includeBom = options?.includeBom ?? true;
   const raw = sipsPayload?.data ? sipsPayload.data : sipsPayload;
   const consumos: any[] = Array.isArray(raw?.consumos) ? raw.consumos : [];
 
-  const lines: string[] = [INGEBAU_CONSUMOS_HEADERS.map(csvQuote).join(',')];
+  const lines: string[] = [
+    INGEBAU_CONSUMOS_HEADERS.map((h) => formatCsvCell(h, delimiter)).join(delimiter),
+  ];
 
   for (const row of consumos) {
     const tipoLectura = mapReadingCodeToIngebauLabel(row?.codigoTipoLectura, row?.TipoLectura);
@@ -97,40 +121,45 @@ export function buildIngebauConsumosCsv(sipsPayload: any): string {
       row?.LecturaHasta ?? '',
       tipoLectura,
       row?.TarifaATR ?? '',
-      row?.['EnergiaActivaP1(kWh)'] ?? 0,
-      row?.['EnergiaActivaP2(kWh)'] ?? 0,
-      row?.['EnergiaActivaP3(kWh)'] ?? 0,
-      row?.['EnergiaActivaP4(kWh)'] ?? 0,
-      row?.['EnergiaActivaP5(kWh)'] ?? 0,
-      row?.['EnergiaActivaP6(kWh)'] ?? 0,
-      row?.['MaxímetroP1(kW)'] ?? 0,
-      row?.['MaxímetroP2(kW)'] ?? 0,
-      row?.['MaxímetroP3(kW)'] ?? 0,
-      row?.['MaxímetroP4(kW)'] ?? 0,
-      row?.['MaxímetroP5(kW)'] ?? 0,
-      row?.['MaxímetroP6(kW)'] ?? 0,
-      row?.['EnergíaReactivaP1(Varh)'] ?? 0,
-      row?.['EnergíaReactivaP2(Varh)'] ?? 0,
-      row?.['EnergíaReactivaP3(Varh)'] ?? 0,
-      row?.['EnergíaReactivaP4(Varh)'] ?? 0,
-      row?.['EnergíaReactivaP5(Varh)'] ?? 0,
-      row?.['EnergíaReactivaP6(Varh)'] ?? 0,
+      Number(row?.['EnergiaActivaP1(kWh)'] ?? 0),
+      Number(row?.['EnergiaActivaP2(kWh)'] ?? 0),
+      Number(row?.['EnergiaActivaP3(kWh)'] ?? 0),
+      Number(row?.['EnergiaActivaP4(kWh)'] ?? 0),
+      Number(row?.['EnergiaActivaP5(kWh)'] ?? 0),
+      Number(row?.['EnergiaActivaP6(kWh)'] ?? 0),
+      Number(row?.['MaxímetroP1(kW)'] ?? 0),
+      Number(row?.['MaxímetroP2(kW)'] ?? 0),
+      Number(row?.['MaxímetroP3(kW)'] ?? 0),
+      Number(row?.['MaxímetroP4(kW)'] ?? 0),
+      Number(row?.['MaxímetroP5(kW)'] ?? 0),
+      Number(row?.['MaxímetroP6(kW)'] ?? 0),
+      Number(row?.['EnergíaReactivaP1(Varh)'] ?? 0),
+      Number(row?.['EnergíaReactivaP2(Varh)'] ?? 0),
+      Number(row?.['EnergíaReactivaP3(Varh)'] ?? 0),
+      Number(row?.['EnergíaReactivaP4(Varh)'] ?? 0),
+      Number(row?.['EnergíaReactivaP5(Varh)'] ?? 0),
+      Number(row?.['EnergíaReactivaP6(Varh)'] ?? 0),
     ];
-    lines.push(values.map(csvQuote).join(','));
+    lines.push(values.map((v) => formatCsvCell(v, delimiter)).join(delimiter));
   }
 
-  return lines.join('\r\n');
+  return (includeBom ? UTF8_BOM : '') + lines.join('\r\n');
 }
 
 /**
  * Genera el CSV maestro del Punto de Suministro ({CUPS}_ps.csv) con las 36 columnas
- * exactas de Ingebau.
+ * exactas de Ingebau + BOM UTF-8 y separador ';' para apertura directa en Excel.
  */
-export function buildIngebauPsCsv(sipsPayload: any): string {
+export function buildIngebauPsCsv(
+  sipsPayload: any,
+  options?: { delimiter?: ';' | ','; includeBom?: boolean }
+): string {
+  const delimiter = options?.delimiter ?? ';';
+  const includeBom = options?.includeBom ?? true;
   const raw = sipsPayload?.data ? sipsPayload.data : sipsPayload;
   const ps: any = Array.isArray(raw?.ps) ? raw.ps[0] : raw?.ps || raw || {};
 
-  const headerLine = INGEBAU_PS_HEADERS.map(csvQuote).join(',');
+  const headerLine = INGEBAU_PS_HEADERS.map((h) => formatCsvCell(h, delimiter)).join(delimiter);
   const values = [
     ps?.['CódigoDistribuidora'] ?? '',
     ps?.NombreDistribuidora ?? '',
@@ -142,14 +171,14 @@ export function buildIngebauPsCsv(sipsPayload: any): string {
     ps?.Tension ?? '',
     ps?.['PotenciaMaxBIE(kW)'] ?? '',
     ps?.TipoPM ?? '',
-    ps?.ConsumoAnualkWh ?? 0,
-    ps?.ConsumoAnualP1kWh ?? 0,
-    ps?.ConsumoAnualP2kWh ?? 0,
-    ps?.ConsumoAnualP3kWh ?? 0,
-    ps?.ConsumoAnualP4kWh ?? 0,
-    ps?.ConsumoAnualP5kWh ?? 0,
-    ps?.ConsumoAnualP6kWh ?? 0,
-    ps?.ConsumoAnualAnterior ?? 0,
+    Number(ps?.ConsumoAnualkWh ?? 0),
+    Number(ps?.ConsumoAnualP1kWh ?? 0),
+    Number(ps?.ConsumoAnualP2kWh ?? 0),
+    Number(ps?.ConsumoAnualP3kWh ?? 0),
+    Number(ps?.ConsumoAnualP4kWh ?? 0),
+    Number(ps?.ConsumoAnualP5kWh ?? 0),
+    Number(ps?.ConsumoAnualP6kWh ?? 0),
+    Number(ps?.ConsumoAnualAnterior ?? 0),
     ps?.PotenciaContratadaP1kW ?? 0,
     ps?.PotenciaContratadaP2kW ?? 0,
     ps?.PotenciaContratadaP3kW ?? 0,
@@ -170,14 +199,16 @@ export function buildIngebauPsCsv(sipsPayload: any): string {
     ps?.aplicacionBonoSocial ?? '0',
   ];
 
-  return `${headerLine}\r\n${values.map(csvQuote).join(',')}`;
+  return (includeBom ? UTF8_BOM : '') + `${headerLine}\r\n${values.map((v) => formatCsvCell(v, delimiter)).join(delimiter)}`;
 }
 
 /**
- * Descarga un string CSV en el navegador del cliente.
+ * Descarga un string CSV en el navegador del cliente incluyendo UTF-8 BOM
+ * para que Microsoft Excel reconozca tildes y separe columnas automáticamente.
  */
 export function triggerBrowserCsvDownload(csvContent: string, filename: string) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const withBom = csvContent.startsWith(UTF8_BOM) ? csvContent : UTF8_BOM + csvContent;
+  const blob = new Blob([withBom], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
