@@ -2,13 +2,13 @@
 
 **Estado:** En Producción (`READY` en `https://ultra.sp-energia.com`)  
 **Última actualización:** 14 de Noviembre de 2026  
-**Alcance:** Documentación integral de la infraestructura de datos CNMC en Google Cloud, la API corporativa SIPS, el motor traductor interno del ERP, el visor frontend **Consulta de CUPS**, los exportadores CSV para Excel/Cotizador y todos los flujos del ERP conectados al sistema SIPS propio.
+**Alcance:** Documentación integral de la infraestructura de datos CNMC en Google Cloud, la API corporativa SIPS, el motor traductor interno del ERP, el visor frontend **Consulta de CUPS**, los exportadores CSV para Excel/Cotizador, todos los flujos internos del ERP y la integración M2M en producción con **SP Energía CRM (`crm.sp-energia.com`)**.
 
 ---
 
 ## 1. Visión General de la Arquitectura SIPS
 
-El ERP cuenta con un **Sistema de Información de Puntos de Suministro (SIPS) 100% propio**, independiente de proveedores externos (como Ingebau), pero manteniendo **compatibilidad exacta 1:1 con el contrato JSON y CSV histórico de Ingebau** para que todos los módulos del ERP operen de forma transparente.
+El ecosistema corporativo cuenta con un **Sistema de Información de Puntos de Suministro (SIPS) 100% propio**, independiente de proveedores externos (como Ingebau), manteniendo **compatibilidad exacta 1:1 con el contrato JSON y CSV histórico** para que tanto todos los módulos del ERP (`ultra.sp-energia.com`) como el **CRM Comercial y Cabina de Auditorías (`crm.sp-energia.com`)** operen de forma transparente.
 
 ```mermaid
 flowchart TD
@@ -19,13 +19,15 @@ flowchart TD
     BQ["Google BigQuery (Dataset: sips_nacional)\n• datos_ps (57 cols, ~30M CUPS)\n• datos_consumos (24 cols, +500M lecturas)"]
     CRAPI["API Puente Google Cloud Run\nhttps://api-sips-aeden-1090285260522.europe-southwest1.run.app\nGET /cups/{cups} (X-API-KEY)"]
     ERPLIB["Motor & Traductor SIPS del ERP\nsrc/lib/sips.ts + Mapas INE Prisma (Municipality / Province)"]
-    ERPAPI["Endpoint REST del ERP\nGET https://ultra.sp-energia.com/api/sips"]
+    ERPAPI["Endpoint REST Nivel 2\nGET https://ultra.sp-energia.com/api/sips"]
     ERPUI["Módulo Visual ERP: Consulta de CUPS\n/consulta-cups (4 pestañas + Exportador CSV Excel)"]
     ERPMODS["Procesos Internos del ERP\n• Cotizador (/pricing Por CUPS y SIPS CSV)\n• Alta y Validación de Leads (/leads)\n• Contratos (/contratos/[id])\n• Puntos de Suministro (/puntos-suministro/[id])"]
+    CRM["SP Energía CRM (https://crm.sp-energia.com)\n• Cabina de Auditorías + Optimizador 1-Clic\n• Alertas Regulatorias CNMC + Fusión Híbrida\n• Estudio Solar 8.760h + Cotizador Predictivo"]
 
     CNMC --> ZDRIVE --> GCS --> CRJOB --> BQ --> CRAPI --> ERPLIB
     ERPLIB --> ERPAPI
     ERPAPI --> ERPUI
+    ERPAPI -- "X-API-KEY (M2M + ?refresh=1)" --> CRM
     ERPLIB --> ERPMODS
     ERPUI -- "CSV Consumos / ?cups=" --> ERPMODS
 ```
@@ -290,20 +292,30 @@ Contiene una fila resumen con las **36 columnas exactas del estándar Ingebau**:
 
 ---
 
-## 7. Procesos del ERP Integrados con Nuestro SIPS
+## 7. Procesos del ERP y del CRM Integrados con Nuestro SIPS
 
-Ningún módulo del ERP llama ya a Ingebau; todos consumen `getSipsData()` (`src/lib/sips.ts`) o `/api/sips`:
+Ningún módulo del ERP ni del CRM llama ya a Ingebau; todos consumen `getSipsData()` (`src/lib/sips.ts`) o el endpoint Nivel 2 `https://ultra.sp-energia.com/api/sips`:
 
-1. **Cotizador Comercial — Modo `Por CUPS` (`src/app/(app)/pricing/page.tsx` + `fetchSipsForPricingAction` en `src/app/actions/supplyPointActions.ts`)**:
+1. **Cotizador Comercial ERP — Modo `Por CUPS` (`src/app/(app)/pricing/page.tsx` + `fetchSipsForPricingAction` en `src/app/actions/supplyPointActions.ts`)**:
    - Busca simultáneamente si existen curvas horarias reales de telemedida (`LoadCurve`) en el ERP y consulta nuestro SIPS en tiempo real para obtener `TarifaATR` y los consumos `P1..P6` del último año (usando `SupplyPoint.sipsRawData` de PostgreSQL únicamente como respaldo offline si hubiera caída de red).
-2. **Cotizador Comercial — Modo `Cálculo Genérico` $\rightarrow$ `SIPS CSV` (`src/app/(app)/pricing/page.tsx`)**:
+2. **Cotizador Comercial ERP — Modo `Cálculo Genérico` $\rightarrow$ `SIPS CSV` (`src/app/(app)/pricing/page.tsx`)**:
    - Procesa cualquier `{CUPS}_consumos.csv` exportado desde `/consulta-cups`, selecciona automáticamente la tarifa ATR detectada y reconstruye la curva horaria anual mediante perfiles REE.
-3. **Creación y Validación de Leads (`src/app/(app)/leads/NewLeadModal.tsx`, `src/lib/spanishValidators.ts` y `src/app/actions/leadActions.ts`)**:
+3. **Creación y Validación de Leads ERP (`src/app/(app)/leads/NewLeadModal.tsx`, `src/lib/spanishValidators.ts` y `src/app/actions/leadActions.ts`)**:
    - **Auto-SIPS con Validación Módulo-529**: En el Paso 2 de `NewLeadModal`, `validateSpanishCups` verifica en tiempo real las dos letras de control CNMC (RD 1435/2002) sobre los 16 dígitos del CUPS y dispara automáticamente `GET /api/sips?cups=...` en cuanto se pega o completa un CUPS válido (o hidrata instantáneamente en `0 ms` desde `sessionStorage` si el agente viene desde `/consulta-cups`).
    - **Autocompletado integral y avisos**: Rellena CUPS completo de 22 caracteres, `TarifaATR`, potencias `P1..P6`, consumo anual (`MWh` y `kWh`), `CNAE`, CP normalizado de 5 dígitos, municipio, provincia, distribuidora e indicador de autoconsumo, alertando visualmente si el punto figura como no contratable (`codigoPSContratable === '0'`). Además, el estimador de cuota mensual/anual y ahorro de los Pasos 3 y 4 pondera el consumo con el reparto real `ConsumoAnualP1kWh..ConsumoAnualP6kWh` devuelto por SIPS.
    - **Respaldo y validación cruzada en servidor**: Al guardar un `Alta Luz` (`createLeadAction`), si no se había consultado SIPS en el cliente se ejecuta `getSipsData()` de forma síncrona antes de validar la congruencia técnica (Regla 74), o en segundo plano en ofertas rápidas, persistiendo el JSON completo en `Lead.sipsRawData` y (solo si el `SupplyPoint` es nuevo, Regla 72) en `SupplyPoint.sipsRawData` (con blindaje adicional de CP de 5 dígitos mediante `$extends` en [`src/lib/prisma.ts`](../src/lib/prisma.ts) y triggers PostgreSQL `fn_normalize_spanish_cp_text`).
-4. **Ficha de Contrato (`/contratos/[id]`) y Ficha de Punto de Suministro (`/puntos-suministro/[id]`)**:
+4. **Ficha de Contrato (`/contratos/[id]`) y Ficha de Punto de Suministro (`/puntos-suministro/[id]`) en ERP**:
    - El botón **"Actualizar Datos SIPS"** ejecuta `updateSupplyPointSipsAction` (`src/app/actions/supplyPointActions.ts`), refresca los datos desde nuestra API Cloud Run + BigQuery y actualiza `SupplyPoint.sipsRawData` en PostgreSQL.
+5. **Integración Máquina-a-Máquina con `SP Energía CRM` (`https://crm.sp-energia.com`)**:
+   - **Conector Unificado (`src/lib/sips.ts` y `src/app/actions/sips.ts`)**: Consume `GET https://ultra.sp-energia.com/api/sips?cups=...` mediante cabecera `X-API-KEY` (`SIPS_API_KEY`), enviando `?refresh=1` en sincronizaciones manuales desde la Cabina de Auditorías (`/auditorias/[id]`) y la Ficha de Suministro (`/suministros/[id]`). Normaliza automáticamente `MaxímetroP3(kW)` $\rightarrow$ `MaxímetroP2(kW)` en suministros `2.0TD` y desagrega lecturas bimensuales (~60 días) por mes calendario.
+   - **Prioridad Inviolable de Lecturas SIPS y Fusión Híbrida (`InvoiceCurveReconstructor`)**: Las lecturas reales de SIPS nunca se destruyen ante caídas de red; si faltan meses recientes pendientes de volcado CNMC, el CRM conserva intactos los meses SIPS y rellena únicamente los huecos con la factura PDF / perfil REE (`SIPS_HYBRID`), sustituyéndolos automáticamente en cuanto el SIPS corporativo publica los nuevos meses.
+   - **Hidratación Geográfica, CNAE e IGIC Canario (3%)**: Hidrata `CNAE`, `ProvinciaPS`, `MunicipioPS` y `CódigoPostalPS` en `Suministro` y `Auditoria` (recalculando segmentación `B2B`/`B2C`) y aplica sin fallos el **IGIC del 3%** en Islas Canarias (`isCanariasTerritory`).
+   - **Explotación Avanzada de las 57 Columnas CNMC en Auditorías (`src/lib/sipsAnalytics.ts`, `SipsAlerts.tsx`, `PotenciasOptimizerCard.tsx` y `PropuestaPDF.tsx`)**:
+     - *Alertas Regulatorias Pre-Contratación*: Avisa en cabina de suministros **No Contratables** (`codigoPSContratable = '0'` + `motivoEstadoNoContratable`), **Bono Social activo** (`aplicacionBonoSocial`), **Impagos registrados** (`informacionImpagos`) y cambios de comercializadora en los últimos `< 365` días (`fechaUltimoCambioComercializador`, alerta de permanencia).
+     - *Detección de Autoconsumo RD 244/2019 (`codigoAutoconsumo`)*: Detecta instalaciones legalizadas (`31`, `32`, `41`, `42`, `43`, `51`) y habilita en cabina el precio de compensación de excedentes incluso en facturas de invierno con `0 kWh` vertidos.
+     - *Ventana de 12 Meses y Reactiva P1–P5*: Evalúa excesos de potencia y penalizaciones de reactiva ($\cos \varphi < 0,95$, $> 33\%$) estrictamente sobre los últimos 12 meses, excluyendo `EnergíaReactivaP6(Varh)` (exenta).
+     - *Auto-Optimización de Potencias en 1 Clic y Derechos / Boletín BIE*: Calcula en 1 clic las potencias óptimas ATR (`+10%` margen ICP y `P1 ≤ P2` en `2.0TD`; escalonado `P1 ≤ ... ≤ P6` y `P6 ≥ 15,1 kW` en `3.0TD`), verifica si `fechaLimiteDerechosReconocidos` está caducada (computando `0 kW` vigentes) y alerta tanto en cabina como en el PDF si la nueva potencia supera `PotenciaMaxBIE(kW)` (exigiendo nuevo Boletín CIE).
+   - **Módulos Adicionales del CRM Alimentados por SIPS Nivel 2**: Estudio Solar 8.760h (`/autoconsumo/[id]`), Cotizador Predictivo OMIP (`/mercado/cotizador`), Comparador Indexado vs. Cierre (`/mercado/comparador-cierre`) y Webhook OCR (`/api/webhooks/ocr-callback`).
 
 ---
 
