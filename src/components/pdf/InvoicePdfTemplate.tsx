@@ -770,6 +770,61 @@ function EnvironmentalScale({
   );
 }
 
+function OriginDonutSvg({
+  rows,
+}: {
+  rows: Array<{ source: string; companyPct: number; color?: string }>;
+}) {
+  const slices = (rows || [])
+    .map((r) => ({
+      pct: Math.max(0, Number(r?.companyPct || 0)),
+      color: r?.color || C.green,
+    }))
+    .filter((s) => s.pct > 0.01);
+
+  const totalPct = slices.reduce((sum, s) => sum + s.pct, 0);
+
+  if (slices.length === 0 || totalPct <= 0) {
+    return (
+      <Svg width="46" height="46" viewBox="0 0 100 100">
+        <Circle cx="50" cy="50" r="46" fill="#cbd5e1" />
+        <Circle cx="50" cy="50" r="26" fill={C.white} />
+      </Svg>
+    );
+  }
+
+  if (slices.length === 1 || slices[0].pct / totalPct >= 0.999) {
+    return (
+      <Svg width="46" height="46" viewBox="0 0 100 100">
+        <Circle cx="50" cy="50" r="46" fill={slices[0].color} />
+        <Circle cx="50" cy="50" r="26" fill={C.white} />
+      </Svg>
+    );
+  }
+
+  let currentRad = -Math.PI / 2;
+  const paths = slices.map((slice, idx) => {
+    const fraction = slice.pct / totalPct;
+    const sweepRad = fraction * Math.PI * 2;
+    const endRad = currentRad + sweepRad;
+    const x1 = 50 + 46 * Math.cos(currentRad);
+    const y1 = 50 + 46 * Math.sin(currentRad);
+    const x2 = 50 + 46 * Math.cos(endRad);
+    const y2 = 50 + 46 * Math.sin(endRad);
+    const largeArcFlag = fraction > 0.5 ? 1 : 0;
+    currentRad = endRad;
+    const d = `M 50 50 L ${x1.toFixed(2)} ${y1.toFixed(2)} A 46 46 0 ${largeArcFlag} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+    return <Path key={`donut-slice-${idx}`} d={d} fill={slice.color} />;
+  });
+
+  return (
+    <Svg width="46" height="46" viewBox="0 0 100 100">
+      {paths}
+      <Circle cx="50" cy="50" r="26" fill={C.white} />
+    </Svg>
+  );
+}
+
 export const InvoicePdfTemplate = ({ data }: { data: any }) => {
   const {
     invoiceNumber,
@@ -881,6 +936,8 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
     energyOriginMix = [],
     environmentalImpact = {
       labelYear: 2024,
+      is100RenewableGdo: true,
+      nationalAvgLetter: 'D',
       co2Letter: 'A',
       co2CompanyGPerKwh: 0,
       co2NationalGPerKwh: 102,
@@ -1101,6 +1158,19 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
           { source: 'Nuclear', companyPct: 0, nationalPct: 20.9, color: '#805ad5' },
           { source: 'Otras no renovables', companyPct: 0, nationalPct: 4.7, color: '#a0aec0' },
         ];
+
+  const renovableRow =
+    originRows.find(
+      (r: any) =>
+        String(r?.source || '').toLowerCase().includes('renovable') &&
+        !String(r?.source || '').toLowerCase().includes('no renovable')
+    ) || originRows[0];
+  const renovablePct = Number(renovableRow?.companyPct ?? 0);
+  const is100Gdo =
+    typeof environmentalImpact?.is100RenewableGdo === 'boolean'
+      ? environmentalImpact.is100RenewableGdo
+      : renovablePct >= 99.95;
+  const cleanCompanyLabelName = String(companyName).replace(/\.+$/, '');
 
   const productDisplay =
     productName && pricingModality && !productName.toLowerCase().includes(pricingModality.split(' ')[0].toLowerCase())
@@ -1968,17 +2038,21 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, gap: 8 }}>
-                <Svg width="46" height="46" viewBox="0 0 100 100">
-                  <Circle cx="50" cy="50" r="46" fill={C.green} />
-                  <Circle cx="50" cy="50" r="26" fill={C.white} />
-                </Svg>
+                <OriginDonutSvg rows={originRows} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 7.2, fontFamily: 'Helvetica-Bold', color: C.green }}>
-                    100,0% Energía Renovable
+                  <Text
+                    style={{
+                      fontSize: 7.2,
+                      fontFamily: 'Helvetica-Bold',
+                      color: renovablePct >= 50 ? C.green : C.brand,
+                    }}
+                  >
+                    {fmtEs(renovablePct, 1)}% Energía Renovable
                   </Text>
                   <Text style={{ fontSize: 5.7, color: C.muted, marginTop: 1, lineHeight: 1.3 }}>
-                    Garantías de Origen (GdO) acreditadas por la CNMC para{' '}
-                    {String(companyName).replace(/\.+$/, '')}.
+                    {is100Gdo
+                      ? `Garantías de Origen (GdO) acreditadas por la CNMC para ${cleanCompanyLabelName}.`
+                      : `Mix de comercialización acreditado por la CNMC (${environmentalImpact?.labelYear || 2024}) para ${cleanCompanyLabelName}.`}
                   </Text>
                 </View>
               </View>
@@ -2012,42 +2086,61 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
                     Mix nacional
                   </Text>
                 </View>
-                {originRows.map((r: any, idx: number) => (
-                  <View
-                    key={`mix-${idx}`}
-                    style={{
-                      flexDirection: 'row',
-                      padding: '1.6 4',
-                      borderTop: `0.4 solid ${C.border}`,
-                      backgroundColor: idx === 0 ? '#ecfdf5' : idx % 2 === 1 ? C.rowAlt : C.white,
-                    }}
-                  >
-                    <Text
+                {originRows.map((r: any, idx: number) => {
+                  const pctVal = Number(r?.companyPct || 0);
+                  const isGreenHighlight = idx === 0 && pctVal > 0;
+                  const isActiveRow = pctVal > 0;
+                  return (
+                    <View
+                      key={`mix-${idx}`}
                       style={{
-                        flex: 1.7,
-                        fontSize: 5.7,
-                        fontFamily: idx === 0 ? 'Helvetica-Bold' : 'Helvetica',
-                        color: idx === 0 ? '#065f46' : C.text,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        padding: '1.6 4',
+                        borderTop: `0.4 solid ${C.border}`,
+                        backgroundColor: isGreenHighlight
+                          ? '#ecfdf5'
+                          : idx % 2 === 1
+                            ? C.rowAlt
+                            : C.white,
                       }}
                     >
-                      {r.source}
-                    </Text>
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: 5.7,
-                        textAlign: 'right',
-                        fontFamily: idx === 0 ? 'Helvetica-Bold' : 'Helvetica',
-                        color: idx === 0 ? C.green : C.text,
-                      }}
-                    >
-                      {fmtEs(r.companyPct, 1)}%
-                    </Text>
-                    <Text style={{ flex: 1, fontSize: 5.7, textAlign: 'right', color: C.muted }}>
-                      {fmtEs(r.nationalPct, 1)}%
-                    </Text>
-                  </View>
-                ))}
+                      <View style={{ flex: 1.7, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <View
+                          style={{
+                            width: 4.4,
+                            height: 4.4,
+                            borderRadius: 2.2,
+                            backgroundColor: r.color || C.brand,
+                          }}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 5.7,
+                            fontFamily: isActiveRow ? 'Helvetica-Bold' : 'Helvetica',
+                            color: isGreenHighlight ? '#065f46' : C.text,
+                          }}
+                        >
+                          {r.source}
+                        </Text>
+                      </View>
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontSize: 5.7,
+                          textAlign: 'right',
+                          fontFamily: isActiveRow ? 'Helvetica-Bold' : 'Helvetica',
+                          color: isGreenHighlight ? C.green : C.text,
+                        }}
+                      >
+                        {fmtEs(pctVal, 1)}%
+                      </Text>
+                      <Text style={{ flex: 1, fontSize: 5.7, textAlign: 'right', color: C.muted }}>
+                        {fmtEs(r.nationalPct, 1)}%
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           </View>
@@ -2056,7 +2149,9 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
           <View style={{ flex: 1.04 }}>
             <View style={[styles.p2SectionBarAccent, { marginTop: 0 }]}>
               <Text style={styles.p2SectionBarText}>IMPACTO MEDIOAMBIENTAL</Text>
-              <Text style={styles.p2SectionSubText}>Escala CNMC A–G (Media nacional: D)</Text>
+              <Text style={styles.p2SectionSubText}>
+                Escala CNMC A–G (Media nacional: {environmentalImpact?.nationalAvgLetter || 'D'})
+              </Text>
             </View>
             <View
               style={{
@@ -2083,7 +2178,17 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
                   <View style={{ borderTop: `0.5 solid ${C.border}`, paddingTop: 2.5, marginTop: 2 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                       <Text style={{ fontSize: 5.5, color: C.muted }}>Comercializadora:</Text>
-                      <Text style={{ fontSize: 5.7, fontFamily: 'Helvetica-Bold', color: C.green }}>
+                      <Text
+                        style={{
+                          fontSize: 5.7,
+                          fontFamily: 'Helvetica-Bold',
+                          color: ['A', 'B'].includes(
+                            String(environmentalImpact.co2Letter || 'A').toUpperCase()
+                          )
+                            ? C.green
+                            : C.text,
+                        }}
+                      >
                         {fmtSmartEs(environmentalImpact.co2CompanyGPerKwh, 1)} g/kWh
                       </Text>
                     </View>
@@ -2113,7 +2218,17 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
                   <View style={{ borderTop: `0.5 solid ${C.border}`, paddingTop: 2.5, marginTop: 2 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                       <Text style={{ fontSize: 5.5, color: C.muted }}>Comercializadora:</Text>
-                      <Text style={{ fontSize: 5.7, fontFamily: 'Helvetica-Bold', color: C.green }}>
+                      <Text
+                        style={{
+                          fontSize: 5.7,
+                          fontFamily: 'Helvetica-Bold',
+                          color: ['A', 'B'].includes(
+                            String(environmentalImpact.radLetter || 'A').toUpperCase()
+                          )
+                            ? C.green
+                            : C.text,
+                        }}
+                      >
                         {fmtSmartEs(environmentalImpact.radCompanyUgPerKwh, 1)} µg/kWh
                       </Text>
                     </View>

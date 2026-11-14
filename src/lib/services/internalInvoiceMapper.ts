@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import { prisma } from '@/lib/prisma';
+import { normalizeCnmcLabelConfig } from '@/lib/cnmcLabelConfig';
 import { normalizeSpanishPostalCodeOrNull, pickSpanishPostalCode } from '@/lib/postalCode';
 import type {
   BillingCalculationResult,
@@ -39,6 +40,8 @@ export interface EnergyOriginRow {
 
 export interface EnvironmentalImpactData {
   labelYear: number;
+  is100RenewableGdo?: boolean;
+  nationalAvgLetter?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   co2Letter: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   co2CompanyGPerKwh: number;
   co2NationalGPerKwh: number;
@@ -680,7 +683,15 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
     });
   }
   let company = invoice.company || brand?.company || null;
-  if (!company && (invoice.companyId || brand?.companyId)) {
+  if (
+    company?.id &&
+    company.etiquetaCnmc === undefined &&
+    company.registroMercantil === undefined
+  ) {
+    company = await prisma.company.findUnique({
+      where: { id: company.id },
+    });
+  } else if (!company && (invoice.companyId || brand?.companyId)) {
     company = await prisma.company.findUnique({
       where: { id: invoice.companyId || brand?.companyId },
     });
@@ -1014,10 +1025,7 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
     if (emailDom) companyWeb = `www.${emailDom}`;
   }
 
-  const companyRegistroMercantil =
-    companyCif.toUpperCase() === 'B10915544'
-      ? 'Sociedad inscrita en el Registro Mercantil de Córdoba, al folio 61 del tomo 2858 general de sociedades, hoja nº CO-43825.'
-      : '';
+  const companyRegistroMercantil = String(company?.registroMercantil || '').trim();
 
   const companyVerticalLegalText = [
     companyName.toUpperCase(),
@@ -1446,25 +1454,25 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
     ? rawF1Comments.replace(/\s+\d{1,2}$/, '').trim()
     : undefined;
 
-  // Etiquetado de la electricidad según Circular 2/2021 de la CNMC (Garantías de Origen GDO)
-  const energyOriginMix: EnergyOriginRow[] = [
-    { source: 'Renovable', companyPct: 100.0, nationalPct: 50.8, color: '#009640' },
-    { source: 'Cogen. Alta Eficiencia', companyPct: 0.0, nationalPct: 2.6, color: '#63b3ed' },
-    { source: 'CC Gas Natural', companyPct: 0.0, nationalPct: 18.3, color: '#f6ad55' },
-    { source: 'Carbón', companyPct: 0.0, nationalPct: 1.5, color: '#4a5568' },
-    { source: 'Fuel / Gas', companyPct: 0.0, nationalPct: 1.2, color: '#b7791f' },
-    { source: 'Nuclear', companyPct: 0.0, nationalPct: 20.9, color: '#805ad5' },
-    { source: 'Otras no renovables', companyPct: 0.0, nationalPct: 4.7, color: '#a0aec0' },
-  ];
+  // Etiquetado anual de la electricidad según Circular 2/2021 de la CNMC (configurable por Comercializadora en Company.etiquetaCnmc)
+  const cnmcLabelCfg = normalizeCnmcLabelConfig(company?.etiquetaCnmc);
+  const energyOriginMix: EnergyOriginRow[] = cnmcLabelCfg.mix.map((row) => ({
+    source: row.source,
+    companyPct: row.companyPct,
+    nationalPct: row.nationalPct,
+    color: row.color,
+  }));
 
   const environmentalImpact: EnvironmentalImpactData = {
-    labelYear: Math.max(2024, endYearNum - 2),
-    co2Letter: 'A',
-    co2CompanyGPerKwh: 0,
-    co2NationalGPerKwh: 102,
-    radLetter: 'A',
-    radCompanyUgPerKwh: 0,
-    radNationalUgPerKwh: 446,
+    labelYear: cnmcLabelCfg.labelYear,
+    is100RenewableGdo: cnmcLabelCfg.is100RenewableGdo,
+    nationalAvgLetter: cnmcLabelCfg.nationalAvgLetter,
+    co2Letter: cnmcLabelCfg.co2Letter,
+    co2CompanyGPerKwh: cnmcLabelCfg.co2CompanyGPerKwh,
+    co2NationalGPerKwh: cnmcLabelCfg.co2NationalGPerKwh,
+    radLetter: cnmcLabelCfg.radLetter,
+    radCompanyUgPerKwh: cnmcLabelCfg.radCompanyUgPerKwh,
+    radNationalUgPerKwh: cnmcLabelCfg.radNationalUgPerKwh,
   };
 
   // Generación del Código QR oficial del Comparador CNMC (Resolución CNMC 06/10/2022, BOE-A-2022-16989, Anexo I)
@@ -1611,7 +1619,7 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
       qrParams.push(['prE3', getPeriodEnergyPrice('P3').toFixed(6)]);
     }
 
-    qrParams.push(['verde', '1']);
+    qrParams.push(['verde', cnmcLabelCfg.is100RenewableGdo ? '1' : '0']);
     qrParams.push(['rev', revCode]);
 
     const queryStr = qrParams

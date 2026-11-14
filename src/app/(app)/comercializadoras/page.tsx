@@ -17,25 +17,33 @@ export default async function ComercializadorasPage() {
     redirect('/'); // Oculto a comerciales
   }
 
-  // Filtrado básico: SUPERADMIN ve todas. COMPANYADMIN y BACKOFFICE ven la(s) de su marca/company
-  let whereClause = {};
+  // Filtrado multi-empresa: SUPERADMIN ve todas; COMPANYADMIN y BACKOFFICE ven sus comercializadoras autorizadas
+  let whereClause: Record<string, any> = {};
   if (userRole !== 'SUPERADMIN') {
-    // Buscar la empresa del usuario basándonos en su brand
-    const userWithBrand = await prisma.user.findUnique({
+    const userRecord = await prisma.user.findUnique({
       where: { id: session.user.id },
-      include: { brand: true }
+      include: {
+        brand: { select: { companyId: true } },
+        companies: { select: { id: true } },
+        assignedBrands: { select: { companyId: true } },
+      },
     });
-    if (userWithBrand && userWithBrand.brand) {
-      whereClause = { id: userWithBrand.brand.companyId };
-    }
+    const allowedCompanyIds = Array.from(
+      new Set(
+        [
+          userRecord?.brand?.companyId,
+          ...(userRecord?.companies || []).map((c) => c.id),
+          ...(userRecord?.assignedBrands || []).map((b) => b.companyId),
+        ].filter(Boolean) as string[]
+      )
+    );
+    whereClause = { id: { in: allowedCompanyIds } };
   }
 
   const companies = await prisma.company.findMany({
     where: whereClause,
-    orderBy: { name: 'asc' }
+    orderBy: { name: 'asc' },
   });
-  console.log("NEXTJS DATABASE URL IS:", process.env.DATABASE_URL);
-  console.log("COMPANIES FOUND IN NEXTJS:", JSON.stringify(companies, null, 2));
 
   return <ComercializadorasClient initialCompanies={companies} />;
 }
