@@ -137,11 +137,14 @@ export default function FacturacionClient({
     setter: React.Dispatch<React.SetStateAction<string[]>>,
     isShift: boolean
   ) => {
+    // IMPORTANTE: En React 19 (createRoot), el callback funcional de setState se ejecuta de forma diferida
+    // durante el render, por lo que debemos capturar el ancla previa ANTES de mutar lastSelectedRef.current.
+    const previousAnchorId = lastSelectedRef.current;
+    lastSelectedRef.current = id;
+
     setter((prev) => {
       let anchorId =
-        lastSelectedRef.current && orderedIds.includes(lastSelectedRef.current)
-          ? lastSelectedRef.current
-          : null;
+        previousAnchorId && orderedIds.includes(previousAnchorId) ? previousAnchorId : null;
       if (!anchorId && isShift) {
         for (let i = prev.length - 1; i >= 0; i--) {
           if (prev[i] !== id && orderedIds.includes(prev[i])) {
@@ -169,7 +172,6 @@ export default function FacturacionClient({
       const shouldSelect = !prev.includes(id);
       return shouldSelect ? [...prev, id] : prev.filter((x) => x !== id);
     });
-    lastSelectedRef.current = id;
   };
 
   const handleCalculate = async () => {
