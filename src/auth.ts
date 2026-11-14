@@ -20,11 +20,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         console.log(`[${new Date().toISOString()}] Login attempt for: ${credentials?.email}`);
         if (!credentials?.email || !credentials?.password) return null;
         
-        const cleanEmail = (credentials.email as string).trim();
+        const cleanEmail = (credentials.email as string).trim().toLowerCase();
         const cleanPassword = (credentials.password as string).trim();
 
-        const user = await prisma.user.findUnique({
-          where: { email: cleanEmail },
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: cleanEmail, mode: 'insensitive' } },
           include: { 
             brand: { include: { company: true } },
             assignedBrands: { include: { company: true } },
@@ -38,6 +38,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!user) {
           console.log(`[${new Date().toISOString()}] User not found: ${cleanEmail}`);
           return null;
+        }
+
+        if (user.isActive === false) {
+          console.log(`[${new Date().toISOString()}] Inactive user blocked: ${cleanEmail}`);
+          throw new Error("Acceso denegado: Esta cuenta de usuario está desactivada.");
         }
 
         const passwordOk = await bcrypt.compare(
@@ -57,18 +62,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             include: { company: true }
           });
         } else if (user.role === 'COMPANYADMIN') {
-          // El administrador de empresa tiene acceso a todas las marcas de sus empresas asignadas
+          // El administrador de empresa tiene acceso a todas las marcas de sus empresas asignadas + marcas asignadas explícitas
           const companyIds = user.companies?.map(c => c.id) || [];
-          const companyBrands = await prisma.brand.findMany({
-            where: { companyId: { in: companyIds } },
-            include: { company: true }
-          });
+          const companyBrands = companyIds.length > 0
+            ? await prisma.brand.findMany({
+                where: { companyId: { in: companyIds } },
+                include: { company: true }
+              })
+            : [];
           allBrands = [...((user as any).assignedBrands || []), ...companyBrands];
         } else if (user.role === 'CLIENT') {
           // Los clientes acceden a su marca principal
           allBrands = user.brand ? [user.brand] : [];
         } else {
-          // El resto de roles (COMERCIAL, CANAL) solo a sus marcas asignadas explícitamente
+          // El resto de roles (BACKOFFICE, CANAL, COMERCIAL) solo a sus marcas asignadas explícitamente
           allBrands = [...((user as any).assignedBrands || [])];
         }
 

@@ -38,9 +38,11 @@ model Company {
   internalInvoices       InternalInvoice[]
   invoices               Invoice[]
   pendingEnergySummaries PendingEnergySummary[]
+  portfolioBaseCurves    PortfolioBaseCurve[]
   ppas                   Ppa[]
   reganecuDatas          ReganecuData[]
   syncJobs               SyncJob[]
+  distributorConfigs     DistributorCompanyConfig[]
   users                  User[]                 @relation("UserCompanies")
 }
 
@@ -88,6 +90,7 @@ model Brand {
   company               Company             @relation(fields: [companyId], references: [id])
   channels              Channel[]
   clients               Client[]
+  commissionTiers       CommissionTier[]
   contracts             Contract[]
   products              Product[]
   tickets               Ticket[]
@@ -103,6 +106,7 @@ model User {
   role                Role       @default(CANAL)
   phone               String?
   codigo              String?
+  isActive            Boolean    @default(true)
   isChannelSupervisor Boolean    @default(false)
   defaultSource       String?    @default("Directo")
   allowedAutoTariffs  String[]   @default(["2.0TD"])
@@ -500,6 +504,16 @@ model Contract {
   bajaProcess                String?
   isTacitRenewal             Boolean                @default(false)
   tacitRenewalCommunicatedAt DateTime?
+  marginFC                   Float?
+  ip1                        Float?
+  ip2                        Float?
+  ip3                        Float?
+  ip4                        Float?
+  ip5                        Float?
+  ip6                        Float?
+  productTypeSnapshot        String?
+  commissionRuleType         String?
+  commissionRuleValue        Float?
   Commission                 Commission?
   brand                      Brand?                 @relation(fields: [brandId], references: [id])
   client                     Client                 @relation(fields: [clientId], references: [id])
@@ -601,12 +615,16 @@ model Channel {
 
 model CommissionTier {
   id          String           @id @default(cuid())
-  name        String           @unique
+  name        String
+  brandId     String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   description String?
+  brand       Brand?           @relation(fields: [brandId], references: [id])
   channels    Channel[]
   rules       CommissionRule[]
+
+  @@unique([name, brandId])
 }
 
 model CommissionRule {
@@ -822,6 +840,33 @@ model Distributor {
   webScrapingActive Boolean   @default(false)
   webScriptPath     String?
   webUser           String?
+  companyConfigs    DistributorCompanyConfig[]
+}
+
+model DistributorCompanyConfig {
+  id                String      @id @default(cuid())
+  companyId         String
+  distributorId     String
+  ftpActive         Boolean     @default(false)
+  ftpHost           String?
+  ftpPort           Int?        @default(21)
+  ftpUser           String?
+  ftpPassword       String?
+  ftpTargetPath     String?
+  ftpLastSyncAt     DateTime?
+  webScrapingActive Boolean     @default(false)
+  webUser           String?
+  webPassword       String?
+  webScriptPath     String?
+  webLastSyncAt     DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  company           Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  distributor       Distributor @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, distributorId])
+  @@index([companyId])
+  @@index([distributorId])
 }
 
 model PasswordResetToken {
@@ -862,6 +907,7 @@ model AggregatedLoadCurve {
   date             DateTime @db.Date
   segment          String
   totalConsumption Float[]
+  totalSurplus     Float[]  @default([])
   clientCount      Int
   temperature      Float[]
   createdAt        DateTime @default(now())
@@ -873,6 +919,7 @@ model AggregatedLoadCurve {
 
   @@unique([date, segment, province, tariff, companyId])
   @@index([date])
+  @@index([companyId, date])
 }
 
 model DemandForecast {
@@ -920,21 +967,28 @@ model SyncJob {
 }
 
 model Ppa {
-  id               String       @id @default(cuid())
-  name             String
-  companyId        String
-  type             PpaType
-  subtype          PpaSubtype
-  startDate        DateTime
-  endDate          DateTime?
-  priceType        PpaPriceType
-  priceValue       Float?
-  basePowerMw      Float?
-  profileData      Json?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  includeInPricing Boolean      @default(true)
-  company          Company      @relation(fields: [companyId], references: [id])
+  id                   String       @id @default(cuid())
+  name                 String
+  companyId            String
+  counterparty         String?
+  type                 PpaType
+  subtype              PpaSubtype
+  startDate            DateTime
+  endDate              DateTime?
+  priceType            PpaPriceType
+  priceValue           Float?
+  basePowerMw          Float?
+  profileData          Json?
+  annualDegradationPct Float        @default(0)
+  annualEscalationPct  Float        @default(0)
+  contractPdfUrl       String?
+  notes                String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  includeInPricing     Boolean      @default(true)
+  company              Company      @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
 }
 
 model SystemComponentPrice {
@@ -994,12 +1048,17 @@ model ReeProfile {
 
 model PortfolioBaseCurve {
   id              String   @id @default(cuid())
-  datetime        DateTime @unique
+  companyId       String?
+  datetime        DateTime
   basePriceEurMwh Float
   omiePriceEurMwh Float
   demandMwh       Float
   ppaMwh          Float
   updatedAt       DateTime @updatedAt
+  company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, datetime])
+  @@index([companyId, datetime])
 }
 
 model EsiosIndicatorData {
@@ -1087,6 +1146,14 @@ model PendingEnergySummary {
   updatedAt               DateTime @updatedAt
   companyId               String?
   invoicedMwh             Float    @default(0)
+  rawCchMwh               Float    @default(0)
+  surplusMwh              Float    @default(0)
+  f1UnbilledMwh           Float    @default(0)
+  marketPrice             Float    @default(0)
+  cchDays                 Int      @default(0)
+  reganecuDays            Int      @default(0)
+  daysInMonth             Int      @default(30)
+  details                 Json?
   company                 Company? @relation(fields: [companyId], references: [id])
 
   @@unique([month, companyId])

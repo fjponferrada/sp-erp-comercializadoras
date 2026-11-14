@@ -7,7 +7,7 @@ Esta guía documenta la arquitectura, lógica matemática y decisiones de diseñ
 El sistema ERP opera bajo una arquitectura simétrica para garantizar que el margen de beneficio proyectado en una oferta comercial se cumpla matemáticamente en el futuro durante el ciclo de vida del contrato.
 
 *   **Motor de Facturación (`InternalBillingEngine` - El "Retrovisor"):** Es un sistema determinista. Viaja al pasado (mes ya vencido) y utiliza datos consolidados reales (cierres de OMIE, liquidaciones de Ajuste del Sistema publicadas por REE/ESIOS, y curvas CCH reales del cliente).
-*   **Motor de Cotización (`PricingEngine` - El "Oráculo"):** Es un sistema probabilístico. Viaja al futuro (hasta 12 meses) simulando cada una de las 8.760 horas del año. Utiliza la *Curva Base del Portfolio* para proyectar OMIE (basada en futuros OMIP y PPAs), fusiona históricamente el comportamiento estadístico de los Servicios de Ajuste mediante `smartMergeDB`, y modela el consumo usando perfiles estadísticos de REE o CCH real historificado.
+*   **Motor de Cotización (`PricingEngine` - El "Oráculo"):** Es un sistema probabilístico y multi-empresa. Viaja al futuro (12, 24 o hasta 36 meses) simulando cada hora en calendario local peninsular (`Europe/Madrid`, incluyendo cambios de hora DST y los 9 festivos nacionales fijos de la Circular 3/2020 de la CNMC). Consulta la *Curva Base del Portfolio* (`PortfolioBaseCurve`) **aislada estrictamente por comercializadora activa (`companyId`)** con horizonte de 1.250 días (~41 meses), generada atómicamente por `/api/cron/update-portfolio` cruzando futuros OMIP (`FuturePrice`) con proyección estacional y contratos PPA marcados con `includeInPricing: true` (incluyendo degradación lineal anual y escalado de precio mediante `ppaEngine.ts`). Fusiona en una única consulta en lote (`smartMergeBatchDB`) los **14 componentes de Servicios de Ajuste (COMPODEM)** más el factor `K`, y modela el consumo usando perfiles estadísticos de REE, consumos SIPS o telemedida CCH real (CSV o base de datos ERP).
 
 ## 2. La Fórmula Matemática Maestra
 
@@ -18,7 +18,7 @@ Ph = [ [(OMIEh + SSAAh + PC + ROM + ROS + DSV) * (1 + Perd) + FNEE + FEE] * 1/0,
 ```
 *Donde:*
 *   **OMIEh**: Precio base del mercado mayorista.
-*   **SSAAh**: Servicios de Ajuste (Restricciones RT3, CT2, Banda Secundaria BS3, etc).
+*   **SSAAh**: Los 14 componentes horarios de Servicios de Ajuste publicados en COMPODEM (`RT3`, `RT6`, `CT2`, `CT3`, `BS3`, `RAD3`, `RAD1`, `RAD1X`, `BALX`, `EXD`, `IN7`, `CFP`, `MI`, `SECX`).
 *   **PC, ROM, ROS**: Pagos por Capacidad y Retribuciones del Operador del Mercado y Sistema.
 *   **DSV**: Coste de Desvíos (asumido).
 *   **Perd**: Coeficiente de Pérdidas de red.
@@ -30,7 +30,8 @@ Ph = [ [(OMIEh + SSAAh + PC + ROM + ROS + DSV) * (1 + Perd) + FNEE + FEE] * 1/0,
 
 Para adaptarse al nuevo estándar de liquidación peninsular, el `PricingEngine` está preparado nativamente para recibir curvas en resolución cuarto-horaria (96 intervalos por día) en lugar de horaria (24 intervalos).
 
-A través del orquestador estadístico `smartMergeDB`, si el motor detecta un registro de coste o CCH con 96 valores, activa automáticamente una rutina de compresión: agrupa los 4 cuartos de hora pertenecientes a la hora base y calcula su media aritmética para poder insertarlo en la fórmula de facturación horaria sin desvirtuar la matemática del sistema.
+*   **Precios (`SystemComponentPrice`):** A través de `smartMergeBatchDB`, si un registro de precios contiene 96 cuartos de hora, calcula la **media aritmética** de los 4 cuartos de cada hora (`€/MWh`).
+*   **Volúmenes CCH (`LoadCurve` / CSV):** Tanto el lector CSV del frontend (`consumo_kwh`, `energia`, `activa`, excluyendo `excedentes`/`saliente`/`reactiva`) como el conector directo con `LoadCurve` y la defensa interna de `PricingEngine` detectan curvas cuarto-horarias (~35.040 registros/año) y **suman los 4 cuartos** para obtener la energía horaria exacta en `kWh`, alineándola estacionalmente con la fecha de inicio de la oferta.
 
 ## 4. Gestión Estricta de Costes Variables vs Fijos (El "Filtro de Energía")
 
@@ -76,3 +77,8 @@ where: {
 ```
 
 Esto garantiza que la oferta comercial se construya utilizando exactamente el BOE de peajes y cargos legalmente vigentes en la fecha de activación del contrato, y se mantienen estables como base de cálculo durante todo el periodo cotizado.
+
+## 8. Aislamiento Multi-Comercializadora y Sincronización Atómica del Portfolio
+
+*   **Segregación por `companyId`:** Tanto `POST /api/pricing` (`resolveActiveCompanyId`) como `PricingEngine.generateQuote` filtran `PortfolioBaseCurve` por la comercializadora activa (`@@unique([companyId, datetime])`), evitando que las coberturas PPA o la demanda de una comercializadora alteren las ofertas de otra sociedad del grupo.
+*   **Reemplazo Atómico (`prisma.$transaction`):** Cuando `/api/cron/update-portfolio` regenera las `30.000` horas de curva base (ya sea por CRON, desde el botón **Sincronizar Portfolio Ahora** en `/pricing` o `/compras/ppas`, o automáticamente al guardar futuros en `/ajustes/costes-regulados`), ejecuta el borrado e inserción dentro de una única transacción SQL para que ningún agente comercial reciba errores de tabla vacía mientras cotiza.

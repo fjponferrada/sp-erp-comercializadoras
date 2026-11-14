@@ -1,222 +1,263 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-
-// Helper to safely parse numbers
-const parseNum = (val: any): number => {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') {
-    const parsed = parseFloat(val.replace(',', '.'));
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-};
-
-// Helper to normalize strings (remove accents and uppercase)
-const normalizeString = (str: string | null | undefined): string => {
-  if (!str) return '';
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-};
-
-function levenshtein(a: string, b: string): number {
-  if (a.length === 0) return b.length;
-  if (b.length === 0) return a.length;
-  const matrix = [];
-  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-}
+import { getActiveBrand } from '@/lib/permissions';
+import {
+  canonicalProvince,
+  getDateRangeMadridBounds,
+  isPenaltyInvoiceRecord,
+  matchesMunicipality,
+  normalizeAsciiUpper,
+  parseTaxNum,
+  round2,
+  round3,
+} from '@/lib/taxUtils';
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const userRole = (session.user as any).role as string | undefined;
+    if (userRole && !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole)) {
+      return NextResponse.json({ error: 'Permisos insuficientes para consulta tributaria' }, { status: 403 });
+    }
+
+    const activeBrandId = await getActiveBrand(session.user);
+    if (!activeBrandId) {
+      return NextResponse.json({ error: 'No hay marca activa seleccionada' }, { status: 400 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
-    const municipalityName = searchParams.get('postalCode'); // Used as municipality name from dropdown
+    const municipalityQuery = searchParams.get('postalCode'); // Formato "Municipio -- Provincia" o "Municipio"
+    const scope = searchParams.get('scope') === 'company' ? 'company' : 'brand';
 
     if (!startDateParam || !endDateParam) {
-      return NextResponse.json({ error: 'startDate and endDate are required' }, { status: 400 });
+      return NextResponse.json({ error: 'startDate y endDate son obligatorios' }, { status: 400 });
     }
 
-    const session = await auth();
-    if (!session || !session.user || !session.user.brandId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const brandId = session.user.brandId;
+    const brand = await prisma.brand.findUnique({
+      where: { id: activeBrandId },
+      select: { id: true, name: true, companyId: true },
+    });
 
-    const startDate = new Date(startDateParam);
-    const endDate = new Date(endDateParam);
-    endDate.setHours(23, 59, 59, 999);
+    if (!brand) {
+      return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 });
+    }
+
+    const clientWhere =
+      scope === 'company' && brand.companyId
+        ? { brand: { companyId: brand.companyId } }
+        : { brandId: activeBrandId };
+
+    const { startDate, endDate } = getDateRangeMadridBounds(startDateParam, endDateParam);
+
+    const invoiceSelect = {
+      id: true,
+      pdfUrl: true,
+      issueDate: true,
+      billingStart: true,
+      billingEnd: true,
+      invoiceNumber: true,
+      invoiceType: true,
+      taxAmount: true,
+      totalMWh: true,
+      subtotal1: true,
+      origin: true,
+      invoiceData: true,
+      client: { select: { vatNumber: true } },
+      supplyPoint: {
+        select: {
+          cups: true,
+          city: true,
+          province: true,
+          tariff: true,
+          postalCode: true,
+          sipsPostalCode: true,
+          distributor: true,
+          distributorName: true,
+        },
+      },
+    } as const;
 
     let invoices: any[] = [];
 
-    // OPTIMIZATION: If a specific municipality is requested, pre-filter SupplyPoints 
-    // to avoid fetching hundreds of thousands of invoices into memory and timing out on Vercel.
-    if (municipalityName) {
-      // Split ' -- PROVINCE' off if it exists to get just the city name
-      const cleanMunicipalityName = municipalityName.includes(' -- ') ? municipalityName.split(' -- ')[0] : municipalityName;
-      const searchCity = normalizeString(cleanMunicipalityName);
-      
+    // OPTIMIZACIÓN HÍBRIDA SIN PÉRDIDA DE DATOS (Regla 84 + Sección 3.2 GUIA_IMPUESTOS):
+    // Pre-filtramos los SupplyPoints que encajan con el municipio, pero incluimos también aquellos
+    // sin 'city' informada (o facturas con supplyPointId = null) para respetar el fallback a invoiceData['POBLACION PS'].
+    if (municipalityQuery) {
       const sps = await prisma.supplyPoint.findMany({
-        where: { client: { brandId } },
-        select: { id: true, city: true }
+        where: { client: clientWhere },
+        select: { id: true, city: true, province: true },
       });
 
-      const matchingSpIds = sps.filter(sp => {
-        const city = normalizeString(sp.city);
-        if (!city) return false;
-        
-        // 1. Exact match or substring match (e.g. "L'HOSPITALET DE L'INFANT" inside "VANDELLOS I L'HOSPITALET DE L'INFANT")
-        if (city === searchCity || searchCity.includes(city) || city.includes(searchCity)) return true;
-        
-        // 2. Mixed Fuzzy Word Match (handles typos like LOSPITALET instead of LHOSPITALET)
-        const cityWords = city.split(/[\s\-']+/).filter(w => w.length >= 4);
-        const searchWords = searchCity.split(/[\s\-']+/).filter(w => w.length >= 4);
-        
-        if (cityWords.length > 0) {
-          let allWordsMatched = true;
-          for (const cw of cityWords) {
-            let wordMatched = false;
-            for (const sw of searchWords) {
-              // Allow 1 typo for words < 7 chars, 2 typos for words >= 7 chars
-              const maxTypos = sw.length >= 7 ? 2 : 1;
-              if (levenshtein(cw, sw) <= maxTypos) {
-                wordMatched = true;
-                break;
-              }
-            }
-            if (!wordMatched) {
-              allWordsMatched = false;
-              break;
-            }
-          }
-          if (allWordsMatched) return true;
+      const candidateSpIds: string[] = [];
+      for (const sp of sps) {
+        if (!sp.city || !sp.city.trim()) {
+          candidateSpIds.push(sp.id);
+        } else if (matchesMunicipality(sp.city, sp.province, municipalityQuery)) {
+          candidateSpIds.push(sp.id);
         }
-        
-        return false;
-      }).map(sp => sp.id);
+      }
 
       invoices = await prisma.invoice.findMany({
         where: {
-          client: { brandId },
+          client: clientWhere,
           issueDate: { gte: startDate, lte: endDate },
-          supplyPointId: { in: matchingSpIds }
+          OR: [
+            ...(candidateSpIds.length > 0 ? [{ supplyPointId: { in: candidateSpIds } }] : []),
+            { supplyPointId: null },
+          ],
         },
-        select: {
-          id: true, pdfUrl: true, issueDate: true, billingStart: true, billingEnd: true,
-          invoiceNumber: true, invoiceType: true, taxAmount: true, totalMWh: true,
-          subtotal1: true, invoiceData: true,
-          client: { select: { vatNumber: true } },
-          supplyPoint: {
-            select: { cups: true, city: true, tariff: true, postalCode: true, distributor: true, distributorName: true }
-          }
-        },
-        orderBy: { issueDate: 'asc' }
+        select: invoiceSelect,
+        orderBy: { issueDate: 'asc' },
       });
     } else {
-      // If "Todos los ayuntamientos" is selected, we must fetch everything in the date range
       invoices = await prisma.invoice.findMany({
         where: {
-          client: { brandId },
+          client: clientWhere,
           issueDate: { gte: startDate, lte: endDate },
         },
-        select: {
-          id: true, pdfUrl: true, issueDate: true, billingStart: true, billingEnd: true,
-          invoiceNumber: true, invoiceType: true, taxAmount: true, totalMWh: true,
-          subtotal1: true, invoiceData: true,
-          client: { select: { vatNumber: true } },
-          supplyPoint: {
-            select: { cups: true, city: true, tariff: true, postalCode: true, distributor: true, distributorName: true }
-          }
-        },
-        orderBy: { issueDate: 'asc' }
+        select: invoiceSelect,
+        orderBy: { issueDate: 'asc' },
       });
     }
+
+    // Deduplicar por invoiceNumber (Regla 82), excluir penalizaciones y aplicar filtro fino en memoria
+    const seenInvoices = new Set<string>();
+    const filteredInvoices: any[] = [];
+
+    for (const inv of invoices) {
+      if (inv.invoiceNumber) {
+        if (seenInvoices.has(inv.invoiceNumber)) continue;
+        seenInvoices.add(inv.invoiceNumber);
+      }
+
+      const data = (inv.invoiceData as Record<string, any> | null) || {};
+      if (isPenaltyInvoiceRecord(inv, data)) continue;
+
+      if (municipalityQuery) {
+        const rawCity =
+          inv.supplyPoint?.city ||
+          data['POBLACION PS'] ||
+          data['Poblacion PS'] ||
+          data['Población PS'] ||
+          null;
+        const rawProv =
+          inv.supplyPoint?.province ||
+          data['PROVINCIA PS'] ||
+          data['Provincia PS'] ||
+          null;
+
+        if (!matchesMunicipality(rawCity ? String(rawCity) : null, rawProv ? String(rawProv) : null, municipalityQuery)) {
+          continue;
+        }
+      }
+
+      filteredInvoices.push(inv);
+    }
+
+    const extractTasaComponents = (inv: any) => {
+      const data = (inv.invoiceData as Record<string, any> | null) || {};
+      const isAbono =
+        String(inv.invoiceType || data['Tipo Factura'] || '').toLowerCase().includes('abono') ||
+        String(inv.invoiceNumber || '').toUpperCase().startsWith('AB-');
+
+      let baseIVA =
+        data['Base Imponible IVA CORR'] !== undefined
+          ? parseTaxNum(data['Base Imponible IVA CORR'])
+          : data['Base Imponible IVA'] !== undefined
+            ? parseTaxNum(data['Base Imponible IVA'])
+            : inv.origin === 'INTERNAL_ENGINE' && data['totalBase'] !== undefined
+              ? parseTaxNum(data['totalBase'])
+              : parseTaxNum(inv.subtotal1);
+
+      let bonoSocial = parseTaxNum(data['Importe Bono Social'] ?? data['bonoSocial']);
+
+      let impuestoElectrico =
+        data['Importe Impuesto CORR'] !== undefined
+          ? parseTaxNum(data['Importe Impuesto CORR'])
+          : data['Importe Impuesto'] !== undefined
+            ? parseTaxNum(data['Importe Impuesto'])
+            : data['taxElectric'] !== undefined
+              ? parseTaxNum(data['taxElectric'])
+              : inv.origin === 'INTERNAL_ENGINE'
+                ? 0
+                : parseTaxNum(inv.taxAmount);
+
+      let baseF1 =
+        data['BaseImponibleF1 CORR'] !== undefined
+          ? parseTaxNum(data['BaseImponibleF1 CORR'])
+          : parseTaxNum(data['BaseImponibleF1']);
+
+      // Excluir SVA separables (Art. 24.1.c TRLRHL: ingresos ajenos al suministro eléctrico)
+      let svaSeparable =
+        parseTaxNum(data['Importe SVA'] ?? data['svaCost']) +
+        parseTaxNum(data['cgBolsilloSolarCost']);
+
+      let energiaKwh =
+        data['Cantidad Energía Total Consumida CORR'] !== undefined
+          ? parseTaxNum(data['Cantidad Energía Total Consumida CORR'])
+          : data['Energía Total Consumida'] !== undefined
+            ? parseTaxNum(data['Energía Total Consumida'])
+            : parseTaxNum(inv.totalMWh);
+
+      let baseImponibleFactura =
+        data['BI Subtotal 1 CORR'] !== undefined
+          ? parseTaxNum(data['BI Subtotal 1 CORR'])
+          : data['Subtotal 1'] !== undefined
+            ? parseTaxNum(data['Subtotal 1'])
+            : parseTaxNum(inv.subtotal1);
+
+      if (isAbono) {
+        if (baseIVA > 0) baseIVA = -baseIVA;
+        if (bonoSocial > 0) bonoSocial = -bonoSocial;
+        if (impuestoElectrico > 0) impuestoElectrico = -impuestoElectrico;
+        if (baseF1 > 0) baseF1 = -baseF1;
+        if (svaSeparable > 0) svaSeparable = -svaSeparable;
+        if (energiaKwh > 0) energiaKwh = -energiaKwh;
+        if (baseImponibleFactura > 0) baseImponibleFactura = -baseImponibleFactura;
+      }
+
+      baseIVA = round2(baseIVA);
+      bonoSocial = round2(bonoSocial);
+      impuestoElectrico = round2(impuestoElectrico);
+      baseF1 = round2(baseF1);
+      svaSeparable = round2(svaSeparable);
+      baseImponibleFactura = round2(baseImponibleFactura);
+
+      // Conversión de kWh (Regla 81) a MWh reales
+      const energiaMwh = round3(energiaKwh / 1000.0);
+
+      const baseTasaMunicipal = round2(baseIVA - bonoSocial - impuestoElectrico - baseF1 - svaSeparable);
+      const tasaMunicipal = round2(baseTasaMunicipal * 0.015);
+
+      return {
+        data,
+        baseIVA,
+        bonoSocial,
+        impuestoElectrico,
+        baseF1,
+        svaSeparable,
+        energiaMwh,
+        baseImponibleFactura,
+        baseTasaMunicipal,
+        tasaMunicipal,
+      };
+    };
 
     let totalBaseGlobal = 0;
     let totalTasaGlobal = 0;
-    
-    // Filter invoices in memory to allow accent-insensitive matching
-    let filteredInvoices = invoices;
-    if (municipalityName) {
-      const cleanMunicipalityName = municipalityName.includes(' -- ') ? municipalityName.split(' -- ')[0] : municipalityName;
-      const searchCity = normalizeString(cleanMunicipalityName);
-      
-      filteredInvoices = invoices.filter(inv => {
-        const data = inv.invoiceData as Record<string, any> | null;
-        const rawCity = inv.supplyPoint?.city || (data ? (data['POBLACION PS'] || data['Poblacion PS'] || data['Población PS']) : null);
-        const city = normalizeString(rawCity as string);
-        if (!city) return false;
-        
-        if (city === searchCity || searchCity.includes(city) || city.includes(searchCity)) return true;
-        
-        const cityWords = city.split(/[\s\-']+/).filter(w => w.length >= 4);
-        const searchWords = searchCity.split(/[\s\-']+/).filter(w => w.length >= 4);
-        
-        if (cityWords.length > 0) {
-          let allWordsMatched = true;
-          for (const cw of cityWords) {
-            let wordMatched = false;
-            for (const sw of searchWords) {
-              const maxTypos = sw.length >= 7 ? 2 : 1;
-              if (levenshtein(cw, sw) <= maxTypos) {
-                wordMatched = true;
-                break;
-              }
-            }
-            if (!wordMatched) {
-              allWordsMatched = false;
-              break;
-            }
-          }
-          if (allWordsMatched) return true;
-        }
-        
-        return false;
-      });
-    }
 
-    if (municipalityName) {
-      // Detailed view for a single municipality
-      const detailedResults = filteredInvoices.map(inv => {
-        const data = inv.invoiceData as Record<string, any> | null;
-        
-        const isAbono = (inv.invoiceType || data?.['Tipo Factura'])?.toLowerCase().includes('abono');
-        
-        let baseIVA = parseNum(data?.['Base Imponible IVA']);
-        let bonoSocial = parseNum(data?.['Importe Bono Social']);
-        let impuestoElectrico = parseNum(inv.taxAmount) || parseNum(data?.['Importe Impuesto CORR']) || parseNum(data?.['Importe Impuesto']);
-        let baseF1 = parseNum(data?.['BaseImponibleF1 CORR']) || parseNum(data?.['BaseImponibleF1']);
-        let energiaConsumida = parseNum(inv.totalMWh);
-        let baseImponibleFactura = parseNum(data?.['BI Subtotal 1 CORR']) || parseNum(inv.subtotal1);
-
-        if (isAbono) {
-          if (baseIVA > 0) baseIVA = -baseIVA;
-          if (bonoSocial > 0) bonoSocial = -bonoSocial;
-          if (impuestoElectrico > 0) impuestoElectrico = -impuestoElectrico;
-          if (baseF1 > 0) baseF1 = -baseF1;
-          if (energiaConsumida > 0) energiaConsumida = -energiaConsumida;
-          if (baseImponibleFactura > 0) baseImponibleFactura = -baseImponibleFactura;
-        }
-
-        let baseTasaMunicipal = baseIVA - bonoSocial - impuestoElectrico - baseF1;
-        const tasaMunicipal = Math.round((baseTasaMunicipal * 0.015) * 100) / 100;
-        
-        totalBaseGlobal += baseTasaMunicipal;
-        totalTasaGlobal += tasaMunicipal;
+    if (municipalityQuery) {
+      const detailedResults = filteredInvoices.map((inv) => {
+        const c = extractTasaComponents(inv);
+        totalBaseGlobal = round2(totalBaseGlobal + c.baseTasaMunicipal);
+        totalTasaGlobal = round2(totalTasaGlobal + c.tasaMunicipal);
 
         return {
           id: inv.id,
@@ -224,92 +265,91 @@ export async function GET(request: NextRequest) {
           issueDate: inv.issueDate,
           billingStart: inv.billingStart,
           billingEnd: inv.billingEnd,
-          cups: inv.supplyPoint?.cups || '',
-          distribuidora: inv.supplyPoint?.distributorName || inv.supplyPoint?.distributor || '',
-          nifCliente: inv.client?.vatNumber || '',
+          cups: inv.supplyPoint?.cups || String(c.data['CUPS'] || ''),
+          distribuidora:
+            inv.supplyPoint?.distributorName ||
+            inv.supplyPoint?.distributor ||
+            String(c.data['Distribuidora'] || ''),
+          nifCliente: inv.client?.vatNumber || String(c.data['NIF Cliente'] || ''),
           invoiceNumber: inv.invoiceNumber,
-          codigoFiscal: data?.['Codigo Fiscal'] || '',
+          codigoFiscal: String(c.data['Codigo Fiscal'] || ''),
           invoiceType: inv.invoiceType || 'Normal',
-          tariff: inv.supplyPoint?.tariff || '',
-          postalCode: (data?.['CP PS'] as string) || inv.supplyPoint?.postalCode || '',
-          energiaConsumida,
-          importeIVA: baseIVA,
-          baseImponibleFactura,
-          baseImponibleF1: baseF1,
-          importeImpuesto: impuestoElectrico,
-          importeBonoSocial: bonoSocial,
-          baseImponibleTasaMunicipal: baseTasaMunicipal,
-          tasaMunicipal: tasaMunicipal
+          tariff: inv.supplyPoint?.tariff || String(c.data['Tarifa'] || ''),
+          postalCode:
+            String(c.data['CP PS'] || '') ||
+            inv.supplyPoint?.postalCode ||
+            inv.supplyPoint?.sipsPostalCode ||
+            '',
+          energiaConsumida: c.energiaMwh,
+          importeIVA: c.baseIVA,
+          baseImponibleFactura: c.baseImponibleFactura,
+          baseImponibleF1: c.baseF1,
+          importeImpuesto: c.impuestoElectrico,
+          importeBonoSocial: c.bonoSocial,
+          importeSVA: c.svaSeparable,
+          baseImponibleTasaMunicipal: c.baseTasaMunicipal,
+          tasaMunicipal: c.tasaMunicipal,
         };
       });
 
       return NextResponse.json({
         type: 'detailed',
         results: detailedResults,
-        totalBaseGlobal,
-        totalTasaGlobal
+        totalBaseGlobal: round2(totalBaseGlobal),
+        totalTasaGlobal: round2(totalTasaGlobal),
       });
-
     } else {
-      // Grouped view for all municipalities
-      const groupedMap = new Map<string, { cp: string, poblacion: string, base: number, tasa: number }>();
+      const groupedMap = new Map<string, { cp: string; poblacion: string; provincia: string; base: number; tasa: number }>();
 
       for (const inv of filteredInvoices) {
-        const data = inv.invoiceData as Record<string, any> | null;
+        const c = extractTasaComponents(inv);
         const sp = inv.supplyPoint;
-        
-        const cp = (data?.['CP PS'] as string) || sp?.postalCode || 'Desconocido';
-        const rawCityFromData = data ? (data['POBLACION PS'] || data['Poblacion PS'] || data['Población PS']) : null;
-        const rawPoblacion = sp?.city || (rawCityFromData as string) || 'Desconocido';
-        
-        // Agrupamos por nombre de ciudad normalizado para unir Bétera y BETERA
-        const normalizedCity = normalizeString(rawPoblacion) || 'DESCONOCIDO';
-        const groupKey = normalizedCity;
 
-        const isAbono = (inv.invoiceType || data?.['Tipo Factura'])?.toLowerCase().includes('abono');
-        
-        let baseIVA = parseNum(data?.['Base Imponible IVA']);
-        let bonoSocial = parseNum(data?.['Importe Bono Social']);
-        let impuestoElectrico = parseNum(inv.taxAmount) || parseNum(data?.['Importe Impuesto CORR']) || parseNum(data?.['Importe Impuesto']);
-        let baseF1 = parseNum(data?.['BaseImponibleF1 CORR']) || parseNum(data?.['BaseImponibleF1']);
+        const cp =
+          String(c.data['CP PS'] || '').trim() ||
+          sp?.postalCode?.trim() ||
+          sp?.sipsPostalCode?.trim() ||
+          'Desconocido';
+        const rawCityFromData =
+          c.data['POBLACION PS'] || c.data['Poblacion PS'] || c.data['Población PS'] || null;
+        const rawPoblacion = String(sp?.city || rawCityFromData || 'Desconocido').trim();
+        const rawProvincia = String(
+          sp?.province || c.data['PROVINCIA PS'] || c.data['Provincia PS'] || ''
+        ).trim();
 
-        if (isAbono) {
-          if (baseIVA > 0) baseIVA = -baseIVA;
-          if (bonoSocial > 0) bonoSocial = -bonoSocial;
-          if (impuestoElectrico > 0) impuestoElectrico = -impuestoElectrico;
-          if (baseF1 > 0) baseF1 = -baseF1;
-        }
-        
-        let baseTasaMunicipal = baseIVA - bonoSocial - impuestoElectrico - baseF1;
-        const tasaMunicipal = Math.round((baseTasaMunicipal * 0.015) * 100) / 100;
+        const normalizedCity = normalizeAsciiUpper(rawPoblacion).replace(/['’`´]/g, '') || 'DESCONOCIDO';
+        const normProv = canonicalProvince(rawProvincia) || (cp !== 'Desconocido' ? cp.substring(0, 2) : '');
+        const groupKey = `${normalizedCity}|${normProv}`;
 
         if (!groupedMap.has(groupKey)) {
           groupedMap.set(groupKey, {
-            cp: cp, // Mostramos el primer CP que encontremos para este municipio
+            cp,
             poblacion: rawPoblacion.toUpperCase(),
+            provincia: rawProvincia.toUpperCase(),
             base: 0,
-            tasa: 0
+            tasa: 0,
           });
         }
-        
+
         const group = groupedMap.get(groupKey)!;
-        group.base += baseTasaMunicipal;
-        group.tasa += tasaMunicipal;
-        
-        totalBaseGlobal += baseTasaMunicipal;
-        totalTasaGlobal += tasaMunicipal;
+        group.base = round2(group.base + c.baseTasaMunicipal);
+        group.tasa = round2(group.tasa + c.tasaMunicipal);
+
+        totalBaseGlobal = round2(totalBaseGlobal + c.baseTasaMunicipal);
+        totalTasaGlobal = round2(totalTasaGlobal + c.tasaMunicipal);
       }
 
-      const groupedResults = Array.from(groupedMap.values()).sort((a, b) => a.poblacion.localeCompare(b.poblacion));
+      const groupedResults = Array.from(groupedMap.values()).sort((a, b) =>
+        a.poblacion.localeCompare(b.poblacion)
+      );
 
       return NextResponse.json({
         type: 'grouped',
         results: groupedResults,
-        totalBaseGlobal,
-        totalTasaGlobal
+        totalBaseGlobal: round2(totalBaseGlobal),
+        totalTasaGlobal: round2(totalTasaGlobal),
       });
     }
-
   } catch (error) {
     console.error('Error calculating Tasa Municipal:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

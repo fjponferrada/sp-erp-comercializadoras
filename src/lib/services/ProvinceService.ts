@@ -64,12 +64,123 @@ export const PROVINCES_GEO: Record<string, ProvinceGeo> = {
  */
 export function getProvinceCode(postalCode: string | null): string {
   if (!postalCode) return '28'; // Default to Madrid if unknown
-  const clean = postalCode.replace(/\D/g, '').padStart(5, '0');
-  const code = clean.substring(0, 2);
-  return PROVINCES_GEO[code] ? code : '28';
+  const clean = postalCode.replace(/\D/g, '');
+  if (clean.length >= 4) {
+    const padded = clean.length === 4 ? `0${clean}` : clean.substring(0, 5);
+    const code = padded.substring(0, 2);
+    if (PROVINCES_GEO[code]) return code;
+  }
+  return '28';
 }
 
 export function getProvinceGeo(postalCode: string | null): ProvinceGeo {
   const code = getProvinceCode(postalCode);
+  return PROVINCES_GEO[code];
+}
+
+export const PROVINCE_NAMES: string[] = Object.values(PROVINCES_GEO).map((p) => p.name);
+
+function stripAccentsLower(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+const CANONICAL_BY_NORMALIZED: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const geo of Object.values(PROVINCES_GEO)) {
+    map[stripAccentsLower(geo.name)] = geo.name;
+  }
+  // Variantes históricas, bilingües y erratas detectadas en importaciones reales
+  const aliases: Record<string, string> = {
+    araba: 'Álava',
+    'araba/alava': 'Álava',
+    'alava/araba': 'Álava',
+    'alicante/alacant': 'Alicante',
+    alacant: 'Alicante',
+    'balears, illes': 'Islas Baleares',
+    'illes balears': 'Islas Baleares',
+    baleares: 'Islas Baleares',
+    'islas baleares': 'Islas Baleares',
+    'castellon/castello': 'Castellón',
+    'castello/castellon': 'Castellón',
+    castello: 'Castellón',
+    'la coruna': 'A Coruña',
+    coruna: 'A Coruña',
+    gerona: 'Girona',
+    guipuzcoa: 'Gipuzkoa',
+    lerida: 'Lleida',
+    madrd: 'Madrid',
+    mavarra: 'Navarra',
+    orense: 'Ourense',
+    'valencia/valencia': 'Valencia',
+    vizcaya: 'Bizkaia',
+    tenerife: 'Santa Cruz de Tenerife',
+    'sta. cruz de tenerife': 'Santa Cruz de Tenerife',
+    'sta cruz de tenerife': 'Santa Cruz de Tenerife',
+  };
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    map[alias] = canonical;
+  }
+  return map;
+})();
+
+const CODE_BY_NAME: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const [code, geo] of Object.entries(PROVINCES_GEO)) {
+    map[geo.name] = code;
+  }
+  return map;
+})();
+
+/**
+ * Resuelve siempre uno de los 52 nombres canónicos de PROVINCES_GEO:
+ * 1) Si existe un código postal válido (01..52), tiene prioridad geográfica exacta.
+ * 2) En caso contrario, normaliza tildes/mayúsculas/alias sobre el texto libre de provincia.
+ * 3) Fallback seguro a 'Madrid' cuando el dato es nulo o inválido ('-', 'Desconocida').
+ */
+export function normalizeProvinceName(
+  rawProvince?: string | null,
+  postalCode?: string | null
+): string {
+  if (postalCode) {
+    const digits = postalCode.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      const padded = digits.length === 4 ? `0${digits}` : digits.substring(0, 5);
+      const code = padded.substring(0, 2);
+      if (PROVINCES_GEO[code]) {
+        return PROVINCES_GEO[code].name;
+      }
+    }
+  }
+
+  if (rawProvince) {
+    const cleaned = stripAccentsLower(rawProvince);
+    if (cleaned && cleaned !== '-' && cleaned !== 'desconocida') {
+      if (CANONICAL_BY_NORMALIZED[cleaned]) {
+        return CANONICAL_BY_NORMALIZED[cleaned];
+      }
+      // Si viene separada por '/' (ej. bilingüe), probar cada parte
+      if (cleaned.includes('/')) {
+        for (const part of cleaned.split('/')) {
+          const p = part.trim();
+          if (CANONICAL_BY_NORMALIZED[p]) return CANONICAL_BY_NORMALIZED[p];
+        }
+      }
+    }
+  }
+
+  return 'Madrid';
+}
+
+export function getProvinceCodeByName(provinceName?: string | null): string {
+  const canonical = normalizeProvinceName(provinceName);
+  return CODE_BY_NAME[canonical] || '28';
+}
+
+export function getProvinceGeoByName(provinceName?: string | null): ProvinceGeo {
+  const code = getProvinceCodeByName(provinceName);
   return PROVINCES_GEO[code];
 }

@@ -6,6 +6,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { XMLParser } from 'fast-xml-parser';
 import AdmZip from 'adm-zip';
 import { fromZonedTime } from 'date-fns-tz';
+import { decodeXmlBuffer } from '@/lib/switching/parser';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -50,7 +51,7 @@ async function handleFileOrZip(file: File, coreFn: (f: File) => Promise<any>) {
     const errors: string[] = [];
     
     for (const zipEntry of zipEntries) {
-      if (!zipEntry.isDirectory && zipEntry.entryName.toLowerCase().endsWith('.xml')) {
+      if (!zipEntry.isDirectory && /\.(xml|\d+)$/i.test(zipEntry.entryName)) {
         const xmlBuffer = zipEntry.getData();
         const fakeFile = {
           name: zipEntry.name,
@@ -85,7 +86,7 @@ async function ingestF1Core(file: File) {
     const originalName = file.name;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const xmlString = buffer.toString('utf-8');
+    const xmlString = decodeXmlBuffer(buffer);
 
     // 1. Parsear el XML
     const parser = new XMLParser({
@@ -115,24 +116,27 @@ async function ingestF1Core(file: File) {
        return { success: false, error: `El archivo ${originalName} no contiene ninguna FacturaATR ni OtrasFacturas.` };
     }
 
-    // 2. Subir a Cloudflare R2
-    const standardizedName = `${originalName.replace('.xml', '')}_${Date.now()}.xml`;
-    const r2Key = `switching/recibidos/F1/${standardizedName}`;
-
-    await r2.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME || 'aed-energia',
-      Key: r2Key,
-      Body: buffer,
-      ContentType: 'application/xml',
-    }));
-    
-    const xmlUrl = `${process.env.R2_PUBLIC_URL}/${r2Key}`;
+    // 2. Subida diferida e idempotente a Cloudflare R2 (solo si hay alguna factura nueva no existente en BD)
+    let uploadedXmlUrl: string | null = null;
+    const ensureR2Uploaded = async (): Promise<string> => {
+      if (uploadedXmlUrl) return uploadedXmlUrl;
+      const cleanBase = originalName.replace(/\.(xml|\d+)$/i, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const r2Key = `switching/recibidos/F1/${cleanBase}.xml`;
+      await r2.send(new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME || 'aed-energia',
+        Key: r2Key,
+        Body: buffer,
+        ContentType: 'application/xml',
+      }));
+      uploadedXmlUrl = `${process.env.R2_PUBLIC_URL}/${r2Key}`;
+      return uploadedXmlUrl;
+    };
 
     // 3. Procesar e insertar en Prisma cada factura
     let procesadas = 0;
     for (const f of facturasAtrArray) {
       const dGen = f.DatosGeneralesFacturaATR || {};
-      let cups = dGen.DireccionSuministro?.CUPS || f.Medidas?.CodPM || f.CodPM || mensaje.Cabecera?.CUPS;
+      let cups = dGen.DireccionSuministro?.CUPS || f.Medidas?.CodPM || f.CodPM || mensaje.Cabecera?.CUPS || mensaje.Cabecera?.Codigo;
       if (cups) cups = String(cups).trim();
 
       const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
@@ -260,8 +264,10 @@ async function ingestF1Core(file: File) {
       }
 
       if (existingF1) {
-        continue; // La obviamos
+        continue; // La obviamos sin resubir a R2
       }
+
+      const xmlUrl = await ensureR2Uploaded();
 
       const parseAndShiftDate = (dStr: string, shiftDays: number = 0) => {
         if (!dStr) return undefined;
@@ -359,7 +365,7 @@ async function ingestF1Core(file: File) {
     // Procesar OtrasFacturas
     for (const of of otrasFacturasArray) {
       const dGen = of.DatosGeneralesOtrasFacturas || {};
-      let cups = mensaje.Cabecera?.CUPS; // El CUPS viene en la Cabecera para OtrasFacturas
+      let cups = mensaje.Cabecera?.CUPS || mensaje.Cabecera?.Codigo; // El CUPS viene en la Cabecera para OtrasFacturas
       if (cups) cups = String(cups).trim();
 
       const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
@@ -416,8 +422,10 @@ async function ingestF1Core(file: File) {
       }
 
       if (existingF1) {
-        continue; // La obviamos
+        continue; // La obviamos sin resubir a R2
       }
+
+      const xmlUrl = await ensureR2Uploaded();
 
       await prisma.f1Invoice.create({
         data: {
@@ -429,7 +437,7 @@ async function ingestF1Core(file: File) {
           baseImponible: 0,
           totalPeajes: 0,
           totalCargos: 0,
-          xmlUrl: xmlUrl,
+          xmlUrl,
           jsonData: of,
           supplyPointId,
           contractId,

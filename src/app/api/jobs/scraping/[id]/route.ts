@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { hasAdminOrBackofficeRole } from '@/lib/companyContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+    if (!hasAdminOrBackofficeRole((session.user as any).role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { id } = await params;
@@ -20,7 +24,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
-    return NextResponse.json(job);
+    const safeLogs = job.logs
+      ? job.logs.replace(/(--passw\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, '$1"***"')
+      : job.logs;
+
+    return NextResponse.json({ ...job, logs: safeLogs });
   } catch (error: any) {
     console.error('Error fetching scraping job:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

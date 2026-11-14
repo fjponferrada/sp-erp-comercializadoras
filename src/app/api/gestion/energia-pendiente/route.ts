@@ -1,86 +1,84 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { hasAdminOrBackofficeRole, resolveActiveCompanyId } from '@/lib/companyContext';
 
-export async function GET(req: Request) {
+function getMaxClosedMonthMadrid(): string {
+  const madridToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+  const [curY, curM] = madridToday.split('-').map(Number);
+  const lastClosed = new Date(Date.UTC(curY, curM - 2, 1));
+  return lastClosed.toISOString().slice(0, 7);
+}
+
+export async function GET() {
   try {
     const session = await auth();
-    if (!session || (session.user.role !== 'SUPERADMIN' && session.user.role !== 'COMPANYADMIN' && session.user.role !== 'BACKOFFICE')) {
+    const role = (session?.user as any)?.role as string | undefined;
+    if (!session || !hasAdminOrBackofficeRole(role)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const today = new Date();
-    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+    let activeCompanyId = await resolveActiveCompanyId(session);
+    if (!activeCompanyId && role === 'SUPERADMIN') {
+      const firstComp = await prisma.company.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } });
+      activeCompanyId = firstComp?.id || null;
+    }
 
-    const results = await prisma.pendingEnergySummary.findMany({
-      where: { 
-        companyId: session.user.companyId,
-        month: { lte: lastMonthStr }
-      },
-      orderBy: { month: 'desc' },
-      take: 12
+    if (!activeCompanyId) {
+      return NextResponse.json({ error: 'No se pudo determinar la comercializadora activa' }, { status: 400 });
+    }
+
+    const maxClosedMonth = getMaxClosedMonthMadrid();
+
+    const [company, results] = await Promise.all([
+      prisma.company.findUnique({
+        where: { id: activeCompanyId },
+        select: { id: true, name: true, cif: true },
+      }),
+      prisma.pendingEnergySummary.findMany({
+        where: {
+          companyId: activeCompanyId,
+          month: { lte: maxClosedMonth },
+        },
+        orderBy: { month: 'desc' },
+        take: 12,
+      }),
+    ]);
+
+    const enrichedResults = results.map((row) => {
+      const detailsObj = (row.details && typeof row.details === 'object' ? row.details : {}) as Record<string, any>;
+      const grossBcConsMwh = (row.estimatedBcMwh || 0) + (row.surplusMwh || 0);
+
+      let lossRatio = 1.15;
+      if (row.rawCchMwh > 0 && grossBcConsMwh > 0) {
+        lossRatio = grossBcConsMwh / row.rawCchMwh;
+      } else if (typeof detailsObj.lossRatio === 'number' && detailsObj.lossRatio > 0) {
+        lossRatio = detailsObj.lossRatio;
+      }
+
+      const marketPrice = row.marketPrice > 0 ? row.marketPrice : 75;
+
+      return {
+        ...row,
+        lossRatio,
+        marketPrice,
+        details: detailsObj,
+      };
     });
 
-    const enrichedResults = await Promise.all(results.map(async (row) => {
-      const [year, month] = row.month.split('-');
-      const startDate = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
-      const endDate = new Date(Date.UTC(Number(year), Number(month), 0, 23, 59, 59));
-      
-      const curves = await prisma.aggregatedLoadCurve.findMany({
-        where: {
-          date: { gte: startDate, lte: endDate }
+    return NextResponse.json(
+      {
+        success: true,
+        company,
+        maxClosedMonth,
+        data: enrichedResults,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
         },
-        select: { totalConsumption: true }
-      });
-      
-      let rawMwh = 0;
-      for (const c of curves) {
-        if (Array.isArray(c.totalConsumption)) {
-          for (const val of c.totalConsumption as number[]) {
-             rawMwh += Number(val) || 0;
-          }
-        }
       }
-      rawMwh = rawMwh / 1000;
-      
-      let lossRatio = 1.15;
-      if (rawMwh > 0 && row.estimatedBcMwh > 0) {
-        lossRatio = row.estimatedBcMwh / rawMwh;
-      }
-      
-      const componentPrices = await prisma.systemComponentPrice.findMany({
-        where: {
-          component: { in: ['OMIE', 'RESTRICCIONES'] },
-          date: { gte: startDate, lte: endDate }
-        },
-        select: { component: true, values: true }
-      });
-
-      let omieSum = 0, omieCount = 0;
-      let resSum = 0, resCount = 0;
-
-      for (const cp of componentPrices) {
-        const values = cp.values as number[];
-        if (!values || values.length === 0) continue;
-        const dailySum = values.reduce((a, b) => a + b, 0);
-        if (cp.component === 'OMIE') {
-          omieSum += dailySum;
-          omieCount += values.length;
-        } else if (cp.component === 'RESTRICCIONES') {
-          resSum += dailySum;
-          resCount += values.length;
-        }
-      }
-
-      const omieAvg = omieCount > 0 ? omieSum / omieCount : 60;
-      const resAvg = resCount > 0 ? resSum / resCount : 15;
-      const marketPrice = omieAvg + resAvg;
-
-      return { ...row, lossRatio, marketPrice };
-    }));
-
-    return NextResponse.json({ success: true, data: enrichedResults });
+    );
   } catch (error: any) {
     console.error('Error recuperando energía pendiente:', error);
     return NextResponse.json({ error: 'Error interno: ' + error.message }, { status: 500 });

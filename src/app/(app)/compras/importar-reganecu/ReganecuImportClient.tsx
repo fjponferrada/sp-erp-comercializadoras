@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { UploadCloud, CheckCircle2, AlertTriangle, FileText, Loader2 } from 'lucide-react';
 
 export default function ReganecuImportClient() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -16,7 +18,7 @@ export default function ReganecuImportClient() {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.name.endsWith('.zip')) {
+      if (droppedFile.name.toLowerCase().endsWith('.zip')) {
         setFile(droppedFile);
         setUploadResult(null);
       } else {
@@ -28,7 +30,7 @@ export default function ReganecuImportClient() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selectedFile = e.target.files[0];
-      if (selectedFile.name.endsWith('.zip')) {
+      if (selectedFile.name.toLowerCase().endsWith('.zip')) {
         setFile(selectedFile);
         setUploadResult(null);
       } else {
@@ -58,6 +60,7 @@ export default function ReganecuImportClient() {
 
       setUploadResult({ type: 'success', message: data.message });
       setFile(null);
+      router.refresh();
     } catch (err: any) {
       console.error(err);
       setUploadResult({ type: 'error', message: err.message });
@@ -68,7 +71,7 @@ export default function ReganecuImportClient() {
 
   return (
     <div>
-      <div 
+      <div
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         style={{
@@ -82,7 +85,7 @@ export default function ReganecuImportClient() {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '16px'
+          gap: '16px',
         }}
         onClick={() => document.getElementById('reganecu-file-upload')?.click()}
       >
@@ -97,12 +100,12 @@ export default function ReganecuImportClient() {
             o haz clic para explorar en tus archivos
           </p>
         </div>
-        
-        <input 
-          id="reganecu-file-upload" 
-          type="file" 
-          accept=".zip" 
-          style={{ display: 'none' }} 
+
+        <input
+          id="reganecu-file-upload"
+          type="file"
+          accept=".zip,.ZIP"
+          style={{ display: 'none' }}
           onChange={handleFileChange}
         />
       </div>
@@ -130,7 +133,7 @@ export default function ReganecuImportClient() {
               opacity: isUploading ? 0.7 : 1,
               display: 'flex',
               alignItems: 'center',
-              gap: '8px'
+              gap: '8px',
             }}
           >
             {isUploading ? (
@@ -146,16 +149,18 @@ export default function ReganecuImportClient() {
       )}
 
       {uploadResult && (
-        <div style={{ 
-          marginTop: '24px', 
-          padding: '16px', 
-          borderRadius: '8px', 
-          display: 'flex', 
-          alignItems: 'flex-start', 
-          gap: '12px',
-          backgroundColor: uploadResult.type === 'success' ? 'rgba(163, 230, 53, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-          border: `1px solid ${uploadResult.type === 'success' ? 'var(--lime)' : 'var(--red)'}`
-        }}>
+        <div
+          style={{
+            marginTop: '24px',
+            padding: '16px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
+            backgroundColor: uploadResult.type === 'success' ? 'rgba(163, 230, 53, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            border: `1px solid ${uploadResult.type === 'success' ? 'var(--lime)' : 'var(--red)'}`,
+          }}
+        >
           {uploadResult.type === 'success' ? (
             <CheckCircle2 size={24} color="var(--lime)" style={{ flexShrink: 0 }} />
           ) : (

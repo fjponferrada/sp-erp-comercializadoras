@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { InternalBillingEngine } from '@/lib/services/InternalBillingEngine';
+import {
+  buildInternalInvoiceJsonData,
+  deduceInvoiceType,
+} from '@/lib/services/internalInvoiceMapper';
 
 export async function POST(req: Request) {
   try {
@@ -16,70 +20,63 @@ export async function POST(req: Request) {
     }
 
     const draftsToRepair = await prisma.internalInvoice.findMany({
-      where: { 
+      where: {
         id: { in: draftIds },
-        status: 'REQUIERE_REPARACION'
+        status: { in: ['BORRADOR', 'REQUIERE_REPARACION'] },
       },
       include: {
-        contract: true,
-        f1Invoice: true
-      }
+        contract: {
+          include: {
+            brand: true,
+            client: { include: { brand: true } },
+          },
+        },
+        f1Invoice: {
+          include: {
+            contract: {
+              include: {
+                brand: true,
+                client: { include: { brand: true } },
+              },
+            },
+          },
+        },
+      },
     });
 
     const repairedInvoices = [];
 
     for (const draft of draftsToRepair) {
-      const contract = draft.contract!;
-      const f1 = draft.f1Invoice!;
+      const f1 = draft.f1Invoice;
+      const contract = draft.contract || f1?.contract;
+      if (!f1 || !contract) continue;
+
+      const companyId =
+        draft.companyId || contract.brand?.companyId || contract.client?.brand?.companyId || null;
 
       try {
-        const result = await InternalBillingEngine.calculate(f1.id, true); // forceRepair = true
+        const result = await InternalBillingEngine.calculate(f1.id, true);
 
         const updated = await prisma.internalInvoice.update({
           where: { id: draft.id },
           data: {
-            status: 'BORRADOR',
+            status: result.hasCriticalError ? 'REQUIERE_REPARACION' : 'BORRADOR',
+            invoiceType: deduceInvoiceType(f1.jsonData),
+            companyId,
+            repairData: result.repairData,
             subtotal1: result.totalBase,
+            taxPercentage: result.taxPercentage ?? 21,
             taxAmount: result.taxAmount,
             totalAmount: result.totalAmount,
-            totalMWh: result.totalF1MWh, // El volumen reparado coincide con el del F1
+            totalMWh: result.totalF1MWh,
             margin: result.feeCost,
-            invoiceData: {
-              ...(draft.invoiceData ? (draft.invoiceData as object) : {}),
-              repaired: true,
-              repairedAt: new Date().toISOString(),
-              energyCost: result.energyCost,
-              capacityCost: result.capacityCost,
-              fneeCost: result.fneeCost,
-              powerCost: result.powerCost,
-              peajesDistribuidora: result.peajesDistribuidora,
-              cargosDistribuidora: result.cargosDistribuidora,
-              periods: result.periods,
-              alquilerEquipo: result.alquilerEquipo,
-              bonoSocial: result.bonoSocial,
-              bonoSocialLabel: result.bonoSocialLabel,
-              taxElectric: result.taxElectric,
-              excesosPotencia: result.excesosPotencia,
-              excedentesAutoconsumo: result.excedentesAutoconsumo,
-              excedentesKwh: result.excedentesKwh,
-              maxExcedentes: result.maxExcedentes,
-              bolsilloSolarLlenado: result.bolsilloSolarLlenado,
-              powerDetails: result.powerDetails,
-              energyAtrDetails: result.energyAtrDetails,
-              energyMarketDetails: result.energyMarketDetails,
-              f1Readings: result.f1Readings,
-              reactiveEnergyCost: result.reactiveEnergyCost,
-              reactiveDetails: result.reactiveDetails,
-              svaCost: result.svaCost,
-              svaConcept: result.svaConcept,
-              pexc: result.pexc
-            } as any
-          }
+            invoiceData: buildInternalInvoiceJsonData(result, contract, true) as any,
+          },
         });
 
         repairedInvoices.push(updated);
       } catch (err) {
-        console.error("Error repairing draft", draft.id, err);
+        console.error('Error repairing draft', draft.id, err);
       }
     }
 

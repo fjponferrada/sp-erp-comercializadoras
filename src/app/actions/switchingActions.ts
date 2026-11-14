@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { resolveActiveCompanyId } from '@/lib/companyContext';
 
 export async function getPaginatedSwitchingEventsAction(
   page: number = 1,
@@ -106,62 +107,75 @@ export async function unresolveSwitchingWarningAction(id: string) {
   }
 }
 
-import { processParsedSwitchingData } from './switchingIngest';
-import { parseSwitchingXml } from '@/lib/switching/parser';
+import { processParsedSwitchingData, getOwnReeCodes } from './switchingIngest';
+import { parseSwitchingXml, decodeXmlBuffer } from '@/lib/switching/parser';
+
+export async function retryUnresolvedSwitchingEventsInternal() {
+  const unresolvedEvents = await prisma.switchingEvent.findMany({
+    where: { isResolved: false, xmlUrl: { not: null } },
+    orderBy: { createdAt: 'asc' } // Procesar en orden de creación
+  });
+
+  if (unresolvedEvents.length === 0) {
+    return { success: true as const, processedCount: 0, resolvedCount: 0 };
+  }
+
+  const ownReeCodes = await getOwnReeCodes();
+  let processedCount = 0;
+  let resolvedCount = 0;
+
+  for (const event of unresolvedEvents) {
+    try {
+      const response = await fetch(event.xmlUrl!);
+      if (!response.ok) continue;
+
+      const arrBuf = await response.arrayBuffer();
+      const xmlString = decodeXmlBuffer(arrBuf);
+      const parsedData = parseSwitchingXml(xmlString, ownReeCodes);
+
+      const result = await processParsedSwitchingData(parsedData, event.xmlUrl!, event.id);
+
+      processedCount++;
+      if (result.success && !result.warning) {
+        resolvedCount++;
+      }
+    } catch (e) {
+      console.error('Error retrying event:', event.id, e);
+    }
+  }
+
+  return { success: true as const, processedCount, resolvedCount };
+}
 
 export async function retryUnresolvedSwitchingEventsAction() {
   try {
     const session = await auth();
     if (!session?.user) {
-      return { success: false, error: 'No autorizado' };
+      return { success: false as const, error: 'No autorizado' };
     }
 
-    const unresolvedEvents = await prisma.switchingEvent.findMany({
-      where: { isResolved: false, xmlUrl: { not: null } },
-      orderBy: { createdAt: 'asc' } // Procesar en orden de creación
-    });
-
-    if (unresolvedEvents.length === 0) {
-      return { success: true, processedCount: 0, resolvedCount: 0 };
-    }
-
-    let processedCount = 0;
-    let resolvedCount = 0;
-
-    for (const event of unresolvedEvents) {
-      try {
-        const response = await fetch(event.xmlUrl!);
-        if (!response.ok) continue;
-        
-        const xmlString = await response.text();
-        const parsedData = parseSwitchingXml(xmlString);
-        
-        const result = await processParsedSwitchingData(parsedData, event.xmlUrl!, event.id);
-        
-        processedCount++;
-        // processParsedSwitchingData ya actualiza el SwitchingEvent en DB
-        if (result.success && !result.warning) {
-          resolvedCount++;
-        }
-      } catch (e) {
-        console.error('Error retrying event:', event.id, e);
-      }
-    }
-
-    return { success: true, processedCount, resolvedCount };
+    return await retryUnresolvedSwitchingEventsInternal();
   } catch (error: any) {
     console.error('Error retrying switching events:', error);
-    return { success: false, error: error.message };
+    return { success: false as const, error: error.message };
   }
 }
 
 export async function getDistributorScrapingStatus() {
   try {
-    const configs = await prisma.distributor.findMany({
-      where: { webScrapingActive: true },
-      select: { name: true, webLastSyncAt: true }
+    const session = await auth();
+    const companyId = await resolveActiveCompanyId(session);
+    if (!companyId) return [];
+
+    const configs = await prisma.distributorCompanyConfig.findMany({
+      where: { companyId, webScrapingActive: true },
+      include: { distributor: { select: { name: true } } },
+      orderBy: { distributor: { name: 'asc' } }
     });
-    return configs;
+    return configs.map(c => ({
+      name: c.distributor.name,
+      webLastSyncAt: c.webLastSyncAt
+    }));
   } catch (error) {
     console.error("Error fetching scraping status:", error);
     return [];

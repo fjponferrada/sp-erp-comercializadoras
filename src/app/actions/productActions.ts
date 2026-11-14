@@ -2,26 +2,42 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { cookies } from 'next/headers';
 
 export async function getAuthorizedProductsWhereClause() {
   const session = await auth();
-  if (!session) return null;
+  if (!session?.user) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email as string }
-  });
+  const sessionUser = session.user as any;
+  const user = sessionUser.id
+    ? await prisma.user.findUnique({ where: { id: sessionUser.id } })
+    : await prisma.user.findFirst({
+        where: { email: { equals: (sessionUser.email || '').trim(), mode: 'insensitive' } },
+      });
 
-  if (!user || !user.brandId) return null;
+  if (!user || user.isActive === false || user.role === 'CLIENT') return null;
+
+  const cookieStore = await cookies();
+  const cookieBrandId = cookieStore.get('active-brand')?.value;
+  const allowedBrands = Array.isArray(sessionUser.allowedBrands) ? sessionUser.allowedBrands : [];
+  const activeBrandId =
+    cookieBrandId && (user.role === 'SUPERADMIN' || allowedBrands.some((b: any) => b.id === cookieBrandId))
+      ? cookieBrandId
+      : user.brandId;
+
+  if (!activeBrandId) return null;
 
   const whereClause: any = {
-    brandId: user.brandId,
-    isAvailableCrm: true
+    brandId: activeBrandId,
   };
 
-  if (['CANAL', 'COMERCIAL'].includes(user.role) && user.channelId) {
-    whereClause.channels = {
-      some: { id: user.channelId }
-    };
+  if (['CANAL', 'COMERCIAL'].includes(user.role)) {
+    whereClause.isAvailableCrm = true;
+    if (user.channelId) {
+      whereClause.channels = {
+        some: { id: user.channelId },
+      };
+    }
   }
 
   return whereClause;
@@ -34,10 +50,11 @@ export async function getAvailableProducts() {
       return { success: false, error: 'No autorizado o sin marca' };
     }
 
-
-
     const products = await prisma.product.findMany({
-      where: whereClause,
+      where: {
+        ...whereClause,
+        isAvailableCrm: true,
+      },
       select: {
         id: true,
         name: true,
@@ -47,7 +64,7 @@ export async function getAvailableProducts() {
         isCustomizable: true,
         pricingModel: true,
       },
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
     });
 
     return { success: true, data: products };

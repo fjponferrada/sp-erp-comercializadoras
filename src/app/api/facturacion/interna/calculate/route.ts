@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { InternalBillingEngine } from '@/lib/services/InternalBillingEngine';
+import {
+  buildInternalInvoiceJsonData,
+  deduceInvoiceType,
+} from '@/lib/services/internalInvoiceMapper';
 
 export async function POST(req: Request) {
   try {
@@ -15,13 +19,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'f1Ids is required' }, { status: 400 });
     }
 
-    // Fetch the F1s with contracts
     const f1s = await prisma.f1Invoice.findMany({
       where: { id: { in: f1Ids } },
       include: {
-        contract: true,
-        supplyPoint: true
-      }
+        contract: {
+          include: {
+            brand: true,
+            client: { include: { brand: true } },
+          },
+        },
+        supplyPoint: true,
+        internalInvoices: {
+          select: { id: true },
+        },
+      },
     });
 
     const createdDrafts = [];
@@ -30,85 +41,53 @@ export async function POST(req: Request) {
       if (!f1.contractId || !f1.contract || !f1.supplyPointId) {
         continue;
       }
-      
-      const contract = f1.contract;
 
-      // Deduce invoice type
-      const jsonData = f1.jsonData as any;
-      const datosGen = jsonData?.DatosGeneralesFacturaATR?.DatosGeneralesFactura || jsonData?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura || jsonData?.DatosGeneralesFactura;
-      const tipoF1 = (datosGen && datosGen.TipoFactura) ? (Array.isArray(datosGen.TipoFactura) ? datosGen.TipoFactura[0] : datosGen.TipoFactura) : 'N';
-      let calculatedType = 'Normal';
-      if (tipoF1 === 'R') calculatedType = 'Rectificadora';
-      else if (tipoF1 === 'AR') calculatedType = 'Abono';
+      // Evitar duplicados si ya se generó una factura interna para este F1
+      if (f1.internalInvoices && f1.internalInvoices.length > 0) {
+        continue;
+      }
+
+      const contract = f1.contract;
+      const companyId = contract.brand?.companyId || contract.client?.brand?.companyId || null;
+      const calculatedType = deduceInvoiceType(f1.jsonData);
 
       try {
-        // Ejecuta el cálculo forzando la reparación de la CCH si fuera necesario
+        // Ejecuta el cálculo forzando el auto-ajuste de la CCH si fuera necesario
         const result = await InternalBillingEngine.calculate(f1.id, true);
 
         const draft = await prisma.internalInvoice.create({
           data: {
-            status: 'BORRADOR',
+            status: result.hasCriticalError ? 'REQUIERE_REPARACION' : 'BORRADOR',
             repairData: result.repairData,
             invoiceType: calculatedType,
             clientId: contract.clientId,
+            companyId,
             contractId: contract.id,
             supplyPointId: contract.supplyPointId,
             f1InvoiceId: f1.id,
             issueDate: new Date(),
             subtotal1: result.totalBase,
-            taxPercentage: 21,
+            taxPercentage: result.taxPercentage ?? 21,
             taxAmount: result.taxAmount,
             totalAmount: result.totalAmount,
-            totalMWh: result.totalF1MWh, // Usamos F1 porque al reparar coincide
+            totalMWh: result.totalF1MWh,
             margin: result.feeCost,
             billingStart: f1.fechaInicio || new Date(),
             billingEnd: f1.fechaFin || new Date(),
             origin: 'INTERNAL_ENGINE',
-            invoiceData: {
-              repaired: !!result.repairData,
-              repairedAt: result.repairData ? new Date().toISOString() : undefined,
-              pricingModel: contract.pricingModel || 'INDEXADO',
-              feeApplied: contract.fee,
-              assumedConsumption: result.totalF1MWh,
-              energyCost: result.energyCost,
-              capacityCost: result.capacityCost,
-              fneeCost: result.fneeCost,
-              powerCost: result.powerCost,
-              peajesDistribuidora: result.peajesDistribuidora,
-              cargosDistribuidora: result.cargosDistribuidora,
-              alquilerEquipo: result.alquilerEquipo,
-              bonoSocial: result.bonoSocial,
-              bonoSocialLabel: result.bonoSocialLabel,
-              taxElectric: result.taxElectric,
-              excesosPotencia: result.excesosPotencia,
-              excedentesAutoconsumo: result.excedentesAutoconsumo,
-              maxExcedentes: result.maxExcedentes,
-              bolsilloSolarLlenado: result.bolsilloSolarLlenado,
-              powerDetails: result.powerDetails,
-              energyAtrDetails: result.energyAtrDetails,
-              energyMarketDetails: result.energyMarketDetails,
-              f1Readings: result.f1Readings,
-              periods: result.periods,
-              reactiveEnergyCost: result.reactiveEnergyCost,
-              reactiveDetails: result.reactiveDetails,
-              svaCost: result.svaCost,
-              svaConcept: result.svaConcept,
-              excedentesKwh: result.excedentesKwh,
-              pexc: result.pexc,
-              energyMargin: result.energyMargin,
-              powerMargin: result.powerMargin
-            } as any
-          }
+            invoiceData: buildInternalInvoiceJsonData(result, contract) as any,
+          },
         });
         createdDrafts.push(draft);
       } catch (err: any) {
-        console.error("Error calculando F1", f1.id, err);
+        console.error('Error calculando F1', f1.id, err);
         const errorDraft = await prisma.internalInvoice.create({
           data: {
             status: 'REQUIERE_REPARACION',
-            repairData: { issue: err.message || "Error fatal desconocido" },
+            repairData: { issue: err.message || 'Error fatal desconocido', isCritical: true },
             invoiceType: calculatedType,
             clientId: contract.clientId,
+            companyId,
             contractId: contract.id,
             supplyPointId: contract.supplyPointId,
             f1InvoiceId: f1.id,
@@ -122,8 +101,8 @@ export async function POST(req: Request) {
             billingStart: f1.fechaInicio || new Date(),
             billingEnd: f1.fechaFin || new Date(),
             origin: 'INTERNAL_ENGINE',
-            invoiceData: {}
-          }
+            invoiceData: {},
+          },
         });
         createdDrafts.push(errorDraft);
       }

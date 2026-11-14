@@ -13,6 +13,7 @@ export default function ParametrosPricingPage() {
   const [futures, setFutures] = useState<any[]>([]);
   const [editedFutures, setEditedFutures] = useState<any[]>([]);
   const [savingFutures, setSavingFutures] = useState(false);
+  const [futuresSyncMsg, setFuturesSyncMsg] = useState<string | null>(null);
   
   const currentYear = new Date().getFullYear();
   const [activeYear, setActiveYear] = useState(currentYear);
@@ -115,9 +116,11 @@ export default function ParametrosPricingPage() {
 
   const saveFutures = async () => {
     setSavingFutures(true);
+    setFuturesSyncMsg(null);
     try {
       const promises = editedFutures.map(ef => {
         if (ef.isNew) {
+          if (!ef.price || ef.price <= 0) return Promise.resolve();
           return fetch('/api/settings/future-prices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -137,6 +140,15 @@ export default function ParametrosPricingPage() {
       });
       await Promise.all(promises);
       await fetchData();
+
+      // Sincronizar automáticamente la Curva Base del Portfolio para que Pricing y Proyecciones PPA reflejen al instante los nuevos futuros
+      const syncRes = await fetch('/api/cron/update-portfolio', { method: 'POST' });
+      const syncJson = await syncRes.json().catch(() => null);
+      if (syncRes.ok && syncJson?.success) {
+        setFuturesSyncMsg('Futuros guardados y Curva Base del Portfolio (Pricing + Proyecciones PPA) actualizada al instante.');
+      } else {
+        setFuturesSyncMsg('Futuros guardados. Recuerda sincronizar el Portfolio en Pricing o PPAs si no se actualizó automáticamente.');
+      }
     } catch (e) {
       console.error(e);
       alert('Error al guardar los futuros');
@@ -352,9 +364,15 @@ export default function ParametrosPricingPage() {
                           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: 'var(--lime)', color: 'var(--bg-base)', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: savingFutures ? 'wait' : 'pointer' }}
                         >
                           {savingFutures ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                          Guardar Cambios
+                          {savingFutures ? 'Guardando y sincronizando Curva...' : 'Guardar y Sincronizar Portfolio'}
                         </button>
                       </div>
+
+                      {futuresSyncMsg && (
+                        <div style={{ padding: '12px 16px', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.35)', color: '#4ADE80', fontSize: '0.85rem' }}>
+                          {futuresSyncMsg}
+                        </div>
+                      )}
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                         {editedFutures.map(f => {

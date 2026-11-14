@@ -2,11 +2,51 @@
 
 import { useState } from 'react';
 import { Search, Download, BarChart2, Calendar, FileText } from 'lucide-react';
-import { format } from 'date-fns';
 
-export default function PreciosClient({ availableComponents = ['OMIE'], monthlyAverages = [] }: { availableComponents?: string[], monthlyAverages?: any[] }) {
+const COMPONENT_LABELS: Record<string, string> = {
+  OMIE: 'Mercado Diario SPOT',
+  TOTAL_COMPODEM: 'Total Componentes COMPODEM',
+  RESTRICCIONES: 'Agregado Restricciones Técnicas',
+  OS: 'Agregado Operador del Sistema',
+  K: 'Factor K de Pérdidas',
+  BS3: 'Banda Secundaria',
+  RAD3: 'Reserva Adicional de Potencia',
+  RAD1: 'Ajustes Reserva Adicional',
+  RAD1X: 'Ajustes 1ª Fase Reserva',
+  CT2: 'Ajustes PBF',
+  CT3: 'Ajustes Tiempo Real',
+  BALX: 'Balance de Energía',
+  EXD: 'Saldo de Desvíos',
+  IN7: 'Pagos por Capacidad',
+  CFP: 'Cuota de Financiación',
+  RT3: 'Restricciones PBF',
+  RT6: 'Restricciones en Tiempo Real',
+  MI: 'Mercado Intradiario',
+  SECX: 'Banda Secundaria Tiempo Real',
+};
+
+function formatIsoDateEs(rawDate: string | Date): string {
+  const iso = typeof rawDate === 'string' ? rawDate.slice(0, 10) : rawDate.toISOString().slice(0, 10);
+  const [yyyy, mm, dd] = iso.split('-');
+  if (!yyyy || !mm || !dd) return iso;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+export default function PreciosClient({
+  availableComponents = ['OMIE'],
+  monthlyAverages = [],
+}: {
+  availableComponents?: string[];
+  monthlyAverages?: Array<{
+    month: string;
+    omie: string | null;
+    restricciones: string | null;
+    os: string | null;
+  }>;
+}) {
   const [loading, setLoading] = useState(false);
   const [component, setComponent] = useState(availableComponents[0] || 'OMIE');
+  const [searchedComponent, setSearchedComponent] = useState(availableComponents[0] || 'OMIE');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -14,18 +54,25 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (startDate && endDate && startDate > endDate) {
+      alert('La fecha de inicio no puede ser posterior a la fecha de fin.');
+      return;
+    }
+
     setLoading(true);
     setHasSearched(true);
-    
+
     try {
       const query = new URLSearchParams({ component, startDate, endDate });
       const res = await fetch(`/api/precios-componentes?${query.toString()}`);
-      
+
       if (res.ok) {
         const data = await res.json();
         setResults(data);
+        setSearchedComponent(component);
       } else {
-        alert('Error al buscar datos');
+        const errJson = await res.json().catch(() => ({}));
+        alert(errJson.error || 'Error al buscar datos');
       }
     } catch (err) {
       console.error(err);
@@ -41,76 +88,78 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
     return sum / values.length;
   };
 
+  const maxRowLength = results.length > 0 ? Math.max(...results.map(r => (r.values || []).length)) : 0;
+  const isDimensionless = searchedComponent === 'K';
+
+  const formatMetricValue = (val: number) => {
+    if (isDimensionless) {
+      return val.toFixed(5);
+    }
+    return `${val.toFixed(2)} €/MWh`;
+  };
+
   const handleDownloadCSV = () => {
     if (results.length === 0) return;
 
-    // Detect max length to decide if we use 24 or 96 columns
-    const maxLength = Math.max(...results.map(r => r.values.length));
-    const isQuarterly = maxLength > 24;
-    
-    let csvContent = "data:text/csv;charset=utf-8,";
-    
-    // Header
+    const isQuarterly = maxRowLength > 24;
+    const lines: string[] = [];
+
     if (isQuarterly) {
-      const quarters = Array.from({length: 96}, (_, i) => `Q${i+1}`);
-      csvContent += `Fecha;${quarters.join(';')}\n`;
+      const quarters = Array.from({ length: 96 }, (_, i) => `Q${i + 1}`);
+      lines.push(`Fecha;Version;${quarters.join(';')}`);
     } else {
-      const hours = Array.from({length: 24}, (_, i) => `H${i+1}`);
-      csvContent += `Fecha;${hours.join(';')}\n`;
+      const hours = Array.from({ length: 24 }, (_, i) => `H${i + 1}`);
+      lines.push(`Fecha;Version;${hours.join(';')}`);
     }
 
-    // Data rows
     results.forEach(row => {
-      const dateStr = format(new Date(row.date), 'dd/MM/yyyy');
+      const dateStr = formatIsoDateEs(row.date);
+      const versionStr = row.version || '';
+      const rawVals: number[] = Array.isArray(row.values) ? row.values : [];
       let finalValues: number[] = [];
-      
-      if (isQuarterly && row.values.length <= 24) {
-        // Expand 24 to 96
-        for (let h = 0; h < (row.values.length || 24); h++) {
-          const val = row.values[h] || 0;
+
+      if (isQuarterly && rawVals.length <= 24) {
+        for (let h = 0; h < 24; h++) {
+          const val = rawVals[h] ?? 0;
           finalValues.push(val, val, val, val);
         }
-      } else if (!isQuarterly && row.values.length > 24) {
-        // Shrink 96 to 24
+      } else if (!isQuarterly && rawVals.length > 24) {
         for (let h = 0; h < 24; h++) {
-          const avg = ((row.values[h*4]||0) + (row.values[h*4+1]||0) + (row.values[h*4+2]||0) + (row.values[h*4+3]||0)) / 4;
+          const avg =
+            ((rawVals[h * 4] || 0) +
+              (rawVals[h * 4 + 1] || 0) +
+              (rawVals[h * 4 + 2] || 0) +
+              (rawVals[h * 4 + 3] || 0)) /
+            4;
           finalValues.push(avg);
         }
       } else {
-        // Same length
-        finalValues = row.values;
+        finalValues = rawVals;
       }
 
-      // Format array of floats using Spanish comma decimal
       const formattedValues = finalValues.map((v: number) => v.toString().replace('.', ','));
-      csvContent += `${dateStr};${formattedValues.join(';')}\n`;
+      lines.push(`${dateStr};${versionStr};${formattedValues.join(';')}`);
     });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `precios_${component}_${startDate}_${endDate}.csv`);
+    // Uso de Blob + BOM UTF-8 para soportar rangos extensos sin límites de Data URI y abrir limpio en Excel
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `precios_${searchedComponent}_${startDate}_${endDate}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const COMPONENT_LABELS: Record<string, string> = {
-    BS3: "Banda Secundaria",
-    RAD3: "Reserva Adicional de Potencia",
-    RAD1X: "Ajustes 1ª Fase Reserva",
-    CT2: "Ajustes PBF",
-    CT3: "Ajustes Tiempo Real",
-    BALX: "Balance de Energía",
-    EXD: "Saldo de Desvíos",
-    IN7: "Pagos por Capacidad",
-    CFP: "Cuota de Financiación",
-    RT3: "Restricciones PBF",
-    RT6: "Restricciones en Tiempo Real"
+    URL.revokeObjectURL(url);
   };
 
   const getLabel = (comp: string) => {
     return COMPONENT_LABELS[comp] ? `${comp} (${COMPONENT_LABELS[comp]})` : comp;
+  };
+
+  const renderMonthlyCell = (val: string | null) => {
+    if (val === null || val === undefined || val === '-') return '—';
+    return `${val} €/MWh`;
   };
 
   return (
@@ -128,14 +177,21 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
           <button
             onClick={handleDownloadCSV}
             style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              background: 'var(--bg-elevated)', color: 'var(--text-primary)',
-              border: '1px solid var(--border)', padding: '8px 16px', borderRadius: '8px',
-              fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'var(--bg-elevated)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
             }}
           >
             <Download size={18} />
-            Descargar CSV ({Math.max(...results.map(r => r.values.length)) > 24 ? '96 Cuartos' : '24 Horas'})
+            Descargar CSV ({maxRowLength > 24 ? '96 Cuartos' : '24 Horas'})
           </button>
         )}
       </div>
@@ -148,8 +204,12 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
               value={component}
               onChange={e => setComponent(e.target.value)}
               style={{
-                width: '100%', padding: '10px 14px', borderRadius: '8px',
-                background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)'
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'var(--bg-base)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
               }}
             >
               {availableComponents.map(comp => (
@@ -167,8 +227,12 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               style={{
-                width: '100%', padding: '10px 14px', borderRadius: '8px',
-                background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)'
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'var(--bg-base)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
               }}
             />
           </div>
@@ -180,8 +244,12 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
               style={{
-                width: '100%', padding: '10px 14px', borderRadius: '8px',
-                background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)'
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'var(--bg-base)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-primary)',
               }}
             />
           </div>
@@ -190,10 +258,18 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
               type="submit"
               disabled={loading}
               style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '10px 24px', borderRadius: '8px', background: 'var(--lime)',
-                border: 'none', color: 'var(--bg-base)', fontWeight: 600, cursor: 'pointer',
-                opacity: loading ? 0.7 : 1, height: '42px'
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 24px',
+                borderRadius: '8px',
+                background: 'var(--lime)',
+                border: 'none',
+                color: 'var(--bg-base)',
+                fontWeight: 600,
+                cursor: 'pointer',
+                opacity: loading ? 0.7 : 1,
+                height: '42px',
               }}
             >
               <Search size={18} />
@@ -213,41 +289,49 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
         <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.1)' }}>
             <BarChart2 size={20} color="var(--lime)" />
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Resumen Diario</h3>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Resumen Diario — {getLabel(searchedComponent)}
+            </h3>
             <span style={{ marginLeft: 'auto', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
               {results.length} días encontrados
             </span>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Fecha</th>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Valor Mínimo</th>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Media Diaria</th>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Valor Máximo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map(row => {
-                const values = row.values as number[];
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                const avg = calculateDailyAverage(values);
-                
-                return (
-                  <tr key={row.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Calendar size={16} color="var(--text-muted)" />
-                      {format(new Date(row.date), 'dd/MM/yyyy')}
-                    </td>
-                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{min.toFixed(2)} €/MWh</td>
-                    <td style={{ padding: '16px 20px', color: 'var(--lime)', fontWeight: 600 }}>{avg.toFixed(2)} €/MWh</td>
-                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{max.toFixed(2)} €/MWh</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Fecha</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Versión</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Valor Mínimo</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Media Diaria</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Valor Máximo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map(row => {
+                  const values = Array.isArray(row.values) ? (row.values as number[]) : [];
+                  const min = values.length > 0 ? Math.min(...values) : 0;
+                  const max = values.length > 0 ? Math.max(...values) : 0;
+                  const avg = calculateDailyAverage(values);
+
+                  return (
+                    <tr key={row.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Calendar size={16} color="var(--text-muted)" />
+                        {formatIsoDateEs(row.date)}
+                      </td>
+                      <td style={{ padding: '16px 20px', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>
+                        {row.version || '—'}
+                      </td>
+                      <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{formatMetricValue(min)}</td>
+                      <td style={{ padding: '16px 20px', color: 'var(--lime)', fontWeight: 600 }}>{formatMetricValue(avg)}</td>
+                      <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{formatMetricValue(max)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
 
@@ -275,29 +359,31 @@ export default function PreciosClient({ availableComponents = ['OMIE'], monthlyA
             <BarChart2 size={20} color="var(--lime)" />
             <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Promedios Mensuales (Últimos 12 meses)</h3>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Mes</th>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OMIE</th>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio RESTRICCIONES</th>
-                <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {monthlyAverages.map((row: any) => (
-                <tr key={row.month} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Calendar size={16} color="var(--text-muted)" />
-                    {row.month}
-                  </td>
-                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.omie} €/MWh</td>
-                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.restricciones} €/MWh</td>
-                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{row.os} €/MWh</td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Mes</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OMIE</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio RESTRICCIONES</th>
+                  <th style={{ padding: '12px 20px', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Promedio OS</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {monthlyAverages.map(row => (
+                  <tr key={row.month} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-primary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Calendar size={16} color="var(--text-muted)" />
+                      {row.month}
+                    </td>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{renderMonthlyCell(row.omie)}</td>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{renderMonthlyCell(row.restricciones)}</td>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{renderMonthlyCell(row.os)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

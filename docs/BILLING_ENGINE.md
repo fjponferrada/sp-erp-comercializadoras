@@ -1,101 +1,90 @@
-# Motor de Facturación y Áreas Asociadas
+# Motor de Facturación Interna y Áreas Asociadas
 
-Esta guía documenta en detalle el funcionamiento, la arquitectura y las reglas de negocio del Motor de Facturación Interna (`InternalBillingEngine.ts`) del ERP de SP Comercializadoras, así como sus áreas y componentes dependientes.
+Esta guía documenta en detalle la arquitectura, el flujo de cálculo, la fiscalidad territorial y las reglas de negocio del **Motor de Facturación Interna** ([`src/lib/services/InternalBillingEngine.ts`](../src/lib/services/InternalBillingEngine.ts)) y su capa de mapeo y persistencia ([`src/lib/services/internalInvoiceMapper.ts`](../src/lib/services/internalInvoiceMapper.ts)), así como sus endpoints API, plantillas PDF/XML y pantallas operativas (`/facturacion/interna` y `/facturas-internas`).
 
-## 1. Arquitectura General del Motor
+---
 
-El motor de facturación es el núcleo encargado de calcular el importe exacto a cobrar a cada cliente en cada factura, desglosando los costes de energía, potencia, peajes, cargos, impuestos y conceptos regulados adicionales. 
+## 1. Arquitectura General y Módulos Implicados
 
-Su punto de entrada principal es la clase estática `InternalBillingEngine` ubicada en `src/lib/services/InternalBillingEngine.ts`. 
+| Archivo / Ruta | Responsabilidad Principal |
+| :--- | :--- |
+| [`src/lib/services/InternalBillingEngine.ts`](../src/lib/services/InternalBillingEngine.ts) | Núcleo matemático de facturación (`InternalBillingEngine.calculate`): cruce F1/CCH, perfilado REE, peajes/cargos diarios, mercado/fijo, reactiva/capacitiva, autoconsumo y Bolsillo Solar, SVA, IEE, IVA/IGIC/IPSI e inversión de abonos (`invertBillingResult`). |
+| [`src/lib/services/internalInvoiceMapper.ts`](../src/lib/services/internalInvoiceMapper.ts) | Capa unificada de tipificación CNMC (`deduceInvoiceType`), serialización de `invoiceData` (`buildInternalInvoiceJsonData`), formateo horario `Europe/Madrid` inclusivo y carga de metadatos corporativos/técnicos (`buildInvoiceTemplateData`). |
+| [`src/app/api/facturacion/interna/calculate/route.ts`](../src/app/api/facturacion/interna/calculate/route.ts) | Generación inicial de borradores (`InternalInvoice`) a partir de `F1Invoice` pendientes, con control anti-duplicados y asignación de `companyId`. |
+| [`src/app/api/facturacion/interna/recalculate/route.ts`](../src/app/api/facturacion/interna/recalculate/route.ts) y [`repair/route.ts`](../src/app/api/facturacion/interna/repair/route.ts) | Recálculo individual o masivo y reparación de borradores con paridad total de campos y estado (`BORRADOR` vs `REQUIERE_REPARACION`). |
+| [`src/app/api/facturacion/interna/export-excel/[draftId]/route.ts`](../src/app/api/facturacion/interna/export-excel/%5BdraftId%5D/route.ts) | Exportación de auditoría cuarto-horaria (`.xlsx`) ejecutando el motor al vuelo con `forceRepair = true` y `returnHourlyDetails = true` en zona `Europe/Madrid`. |
+| [`src/app/api/facturacion/interna/proforma/[draftId]/route.ts`](../src/app/api/facturacion/interna/proforma/%5BdraftId%5D/route.ts) | Renderizado en streaming del PDF Proforma/Emitido mediante `buildInvoiceTemplateData` + `InvoicePdfTemplate`. |
+| [`src/app/api/facturacion/interna/confirm/route.ts`](../src/app/api/facturacion/interna/confirm/route.ts) | Emisión definitiva en transacción con numeración correlativa por sociedad (`INT-YY-XXXX` / `AB-YY-XXXX`), subida de PDF y XML a Cloudflare R2 y promoción automática (Fase 5) a `Invoice`. |
+| [`src/components/pdf/InvoicePdfTemplate.tsx`](../src/components/pdf/InvoicePdfTemplate.tsx) y [`src/lib/templates/invoiceXmlTemplate.ts`](../src/lib/templates/invoiceXmlTemplate.ts) | Plantilla PDF de 2 páginas conforme a `.agents/AGENTS.md` (8 secciones reglamentarias) y generador XML estructurado con escapado de entidades y desglose completo. |
+| [`src/app/(app)/facturacion/interna/*`](../src/app/(app)/facturacion/interna/page.tsx) y [`src/app/(app)/facturas-internas/*`](../src/app/(app)/facturas-internas/page.tsx) | Interfaz de cálculo, revisión por tipología CNMC (`N`, `R`, `A`, `C`, `G`), confirmación e histórico paginado con RBAC multi-marca (`getInvoiceVisibilityFilter`). |
 
-### Flujo de Ejecución (Pipeline de Cálculo)
+---
 
-Cuando se solicita calcular una factura (ya sea por primera vez al importar la F1 o forzando un recálculo), el motor ejecuta la función `calculate(invoiceId: string, forceCCHRepair: boolean)`. El flujo es el siguiente:
+## 2. Pipeline de Ejecución (`InternalBillingEngine.calculate`)
 
-1. **Obtención de Datos Base (`fetchInvoiceData`)**: 
-   - Extrae la factura F1 enviada por la distribuidora.
-   - Carga el contrato del cliente asociado al CUPS.
-   - Obtiene el producto (tarifa) y el modelo de precios (Indexado, Fijo, Fijo+Indexado, etc.).
+El método principal `InternalBillingEngine.calculate(f1Id: string, forceRepair = false, returnHourlyDetails = false)` ejecuta secuencialmente las siguientes etapas con **precisión comercial céntimo a céntimo (`round2`)**:
 
-2. **Obtención de Curva de Carga (CCH)**:
-   - Se busca el consumo horario exacto del cliente (`HourlyReading`) que coincide con el periodo de la factura F1.
-   - Si no hay curva, o la curva está incompleta (le faltan horas respecto al total de días facturados), y `forceCCHRepair` está activo, el motor inicia un proceso de **reparación** o **profiling**.
-   - **Profiling**: Si falta la curva real, se genera una curva estimada utilizando los perfiles iniciales de REE (Red Eléctrica de España), repartiendo el consumo total (Total MWh) reportado por la distribuidora en las horas del periodo.
+1. **Carga Contextual y Huso Horario (`Europe/Madrid`)**:
+   - Carga `F1Invoice`, `Contract` (con `Product`, `AdditionalService` y `Brand -> Company`) y `SupplyPoint` (con `Client`).
+   - Convierte `f1.fechaInicio` y `f1.fechaFin` al calendario local peninsular (`Europe/Madrid`) evitando cualquier desfase `-1 día` derivado de marcas UTC `22:00Z` / `23:00Z` (Regla 170), y calcula `billingDays` entero a prueba de cambios de hora DST (23h / 25h) y años bisiestos (`365` vs `366` días).
+   - Detecta si se trata de una factura de **Abono** (`A`, `AR`, `S`): si existe la factura original `N`/`R` en base de datos, clona su resultado (o la recalcula con detalle horario si se solicita Excel) y le aplica una única vez [`invertBillingResult`](../src/lib/services/InternalBillingEngine.ts).
+   - Detecta documentos **`<OtrasFacturas>`** (derechos de acometida, enganche, verificación, depósitos, inspección) ejecutando un flujo *pass-through* directo sin exigir curva horaria.
 
-3. **Cálculo de Potencia (`calculatePowerCost`)**:
-   - Calcula el coste de la potencia contratada multiplicando la potencia en kW de cada periodo (P1 a P6) por el número de días facturados y el precio de la potencia.
-   - Se desglosa en Peajes (regulados), Cargos (regulados) y Margen/Precio comercializadora.
-   - Analiza los excesos de potencia registrados en la F1 de la distribuidora y repercute su coste al cliente.
+2. **Extracción Exhaustiva del XML F1 (`Facturacion.xsd` CNMC)**:
+   - **Energía Activa y Lecturas**: Suma todos los tramos de `TerminoEnergiaActiva` (incluyendo múltiples sub-periodos en facturas Regularizadoras Tipo `G`, Regla 201), lecturas de contador y `ModeloAparato.NumeroSerie`.
+   - **Potencia Facturada**: Extrae `Potencia.TerminoPotencia` convirtiendo vatios enteros CNMC a `kW` (`parseCnmcPowerKw`), además de `ExcesosPotencia`, `PenalizacionNoICP` y `RecargoInfAnio`.
+   - **Reactiva, Capacitiva, Intereses y Conceptos Repercutibles**: Lee `EnergiaReactiva` (con fallback a Circular 3/2020 en tarifas `!= 2.0TD` sobre P1–P5 eximiendo P6), `EnergiaCapacitiva`, `ImporteIntereses` y el catálogo oficial de `<ConceptoRepercutible>` (Tabla 103 y Tabla 114 CNMC, separando conceptos gravados de suplidos/fianzas exentas `TipoImpositivo = '3'` e ignorando códigos informativos `51..82` y cortes E2 no repercutibles `88..91`).
 
-4. **Cálculo de Energía (`calculateEnergyCost`)**:
-   - Itera hora por hora el periodo de facturación cruzando el consumo de la CCH con el precio de la energía.
-   - Según el modelo de precios (`pricingModel`) del contrato, el precio horario varía (Mercado OMIE, PPA, Fijo, etc.).
-   - Añade los peajes y cargos de energía correspondientes según el periodo (P1-P6).
-   - Calcula las mermas (Pérdidas de Red) basándose en los coeficientes publicados en el BOE.
+3. **Cruce de Curva Cuarto-Horaria (`LoadCurve`) y Auto-Ajuste con Perfiles REE**:
+   - Clasifica cada cuarto de hora en su periodo tarifario (`P1`–`P6`) mediante `getPeriodoREE`, que contempla los **9 festivos nacionales fijos no sustituibles** y los calendarios horarios específicos de **Península/Baleares**, **Canarias** y **Ceuta/Melilla** (Circular 3/2020).
+   - Indexa `ReeProfile` en un `Map` `O(1)` (`p20td`, `p30td`, `pSolar`).
+   - **Consumo**: Si falta curva o difiere del F1 y `forceRepair = true`, escala por periodo (`P1`–`P6`) cuando existen lecturas parciales o sintetiza/perfila con `p20td`/`p30td` los periodos ausentes (ej. ciclos con días finales pendientes de curva), dejando trazabilidad exacta en `repairData`.
+   - **Excedentes**: Si no hay curva `SURPLUS`, reparte con `pSolar` respetando ceros nocturnos (Regla 173); si existe con descuadre, aplica escalado proporcional global (Regla 174).
 
-5. **Cálculo de Conceptos Regulados y Extras (`calculateRegulatedCosts`)**:
-   - Repercute el Bono Social (financiación obligatoria).
-   - Repercute el Alquiler del Equipo de Medida.
-   - Aplica el Impuesto Eléctrico (sobre la base de energía + potencia + excesos).
+4. **Término de Potencia y Prorrateo Diario de Costes Regulados**:
+   - Resuelve `RegulatedCost` fecha a fecha para contemplar cambios regulatorios a mitad de ciclo.
+   - Normaliza el precio unitario de potencia del contrato a **`€/kW/día`** (`yearlyPrice / daysInYear`), separando en cada periodo `Peajes potencia`, `Cargos potencia` y `powerMargin`.
 
-6. **Cálculo de Autoconsumo y Bolsillo Solar**:
-   - Cuantifica la energía vertida a la red (excedentes).
-   - Limita los excedentes según la normativa (nunca pueden superar el valor de la energía consumida, es decir, el término de energía).
-   - El resto del valor excedentario (si el contrato tiene "Bolsillo Solar" o batería virtual) se guarda para futuros descuentos.
+5. **Término de Energía (Indexado vs. Precio Fijo) y Elevación a Barras de Central**:
+   - **Indexado**: Eleva el consumo cuarto-horario a Barras de Central aplicando `lossFactor = 1 + (perdBase * KHorario)` sobre mercado (`OMIE + componentes COMPODEM + ROM + ROS + PC + DSV`) y sobre el `FEE` comercial, sumando `FNEE` y separando el `ATR Energía` (`Peajes energía` + `Cargos energía`).
+   - **Precio Fijo**: Respeta los snapshots contractuales `p1e..p6e` (con fallback a `airtableData`, Reglas 12 y 152), descuenta el ATR de referencia a la firma (`refAtr`) y traslada las variaciones regulatorias (`diffFnee`, `diffPc`, `diffRom`, `diffRos`, Reglas 176 y 179). Calcula `energyMargin` tras consolidar el ingreso fijo y fija `feeCost = round2(energyMargin + powerMargin)`.
 
-7. **Consolidación (Totalización)**:
-   - Suma todos los conceptos para calcular la Base Imponible, aplica el IVA/IGIC correspondiente y genera el Resultado de Facturación (`BillingCalculationResult`).
-   - El resultado se guarda en el borrador de la factura (`DraftInvoice`).
+6. **Autoconsumo RD 244/2019 y Ciclo Completo de Bolsillo Solar**:
+   - Valora los excedentes vertidos (`pexc` fijo o precio horario OMIE menos `feeExcedentes`) y aplica como descuento pre-impuestos hasta el tope legal del coste de energía activa consumida (`maxExcedentes`).
+   - Si el contrato tiene **Bolsillo Solar** activo (`contract.bolsilloSolar === true`, Regla 207):
+     - Repercute `cgBolsilloSolarCost` prorrateado por días (`(cgBolsilloSolar * 12 / 365) * billingDays`).
+     - Acumula el excedente sobrante en `bolsilloSolarLlenado`.
+     - Recupera el `bolsilloSolarSaldoInicial` de la última factura emitida del suministro (`InternalInvoice` o histórico `Invoice`).
+     - Aplica `bolsilloSolarUso` como descuento comercial **post-IVA** (Consulta Vinculante AEAT V0588-21) hasta `totalSinDescuentoBolsillo`, actualizando `bolsilloSolarSaldoFinal`.
 
-## 2. Modelos de Precios y Pricing Engine
+7. **Bono Social Diario, SVA Híbrido, Impuesto Eléctrico e Impuestos Territoriales**:
+   - **Bono Social**: Prorratea día a día contra `RegulatedDailyCost` (`concept = 'Bono_Social'`), combinando tramos si el ciclo cruza dos Órdenes Ministeriales (ej. `TED/1487/2024` y `TED/634/2026`) y generando `bonoSocialLabel`.
+   - **SVA Híbrido (Regla 175)**: Unifica sin duplicar `contract.additionalServicesSnapshot` y la relación `contract.AdditionalService` (con fallback a `svaPrice`/`svaDuration`), prorrateando cada servicio por los días exactos de solapamiento con su vigencia.
+   - **Impuesto Especial sobre la Electricidad (LIIEE Arts. 91.1, 94, 98 y 99)**:
+     - Base `baseIEE = TPA + TEA + TER + Excesos + Penalizaciones - Excedentes compensados` (aplicable también en Canarias, Ceuta y Melilla).
+     - `SBFI` / `SBFO`: `5,11269632%` con suelo mínimo legal (`0,50 €/MWh` industrial / `1,00 €/MWh` otros usos).
+     - `98.1A`–`98.1D`: Reducción `85%` **sin** cuota mínima legal.
+     - `98.1E`–`98.1F`: Reducción `85%` **con** suelo de cuota mínima.
+     - `98.2`–`98.3`: Reducción `100%` tributando exclusivamente por cuota mínima (`0,50 €/MWh`).
+     - `94.1`–`94.10`: Exención plena (`0,00 €`).
+   - **Impuestos Indirectos Territoriales (`taxBreakdown`)**:
+     - **Península y Baleares (`IVA`)**: `21%` sobre `totalBase`.
+     - **Canarias (`IGIC`)**: `0%` en energía para personas físicas con `2.0TD` y potencia `<= 10 kW` (`3%` en resto de suministros) y `7%` sobre servicios/alquileres.
+     - **Ceuta y Melilla (`IPSI`)**: `1%` sobre electricidad y `4%` sobre servicios/alquileres.
 
-El motor se apoya en el servicio `PricingEngine` para resolver el precio de la energía en una hora concreta. Existen varios modelos:
+---
 
-*   **INDEXADO (Pass-Through)**: El cliente paga la energía a precio de mercado mayorista (OMIE) más unos desvíos, costes de operación del sistema (ESIOS) y un _fee_ (margen de comercialización).
-*   **FIJO**: El cliente tiene un precio cerrado (€/kWh) por cada periodo (P1 a P6) independientemente del mercado.
-*   **PPA (Purchase Power Agreement)**: Modelos mixtos donde un porcentaje de la curva del cliente se cubre con energía solar a precio fijo, y el excedente (la energía que necesita de noche o en picos) se cobra a precio indexado.
-*   **HERMANOS / ROA**: Subvariantes de indexado puro o mixto según las políticas comerciales.
+## 3. Desglose Visual PDF y Estructuración XML
 
-## 3. Pérdidas de Red (Mermas)
+- **Paridad 100% Proforma ↔ Confirmación**: Tanto `/api/facturacion/interna/proforma/[draftId]` como `/api/facturacion/interna/confirm` construyen sus datos mediante `buildInvoiceTemplateData(invoice)`, inyectando razón social, CIF, dirección y canales de atención reales de `Company`/`Brand`, distribuidora y teléfono gratuito de averías desde `Distributor`, `CNAE`, `NumeroSerie` del contador, referencia de contrato ATR del F1 e IBAN enmascarado.
+- **Fechas de Periodo Inclusivas**: Respetando que en base de datos `fechaFin` se almacena desplazada `+1 día` a las `00:00 Europe/Madrid` (Regla 170), las vistas UI, el PDF, el XML y el Excel muestran el último día natural incluido en el ciclo (`fechaFin - 12h` en zona `Europe/Madrid`).
+- **Cumplimiento de `.agents/AGENTS.md` en `InvoicePdfTemplate.tsx`**: Cabecera **`Concepto | Cantidad | Días | Precio Ud | Total €`** y separación rigurosa en 8 secciones (Potencia en `€/kW/día` con subtexto de peajes/cargos, ATR Energía, Energía Activa, Excesos de Potencia, Excedentes RD 244/2019, Impuestos y Regulados/SVA/Repercutibles, Totales con `IVA`/`IGIC`/`IPSI` y tabla condicional **Tu Bolsillo Solar en esta Factura**).
 
-Al comprar energía para el cliente, la comercializadora debe adquirir más energía de la que el cliente consume debido a las pérdidas de la red eléctrica. 
-El cálculo de pérdidas en el motor (`InternalBillingEngine.ts`):
-1. Obtiene los coeficientes de pérdidas por periodo desde la base de datos (extraídos del BOE y de REE).
-2. Multiplica el consumo horario por el coeficiente horario.
-3. Se aplican reglas de corrección normativas (por ejemplo, correcciones de factor 1.0 a 2.0 y división porcentual) dependiendo de las directrices de la OMIE/CNMC vigentes para ajustar la merma real repercutible.
+---
 
-## 4. Financiación del Bono Social
+## 4. Numeración Secuencial Multi-Sociedad y Promoción Fase 5
 
-Todas las comercializadoras están obligadas a financiar el Bono Social. Este es un cargo **diario** por punto de suministro (CUPS).
-*   El coste diario cambia cada año a raíz de la publicación de las Órdenes Ministeriales (por ejemplo, TED/1487/2024 o TED/634/2026).
-*   El sistema dispone de la tabla `RegulatedDailyCost` en base de datos.
-*   El motor cruza las fechas del periodo de facturación con la tabla de `RegulatedDailyCost`. 
-*   **Anotación dinámica**: Para cumplir con la normativa legal, el motor inserta en el borrador (`invoiceData.bonoSocialLabel`) la descripción exacta de la Orden que estipula el precio cobrado en esos días, y esto se transfiere dinámicamente al PDF de la factura final.
-
-## 5. Servicios de Valor Añadido (SVA)
-
-Los SVA son cuotas fijas o extras que se cobran al cliente por servicios de la comercializadora (Mantenimientos, Seguros, Costes de Gestión de Batería Virtual). 
-
-**Campos clave en el Contrato (`Contract`)**:
-*   `svaPrice` (Float): Precio total del servicio por su duración.
-*   `svaDuration` (Int): Duración del servicio en meses.
-*   `svaStartDate` (DateTime): Fecha de comienzo de la cuota.
-*   `svaConcept` (String): El concepto o etiqueta a imprimir en el PDF de la factura.
-
-**Lógica de Prorrateo**:
-El motor de facturación comprueba las fechas de la factura contra el rango activo del SVA (`svaStartDate` a `svaStartDate + svaDuration meses`). Extrae el precio mensual, lo convierte en un precio diario prorrateado anual (`(PrecioMensual * 12) / 365`), y lo multiplica por los **días que solapen** con el periodo facturado.
-
-## 6. Generación del PDF (Desglose de Comercialización)
-
-El PDF generado (a través de los componentes de React como `InvoicePdfTemplate.tsx`) obedece estrictas reglas de negocio para no inducir a confusión al consumidor final. 
-
-**Separación Visual Obligatoria**:
-*   La factura **separa estrictamente** los costes regulados (Peajes y Cargos definidos por el Estado) de los costes de comercialización y energía.
-*   Para cada periodo (P1 a P6), se muestra por separado el `Peaje/Cargo` frente a la `Energía Activa` o `Potencia Comercial`.
-*   Los cargos extras (Impuesto Eléctrico, Bono Social, SVA, Alquiler de Medida) cuentan con su desglose unitario, mostrando Cantidad (Días o kWh) y Precio por Unidad.
-
-## 7. Recálculos y Reparación (Self-Healing)
-
-Cuando existen discrepancias entre lo facturado por la distribuidora (F1) y lo que nuestro motor calcula que deberíamos haber facturado, la factura entra en modo alerta o requiere validación manual.
-A través de la API `/api/facturacion/interna/recalculate`, el ERP permite al equipo de BackOffice forzar un recálculo desde cero. 
-- Si durante el recálculo el motor detecta incoherencias graves en la curva de carga, activa rutinas de reparación automática insertando consumos proporcionales (`profiling`) de REE para salvar el hueco, dejando constancia en un registro de auditoría (`repairData` en `invoiceData`) que la factura ha sido reparada o estimada.
+Al confirmar borradores en `/api/facturacion/interna/confirm`:
+1. Dentro de una transacción atómica en base de datos, el motor resuelve el `companyId` de cada borrador y calcula el máximo numérico real existente para esa sociedad bajo los prefijos `INT-YY-` (facturas positivas) y `AB-YY-` (abonos / importes negativos), asignando numeración correlativa sin colisiones entre distintas comercializadoras del SaaS ni errores de ordenación al superar `9999`.
+2. Genera y sube el XML y el PDF a Cloudflare R2 bajo `facturas/internas/<CIF_Sociedad>/20YY/<NumeroFactura>.{pdf,xml}`.
+3. **Promoción Fase 5**: Sincroniza automáticamente el recibo confirmado en la tabla maestra `Invoice` (`origin: 'INTERNAL_ENGINE'`, `totalMWh` convertido a `kWh` conforme a la Regla 81 y metadatos fiscales completos en `invoiceData`), quedando inmediatamente disponible en `/facturas`, en el **Modelo 560** (`/impuestos/electrico`) y en la **Tasa Municipal del 1,5%** (`/impuestos/municipal`).

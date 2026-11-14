@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { UploadCloud, File as FileIcon, CheckCircle, XCircle } from 'lucide-react';
 
 export default function ImportarClient() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
@@ -19,10 +21,10 @@ export default function ImportarClient() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/zip': ['.zip'],
-      'application/x-zip-compressed': ['.zip']
+      'application/zip': ['.zip', '.ZIP'],
+      'application/x-zip-compressed': ['.zip', '.ZIP'],
     },
-    maxFiles: 1
+    maxFiles: 1,
   });
 
   const handleUpload = async () => {
@@ -37,14 +39,15 @@ export default function ImportarClient() {
     try {
       const res = await fetch('/api/compodem/import', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
       const data = await res.json();
 
       if (res.ok) {
         setResult({ success: true, message: data.message, details: data });
-        setFile(null); // Clear file after success
+        setFile(null);
+        router.refresh();
       } else {
         setResult({ success: false, message: data.error || 'Error al procesar el archivo' });
       }
@@ -68,10 +71,10 @@ export default function ImportarClient() {
           background: isDragActive ? 'var(--lime-glow)' : 'var(--bg-elevated)',
           transition: 'all 0.2s ease',
         }}
-        onMouseOver={(e) => {
+        onMouseOver={e => {
           if (!isDragActive) e.currentTarget.style.borderColor = 'var(--text-secondary)';
         }}
-        onMouseOut={(e) => {
+        onMouseOut={e => {
           if (!isDragActive) e.currentTarget.style.borderColor = 'var(--border-strong)';
         }}
       >
@@ -96,8 +99,8 @@ export default function ImportarClient() {
               <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
             </div>
           </div>
-          <button 
-            onClick={handleUpload} 
+          <button
+            onClick={handleUpload}
             disabled={loading}
             className="btn-primary"
             style={{ opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
@@ -108,15 +111,17 @@ export default function ImportarClient() {
       )}
 
       {result && (
-        <div style={{
-          marginTop: '24px',
-          padding: '16px',
-          borderRadius: '8px',
-          display: 'flex',
-          gap: '12px',
-          background: result.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-          border: `1px solid ${result.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
-        }}>
+        <div
+          style={{
+            marginTop: '24px',
+            padding: '16px',
+            borderRadius: '8px',
+            display: 'flex',
+            gap: '12px',
+            background: result.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            border: `1px solid ${result.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+          }}
+        >
           {result.success ? (
             <CheckCircle style={{ height: '24px', width: '24px', color: 'var(--success)', flexShrink: 0 }} />
           ) : (
@@ -129,11 +134,11 @@ export default function ImportarClient() {
             <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
               {result.message}
             </p>
-            
+
             {result.success && result.details && (
               <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                 <li>Ficheros CSV procesados: <strong style={{ color: 'var(--text-primary)' }}>{result.details.filesProcessed}</strong></li>
-                <li>Días (filas) insertados/actualizados: <strong style={{ color: 'var(--text-primary)' }}>{result.details.rowsInserted}</strong></li>
+                <li>Registros insertados/actualizados: <strong style={{ color: 'var(--text-primary)' }}>{result.details.rowsInserted}</strong></li>
               </ul>
             )}
           </div>

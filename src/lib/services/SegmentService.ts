@@ -38,7 +38,10 @@ export function calculateSegment(
   cnaeRaw: string | null
 ): string {
   const t = (tariff || '').toUpperCase().trim();
-  const consumoMwh = cleanNumber(annualConsumptionKwh); // DB already stores in MWh
+  let consumoMwh = cleanNumber(annualConsumptionKwh); // DB stores MWh; defend against legacy kWh on 2.0TD (Regla 188)
+  if (t.startsWith('2') && consumoMwh > 500) {
+    consumoMwh = consumoMwh / 1000;
+  }
   const p1 = cleanNumber(p1c);
   const cnae = cleanCnae(cnaeRaw);
 

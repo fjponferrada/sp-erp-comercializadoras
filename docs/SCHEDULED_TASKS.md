@@ -7,21 +7,37 @@ Este documento detalla todas las tareas automatizadas configuradas a nivel de si
 El sistema de Scraping para recuperar archivos F1 de las distribuidoras se divide en varias piezas para asegurar que siempre haya un motor gráfico activo:
 
 ### 1. `AED_Worker_Persistent`
-- **Descripción**: Mantiene encendido el Worker local de Node.js que controla el `undetected_chromedriver`.
-- **Desencadenador (Trigger)**: Se ejecuta automáticamente *Al iniciar sesión* el usuario Administrator.
-- **Acción (Action)**: Ejecuta directamente `C:\Scrapping\run_worker.bat`.
-- **Importancia**: Crítico. Sin esto, el sistema no puede saltarse los antibots de las eléctricas.
+- **Descripción**: Mantiene encendido de forma permanente e invisible el Worker local de Node.js (`C:\Scrapping\scraping_worker.js`) que ejecuta los scripts de scraping en modo `--headless=new`.
+- **Desencadenador (Trigger)**: Se ejecuta automáticamente *Al iniciar sesión* el usuario Administrator. Configuración sin límite de tiempo de ejecución (`ExecutionTimeLimit = PT0S`, evitando el corte por defecto de 72 horas de Windows) y permitido en cualquier estado de energía.
+- **Acción (Action)**: Ejecuta `wscript.exe "C:\Scrapping\worker_hidden.vbs"`, que lanza `C:\Scrapping\run_worker.bat` con ventana 100% oculta (`0`) sin abrir consolas CMD en el escritorio.
+- **Mecanismos Internos**:
+  - Reserva el puerto local `127.0.0.1:59999` como mutex para evitar instancias duplicadas.
+  - Consulta cada 60 segundos `GET http://127.0.0.1:3000/api/cron/scraping-worker`.
+  - Si detecta que el puerto `3000` no responde en 2 intentos consecutivos, limpia procesos zombis de Next.js (`next dev` / `start-server.js`), elimina `.next\dev\lock` y levanta `npm.cmd run dev` oculto.
+  - Si pasan más de 6,2 horas sin recibir un trabajo, auto-dispara `POST /api/cron/trigger-scraping`.
 
 ### 2. `SPEnergia_Cron_RestartWorker`
-- **Descripción**: Tarea de mantenimiento preventivo. Se encarga de matar cualquier proceso Node colgado y reiniciar el Worker para que esté fresco.
-- **Desencadenador (Trigger)**: Diariamente a las `05:59`, `11:59`, `17:59` y `23:59`.
-- **Acción (Action)**: Ejecuta PowerShell oculto que hace `Stop-Process` y relanza la tarea `AED_Worker_Persistent`.
-- **Importancia**: Garantiza que el Worker no acumule memoria ni se quede bloqueado a largo plazo.
+- **Descripción**: Watchdog no destructivo del Worker. Verifica que el Worker siga vivo antes de cada ciclo de scraping sin interrumpir ejecuciones activas.
+- **Desencadenador (Trigger)**: Cada 6 horas (1 minuto antes del trigger de scraping: `04:59, 10:59, 16:59, 22:59` en horario de invierno UTC+1 / `05:59, 11:59, 17:59, 23:59` en horario de verano UTC+2).
+- **Acción (Action)**: Ejecuta PowerShell oculto que comprueba si el puerto `59999` está en estado `Listen` (`Get-NetTCPConnection -LocalPort 59999 -State Listen`). **Únicamente si el puerto no está escuchando**, lanza `wscript.exe C:\Scrapping\worker_hidden.vbs` e invoca `Start-ScheduledTask -TaskName "AED_Worker_Persistent"`.
+- **Importancia**: Garantiza alta disponibilidad del Worker sin matar procesos sanos ni colisionar con la política `IgnoreNew` del programador de tareas.
 
 ### 3. `SPEnergia_Cron_TriggerScraping`
-- **Descripción**: Llama a la API del ERP (`/api/cron/trigger-scraping`) para meter el trabajo de Scraping en la cola de la base de datos.
-- **Desencadenador (Trigger)**: Diariamente a las `00:00`, `06:00`, `12:00` y `18:00`.
-- **Acción (Action)**: Petición HTTP POST.
+- **Descripción**: Llama a la API del ERP (`/api/cron/trigger-scraping`) mediante el lanzador `scripts/trigger-cron.ps1` para encolar un nuevo trabajo `PENDING` en la tabla `ScrapingJob` (si no hay ya uno activo).
+- **Desencadenador (Trigger)**: Cada 6 horas (`23:00, 05:00, 11:00, 17:00` en horario de invierno UTC+1 / `00:00, 06:00, 12:00, 18:00` en horario de verano UTC+2).
+- **Acción (Action)**: Ejecuta `powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Users\Administrator\sp-erp-comercializadoras\scripts\trigger-cron.ps1" -CronName "trigger-scraping"`.
+
+---
+
+## Lanzador Común y Auto-Recuperación (`scripts/trigger-cron.ps1`)
+
+Todas las tareas `SPEnergia_Cron_*` (excepto `RestartWorker`) delegan su ejecución en `scripts/trigger-cron.ps1`, que incorpora protección frente a caídas del servidor web local:
+1. Comprueba si `127.0.0.1:3000` está escuchando.
+2. Si el puerto `3000` está caído:
+   - Utiliza un archivo de bloqueo temporal (`C:\Users\Administrator\sp-erp-comercializadoras\logs\starting_next.lock`) para evitar que dos tareas programadas simultáneas arranquen Next.js a la vez.
+   - Finaliza cualquier proceso `node.exe` colgado de `next dev` o `start-server.js` y elimina el bloqueo `.next\dev\lock`.
+   - Levanta `npm.cmd run dev` en segundo plano oculto y espera hasta **45 segundos** verificando cada segundo hasta que el puerto `3000` esté listo.
+3. Realiza la petición `GET` o `POST` a `http://127.0.0.1:3000/api/cron/<CronName>` autenticada con `Authorization: Bearer <CRON_SECRET>` (sin `fallback_secret` inseguro), iterando automáticamente en bucle mientras la respuesta devuelva `hasMore: true`, y registra el resultado en `logs/crons/<CronName>.log`.
 
 ---
 
@@ -34,19 +50,19 @@ Las siguientes tareas se encargan de automatizar la facturación, los correos y 
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `01:00` (01:00, 07:00, 13:00, 19:00).
 
 ### 5. `SPEnergia_Cron_UpdatePortfolio`
-- **Descripción**: Genera el modelo de previsiones de demanda (portfolio de clientes) multiplicando los CCH por los perfiles climáticos.
-- **Desencadenador (Trigger)**: Cada 6 horas empezando a las `02:00` (02:00, 08:00, 14:00, 20:00).
+- **Descripción**: Ejecuta el Orquestador Financiero Multi-Empresa (`/api/cron/update-portfolio`) autenticado con `CRON_SECRET` / token local del programador. Recorre todas las comercializadoras activas y regenera de forma atómica (`prisma.$transaction`) las **30.000 horas (1.250 días)** de `PortfolioBaseCurve` por `companyId` en huso `Europe/Madrid`, combinando la cartera viva en Barras de Central, el patrón histórico de `AggregatedLoadCurve`, los futuros `FuturePrice` modulados con la curva de pato OMIE de los últimos 365 días y las coberturas `Ppa` marcadas con `includeInPricing: true` (`ppaEngine.ts`).
+- **Desencadenador (Trigger)**: Cada 6 horas empezando a las `02:00` (02:00, 08:00, 14:00, 20:00), además de dispararse bajo demanda desde `/pricing`, `/compras/ppas` y automáticamente al guardar futuros en `/ajustes/costes-regulados`.
 
 ### 6. `SPEnergia_Cron_SyncEsios` *(Legacy)*
 - **Descripción**: Descargaba los precios de OMIE desde ESIOS. **Actualmente desactivado** ya que se usa el Importador nativo COMPODEM.
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `02:00`.
 
 ### 7. `SPEnergia_Cron_FtpSync`
-- **Descripción**: Se conecta al servidor FTP del ERP, escanea los archivos XML subidos, los parsea e inserta los datos crudos en la base de datos.
+- **Descripción**: Recorre todas las configuraciones FTP/SFTP activas por comercializadora (`DistributorCompanyConfig`), reutilizando un `SyncJob` (`type = 'CRON_FTP_SYNC'`) entre bloques `hasMore` para descargar, descomprimir en RAM (`.zip`, `.gz`, `.bz2`, `.xlsx`, CSV) e ingerir curvas de carga CNMC (`F1`, `F1QH`, `F5D`, `RF5D`, `P5D`, `P1D`, `P2D`, etc.) en `LoadCurve` (consumo y excedentes) respetando prioridades y husos horarios.
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `03:00` (03:00, 09:00, 15:00, 21:00).
 
 ### 8. `SPEnergia_Cron_AggregateHistory`
-- **Descripción**: Coge los datos crudos recién importados por `FtpSync` o por Scraping, y calcula las agregaciones horarias y facturación de la base de datos central.
+- **Descripción**: Ejecuta `AggregationService.regenerateAggregates` sobre todas las comercializadoras, consolidando las curvas `CONSUMPTION` de `LoadCurve` en `AggregatedLoadCurve` por `companyId`, `segment`, `province` y `tariff` sobre fechas exactas `@db.Date` (`YYYY-MM-DDT00:00:00.000Z` del calendario `Europe/Madrid`), filtrando contratos válidos en vigor en cada fecha y cruzando con `WeatherHistory`.
 - **Desencadenador (Trigger)**: Cada 6 horas empezando a las `04:00` (04:00, 10:00, 16:00, 22:00).
 
 ### 9. `SPEnergia_Cron_TrainForecast`

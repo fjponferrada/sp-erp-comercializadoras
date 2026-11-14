@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import * as cheerio from 'cheerio';
+import { runCalculatePendingEnergy } from '@/scripts/calculate_pending_energy';
+
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -157,6 +161,19 @@ export async function POST(req: Request) {
         });
       }
       inserted++;
+    }
+
+    const affectedMonths = Array.from(
+      new Set(Array.from(dataByDateRaw.keys()).map(d => d.slice(0, 7)))
+    ).sort();
+
+    if (affectedMonths.length > 0) {
+      try {
+        await runCalculatePendingEnergy(undefined, undefined, { targetMonths: affectedMonths });
+        revalidatePath('/gestion/energia-pendiente');
+      } catch (syncErr) {
+        console.error('Aviso: error recalculando energía pendiente tras importar OMIE:', syncErr);
+      }
     }
 
     return NextResponse.json({ success: true, message: `Se han actualizado ${inserted} días de OMIE.` });

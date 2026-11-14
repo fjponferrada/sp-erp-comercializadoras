@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { revalidatePath } from 'next/cache';
 import { generateModificationDocxBuffer } from '@/lib/docGenerator';
@@ -11,6 +12,11 @@ export async function createContractModificationAction(
   formData: any
 ) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return { error: 'No autorizado' };
+    }
+
     const oldContract = await prisma.contract.findUnique({
       where: { id: oldContractId },
       include: { client: true, supplyPoint: true, brand: true, product: true }
@@ -203,6 +209,18 @@ export async function createContractModificationAction(
         p5c: isTecnica && formData.p5c ? parseFloat(String(formData.p5c)) : oldContract.p5c,
         p6c: isTecnica && formData.p6c ? parseFloat(String(formData.p6c)) : oldContract.p6c,
         fee: oldContract.fee,
+        marginFC: oldContract.marginFC,
+        ip1: oldContract.ip1,
+        ip2: oldContract.ip2,
+        ip3: oldContract.ip3,
+        ip4: oldContract.ip4,
+        ip5: oldContract.ip5,
+        ip6: oldContract.ip6,
+        productTypeSnapshot: oldContract.productTypeSnapshot,
+        commissionRuleType: oldContract.commissionRuleType,
+        commissionRuleValue: oldContract.commissionRuleValue,
+        additionalServicesSnapshot: oldContract.additionalServicesSnapshot ?? undefined,
+        permanenceMonths: oldContract.permanenceMonths,
         pexc: isAutoconsumo ? (formData.surplusMode === 'FIJO' ? parseFloat(formData.pexc) : null) : oldContract.pexc,
         feeExcedentes: isAutoconsumo ? (formData.surplusMode === 'INDEXADO' ? parseFloat(formData.feeExcedentes) : null) : oldContract.feeExcedentes,
         commissionBase: oldContract.commissionBase,
@@ -293,6 +311,10 @@ export async function createUnilateralModificationAction(
   parsedData: any
 ) {
   try {
+    if (!parsedData?.fechaActivacionAlta) {
+      return { error: "El XML de modificación unilateral (M2_05) no contiene Fecha de Activación válida." };
+    }
+
     const oldContract = await prisma.contract.findUnique({
       where: { id: oldContractId },
       include: { supplyPoint: true }
@@ -300,8 +322,19 @@ export async function createUnilateralModificationAction(
 
     if (!oldContract) throw new Error("Contrato original no encontrado");
     
-    // 1. Actualizar SupplyPoint con datos de Autoconsumo si los hay
+    // 1. Actualizar SupplyPoint con datos técnicos y/o Autoconsumo del M2_05
     const spUpdates: any = {};
+    if (parsedData.tarifaATR) {
+      spUpdates.tariff = parsedData.tarifaATR;
+    }
+    if (Array.isArray(parsedData.potenciasContratadas)) {
+      if (parsedData.potenciasContratadas[0] !== undefined) spUpdates.p1c = parsedData.potenciasContratadas[0];
+      if (parsedData.potenciasContratadas[1] !== undefined) spUpdates.p2c = parsedData.potenciasContratadas[1];
+      if (parsedData.potenciasContratadas[2] !== undefined) spUpdates.p3c = parsedData.potenciasContratadas[2];
+      if (parsedData.potenciasContratadas[3] !== undefined) spUpdates.p4c = parsedData.potenciasContratadas[3];
+      if (parsedData.potenciasContratadas[4] !== undefined) spUpdates.p5c = parsedData.potenciasContratadas[4];
+      if (parsedData.potenciasContratadas[5] !== undefined) spUpdates.p6c = parsedData.potenciasContratadas[5];
+    }
     if (parsedData.cau || parsedData.tipoAutoconsumo || parsedData.cil || parsedData.cauSubtype) {
       spUpdates.hasSelfConsumption = true;
       if (parsedData.cau) spUpdates.cau = parsedData.cau;
@@ -310,18 +343,27 @@ export async function createUnilateralModificationAction(
       if (parsedData.cauCollective) spUpdates.cauCollective = parsedData.cauCollective;
       if (parsedData.cil) spUpdates.cil = parsedData.cil;
       if (parsedData.generatorTechnology) spUpdates.generatorTechnology = parsedData.generatorTechnology;
-      if (parsedData.installedPowerGen) spUpdates.installedPowerGen = parsedData.installedPowerGen;
+      if (parsedData.installedPowerGen !== undefined) spUpdates.installedPowerGen = parsedData.installedPowerGen;
       if (parsedData.installationType) spUpdates.installationType = parsedData.installationType;
       if (parsedData.meteringScheme) spUpdates.meteringScheme = parsedData.meteringScheme;
-      
+    }
+
+    if (Object.keys(spUpdates).length > 0 && oldContract.supplyPointId) {
       await prisma.supplyPoint.update({
-        where: { id: oldContract.supplyPointId! },
+        where: { id: oldContract.supplyPointId },
         data: spUpdates
       });
     }
 
-    // 2. Crear nueva versión del contrato
-    const nextVersion = (oldContract.version ?? 0) + 1;
+    // 2. Crear nueva versión del contrato tomando la versión máxima existente del expediente
+    const maxVersionRow = oldContract.contractCode
+      ? await prisma.contract.findFirst({
+          where: { contractCode: oldContract.contractCode, brandId: oldContract.brandId },
+          orderBy: { version: 'desc' },
+          select: { version: true }
+        })
+      : null;
+    const nextVersion = (maxVersionRow?.version ?? oldContract.version ?? 0) + 1;
     const oldContractDataObj = (oldContract.airtableData as any) || {};
 
     const newContract = await prisma.contract.create({
@@ -337,16 +379,34 @@ export async function createUnilateralModificationAction(
         tipo: 'M1',
         tipoC2: 'N',
         status: 'ACTIVO',
-        activationDate: parsedData.fechaActivacionAlta || new Date(),
+        activationDate: parsedData.fechaActivacionAlta,
         permanenceStartDate: oldContract.permanenceStartDate,
+        iban: oldContract.iban,
         airtableData: oldContractDataObj,
         p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,
         p4e: oldContract.p4e, p5e: oldContract.p5e, p6e: oldContract.p6e,
         p1p: oldContract.p1p, p2p: oldContract.p2p, p3p: oldContract.p3p,
         p4p: oldContract.p4p, p5p: oldContract.p5p, p6p: oldContract.p6p,
-        p1c: oldContract.p1c, p2c: oldContract.p2c, p3c: oldContract.p3c,
-        p4c: oldContract.p4c, p5c: oldContract.p5c, p6c: oldContract.p6c,
+        p1c: parsedData.potenciasContratadas?.[0] ?? oldContract.p1c,
+        p2c: parsedData.potenciasContratadas?.[1] ?? oldContract.p2c,
+        p3c: parsedData.potenciasContratadas?.[2] ?? oldContract.p3c,
+        p4c: parsedData.potenciasContratadas?.[3] ?? oldContract.p4c,
+        p5c: parsedData.potenciasContratadas?.[4] ?? oldContract.p5c,
+        p6c: parsedData.potenciasContratadas?.[5] ?? oldContract.p6c,
         fee: oldContract.fee,
+        marginFC: oldContract.marginFC,
+        ip1: oldContract.ip1,
+        ip2: oldContract.ip2,
+        ip3: oldContract.ip3,
+        ip4: oldContract.ip4,
+        ip5: oldContract.ip5,
+        ip6: oldContract.ip6,
+        productTypeSnapshot: oldContract.productTypeSnapshot,
+        commissionRuleType: oldContract.commissionRuleType,
+        commissionRuleValue: oldContract.commissionRuleValue,
+        additionalServicesSnapshot: oldContract.additionalServicesSnapshot ?? undefined,
+        permanenceMonths: oldContract.permanenceMonths,
+        annualConsumption: oldContract.annualConsumption,
         commissionBase: oldContract.commissionBase,
         commissionFinal: oldContract.commissionFinal,
         commissionVariable: oldContract.commissionVariable,
@@ -358,7 +418,7 @@ export async function createUnilateralModificationAction(
     });
 
     // 3. Marcar el contrato anterior como FINALIZADO un día antes
-    let prevTermDate = parsedData.fechaActivacionAlta ? new Date(parsedData.fechaActivacionAlta) : new Date();
+    const prevTermDate = new Date(parsedData.fechaActivacionAlta);
     prevTermDate.setDate(prevTermDate.getDate() - 1);
     
     await prisma.contract.update({

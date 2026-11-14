@@ -1,498 +1,605 @@
-"use server";
+'use server';
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { cookies } from 'next/headers';
+import { getActiveBrand, getUserVisibilityFilter } from '@/lib/permissions';
+import {
+  calculateAndSnapshotContractCommission,
+  computeChainDaysActive,
+  getContractConsumoMWh,
+  getContractPotencias,
+  getContractTarifa,
+  getSnapshotMarginFC,
+  getSnapshotPotenciaMargins,
+  getSnapshotProductType,
+  isQuickDropChain,
+  isRenewalContract,
+  matchBestCommissionRule,
+  matchBestServiceRule,
+  splitContractsIntoCommissionChains,
+  summarizeChainInvoicesForTrueUp,
+  toMadridDayUtcMs,
+} from '@/lib/services/CommissionEngine';
 
-export async function getLiquidacionComisionesAction(startDateStr: string, endDateStr: string, decommStartDateStr: string, decommEndDateStr: string, channelId: string = 'todos', mode: 'upfront' | 'carterizada' = 'upfront', customCutoffDateStr?: string) {
-  // FETCH ALL COMMISSION RULES IN MEMORY
-  const allRules = await prisma.commissionRule.findMany();
+const DAY_MS = 24 * 60 * 60 * 1000;
+const round2 = (n: number) => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
 
+const CONTRACT_COMMISSION_SELECT = {
+  id: true,
+  brandId: true,
+  productId: true,
+  commissionBase: true,
+  commissionFinal: true,
+  commissionRuleType: true,
+  commissionRuleValue: true,
+  fee: true,
+  marginFC: true,
+  ip1: true,
+  ip2: true,
+  ip3: true,
+  ip4: true,
+  ip5: true,
+  ip6: true,
+  productTypeSnapshot: true,
+  activationDate: true,
+  expectedEndDate: true,
+  terminationDate: true,
+  bajaProcess: true,
+  tipo: true,
+  isTacitRenewal: true,
+  p1c: true,
+  p2c: true,
+  p3c: true,
+  p4c: true,
+  p5c: true,
+  p6c: true,
+  contractCode: true,
+  version: true,
+  annualConsumption: true,
+  tramitationType: true,
+  airtableData: true,
+  additionalServicesSnapshot: true,
+  permanenceMonths: true,
+  client: { select: { businessName: true } },
+  supplyPoint: {
+    select: {
+      cups: true,
+      tariff: true,
+      annualConsumption: true,
+      p1c: true,
+      p2c: true,
+      p3c: true,
+      p4c: true,
+      p5c: true,
+      p6c: true,
+    },
+  },
+  product: {
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      tariff: true,
+      ip1: true,
+      ip2: true,
+      ip3: true,
+      ip4: true,
+      ip5: true,
+      ip6: true,
+      marginFC: true,
+    },
+  },
+  user: {
+    select: {
+      channel: { select: { commissionTierId: true } },
+    },
+  },
+  other_Contract: {
+    select: {
+      id: true,
+      tipo: true,
+      isTacitRenewal: true,
+      status: true,
+    },
+  },
+} as const;
+
+export async function getLiquidacionComisionesAction(
+  startDateStr: string,
+  endDateStr: string,
+  decommStartDateStr: string,
+  decommEndDateStr: string,
+  channelId: string = 'todos',
+  mode: 'upfront' | 'carterizada' = 'upfront',
+  customCutoffDateStr?: string
+) {
   try {
     const session = await auth();
-    if (!session?.user) {
+    if (!session?.user || !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(session.user.role)) {
       return { success: false, error: 'No autorizado' };
     }
 
-    const cookieStore = await cookies();
-    const brandId = cookieStore.get('active-brand')?.value || (session.user as any).brandId;
+    const brandId = await getActiveBrand();
     if (!brandId) {
-      return { success: false, error: 'Marca no seleccionada' };
+      return { success: false, error: 'Marca no seleccionada o sin acceso autorizado' };
     }
 
     const whereClause: any = {
       brandId,
-      status: { in: ['ACTIVO', 'BAJA', 'FINALIZADO'] },
-      activationDate: { not: null }
+      status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] },
+      activationDate: { not: null },
     };
 
     if (channelId && channelId !== 'todos') {
-      const userIdsInChannel = await prisma.user.findMany({
-        where: { channelId, assignedBrands: { some: { id: brandId } } },
-        select: { id: true }
-      }).then(users => users.map(u => u.id));
-
-      whereClause.userId = { in: userIdsInChannel };
+      whereClause.user = { channelId };
     }
 
     const contracts = await prisma.contract.findMany({
       where: whereClause,
-      select: {
-        id: true,
-        commissionFinal: true,
-        activationDate: true,
-        terminationDate: true,
-        p1c: true, p2c: true, p3c: true, p4c: true, p5c: true, p6c: true,
-        contractCode: true,
-        version: true,
-        annualConsumption: true,
-        tramitationType: true,
-        airtableData: true,
-        additionalServicesSnapshot: true,
-        client: { select: { businessName: true } },
-        supplyPoint: { select: { cups: true, tariff: true, annualConsumption: true } },
-        product: {
-          select: {
-            name: true, type: true, tariff: true,
-            ip1: true, ip2: true, ip3: true, ip4: true, ip5: true, ip6: true,
-            marginFC: true
-          }
-        },
-        user: {
-          select: {
-            channel: { select: { commissionTierId: true } }
-          }
-        }
-      }
+      select: CONTRACT_COMMISSION_SELECT,
     });
 
-    const isM1orE1 = (type: string | null, airtableData?: any) => {
-      const t1 = type?.toLowerCase() || '';
-      const t2 = (airtableData && typeof airtableData === 'object' && airtableData['Tipo']) ? String(airtableData['Tipo']).toLowerCase() : '';
-      const check = (t: string) => t === 'm1' || t === 'e1' || t.includes('modificación') || t.includes('error') || t.includes('renovación');
-      return check(t1) || check(t2) || true; // Let's just rely on version > 0 and baseCode to be safe.
-    };
+    const actStartMs = toMadridDayUtcMs(startDateStr);
+    const actEndMs = toMadridDayUtcMs(endDateStr);
+    const actEndExclusiveMs = actEndMs + DAY_MS;
 
-    const getTarifa = (c: any) => {
-      if (c.supplyPoint?.tariff) return c.supplyPoint.tariff;
-      if (c.airtableData && typeof c.airtableData === 'object') {
-        return c.airtableData['Tarifa'] || c.airtableData['Tarifa (from Producto)'] || '-';
+    const termStartMs = toMadridDayUtcMs(decommStartDateStr);
+    const termEndMs = toMadridDayUtcMs(decommEndDateStr);
+
+    // Separar cadenas respetando que las Renovaciones (Regla 135) inician su propio ciclo de 365 días
+    const chains = splitContractsIntoCommissionChains(contracts);
+
+    // Si una cadena de modificaciones (M1/E1/E2) no incluye su V0 porque pertenecía a otro filtro, cargamos el V0 de la misma marca
+    const missingBaseCodes: string[] = [];
+    for (const [, chainContracts] of chains.entries()) {
+      const first = chainContracts[0];
+      if (first && (first.version || 0) > 0 && !isRenewalContract(first) && first.contractCode) {
+        missingBaseCodes.push(first.contractCode.split('-V')[0]);
       }
-      return '-';
-    };
-
-    const getConsumo = (c: any) => {
-      if (c.annualConsumption !== null && c.annualConsumption !== undefined) return c.annualConsumption;
-      if (c.supplyPoint?.annualConsumption) return c.supplyPoint.annualConsumption;
-      if (c.airtableData && typeof c.airtableData === 'object') {
-        const ad = c.airtableData;
-        if (ad['CONSUMO COMISION'] !== undefined) return Number(ad['CONSUMO COMISION']) || 0;
-        if (ad['CONSUMO ANUAL'] !== undefined) return Number(ad['CONSUMO ANUAL']) || 0;
-      }
-      return 0;
-    };
-
-    const getP1c = (c: any) => {
-      if (c.p1c !== null && c.p1c !== undefined) return c.p1c;
-      if (c.supplyPoint?.p1c !== null && c.supplyPoint?.p1c !== undefined) return c.supplyPoint.p1c;
-      if (c.airtableData && typeof c.airtableData === 'object') {
-        if (c.airtableData['P1'] !== undefined) return Number(c.airtableData['P1']) || 0;
-      }
-      return 0;
-    };
-
-    const getPotencias = (c: any) => {
-      const getPx = (c: any, field: string, airtableField: string) => {
-        if (c[field] !== null && c[field] !== undefined) return c[field];
-        if (c.supplyPoint?.[field] !== null && c.supplyPoint?.[field] !== undefined) return c.supplyPoint[field];
-        if (c.airtableData && typeof c.airtableData === 'object' && c.airtableData[airtableField] !== undefined) {
-          return Number(c.airtableData[airtableField]) || 0;
-        }
-        return 0;
-      };
-      return [
-        getPx(c, 'p1c', 'P1'),
-        getPx(c, 'p2c', 'P2'),
-        getPx(c, 'p3c', 'P3'),
-        getPx(c, 'p4c', 'P4'),
-        getPx(c, 'p5c', 'P5'),
-        getPx(c, 'p6c', 'P6')
-      ];
-    };
-
-    const actStart = new Date(startDateStr);
-    const actEnd = new Date(endDateStr);
-    actEnd.setUTCHours(23, 59, 59, 999);
-
-    const termStart = new Date(decommStartDateStr);
-    const termEnd = new Date(decommEndDateStr);
-    termEnd.setUTCHours(23, 59, 59, 999);
-
-    // Group by baseCode to find the true lifecycle of the commission
-    const chains = new Map<string, any[]>();
-    for (const c of contracts) {
-      if (!c.contractCode) continue;
-      const baseCode = c.contractCode.split('-V')[0];
-      if (!chains.has(baseCode)) chains.set(baseCode, []);
-      chains.get(baseCode)!.push(c);
     }
 
-    let totalLiquidacion = 0; // Total Neto (Upfront) o Devengado (Carterizada)
-    const commissions = []; // Activaciones Upfront
-    const decommissions = []; // Bajas Upfront
-    const carterizadas = []; // Devengos mensuales
-
-    // Also fetch all V0s if they are not in the current filter (e.g., they were in another channel or already BAJA)
-    const missingBaseCodes = Array.from(chains.keys()).filter(bc => !chains.get(bc)!.find(c => c.version === 0));
     if (missingBaseCodes.length > 0) {
+      const uniqueMissing = Array.from(new Set(missingBaseCodes));
       const v0s = await prisma.contract.findMany({
         where: {
-          contractCode: { in: missingBaseCodes },
+          brandId,
+          contractCode: { in: uniqueMissing },
           version: 0,
-          activationDate: { not: null }
+          activationDate: { not: null },
         },
-        select: {
-          id: true, commissionFinal: true, activationDate: true, terminationDate: true,
-          contractCode: true, version: true, tramitationType: true, airtableData: true,
-          p1c: true, p2c: true, p3c: true, p4c: true, p5c: true, p6c: true,
-          annualConsumption: true, additionalServicesSnapshot: true, permanenceMonths: true,
-          client: { select: { businessName: true } },
-          supplyPoint: { select: { cups: true, tariff: true, annualConsumption: true } },
-          product: {
-            select: {
-              name: true, type: true, tariff: true,
-              ip1: true, ip2: true, ip3: true, ip4: true, ip5: true, ip6: true,
-              marginFC: true
-            }
-          },
-          user: {
-            select: {
-              channel: { select: { commissionTierId: true } }
+        select: CONTRACT_COMMISSION_SELECT,
+      });
+
+      for (const v0 of v0s) {
+        if (v0.contractCode && chains.has(v0.contractCode)) {
+          const arr = chains.get(v0.contractCode)!;
+          if (!arr.some((x) => x.id === v0.id)) {
+            arr.unshift(v0);
+          }
+        }
+      }
+    }
+
+    // Precargar todas las reglas de los niveles involucrados en una sola consulta (0 N+1)
+    const tierIdsSet = new Set<string>();
+    const restoEarlyTermChainIds = new Set<string>();
+
+    for (const [, chainContracts] of chains.entries()) {
+      chainContracts.sort((a, b) => (a.version || 0) - (b.version || 0));
+      const v0 = chainContracts[0];
+      if (!v0?.activationDate) continue;
+
+      const tId = v0.user?.channel?.commissionTierId;
+      if (tId) tierIdsSet.add(tId);
+
+      const latest = chainContracts[chainContracts.length - 1];
+      if (mode === 'upfront' && latest?.terminationDate) {
+        const termMs = toMadridDayUtcMs(latest.terminationDate);
+        if (termMs >= termStartMs && termMs <= termEndMs) {
+          if (!isQuickDropChain(v0.activationDate, latest.terminationDate, customCutoffDateStr)) {
+            const succeededByRenewal = Boolean(
+              latest.other_Contract &&
+                isRenewalContract(latest.other_Contract) &&
+                !['RECHAZADO', 'Rechazado', 'ANULADO', 'CANCELADO'].includes(latest.other_Contract.status)
+            );
+            const daysActive = computeChainDaysActive(v0, latest, succeededByRenewal);
+            const tarifa = getContractTarifa(latest);
+            if (daysActive < 365 && tarifa !== '2.0TD') {
+              for (const c of chainContracts) restoEarlyTermChainIds.add(c.id);
             }
           }
         }
-      });
-      for (const v0 of v0s) {
-        if (v0.contractCode) {
-          chains.get(v0.contractCode)!.push(v0);
-        }
       }
     }
 
-    for (const [baseCode, chainContracts] of chains.entries()) {
-      // Sort by version asc
-      chainContracts.sort((a, b) => a.version - b.version);
-      
+    const rulesByTier = new Map<string, any[]>();
+    if (tierIdsSet.size > 0) {
+      const allTierRules = await prisma.commissionRule.findMany({
+        where: { tierId: { in: Array.from(tierIdsSet) } },
+        include: {
+          products: { select: { id: true } },
+          additionalServices: { select: { id: true } },
+        },
+      });
+      for (const r of allTierRules) {
+        if (!rulesByTier.has(r.tierId)) rulesByTier.set(r.tierId, []);
+        rulesByTier.get(r.tierId)!.push(r);
+      }
+    }
+
+    // Precargar en bloque facturas legacy/CSV + facturas internas nativas para True-Up (0 N+1)
+    const legacyInvoicesByContract = new Map<string, any[]>();
+    const internalInvoicesByContract = new Map<string, any[]>();
+
+    if (restoEarlyTermChainIds.size > 0) {
+      const targetIds = Array.from(restoEarlyTermChainIds);
+      const [legacyInvs, internalInvs] = await Promise.all([
+        prisma.invoice.findMany({
+          where: { contractId: { in: targetIds } },
+          select: {
+            id: true,
+            contractId: true,
+            invoiceNumber: true,
+            f1InvoiceId: true,
+            totalMWh: true,
+            totalAmount: true,
+            billingStart: true,
+            billingEnd: true,
+            invoiceType: true,
+          },
+        }),
+        prisma.internalInvoice.findMany({
+          where: {
+            contractId: { in: targetIds },
+            status: { in: ['EMITIDA', 'ABONO'] },
+            hidden: false,
+          },
+          select: {
+            id: true,
+            contractId: true,
+            invoiceNumber: true,
+            f1InvoiceId: true,
+            totalMWh: true,
+            totalAmount: true,
+            billingStart: true,
+            billingEnd: true,
+            invoiceType: true,
+            status: true,
+          },
+        }),
+      ]);
+
+      for (const inv of legacyInvs) {
+        if (!inv.contractId) continue;
+        if (!legacyInvoicesByContract.has(inv.contractId)) legacyInvoicesByContract.set(inv.contractId, []);
+        legacyInvoicesByContract.get(inv.contractId)!.push(inv);
+      }
+      for (const inv of internalInvs) {
+        if (!inv.contractId) continue;
+        if (!internalInvoicesByContract.has(inv.contractId)) internalInvoicesByContract.set(inv.contractId, []);
+        internalInvoicesByContract.get(inv.contractId)!.push(inv);
+      }
+    }
+
+    const getProductoLabel = (c: any) => {
+      const base = c.product?.name || '-';
+      if (c.additionalServicesSnapshot && Array.isArray(c.additionalServicesSnapshot) && c.additionalServicesSnapshot.length > 0) {
+        const services = c.additionalServicesSnapshot.map((s: any) => s.name).join(' + ');
+        return `${base} + ${services}`;
+      }
+      return base;
+    };
+
+    let totalLiquidacion = 0;
+    const commissions: any[] = [];
+    const decommissions: any[] = [];
+    const carterizadas: any[] = [];
+
+    for (const [, chainContracts] of chains.entries()) {
+      chainContracts.sort((a, b) => (a.version || 0) - (b.version || 0));
+
       const v0 = chainContracts[0];
       if (!v0 || !v0.activationDate) continue;
 
-      const actDate = v0.activationDate;
-      let commission = v0.commissionFinal || 0;
-
+      const actDate: Date = v0.activationDate;
+      const actDayMs = toMadridDayUtcMs(actDate);
+      const commission = Number(v0.commissionFinal || 0);
       const dailyCommission = commission / 365;
 
-      // Find if the chain is terminated
-      // A chain is terminated if the LATEST version has a terminationDate
       const latest = chainContracts[chainContracts.length - 1];
-      const termDate = latest.terminationDate;
+      const termDate: Date | null = latest.terminationDate;
 
-      const getProductoLabel = (c: any) => {
-        const base = c.product?.name || '-';
-        if (c.additionalServicesSnapshot && Array.isArray(c.additionalServicesSnapshot) && c.additionalServicesSnapshot.length > 0) {
-          const services = c.additionalServicesSnapshot.map((s: any) => s.name).join(' + ');
-          return `${base} + ${services}`;
-        }
-        return base;
-      };
-
-      // Check for quick drop rule:
-      // If a contract activates in month X and drops before the 11th of month X+1, ignore it completely.
-      let skipDueToQuickDrop = false;
-      if (termDate && actDate) {
-        // Parse the custom cutoff date if provided and we are evaluating a contract activated THIS month
-        const customCutoffDate = customCutoffDateStr ? new Date(customCutoffDateStr) : null;
-        
-        if (actDate >= actStart && actDate <= actEnd && customCutoffDate) {
-          if (termDate < customCutoffDate) {
-            skipDueToQuickDrop = true;
-          }
-        } else {
-          // Standard logic for contracts activated in previous months
-          const activationYear = actDate.getUTCFullYear();
-          const activationMonth = actDate.getUTCMonth(); 
-          const defaultCutoffDate = new Date(Date.UTC(activationYear, activationMonth + 1, 11, 0, 0, 0));
-          if (termDate < defaultCutoffDate) {
-            skipDueToQuickDrop = true;
-          }
-        }
+      // Filtro de Bajas Rápidas (antes del día 11 del mes siguiente a la activación o customCutoffDateStr aplicable)
+      if (isQuickDropChain(actDate, termDate, customCutoffDateStr)) {
+        continue;
       }
 
-      if (skipDueToQuickDrop) continue;
+      const succeededByRenewal = Boolean(
+        latest.other_Contract &&
+          isRenewalContract(latest.other_Contract) &&
+          !['RECHAZADO', 'Rechazado', 'ANULADO', 'CANCELADO'].includes(latest.other_Contract.status)
+      );
 
       if (mode === 'upfront') {
-        // 1. Commission (Activation)
-        if (actDate >= actStart && actDate <= actEnd) {
+        // 1. Alta / Comisión Upfront (100% por horizonte anual de 365 días)
+        if (actDayMs >= actStartMs && actDayMs <= actEndMs) {
+          const potenciasV0 = getContractPotencias(v0);
+          const liquidado = round2(commission);
           commissions.push({
             id: v0.id,
+            v0Id: v0.id,
             titular: v0.client?.businessName || '-',
             codigoContrato: v0.contractCode || '-',
             fechaAltaV0: v0.activationDate,
             producto: getProductoLabel(v0),
             cups: v0.supplyPoint?.cups || '-',
-            tarifa: getTarifa(v0),
-            consumoAnual: getConsumo(v0),
-            p1c: getP1c(v0),
-            potencias: getPotencias(v0),
-            comisionOriginal: commission,
+            tarifa: getContractTarifa(v0),
+            consumoAnual: getContractConsumoMWh(v0),
+            p1c: potenciasV0[0],
+            potencias: potenciasV0,
+            comisionOriginal: round2(commission),
             diasComputados: 365,
-            importeLiquidado: commission,
-            tipo: 'COMISION'
+            importeLiquidado: liquidado,
+            tipo: 'COMISION',
           });
-          totalLiquidacion += commission;
+          totalLiquidacion += liquidado;
         }
 
-        // 2. Decommission (Early Termination)
-        if (termDate && termDate >= termStart && termDate <= termEnd) {
-          const daysActive = Math.max(0, Math.round((termDate.getTime() - actDate.getTime()) / (1000 * 60 * 60 * 24)));
-          const tarifa = getTarifa(latest);
-          
-          if (tarifa === '2.0TD') {
+        // 2. Baja Anticipada / Decomisión (independiente de si el cliente tenía permanencia o no: horizonte comisión = 365 días)
+        if (termDate) {
+          const termDayMs = toMadridDayUtcMs(termDate);
+          if (termDayMs >= termStartMs && termDayMs <= termEndMs) {
+            const daysActive = computeChainDaysActive(v0, latest, succeededByRenewal);
+
+            // Si cumplió los 365 días completos (1 año), la comisión anual ya está 100% devengada -> NO decomisiona
             if (daysActive < 365) {
-              const daysToReturn = 365 - daysActive;
-              const decommissionAmount = daysToReturn * dailyCommission;
-              
-              // Only apply decommission if the amount to return is at least 1 euro
-              if (decommissionAmount >= 1) {
+              const tarifa = getContractTarifa(latest);
+              const potenciasLatest = getContractPotencias(latest);
+
+              if (tarifa === '2.0TD') {
+                const daysToReturn = 365 - daysActive;
+                const decommissionAmount = round2(daysToReturn * dailyCommission);
+
+                // Omitir decomisiones menores a 1 € en 2.0TD
+                if (decommissionAmount >= 1) {
                   decommissions.push({
+                    id: latest.id,
+                    v0Id: v0.id,
                     titular: latest.client?.businessName || '-',
                     codigoContrato: latest.contractCode || '-',
                     fechaAltaV0: v0.activationDate,
                     fechaBajaVFinal: latest.terminationDate,
-                producto: getProductoLabel(latest),
-                cups: latest.supplyPoint?.cups || '-',
-                tarifa: tarifa,
-                consumoAnual: getConsumo(latest),
-                p1c: getP1c(latest),
-                potencias: getPotencias(latest),
-                comisionOriginal: commission,
-                diasComputados: daysToReturn,
-                importeLiquidado: decommissionAmount,
-                tipo: 'DECOMISION',
-                diasActivos: daysActive
-              });
-              totalLiquidacion -= decommissionAmount;
-              }
-            }
-          } else {
-            // Resto Tarifas True-Up
-            const tierId = v0.user?.channel?.commissionTierId;
-            if (tierId) {
-              const tierRules = await prisma.commissionRule.findMany({
-                 where: { tierId },
-                 include: { 
-                   products: { select: { id: true } },
-                   additionalServices: { select: { id: true } }
-                 }
-              });
-
-              let matchedRule = null;
-              let bestSpecificity = -1;
-              const avgPower = ((v0.p1c || 0) + (v0.p2c || 0)) / 2;
-              const p = latest.product;
-
-              if (p) {
-                for (const rule of tierRules) {
-                   let specificity = 0;
-                   let match = true;
-
-                   if (rule.additionalServices.length > 0 && rule.products.length === 0 && !rule.tariff && !rule.productType) continue;
-
-                   if (rule.tariff) {
-                     if (rule.tariff !== tarifa) match = false;
-                     else specificity += 1;
-                   }
-                   if (rule.productType) {
-                     const rType = rule.productType;
-                     const pTypeStr = (p.type || '').toLowerCase();
-                     if (rType === 'Fijo') {
-                       if (!pTypeStr.includes('fijo')) match = false;
-                       else specificity += 1;
-                     } else if (rType === 'Indexado' || rType === 'Index') {
-                       if (!pTypeStr.includes('indexado')) match = false;
-                       else specificity += 1;
-                     } else {
-                       if (rType !== p.type) match = false;
-                       else specificity += 2;
-                     }
-                   }
-                   if (rule.powerMin !== null) {
-                     if (avgPower < rule.powerMin) match = false;
-                     else specificity += 1;
-                   }
-                   if (rule.powerMax !== null) {
-                     if (avgPower >= rule.powerMax) match = false;
-                     else specificity += 1;
-                   }
-                   if (rule.products && rule.products.length > 0) {
-                     if (!rule.products.some(rp => rp.id === p.id)) match = false;
-                     else specificity += 100;
-                   }
-
-                   if (match && specificity > bestSpecificity) {
-                     matchedRule = rule;
-                     bestSpecificity = specificity;
-                   }
+                    producto: getProductoLabel(latest),
+                    cups: latest.supplyPoint?.cups || '-',
+                    tarifa,
+                    consumoAnual: getContractConsumoMWh(latest),
+                    p1c: potenciasLatest[0],
+                    potencias: potenciasLatest,
+                    comisionOriginal: round2(commission),
+                    diasComputados: daysToReturn,
+                    importeLiquidado: decommissionAmount,
+                    tipo: 'DECOMISION',
+                    diasActivos: daysActive,
+                  });
+                  totalLiquidacion -= decommissionAmount;
                 }
-              }
+              } else {
+                // Resto Tarifas (>= 3.0TD): True-Up por consumo real facturado + potencias por tramo temporal usando snapshots del contrato
+                const tierId = v0.user?.channel?.commissionTierId;
+                const tierRules = tierId ? rulesByTier.get(tierId) || [] : [];
 
-              if (matchedRule) {
-                 const chainIds = chainContracts.map(c => c.id);
-                 const invoices = await prisma.invoice.findMany({
-                    where: { contractId: { in: chainIds } },
-                    select: { totalMWh: true, billingStart: true, billingEnd: true, invoiceType: true }
-                 });
+                const potenciasV0 = getContractPotencias(v0);
+                const avgPowerV0 = (potenciasV0[0] + potenciasV0[1]) / 2;
+                const snapProductType = getSnapshotProductType(v0);
 
-                 let totalMWh = 0;
-                 let totalBillingDays = 0;
-                 for (const inv of invoices) {
-                    if (inv.billingStart && inv.billingEnd) {
-                       const days = Math.round((inv.billingEnd.getTime() - inv.billingStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                       if (days > 0) {
-                          const isAbono = inv.invoiceType?.toLowerCase().includes('abono');
-                          
-                          totalBillingDays += isAbono ? -days : days;
-                          
-                          // Invert sign if it's an abono, as providers send absolute values
-                          const mwh = isAbono ? -Math.abs(inv.totalMWh) : inv.totalMWh;
-                          // totalMWh is actually stored in kWh in the DB, so we divide by 1000 to get true MWh
-                          totalMWh += (mwh / 1000);
-                       }
+                // Priorizar snapshot inmutable de regla en V0; fallback a reglas del tier sólo si fuera nulo
+                let ruleType: string | null = v0.commissionRuleType || null;
+                let ruleValue: number | null =
+                  v0.commissionRuleValue !== null && v0.commissionRuleValue !== undefined
+                    ? Number(v0.commissionRuleValue)
+                    : null;
+
+                if (!ruleType || ruleValue === null) {
+                  const fallbackRule = matchBestCommissionRule(tierRules, {
+                    tarifa,
+                    productType: snapProductType,
+                    productId: v0.productId,
+                    avgPower: avgPowerV0,
+                  });
+                  if (fallbackRule) {
+                    ruleType = fallbackRule.commissionType;
+                    ruleValue = fallbackRule.value;
+                  }
+                }
+
+                if (ruleType && ruleValue !== null) {
+                  const chainLegacyInvs: any[] = [];
+                  const chainInternalInvs: any[] = [];
+                  for (const cVer of chainContracts) {
+                    const lInvs = legacyInvoicesByContract.get(cVer.id);
+                    if (lInvs) chainLegacyInvs.push(...lInvs);
+                    const iInvs = internalInvoicesByContract.get(cVer.id);
+                    if (iInvs) chainInternalInvs.push(...iInvs);
+                  }
+
+                  const { totalMWh, totalBillingDays } = summarizeChainInvoicesForTrueUp(
+                    chainLegacyInvs,
+                    chainInternalInvs
+                  );
+
+                  const dailyMWh =
+                    totalBillingDays > 0
+                      ? totalMWh / totalBillingDays
+                      : getContractConsumoMWh(latest) / 365;
+
+                  const billableDays = Math.min(daysActive, 365);
+                  const extrapolatedConsumo = Math.max(0, dailyMWh * billableDays);
+
+                  // Margen de energía y potencia ponderando cada versión por sus días reales sin huecos de 1 día en M1
+                  const startLifeMs = actDayMs;
+                  const endOfBillableMs = startLifeMs + billableDays * DAY_MS;
+
+                  let powerMargin = 0;
+                  let weightedMarginFCNumerator = 0;
+                  let totalVersionDays = 0;
+
+                  for (let idx = 0; idx < chainContracts.length; idx++) {
+                    const cVersion = chainContracts[idx];
+                    const nextVersion = chainContracts[idx + 1];
+
+                    const startVMs = cVersion.activationDate
+                      ? Math.max(startLifeMs, toMadridDayUtcMs(cVersion.activationDate))
+                      : startLifeMs;
+
+                    let rawEndVMs = endOfBillableMs;
+                    if (nextVersion?.activationDate) {
+                      rawEndVMs = toMadridDayUtcMs(nextVersion.activationDate);
+                    } else if (cVersion.terminationDate) {
+                      rawEndVMs = toMadridDayUtcMs(cVersion.terminationDate);
                     }
-                 }
 
-                 let dailyMWh = 0;
-                 if (totalBillingDays > 0) {
-                    dailyMWh = totalMWh / totalBillingDays;
-                 } else {
-                    dailyMWh = getConsumo(latest) / 365;
-                 }
+                    const endVMs = Math.min(rawEndVMs, endOfBillableMs);
+                    if (endVMs > startVMs) {
+                      const daysV = Math.round((endVMs - startVMs) / DAY_MS);
+                      const potV = getContractPotencias(cVersion);
+                      const ipV = getSnapshotPotenciaMargins(cVersion);
+                      const annualPowerMarginV =
+                        potV[0] * ipV[0] +
+                        potV[1] * ipV[1] +
+                        potV[2] * ipV[2] +
+                        potV[3] * ipV[3] +
+                        potV[4] * ipV[4] +
+                        potV[5] * ipV[5];
 
-                 const billableDays = daysActive;
-                 const extrapolatedConsumo = dailyMWh * billableDays;
-                 const energyMargin = extrapolatedConsumo * (p?.marginFC || 0);
-
-                 let powerMargin = 0;
-                 const startLife = actDate.getTime();
-                 const endOfBillable = startLife + billableDays * 24 * 60 * 60 * 1000;
-
-                 for (const cVersion of chainContracts) {
-                    const startV = cVersion.activationDate ? cVersion.activationDate.getTime() : startLife;
-                    let endV = cVersion.terminationDate ? cVersion.terminationDate.getTime() : endOfBillable;
-                    endV = Math.min(endV, endOfBillable);
-                    
-                    if (endV > startV) {
-                       const daysV = (endV - startV) / (1000 * 60 * 60 * 24);
-                       const marginV = (cVersion.p1c || 0) * (p?.ip1 || 0) +
-                                       (cVersion.p2c || 0) * (p?.ip2 || 0) +
-                                       (cVersion.p3c || 0) * (p?.ip3 || 0) +
-                                       (cVersion.p4c || 0) * (p?.ip4 || 0) +
-                                       (cVersion.p5c || 0) * (p?.ip5 || 0) +
-                                       (cVersion.p6c || 0) * (p?.ip6 || 0);
-                       powerMargin += marginV * (daysV / 365);
+                      powerMargin += annualPowerMarginV * (daysV / 365);
+                      weightedMarginFCNumerator += getSnapshotMarginFC(cVersion) * daysV;
+                      totalVersionDays += daysV;
                     }
-                 }
+                  }
 
-                 let comisionReal = 0;
-                 let comisionMargenEnergia = 0;
-                 let comisionMargenPotencia = 0;
-                 if (matchedRule.commissionType === 'FIXED') {
-                     comisionReal = matchedRule.value * (billableDays / 365);
-                     comisionMargenEnergia = comisionReal;
-                 } else if (matchedRule.commissionType === 'PERCENTAGE') {
-                     comisionMargenEnergia = energyMargin * (matchedRule.value / 100);
-                     comisionMargenPotencia = powerMargin * (matchedRule.value / 100);
-                     comisionReal = comisionMargenEnergia + comisionMargenPotencia;
-                 }
+                  const effectiveMarginFC =
+                    totalVersionDays > 0
+                      ? weightedMarginFCNumerator / totalVersionDays
+                      : getSnapshotMarginFC(latest);
 
-                 let serviceCommission = 0;
-                 if (v0.additionalServicesSnapshot && Array.isArray(v0.additionalServicesSnapshot)) {
-                     const permanenceMonths = v0.permanenceMonths || 12;
-                     const permanenceDays = permanenceMonths * (365 / 12);
-                     v0.additionalServicesSnapshot.forEach((s: any) => {
-                         if (s.isCommissionable) {
-                             const serviceRule = tierRules.find(r => r.additionalServices.some(as => as.id === s.id));
-                             if (serviceRule) {
-                                 if (serviceRule.commissionType === 'FIXED') {
-                                     serviceCommission += serviceRule.value * (billableDays / permanenceDays);
-                                 } else if (serviceRule.commissionType === 'PERCENTAGE' && s.monthlyPrice) {
-                                     const trueUpServiceMargin = s.monthlyPrice * (billableDays / (365 / 12));
-                                     serviceCommission += trueUpServiceMargin * (serviceRule.value / 100);
-                                 }
-                             }
-                         }
-                     });
-                 }
+                  const energyMargin = extrapolatedConsumo * effectiveMarginFC;
 
-                 comisionReal += serviceCommission;
+                  let comisionReal = 0;
+                  let comisionMargenEnergia = 0;
+                  let comisionMargenPotencia = 0;
 
-                 const diferencia = comisionReal - commission;
+                  if (ruleType === 'FIXED') {
+                    comisionReal = ruleValue * (billableDays / 365);
+                    comisionMargenEnergia = comisionReal;
+                  } else if (ruleType === 'PERCENTAGE') {
+                    comisionMargenEnergia = energyMargin * (ruleValue / 100);
+                    comisionMargenPotencia = powerMargin * (ruleValue / 100);
+                    comisionReal = comisionMargenEnergia + comisionMargenPotencia;
+                  }
 
-                 decommissions.push({
-                     titular: latest.client?.businessName || '-',
-                     codigoContrato: latest.contractCode || '-',
-                     fechaAltaV0: v0.activationDate,
-                     fechaBajaVFinal: latest.terminationDate,
-                     producto: getProductoLabel(latest),
-                     cups: latest.supplyPoint?.cups || '-',
-                     tarifa: tarifa,
-                     consumoAnual: getConsumo(latest),
-                     p1c: getP1c(latest),
-                     potencias: getPotencias(latest),
-                     comisionOriginal: commission,
-                     diasComputados: billableDays,
-                     diasActivos: daysActive,
-                     comisionReal: comisionReal,
-                     comisionMargenEnergia: comisionMargenEnergia,
-                     comisionMargenPotencia: comisionMargenPotencia,
-                     energiaConsiderada: extrapolatedConsumo,
-                     comisionResto: serviceCommission,
-                     importeLiquidado: diferencia,
-                     tipo: 'DECOMISION_RESTO'
-                 });
-                 totalLiquidacion += diferencia;
+                  // Servicios adicionales: horizonte anual fijo de 365 días / 12 meses
+                  let serviceCommission = 0;
+                  if (v0.additionalServicesSnapshot && Array.isArray(v0.additionalServicesSnapshot)) {
+                    const svcMatchParams = {
+                      tarifa,
+                      productType: snapProductType,
+                      productId: v0.productId,
+                      avgPower: avgPowerV0,
+                    };
+                    for (const s of v0.additionalServicesSnapshot as any[]) {
+                      if (s?.isCommissionable) {
+                        const serviceRule = matchBestServiceRule(tierRules, s.id, svcMatchParams);
+                        if (serviceRule) {
+                          if (serviceRule.commissionType === 'FIXED') {
+                            serviceCommission += serviceRule.value * (billableDays / 365);
+                          } else if (serviceRule.commissionType === 'PERCENTAGE') {
+                            const monthlyPrice =
+                              s.monthlyPrice !== null && s.monthlyPrice !== undefined
+                                ? Number(s.monthlyPrice)
+                                : s.dailyPrice !== null && s.dailyPrice !== undefined
+                                  ? Number(s.dailyPrice) * (365 / 12)
+                                  : 0;
+                            const trueUpServiceMargin = monthlyPrice * 12 * (billableDays / 365);
+                            serviceCommission += trueUpServiceMargin * (serviceRule.value / 100);
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  comisionReal += serviceCommission;
+                  const diferencia = round2(comisionReal - commission);
+
+                  if (Math.abs(diferencia) >= 0.01 || commission > 0 || comisionReal > 0) {
+                    decommissions.push({
+                      id: latest.id,
+                      v0Id: v0.id,
+                      titular: latest.client?.businessName || '-',
+                      codigoContrato: latest.contractCode || '-',
+                      fechaAltaV0: v0.activationDate,
+                      fechaBajaVFinal: latest.terminationDate,
+                      producto: getProductoLabel(latest),
+                      cups: latest.supplyPoint?.cups || '-',
+                      tarifa,
+                      consumoAnual: getContractConsumoMWh(latest),
+                      p1c: potenciasLatest[0],
+                      potencias: potenciasLatest,
+                      comisionOriginal: round2(commission),
+                      diasComputados: billableDays,
+                      diasActivos: daysActive,
+                      comisionReal: round2(comisionReal),
+                      comisionMargenEnergia: round2(comisionMargenEnergia),
+                      comisionMargenPotencia: round2(comisionMargenPotencia),
+                      energiaConsiderada: round2(extrapolatedConsumo),
+                      comisionResto: round2(serviceCommission),
+                      importeLiquidado: diferencia,
+                      tipo: 'DECOMISION_RESTO',
+                    });
+                    totalLiquidacion += diferencia;
+                  }
+                }
               }
             }
           }
         }
       } else {
-        // Modo Carterizada
-        const commissionEndDate = new Date(actDate.getTime() + 365 * 24 * 60 * 60 * 1000);
-        const actualEndDate = termDate && termDate < commissionEndDate ? termDate : commissionEndDate;
+        // Modo Carterizada (devengo lineal diario sobre los primeros 365 días de la cadena)
+        const commissionHorizonEndExclusiveMs = actDayMs + 365 * DAY_MS;
+        let actualEndExclusiveMs = commissionHorizonEndExclusiveMs;
 
-        const periodStart = actDate > actStart ? actDate : actStart;
-        const periodEnd = actualEndDate < actEnd ? actualEndDate : actEnd;
+        if (termDate) {
+          const daysActive = computeChainDaysActive(v0, latest, succeededByRenewal);
+          const chainEndExclusiveMs = actDayMs + Math.min(daysActive, 365) * DAY_MS;
+          if (chainEndExclusiveMs < actualEndExclusiveMs) {
+            actualEndExclusiveMs = chainEndExclusiveMs;
+          }
+        }
 
-        if (periodStart <= periodEnd) {
-          const diffTime = periodEnd.getTime() - periodStart.getTime();
-          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-          const liquidacionAmount = dailyCommission * diffDays;
+        const pStartMs = Math.max(actDayMs, actStartMs);
+        const pEndMs = Math.min(actualEndExclusiveMs, actEndExclusiveMs);
 
-          if (liquidacionAmount >= 0) {
-             carterizadas.push({
-                id: latest.id,
-                titular: latest.client?.businessName || '-',
-                codigoContrato: latest.contractCode || '-',
-                producto: getProductoLabel(latest),
-                cups: latest.supplyPoint?.cups || '-',
-                tarifa: getTarifa(latest),
-                consumoAnual: getConsumo(latest),
-                p1c: getP1c(latest),
-                potencias: getPotencias(latest),
-                comisionOriginal: commission,
-                diasComputados: diffDays,
-                importeLiquidado: liquidacionAmount
-             });
-             totalLiquidacion += liquidacionAmount;
+        if (pEndMs > pStartMs) {
+          const diffDays = Math.round((pEndMs - pStartMs) / DAY_MS);
+          const liquidacionAmount = round2(dailyCommission * diffDays);
+
+          if (diffDays > 0 && liquidacionAmount >= 0) {
+            const potenciasLatest = getContractPotencias(latest);
+            carterizadas.push({
+              id: latest.id,
+              v0Id: v0.id,
+              titular: latest.client?.businessName || '-',
+              codigoContrato: latest.contractCode || '-',
+              producto: getProductoLabel(latest),
+              cups: latest.supplyPoint?.cups || '-',
+              tarifa: getContractTarifa(latest),
+              consumoAnual: getContractConsumoMWh(latest),
+              p1c: potenciasLatest[0],
+              potencias: potenciasLatest,
+              comisionOriginal: round2(commission),
+              diasComputados: diffDays,
+              importeLiquidado: liquidacionAmount,
+            });
+            totalLiquidacion += liquidacionAmount;
           }
         }
       }
@@ -501,30 +608,28 @@ export async function getLiquidacionComisionesAction(startDateStr: string, endDa
     const sortFn = (a: any, b: any) => {
       const tarifaCompare = (a.tarifa || '').localeCompare(b.tarifa || '');
       if (tarifaCompare !== 0) return tarifaCompare;
-      
+
       const productoCompare = (a.producto || '').localeCompare(b.producto || '');
       if (productoCompare !== 0) return productoCompare;
-      
-      const p1cA = a.p1c || 0;
-      const p1cB = b.p1c || 0;
-      return p1cA - p1cB;
+
+      return (a.p1c || 0) - (b.p1c || 0);
     };
 
     commissions.sort(sortFn);
     decommissions.sort(sortFn);
     carterizadas.sort(sortFn);
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: {
-        totalLiquidacion,
+        totalLiquidacion: round2(totalLiquidacion),
         commissions,
         decommissions,
-        carterizadas
-      }
+        carterizadas,
+      },
     };
   } catch (error: any) {
-    console.error(error);
+    console.error('Error en getLiquidacionComisionesAction:', error);
     return { success: false, error: error.message };
   }
 }
@@ -536,159 +641,88 @@ export async function recalculateCommissionAction(contractId: string) {
       return { success: false, error: 'No autorizado' };
     }
 
-    const c = await prisma.contract.findUnique({
-      where: { id: contractId },
-      include: {
-        product: true,
-        supplyPoint: true,
-        user: { include: { channel: true } }
-      }
+    const visibilityFilter = await getUserVisibilityFilter();
+    const authorized = await prisma.contract.findFirst({
+      where: { id: contractId, ...visibilityFilter },
+      select: { id: true },
     });
 
-    if (!c || !c.product || !c.user?.channel?.commissionTierId) {
-      return { success: false, error: 'El contrato no tiene producto o el canal no tiene un nivel de comisión asignado.' };
+    if (!authorized) {
+      return { success: false, error: 'Contrato no encontrado o sin acceso autorizado.' };
     }
 
-    const tierId = c.user.channel.commissionTierId;
-    const p = c.product;
-    const tierRules = await prisma.commissionRule.findMany({
-      where: { tierId },
-      include: { 
-        products: { select: { id: true } },
-        additionalServices: { select: { id: true } }
-      }
-    });
-
-    let matchedRule = null;
-    let bestSpecificity = -1;
-
-    const p1c = c.p1c || 0;
-    const p2c = c.p2c || 0;
-    const avgPower = (p1c + p2c) / 2;
-
-    const getTarifa = (c: any) => {
-      if (c.supplyPoint?.tariff) return c.supplyPoint.tariff;
-      if (c.airtableData && typeof c.airtableData === 'object') {
-        return c.airtableData['Tarifa'] || c.airtableData['Tarifa (from Producto)'] || '-';
-      }
-      return '-';
-    };
-
-    for (const rule of tierRules) {
-
-      let specificity = 0;
-      let match = true;
-
-      // Exclude rules that are purely for services if we are evaluating the main product
-      if (rule.additionalServices.length > 0 && rule.products.length === 0 && !rule.tariff && !rule.productType) {
-        continue;
-      }
-
-      if (rule.tariff) {
-        if (rule.tariff !== getTarifa(c)) match = false;
-        else specificity += 1;
-      }
-      if (rule.productType) {
-        const rType = rule.productType;
-        const pTypeStr = (p.type || '').toLowerCase();
-        
-        if (rType === 'Fijo') {
-          if (!pTypeStr.includes('fijo')) match = false;
-          else specificity += 1;
-        } else if (rType === 'Indexado' || rType === 'Index') {
-          if (!pTypeStr.includes('indexado')) match = false;
-          else specificity += 1;
-        } else {
-          // Strict match for exactly specific types (e.g., "Precio fijo único")
-          if (rType !== p.type) match = false;
-          else specificity += 2; // Extra specificity for exactly matching the full product type name
-        }
-      }
-      if (rule.powerMin !== null) {
-        if (avgPower < rule.powerMin) match = false;
-        else specificity += 1;
-      }
-      if (rule.powerMax !== null) {
-        if (avgPower >= rule.powerMax) match = false;
-        else specificity += 1;
-      }
-
-      if (rule.products && rule.products.length > 0) {
-        if (!rule.products.some((rp: any) => rp.id === p.id)) match = false;
-        else specificity += 100; // Exception rule wins over generic rules
-      }
-
-      if (match && specificity > bestSpecificity) {
-        matchedRule = rule;
-        bestSpecificity = specificity;
-      }
-    }
-
-    if (!matchedRule) {
-      return { success: false, error: 'No se encontró ninguna regla aplicable en el Nivel del canal.' };
-    }
-
-    let calculatedCommission = 0;
-
-    if (matchedRule.commissionType === 'FIXED') {
-      calculatedCommission = matchedRule.value;
-    } else if (matchedRule.commissionType === 'PERCENTAGE') {
-      const getConsumo = (c: any) => {
-        if (c.annualConsumption !== null && c.annualConsumption !== undefined) return c.annualConsumption;
-        if (c.supplyPoint?.annualConsumption) return c.supplyPoint.annualConsumption;
-        if (c.airtableData && typeof c.airtableData === 'object') {
-          const ad = c.airtableData;
-          if (ad['CONSUMO COMISION'] !== undefined) return Number(ad['CONSUMO COMISION']) || 0;
-          if (ad['CONSUMO ANUAL'] !== undefined) return Number(ad['CONSUMO ANUAL']) || 0;
-        }
-        return 0;
-      };
-      
-      const consumo = getConsumo(c);
-      const marginFC = p.marginFC || 0;
-      const energyMargin = consumo * marginFC;
-      
-      const powerMargin = (c.p1c || 0) * (p.ip1 || 0) +
-                          (c.p2c || 0) * (p.ip2 || 0) +
-                          (c.p3c || 0) * (p.ip3 || 0) +
-                          (c.p4c || 0) * (p.ip4 || 0) +
-                          (c.p5c || 0) * (p.ip5 || 0) +
-                          (c.p6c || 0) * (p.ip6 || 0);
-
-      const totalMargin = energyMargin + powerMargin;
-      calculatedCommission = totalMargin * (matchedRule.value / 100);
-    }
-
-    // Calcular comisiones específicas de servicios adicionales
-    let serviceCommission = 0;
-    if (c.additionalServicesSnapshot && Array.isArray(c.additionalServicesSnapshot)) {
-      const permanence = c.permanenceMonths || 12;
-      c.additionalServicesSnapshot.forEach((s: any) => {
-        if (s.isCommissionable) {
-          // Buscar una regla que aplique a este servicio
-          const serviceRule = tierRules.find(r => r.additionalServices.some(as => as.id === s.id));
-          if (serviceRule) {
-            if (serviceRule.commissionType === 'FIXED') {
-              serviceCommission += serviceRule.value;
-            } else if (serviceRule.commissionType === 'PERCENTAGE' && s.monthlyPrice) {
-              const serviceMargin = s.monthlyPrice * permanence;
-              serviceCommission += serviceMargin * (serviceRule.value / 100);
-            }
-          }
-        }
-      });
-    }
-
-    const finalCommissionTotal = calculatedCommission + serviceCommission;
-
-    await prisma.contract.update({
-      where: { id: contractId },
-      data: { commissionFinal: finalCommissionTotal }
-    });
-
-    return { success: true, commissionFinal: finalCommissionTotal };
+    return await calculateAndSnapshotContractCommission(contractId);
   } catch (error: any) {
-    console.error(error);
+    console.error('Error en recalculateCommissionAction:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function recalculateCommissionsBatchAction(contractIds: string[]) {
+  try {
+    const session = await auth();
+    if (!session?.user || !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(session.user.role)) {
+      return { success: false, error: 'No autorizado' };
+    }
+
+    if (!Array.isArray(contractIds) || contractIds.length === 0) {
+      return { success: true, successCount: 0, failedCount: 0 };
+    }
+
+    const uniqueIds = Array.from(new Set(contractIds.filter(Boolean)));
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const authorizedContracts = await prisma.contract.findMany({
+      where: { id: { in: uniqueIds }, ...visibilityFilter },
+      select: {
+        id: true,
+        user: { select: { channel: { select: { commissionTierId: true } } } },
+      },
+    });
+
+    const tierIds = Array.from(
+      new Set(
+        authorizedContracts
+          .map((c) => c.user?.channel?.commissionTierId)
+          .filter((t): t is string => Boolean(t))
+      )
+    );
+
+    const rulesByTier = new Map<string, any[]>();
+    if (tierIds.length > 0) {
+      const rules = await prisma.commissionRule.findMany({
+        where: { tierId: { in: tierIds } },
+        include: {
+          products: { select: { id: true } },
+          additionalServices: { select: { id: true } },
+        },
+      });
+      for (const r of rules) {
+        if (!rulesByTier.has(r.tierId)) rulesByTier.set(r.tierId, []);
+        rulesByTier.get(r.tierId)!.push(r);
+      }
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    const CONCURRENCY = 10;
+
+    for (let i = 0; i < authorizedContracts.length; i += CONCURRENCY) {
+      const batch = authorizedContracts.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map((c) =>
+          calculateAndSnapshotContractCommission(c.id, { preloadedRulesByTier: rulesByTier })
+        )
+      );
+      for (const res of results) {
+        if (res.success) successCount++;
+        else failedCount++;
+      }
+    }
+
+    return { success: true, successCount, failedCount };
+  } catch (error: any) {
+    console.error('Error en recalculateCommissionsBatchAction:', error);
     return { success: false, error: error.message };
   }
 }
@@ -700,14 +734,28 @@ export async function updateManualCommissionAction(contractId: string, manualVal
       return { success: false, error: 'No autorizado' };
     }
 
+    if (!Number.isFinite(manualValue)) {
+      return { success: false, error: 'Importe no válido.' };
+    }
+
+    const visibilityFilter = await getUserVisibilityFilter();
+    const authorized = await prisma.contract.findFirst({
+      where: { id: contractId, ...visibilityFilter },
+      select: { id: true },
+    });
+
+    if (!authorized) {
+      return { success: false, error: 'Contrato no encontrado o sin acceso autorizado.' };
+    }
+
     await prisma.contract.update({
       where: { id: contractId },
-      data: { commissionFinal: manualValue }
+      data: { commissionFinal: manualValue },
     });
 
     return { success: true, commissionFinal: manualValue };
   } catch (error: any) {
-    console.error(error);
+    console.error('Error en updateManualCommissionAction:', error);
     return { success: false, error: error.message };
   }
 }

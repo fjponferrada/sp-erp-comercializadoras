@@ -1,8 +1,28 @@
+import { cache } from 'react';
 import { auth } from '@/auth';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 import Sidebar from '@/components/Sidebar';
+import BlockedSessionScreen from '@/components/BlockedSessionScreen';
 import { BrandThemeProvider, defaultTheme, type BrandTheme } from '@/context/BrandThemeContext';
 import { MobileSidebarProvider } from '@/context/MobileSidebarContext';
+
+const checkUserActiveStatus = cache(async (userId?: string, email?: string) => {
+  if (userId) {
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true },
+    });
+    if (u) return u.isActive;
+  }
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) return true;
+  const byEmail = await prisma.user.findFirst({
+    where: { email: { equals: cleanEmail, mode: 'insensitive' } },
+    select: { isActive: true },
+  });
+  return byEmail ? byEmail.isActive : false;
+});
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -12,6 +32,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let activeBrand: BrandTheme = defaultTheme;
 
   if (session?.user) {
+    const isActive = await checkUserActiveStatus(session.user.id, session.user.email || undefined);
+    if (isActive === false) {
+      return (
+        <BrandThemeProvider theme={activeBrand}>
+          <BlockedSessionScreen />
+        </BrandThemeProvider>
+      );
+    }
+
     const allowedBrands = (session.user as any).allowedBrands || [];
     const brandData = allowedBrands.find((b: any) => b.id === activeBrandId) || allowedBrands[0];
     

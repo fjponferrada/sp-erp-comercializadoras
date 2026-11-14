@@ -3,74 +3,92 @@
 import React, { useState } from 'react';
 import { sendSelectedInvoicesAction, markSelectedInvoicesAsCommunicatedAction } from '@/app/actions/invoiceActions';
 import { Mail, Loader2, CheckCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-export default function SendInvoicesButton({ selectedInvoiceIds, onSentSuccess }: { selectedInvoiceIds: string[], onSentSuccess?: () => void }) {
+export default function SendInvoicesButton({
+  selectedInvoiceIds,
+  onSentSuccess,
+}: {
+  selectedInvoiceIds: string[];
+  onSentSuccess?: () => void;
+}) {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
 
   const handleSend = async () => {
     if (selectedInvoiceIds.length === 0) {
-      alert("No hay facturas seleccionadas.");
+      toast.error('No hay facturas seleccionadas.');
       return;
     }
-    
-    if (!confirm(`¿Seguro que quieres enviar ${selectedInvoiceIds.length} facturas a los clientes?`)) return;
+
+    if (!confirm(`¿Seguro que quieres enviar por email ${selectedInvoiceIds.length} facturas seleccionadas a sus clientes?`)) {
+      return;
+    }
 
     setLoading(true);
-    setResult(null);
-
-    const res = await sendSelectedInvoicesAction(selectedInvoiceIds);
-    
-    setLoading(false);
-    if (res.success) {
-      setResult(res.message || 'Facturas enviadas con éxito.');
-      setTimeout(() => setResult(null), 5000);
-      if (onSentSuccess) onSentSuccess();
-    } else {
-      alert(`Error: ${res.error}`);
+    try {
+      const res = await sendSelectedInvoicesAction(selectedInvoiceIds);
+      if (res.success) {
+        if ((res.sentCount || 0) > 0) {
+          toast.success(res.message || 'Facturas enviadas con éxito.');
+        } else {
+          toast(res.message || 'Ninguna factura cumplía requisitos de envío.', { icon: 'ℹ️' });
+        }
+        if (onSentSuccess) onSentSuccess();
+      } else {
+        toast.error(`Error: ${res.error}`);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleMarkAsCommunicated = async () => {
     if (selectedInvoiceIds.length === 0) {
-      alert("No hay facturas seleccionadas.");
+      toast.error('No hay facturas seleccionadas.');
       return;
     }
-    
-    if (!confirm(`¿Seguro que quieres marcar ${selectedInvoiceIds.length} facturas como comunicadas SIN enviar email?`)) return;
+
+    if (!confirm(`¿Seguro que quieres marcar ${selectedInvoiceIds.length} facturas como comunicadas SIN enviar email?`)) {
+      return;
+    }
 
     setLoading(true);
-    setResult(null);
-
-    const res = await markSelectedInvoicesAsCommunicatedAction(selectedInvoiceIds);
-    
-    setLoading(false);
-    if (res.success) {
-      setResult(res.message || 'Facturas marcadas con éxito.');
-      setTimeout(() => setResult(null), 5000);
-      if (onSentSuccess) onSentSuccess();
-    } else {
-      alert(`Error: ${res.error}`);
+    try {
+      const res = await markSelectedInvoicesAsCommunicatedAction(selectedInvoiceIds);
+      if (res.success) {
+        toast.success(res.message || 'Facturas marcadas como comunicadas.');
+        if (onSentSuccess) onSentSuccess();
+      } else {
+        toast.error(`Error: ${res.error}`);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center gap-3">
-      {result && <span className="text-sm text-emerald-400 flex items-center gap-1"><CheckCircle size={14} /> {result}</span>}
-      <button 
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
         onClick={handleMarkAsCommunicated}
         disabled={loading || selectedInvoiceIds.length === 0}
-        className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+        className="btn-secondary disabled:opacity-50"
       >
-        {loading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+        {loading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
         Marcar Comunicadas ({selectedInvoiceIds.length})
       </button>
-      <button 
+      <button
+        type="button"
         onClick={handleSend}
         disabled={loading || selectedInvoiceIds.length === 0}
-        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+        className="btn-secondary disabled:opacity-50"
+        style={{
+          background: selectedInvoiceIds.length > 0 ? 'rgba(99, 102, 241, 0.15)' : undefined,
+          borderColor: selectedInvoiceIds.length > 0 ? 'rgba(99, 102, 241, 0.45)' : undefined,
+          color: selectedInvoiceIds.length > 0 ? '#818cf8' : undefined,
+        }}
       >
-        {loading ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
+        {loading ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
         Comunicar ({selectedInvoiceIds.length})
       </button>
     </div>

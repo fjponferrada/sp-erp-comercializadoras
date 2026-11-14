@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { calculateAndSnapshotContractCommission } from '@/lib/services/CommissionEngine';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -93,6 +94,10 @@ export async function GET(req: Request) {
               }
             });
           });
+
+          await calculateAndSnapshotContractCommission(renewal.id, { onlyIfEmpty: true }).catch((err) =>
+            console.warn(`Auto-cálculo de comisión omitido en renovación ${renewal.id}:`, err)
+          );
 
           activatedCount++;
           results.push({ id: renewal.id, cups: renewal.contractCode, status: 'ACTIVATED', prevContract: renewal.previousContractId, newActivationDate: expectedActivationDay });

@@ -91,8 +91,8 @@ export default function GenerarSwitchingClient() {
         document.body.removeChild(link);
         
         // Remove processed items EXCEPT the ones that failed validation
-        const failedIds = new Set(res.validationErrors?.map((e: any) => e.contrato) || []);
-        setData(prev => prev.filter(p => !selectedIds.has(p.id) || failedIds.has(p.contrato)));
+        const failedIds = new Set(res.validationErrors?.map((e: any) => e.id || e.contrato) || []);
+        setData(prev => prev.filter(p => !selectedIds.has(p.id) || failedIds.has(p.id) || failedIds.has(p.contrato)));
         setSelectedIds(new Set());
         
         if (res.validationErrors && res.validationErrors.length > 0) {

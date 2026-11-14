@@ -36,8 +36,13 @@ export default function LoginPage() {
     setSuccessMsg('');
     
     if (isRegistering) {
-      if (password !== confirmPassword) {
+      if (password.trim() !== confirmPassword.trim()) {
         setError('Las contraseñas no coinciden.');
+        setLoading(false);
+        return;
+      }
+      if (password.trim().length < 8) {
+        setError('La contraseña debe tener al menos 8 caracteres.');
         setLoading(false);
         return;
       }

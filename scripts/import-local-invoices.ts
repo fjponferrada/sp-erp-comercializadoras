@@ -6,9 +6,6 @@ import fs from 'fs';
 import path from 'path';
 import { uploadFileToR2 } from '../src/lib/r2';
 
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
-
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
@@ -30,7 +27,8 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
   for (let i = 0; i < files.length; i++) {
     const filePath = files[i];
     const filename = path.basename(filePath);
-    const invoiceNumber = path.basename(filename, `.${fileType}`);
+    const ext = path.extname(filename);
+    const invoiceNumber = path.basename(filename, ext).trim();
 
     process.stdout.write(`[${i + 1}/${files.length}] Procesando ${filename}... `);
 
@@ -51,12 +49,10 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
         continue;
       }
 
-      if (fileType === 'xml' && (invoice.invoiceData as any)?.xmlUrl?.startsWith('https://pub')) {
+      if (fileType === 'xml' && (invoice.xmlUrl?.startsWith('https://pub') || (invoice.invoiceData as any)?.xmlUrl?.startsWith('https://pub'))) {
         skipCount++;
         continue;
       }
-
-
 
       // Leer el archivo localmente
       const buffer = fs.readFileSync(filePath);
@@ -69,7 +65,7 @@ async function uploadInvoicesFromDirectory(dirPath: string, fileType: 'pdf' | 'x
       await prisma.invoice.update({
         where: { id: invoice.id },
         data: fileType === 'xml' 
-          ? { invoiceData: { ...(invoice.invoiceData as any || {}), xmlUrl: r2Url } } 
+          ? { xmlUrl: r2Url, invoiceData: { ...(invoice.invoiceData as any || {}), xmlUrl: r2Url } } 
           : { pdfUrl: r2Url }
       });
 

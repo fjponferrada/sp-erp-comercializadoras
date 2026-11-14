@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getLiquidacionComisionesAction, recalculateCommissionAction, updateManualCommissionAction } from '@/app/actions/liquidacionActions';
+import Link from 'next/link';
+import {
+  getLiquidacionComisionesAction,
+  recalculateCommissionsBatchAction,
+  updateManualCommissionAction,
+} from '@/app/actions/liquidacionActions';
 import { RefreshCcw, Calculator, Wallet, Download, TrendingDown, TrendingUp, Edit2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -29,12 +34,12 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
 
   const [channelId, setChannelId] = useState<string>('todos');
   const [mode, setMode] = useState<'upfront' | 'carterizada'>('upfront');
-  
+
   const getDefaultCutoff = (end: string) => {
     if (!end) return '';
-    const d = new Date(end);
-    // 11th of the month following the endDate month
-    const cutoff = new Date(Date.UTC(d.getFullYear(), d.getMonth() + 1, 11));
+    const [y, m] = end.split('-').map(Number);
+    if (!y || !m) return '';
+    const cutoff = new Date(Date.UTC(y, m, 11)); // m is 1-based, so Date.UTC(y, m, 11) is 11th of month m+1
     return cutoff.toISOString().split('T')[0];
   };
 
@@ -45,38 +50,46 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
       setCutoffDate(getDefaultCutoff(endDate));
     }
   }, [endDate]);
-  
+
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ 
-    totalLiquidacion: number; 
-    commissions: any[]; 
-    decommissions: any[]; 
-    carterizadas: any[] 
+  const [result, setResult] = useState<{
+    totalLiquidacion: number;
+    commissions: any[];
+    decommissions: any[];
+    carterizadas: any[];
   } | null>(null);
 
-  // Modal de edición manual
-  const [editingCommission, setEditingCommission] = useState<{ id: string, value: number, titular: string, codigoContrato: string } | null>(null);
+  // Modal de edición manual (edita siempre la comisión anual base en V0)
+  const [editingCommission, setEditingCommission] = useState<{
+    id: string;
+    value: number;
+    titular: string;
+    codigoContrato: string;
+  } | null>(null);
   const [manualValue, setManualValue] = useState<string>('');
 
   const [comisionesFilter, setComisionesFilter] = useState<'all' | 'calculated' | 'pending'>('all');
 
-  const filteredCommissions = result?.commissions.filter(c => {
-    if (comisionesFilter === 'calculated') return c.importeLiquidado > 0;
-    if (comisionesFilter === 'pending') return c.importeLiquidado === 0;
-    return true;
-  }) || [];
+  const filteredCommissions =
+    result?.commissions.filter((c) => {
+      if (comisionesFilter === 'calculated') return c.importeLiquidado > 0;
+      if (comisionesFilter === 'pending') return c.importeLiquidado === 0;
+      return true;
+    }) || [];
 
   const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
 
-  const toggleSelection = (id: string) => {
-    setSelectedContracts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleSelection = (targetId: string) => {
+    setSelectedContracts((prev) =>
+      prev.includes(targetId) ? prev.filter((x) => x !== targetId) : [...prev, targetId]
+    );
   };
 
   const selectAll = () => {
     if (!result) return;
     const allIds = [
-      ...(mode === 'upfront' ? filteredCommissions.map(c => c.id) : []),
-      ...(mode === 'carterizada' ? result.carterizadas.map(c => c.id) : [])
+      ...(mode === 'upfront' ? filteredCommissions.map((c) => c.v0Id || c.id) : []),
+      ...(mode === 'carterizada' ? result.carterizadas.map((c) => c.v0Id || c.id) : []),
     ];
     const uniqueIds = Array.from(new Set(allIds));
     if (selectedContracts.length === uniqueIds.length && uniqueIds.length > 0) {
@@ -89,17 +102,21 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
   const handleBulkRecalculate = async () => {
     if (selectedContracts.length === 0) return;
     if (!confirm(`¿Seguro que deseas recalcular ${selectedContracts.length} contratos seleccionados?`)) return;
-    
+
     setLoading(true);
-    let successCount = 0;
     try {
-      for (const id of selectedContracts) {
-        const res = await recalculateCommissionAction(id);
-        if (res.success) successCount++;
+      const res = await recalculateCommissionsBatchAction(selectedContracts);
+      if (res.success) {
+        if (res.failedCount && res.failedCount > 0) {
+          toast.success(`${res.successCount} contratos recalculados (${res.failedCount} sin regla aplicable).`);
+        } else {
+          toast.success(`${res.successCount} contratos recalculados.`);
+        }
+        setSelectedContracts([]);
+        await handleCalculate();
+      } else {
+        toast.error(res.error || 'Error al recalcular contratos');
       }
-      toast.success(`${successCount} contratos recalculados.`);
-      setSelectedContracts([]);
-      await handleCalculate();
     } catch (e: any) {
       toast.error('Error: ' + e.message);
     } finally {
@@ -119,13 +136,13 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
     try {
       const res = await updateManualCommissionAction(editingCommission.id, numValue);
       if (res.success) {
-        toast.success('Comisión editada manualmente');
+        toast.success('Comisión anual actualizada manualmente');
         setEditingCommission(null);
-        await handleCalculate(); // Recalcular todo
+        await handleCalculate();
       } else {
         toast.error(res.error || 'Error al editar comisión');
       }
-    } catch (error) {
+    } catch {
       toast.error('Error al editar comisión');
     } finally {
       setLoading(false);
@@ -136,7 +153,15 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
     if (!startDate || !endDate) return;
     setLoading(true);
     try {
-      const res = await getLiquidacionComisionesAction(startDate, endDate, decommStartDate, decommEndDate, channelId, mode, cutoffDate);
+      const res = await getLiquidacionComisionesAction(
+        startDate,
+        endDate,
+        decommStartDate,
+        decommEndDate,
+        channelId,
+        mode,
+        cutoffDate
+      );
       if (res.success && res.data) {
         setResult(res.data);
         setSelectedContracts([]);
@@ -152,58 +177,215 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
 
   const exportToXLSX = () => {
     if (!result) return;
-    
-    import('xlsx').then((XLSX) => {
-      const wb = XLSX.utils.book_new();
 
-      if (mode === 'upfront') {
+    import('xlsx')
+      .then((XLSX) => {
+        const wb = XLSX.utils.book_new();
+        const rnd2 = (v: any) => Number(Number(v || 0).toFixed(2));
         const formatExcelDate = (dString: any) => {
           if (!dString) return '-';
           const d = new Date(dString);
-          return d.toLocaleDateString('es-ES');
+          return d.toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' });
         };
 
-        // Hoja 1: Comisiones
-        const headersCom = ['Código Contrato', 'Fecha Alta V0', 'CUPS', 'Titular', 'Tarifa', 'Producto y Servicio', 'Consumo Anual (MWh)', 'P1 (kW)', 'P2 (kW)', 'P3 (kW)', 'P4 (kW)', 'P5 (kW)', 'P6 (kW)', 'Comision A Pagar'];
-        const rowsCom = result.commissions.map(d => [d.codigoContrato, formatExcelDate(d.fechaAltaV0), d.cups, d.titular, d.tarifa, d.producto, d.consumoAnual, d.potencias[0], d.potencias[1], d.potencias[2], d.potencias[3], d.potencias[4], d.potencias[5], d.importeLiquidado]);
-        const wsCom = XLSX.utils.aoa_to_sheet([headersCom, ...rowsCom]);
-        XLSX.utils.book_append_sheet(wb, wsCom, 'Comisiones');
+        if (mode === 'upfront') {
+          // Hoja 1: Comisiones
+          const headersCom = [
+            'Código Contrato',
+            'Fecha Alta V0',
+            'CUPS',
+            'Titular',
+            'Tarifa',
+            'Producto y Servicio',
+            'Consumo Anual (MWh)',
+            'P1 (kW)',
+            'P2 (kW)',
+            'P3 (kW)',
+            'P4 (kW)',
+            'P5 (kW)',
+            'P6 (kW)',
+            'Comisión a Pagar (€)',
+          ];
+          const rowsCom = result.commissions.map((d) => [
+            d.codigoContrato,
+            formatExcelDate(d.fechaAltaV0),
+            d.cups,
+            d.titular,
+            d.tarifa,
+            d.producto,
+            rnd2(d.consumoAnual),
+            d.potencias[0],
+            d.potencias[1],
+            d.potencias[2],
+            d.potencias[3],
+            d.potencias[4],
+            d.potencias[5],
+            rnd2(d.importeLiquidado),
+          ]);
+          const wsCom = XLSX.utils.aoa_to_sheet([headersCom, ...rowsCom]);
+          XLSX.utils.book_append_sheet(wb, wsCom, 'Comisiones');
 
-        const rnd2 = (v: any) => Number(Number(v || 0).toFixed(2));
+          // Hoja 2: Decomisiones 2.0TD
+          const dec20 = result.decommissions.filter((d) => d.tarifa === '2.0TD');
+          if (dec20.length > 0) {
+            const headersDec = [
+              'Código Contrato',
+              'CUPS',
+              'Titular',
+              'Fecha Alta V0',
+              'Fecha Baja V Final',
+              'Tarifa',
+              'Producto y Servicio',
+              'Consumo Anual (MWh)',
+              'P1 (kW)',
+              'P2 (kW)',
+              'P3 (kW)',
+              'P4 (kW)',
+              'P5 (kW)',
+              'P6 (kW)',
+              'Comisión Original (€)',
+              'Días Activos Reales',
+              'Días a Devolver',
+              'Importe Decomisión (€)',
+            ];
+            const rowsDec20 = dec20.map((d) => [
+              d.codigoContrato,
+              d.cups,
+              d.titular,
+              formatExcelDate(d.fechaAltaV0),
+              formatExcelDate(d.fechaBajaVFinal),
+              d.tarifa,
+              d.producto,
+              rnd2(d.consumoAnual),
+              d.potencias[0],
+              d.potencias[1],
+              d.potencias[2],
+              d.potencias[3],
+              d.potencias[4],
+              d.potencias[5],
+              rnd2(d.comisionOriginal),
+              d.diasActivos,
+              d.diasComputados,
+              -rnd2(d.importeLiquidado),
+            ]);
+            const wsDec20 = XLSX.utils.aoa_to_sheet([headersDec, ...rowsDec20]);
+            XLSX.utils.book_append_sheet(wb, wsDec20, 'Decomisiones 2.0TD');
+          }
 
-        // Hoja 2: Decomisiones 2.0TD
-        const dec20 = result.decommissions.filter(d => d.tarifa === '2.0TD');
-        if (dec20.length > 0) {
-          const headersDec = ['Código Contrato', 'CUPS', 'Titular', 'Fecha Alta V0', 'Fecha Baja V Final', 'Tarifa', 'Producto y Servicio', 'Consumo Anual (MWh)', 'P1 (kW)', 'P2 (kW)', 'P3 (kW)', 'P4 (kW)', 'P5 (kW)', 'P6 (kW)', 'Comision Original', 'Días Activos Reales', 'Días a Devolver', 'Importe Decomisión'];
-          const rowsDec20 = dec20.map(d => [d.codigoContrato, d.cups, d.titular, formatExcelDate(d.fechaAltaV0), formatExcelDate(d.fechaBajaVFinal), d.tarifa, d.producto, d.consumoAnual, d.potencias[0], d.potencias[1], d.potencias[2], d.potencias[3], d.potencias[4], d.potencias[5], d.comisionOriginal, d.diasActivos, d.diasComputados, -rnd2(d.importeLiquidado)]);
-          const wsDec20 = XLSX.utils.aoa_to_sheet([headersDec, ...rowsDec20]);
-          XLSX.utils.book_append_sheet(wb, wsDec20, 'Decomisiones 2.0TD');
+          // Hoja 3: Decomisiones Resto
+          const decResto = result.decommissions.filter((d) => d.tarifa !== '2.0TD');
+          if (decResto.length > 0) {
+            const headersDecResto = [
+              'Código Contrato',
+              'CUPS',
+              'Titular',
+              'Fecha Alta V0',
+              'Fecha Baja V Final',
+              'Tarifa',
+              'Producto y Servicio',
+              'Consumo Anual (MWh)',
+              'P1 (kW)',
+              'P2 (kW)',
+              'P3 (kW)',
+              'P4 (kW)',
+              'P5 (kW)',
+              'P6 (kW)',
+              'Días Activos Reales',
+              'Comisión Original (€)',
+              'Comisión Real (€)',
+              'Comisión Margen Energía (€)',
+              'Energía Considerada (MWh)',
+              'Comisión Margen Potencia (€)',
+              'Comisión Servicios (€)',
+              'Diferencia Regularización (€)',
+            ];
+            const rowsDecResto = decResto.map((d) => [
+              d.codigoContrato,
+              d.cups,
+              d.titular,
+              formatExcelDate(d.fechaAltaV0),
+              formatExcelDate(d.fechaBajaVFinal),
+              d.tarifa,
+              d.producto,
+              rnd2(d.consumoAnual),
+              d.potencias[0],
+              d.potencias[1],
+              d.potencias[2],
+              d.potencias[3],
+              d.potencias[4],
+              d.potencias[5],
+              d.diasActivos,
+              rnd2(d.comisionOriginal),
+              rnd2(d.comisionReal),
+              rnd2(d.comisionMargenEnergia),
+              rnd2(d.energiaConsiderada),
+              rnd2(d.comisionMargenPotencia),
+              rnd2(d.comisionResto),
+              rnd2(d.importeLiquidado),
+            ]);
+            const wsDecResto = XLSX.utils.aoa_to_sheet([headersDecResto, ...rowsDecResto]);
+            XLSX.utils.book_append_sheet(wb, wsDecResto, 'Decomisiones Resto');
+          }
+        } else {
+          // Hoja única: Carterizadas
+          const headersCar = [
+            'Titular',
+            'Código Contrato',
+            'Tarifa',
+            'Producto y Servicio',
+            'Consumo Anual (MWh)',
+            'CUPS',
+            'Comisión Anual Base (€)',
+            'Días Devengados en el Mes',
+            'Importe Liquidado (€)',
+          ];
+          const rowsCar = result.carterizadas.map((d) => [
+            d.titular,
+            d.codigoContrato,
+            d.tarifa,
+            d.producto,
+            rnd2(d.consumoAnual),
+            d.cups,
+            rnd2(d.comisionOriginal),
+            d.diasComputados,
+            rnd2(d.importeLiquidado),
+          ]);
+          const wsCar = XLSX.utils.aoa_to_sheet([headersCar, ...rowsCar]);
+          XLSX.utils.book_append_sheet(wb, wsCar, 'Carterizadas');
         }
 
-        // Hoja 3: Decomisiones Resto
-        const decResto = result.decommissions.filter(d => d.tarifa !== '2.0TD');
-        if (decResto.length > 0) {
-          const headersDecResto = ['Código Contrato', 'CUPS', 'Titular', 'Fecha Alta V0', 'Fecha Baja V Final', 'Tarifa', 'Producto y Servicio', 'Consumo Anual (MWh)', 'P1 (kW)', 'P2 (kW)', 'P3 (kW)', 'P4 (kW)', 'P5 (kW)', 'P6 (kW)', 'Comisión Original', 'Comisión Real', 'Comisión Margen Energía', 'Energía Considerada (MWh)', 'Comisión Margen Potencia', 'Comisión Resto', 'Diferencia (Regularización)'];
-          const rowsDecResto = decResto.map(d => [d.codigoContrato, d.cups, d.titular, formatExcelDate(d.fechaAltaV0), formatExcelDate(d.fechaBajaVFinal), d.tarifa, d.producto, d.consumoAnual, d.potencias[0], d.potencias[1], d.potencias[2], d.potencias[3], d.potencias[4], d.potencias[5], rnd2(d.comisionOriginal), rnd2(d.comisionReal), rnd2(d.comisionMargenEnergia), rnd2(d.energiaConsiderada), rnd2(d.comisionMargenPotencia), rnd2(d.comisionResto), rnd2(d.importeLiquidado)]);
-          const wsDecResto = XLSX.utils.aoa_to_sheet([headersDecResto, ...rowsDecResto]);
-          XLSX.utils.book_append_sheet(wb, wsDecResto, 'Decomisiones Resto');
-        }
-      } else {
-        // Hoja única: Carterizadas
-        const headersCar = ['Titular', 'Codigo Contrato', 'Tarifa', 'Consumo Anual (MWh)', 'CUPS', 'Comision Original', 'Días Devengados en el Mes', 'Importe Liquidado'];
-        const rowsCar = result.carterizadas.map(d => [d.titular, d.codigoContrato, d.tarifa, d.consumoAnual, d.cups, d.comisionOriginal, d.diasComputados, d.importeLiquidado]);
-        const wsCar = XLSX.utils.aoa_to_sheet([headersCar, ...rowsCar]);
-        XLSX.utils.book_append_sheet(wb, wsCar, 'Carterizadas');
-      }
-
-      XLSX.writeFile(wb, `liquidacion_${mode}_${startDate}_a_${endDate}.xlsx`);
-    }).catch(err => {
-      console.error(err);
-      toast.error('Error al generar el archivo Excel');
-    });
+        XLSX.writeFile(wb, `liquidacion_${mode}_${startDate}_a_${endDate}.xlsx`);
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error('Error al generar el archivo Excel');
+      });
   };
 
+  const totalCommissionsPlus = result
+    ? result.commissions.reduce((a, b) => a + Number(b.importeLiquidado || 0), 0)
+    : 0;
 
+  // Impacto neto real sobre la liquidación: en 2.0TD importeLiquidado es el cargo a descontar (negativo para el canal),
+  // en Resto Tarifas importeLiquidado ya viene con signo (comisionReal - comisionOriginal).
+  const netDecommImpact = result
+    ? result.decommissions.reduce(
+        (a, b) => a + (b.tarifa === '2.0TD' ? -Number(b.importeLiquidado || 0) : Number(b.importeLiquidado || 0)),
+        0
+      )
+    : 0;
+
+  const renderContractCode = (c: any) => {
+    if (!c.id || c.codigoContrato === '-') return <span>{c.codigoContrato || '-'}</span>;
+    return (
+      <Link
+        href={`/contratos/${c.id}`}
+        className="text-indigo-400 hover:text-[var(--lime)] hover:underline transition-colors font-medium"
+      >
+        {c.codigoContrato}
+      </Link>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -221,7 +403,7 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
               <option value="carterizada">Carterizada (Mensualizada)</option>
             </select>
           </div>
-          
+
           <div className="col-span-1 lg:col-span-2">
             <label className="block text-sm font-medium text-gray-400 mb-1">Canal</label>
             <select
@@ -239,7 +421,10 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
           </div>
 
           <div className="col-span-1 md:col-span-2 lg:col-span-1">
-            <label className="block text-sm font-medium text-gray-400 mb-1" title="Contratos que causen baja definitiva antes de esta fecha se ignorarán">
+            <label
+              className="block text-sm font-medium text-gray-400 mb-1"
+              title="Contratos que causen baja definitiva antes de esta fecha del mes siguiente a su activación se ignorarán"
+            >
               Límite Bajas Prematuras
             </label>
             <input
@@ -251,7 +436,9 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
           </div>
 
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-400 mb-1">Desde (Fecha Activación)</label>
+            <label className="block text-sm font-medium text-gray-400 mb-1">
+              {mode === 'carterizada' ? 'Desde (Periodo Devengo)' : 'Desde (Fecha Activación)'}
+            </label>
             <input
               type="date"
               className="w-full bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[var(--lime)]"
@@ -259,9 +446,11 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
               onChange={(e) => setStartDate(e.target.value)}
             />
           </div>
-          
+
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-400 mb-1">Hasta (Fecha Activación)</label>
+            <label className="block text-sm font-medium text-gray-400 mb-1">
+              {mode === 'carterizada' ? 'Hasta (Periodo Devengo)' : 'Hasta (Fecha Activación)'}
+            </label>
             <input
               type="date"
               className="w-full bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[var(--lime)]"
@@ -270,25 +459,29 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
             />
           </div>
 
-          <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-400 mb-1">Desde (Fecha Baja)</label>
-            <input
-              type="date"
-              className="w-full bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[var(--lime)]"
-              value={decommStartDate}
-              onChange={(e) => setDecommStartDate(e.target.value)}
-            />
-          </div>
+          {mode === 'upfront' && (
+            <>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-400 mb-1">Desde (Fecha Baja)</label>
+                <input
+                  type="date"
+                  className="w-full bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[var(--lime)]"
+                  value={decommStartDate}
+                  onChange={(e) => setDecommStartDate(e.target.value)}
+                />
+              </div>
 
-          <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-400 mb-1">Hasta (Fecha Baja)</label>
-            <input
-              type="date"
-              className="w-full bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[var(--lime)]"
-              value={decommEndDate}
-              onChange={(e) => setDecommEndDate(e.target.value)}
-            />
-          </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-gray-400 mb-1">Hasta (Fecha Baja)</label>
+                <input
+                  type="date"
+                  className="w-full bg-[#0B0F19] border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[var(--lime)]"
+                  value={decommEndDate}
+                  onChange={(e) => setDecommEndDate(e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex gap-2 w-full mt-6 justify-end">
@@ -300,19 +493,19 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
             {loading ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <Calculator className="w-5 h-5" />}
             <span>Calcular</span>
           </button>
-          
+
           {selectedContracts.length > 0 && (
             <button
               onClick={handleBulkRecalculate}
               disabled={loading}
               className="bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-indigo-500 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              title="Recalcular seleccionados"
+              title="Recalcular seleccionados en lote"
             >
               <RefreshCcw className="w-5 h-5" />
               <span className="hidden md:inline">Recalcular ({selectedContracts.length})</span>
             </button>
           )}
-          
+
           {result && (
             <button
               onClick={exportToXLSX}
@@ -335,17 +528,18 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                   <TrendingUp className="w-8 h-8 text-green-400 mb-2" />
                   <h3 className="text-gray-400 text-sm font-medium mb-1">Total Comisiones (+)</h3>
                   <p className="text-2xl font-bold text-green-400">
-                    {result.commissions.reduce((a,b) => a + b.importeLiquidado, 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                    {totalCommissionsPlus.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </p>
                   <p className="text-xs text-gray-500 mt-2">{result.commissions.length} contratos activados</p>
                 </div>
                 <div className="card p-6 flex flex-col items-center justify-center text-center">
-                  <TrendingDown className="w-8 h-8 text-red-400 mb-2" />
-                  <h3 className="text-gray-400 text-sm font-medium mb-1">Total Decomisiones (-)</h3>
-                  <p className="text-2xl font-bold text-red-400">
-                    {result.decommissions.reduce((a,b) => a + (b.tarifa === '2.0TD' ? b.importeLiquidado : -b.importeLiquidado), 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                  <TrendingDown className={`w-8 h-8 mb-2 ${netDecommImpact > 0 ? 'text-green-400' : 'text-red-400'}`} />
+                  <h3 className="text-gray-400 text-sm font-medium mb-1">Total Decomisiones / True-Up</h3>
+                  <p className={`text-2xl font-bold ${netDecommImpact > 0 ? 'text-green-400' : netDecommImpact < 0 ? 'text-red-400' : 'text-gray-300'}`}>
+                    {netDecommImpact > 0 ? '+' : ''}
+                    {netDecommImpact.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                   </p>
-                  <p className="text-xs text-gray-500 mt-2">{result.decommissions.length} bajas anticipadas</p>
+                  <p className="text-xs text-gray-500 mt-2">{result.decommissions.length} bajas anticipadas (&lt; 365 días)</p>
                 </div>
                 <div className="card p-6 flex flex-col items-center justify-center text-center relative overflow-hidden group border border-[var(--lime)]/30">
                   <div className="absolute inset-0 bg-gradient-to-br from-[var(--lime)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -359,22 +553,20 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
             )}
 
             {mode === 'carterizada' && (
-               <div className="col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="card p-8 flex flex-col items-center justify-center text-center relative overflow-hidden group border border-[var(--lime)]/30">
-                   <div className="absolute inset-0 bg-gradient-to-br from-[var(--lime)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                   <Wallet className="w-12 h-12 text-[var(--lime)] mb-4" />
-                   <h3 className="text-gray-400 text-lg font-medium mb-1">Total Devengado</h3>
-                   <p className="text-4xl lg:text-5xl font-bold text-white">
-                     {result.totalLiquidacion.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
-                   </p>
-                 </div>
-                 <div className="card p-8 flex flex-col items-center justify-center text-center">
-                   <h3 className="text-gray-400 text-lg font-medium mb-1">Contratos Computados</h3>
-                   <p className="text-4xl lg:text-5xl font-bold text-white">
-                     {result.carterizadas.length}
-                   </p>
-                 </div>
-               </div>
+              <div className="col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="card p-8 flex flex-col items-center justify-center text-center relative overflow-hidden group border border-[var(--lime)]/30">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--lime)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Wallet className="w-12 h-12 text-[var(--lime)] mb-4" />
+                  <h3 className="text-gray-400 text-lg font-medium mb-1">Total Devengado</h3>
+                  <p className="text-4xl lg:text-5xl font-bold text-white">
+                    {result.totalLiquidacion.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                  </p>
+                </div>
+                <div className="card p-8 flex flex-col items-center justify-center text-center">
+                  <h3 className="text-gray-400 text-lg font-medium mb-1">Contratos Computados</h3>
+                  <p className="text-4xl lg:text-5xl font-bold text-white">{result.carterizadas.length}</p>
+                </div>
+              </div>
             )}
           </div>
 
@@ -385,7 +577,9 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                 {result.commissions.length > 0 && (
                   <div className="card p-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
-                      <h3 className="text-lg font-semibold text-white flex items-center gap-2"><TrendingUp size={20} className="text-green-400"/> Comisiones por Alta</h3>
+                      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <TrendingUp size={20} className="text-green-400" /> Comisiones por Alta
+                      </h3>
                       <select
                         className="bg-[#0B0F19] border border-gray-800 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:border-[var(--lime)] w-full md:w-auto"
                         value={comisionesFilter}
@@ -401,11 +595,14 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                         <thead className="text-xs uppercase bg-gray-800/50 text-gray-400 border-b border-gray-800">
                           <tr>
                             <th className="px-2 py-2 text-[11px] w-10">
-                              <input 
-                                type="checkbox" 
+                              <input
+                                type="checkbox"
                                 className="rounded border-gray-700 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
                                 onChange={selectAll}
-                                checked={filteredCommissions.length > 0 && filteredCommissions.every(c => selectedContracts.includes(c.id))}
+                                checked={
+                                  filteredCommissions.length > 0 &&
+                                  filteredCommissions.every((c) => selectedContracts.includes(c.v0Id || c.id))
+                                }
                               />
                             </th>
                             <th className="px-2 py-2 text-[11px]">Titular</th>
@@ -420,56 +617,78 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredCommissions.map((c, i) => (
-                            <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/20">
-                              <td className="px-2 py-2 text-[11px]">
-                                <input 
-                                  type="checkbox"
-                                  className="rounded border-gray-700 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
-                                  checked={selectedContracts.includes(c.id)}
-                                  onChange={() => toggleSelection(c.id)}
-                                />
-                              </td>
-                              <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
-                              <td className="px-2 py-2 text-[11px] font-medium text-gray-300">{c.codigoContrato}</td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">
-                                <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
-                                  {c.producto}
-                                </div>
-                              </td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
-                              <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
-                                {c.potencias && c.potencias.some((p: number) => p > 0) ? c.potencias.map((p: number, idx: number) => p > 0 ? `P${idx+1}:${p}` : '').filter(Boolean).join(' | ') : '-'}
-                              </td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">{c.consumoAnual} MWh</td>
-                              <td className="px-2 py-2 text-[11px]">{c.cups}</td>
-                              <td className="px-2 py-2 text-[11px] text-right text-green-400 font-semibold">{c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</td>
-                              <td className="px-2 py-2 text-[11px] text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setEditingCommission({ id: c.id, value: c.importeLiquidado, titular: c.titular, codigoContrato: c.codigoContrato });
-                                      setManualValue(c.importeLiquidado.toString());
-                                    }}
-                                    disabled={loading}
-                                    className="text-xs font-semibold px-2 py-1 bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors disabled:opacity-50 flex items-center gap-1"
-                                    title="Editar comisión manualmente"
-                                  >
-                                    <Edit2 size={12} /> Editar
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                          {filteredCommissions.map((c, i) => {
+                            const targetV0Id = c.v0Id || c.id;
+                            return (
+                              <tr key={c.id || i} className="border-b border-gray-800 hover:bg-gray-800/20">
+                                <td className="px-2 py-2 text-[11px]">
+                                  <input
+                                    type="checkbox"
+                                    className="rounded border-gray-700 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
+                                    checked={selectedContracts.includes(targetV0Id)}
+                                    onChange={() => toggleSelection(targetV0Id)}
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
+                                <td className="px-2 py-2 text-[11px]">{renderContractCode(c)}</td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">
+                                  <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
+                                    {c.producto}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
+                                <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
+                                  {c.potencias && c.potencias.some((p: number) => p > 0)
+                                    ? c.potencias
+                                        .map((p: number, idx: number) => (p > 0 ? `P${idx + 1}:${p}` : ''))
+                                        .filter(Boolean)
+                                        .join(' | ')
+                                    : '-'}
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">
+                                  {Number(c.consumoAnual || 0).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MWh
+                                </td>
+                                <td className="px-2 py-2 text-[11px]">{c.cups}</td>
+                                <td className="px-2 py-2 text-[11px] text-right text-green-400 font-semibold">
+                                  {c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-center">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setEditingCommission({
+                                          id: targetV0Id,
+                                          value: c.comisionOriginal,
+                                          titular: c.titular,
+                                          codigoContrato: c.codigoContrato,
+                                        });
+                                        setManualValue(String(c.comisionOriginal ?? c.importeLiquidado));
+                                      }}
+                                      disabled={loading}
+                                      className="text-xs font-semibold px-2 py-1 bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                      title="Editar comisión manualmente"
+                                    >
+                                      <Edit2 size={12} /> Editar
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
                   </div>
                 )}
-                {result.decommissions.filter(c => c.tarifa === '2.0TD').length > 0 && (
+
+                {result.decommissions.filter((c) => c.tarifa === '2.0TD').length > 0 && (
                   <div className="card p-6">
-                    <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2"><TrendingDown size={20} className="text-red-400"/> Decomisiones por Baja Anticipada (2.0TD)</h3>
-                    <p className="text-xs text-slate-400 mb-4">* Se omiten automáticamente aquellas decomisiones menores a 1 € para no generar movimientos con cantidades despreciables (céntimos).</p>
+                    <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                      <TrendingDown size={20} className="text-red-400" /> Decomisiones por Baja Anticipada (2.0TD)
+                    </h3>
+                    <p className="text-xs text-slate-400 mb-4">
+                      * Horizonte comisión anual de 365 días (independiente de la permanencia del cliente). Se omiten decomisiones menores a 1 €.
+                    </p>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm text-left text-gray-400">
                         <thead className="text-xs uppercase bg-gray-800/50 text-gray-400 border-b border-gray-800">
@@ -486,34 +705,50 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                           </tr>
                         </thead>
                         <tbody>
-                          {result.decommissions.filter(c => c.tarifa === '2.0TD').map((c, i) => (
-                            <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/20">
-                              <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
-                              <td className="px-2 py-2 text-[11px] font-medium text-gray-300">{c.codigoContrato}</td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">
-                                <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
-                                  {c.producto}
-                                </div>
-                              </td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
-                              <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
-                                {c.potencias && c.potencias.some((p: number) => p > 0) ? c.potencias.map((p: number, idx: number) => p > 0 ? `P${idx+1}:${p}` : '').filter(Boolean).join(' | ') : '-'}
-                              </td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">{c.consumoAnual} MWh</td>
-                              <td className="px-2 py-2 text-[11px]">{c.diasActivos} días</td>
-                              <td className="px-2 py-2 text-[11px]">{c.diasComputados} días</td>
-                              <td className="px-2 py-2 text-[11px] text-right text-red-400 font-semibold">-{c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</td>
-                            </tr>
-                          ))}
+                          {result.decommissions
+                            .filter((c) => c.tarifa === '2.0TD')
+                            .map((c, i) => (
+                              <tr key={c.id || i} className="border-b border-gray-800 hover:bg-gray-800/20">
+                                <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
+                                <td className="px-2 py-2 text-[11px]">{renderContractCode(c)}</td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">
+                                  <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
+                                    {c.producto}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
+                                <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
+                                  {c.potencias && c.potencias.some((p: number) => p > 0)
+                                    ? c.potencias
+                                        .map((p: number, idx: number) => (p > 0 ? `P${idx + 1}:${p}` : ''))
+                                        .filter(Boolean)
+                                        .join(' | ')
+                                    : '-'}
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">
+                                  {Number(c.consumoAnual || 0).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MWh
+                                </td>
+                                <td className="px-2 py-2 text-[11px]">{c.diasActivos} días</td>
+                                <td className="px-2 py-2 text-[11px]">{c.diasComputados} días</td>
+                                <td className="px-2 py-2 text-[11px] text-right text-red-400 font-semibold">
+                                  -{c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
                   </div>
                 )}
-                
-                {result.decommissions.filter(c => c.tarifa !== '2.0TD').length > 0 && (
+
+                {result.decommissions.filter((c) => c.tarifa !== '2.0TD').length > 0 && (
                   <div className="card p-6">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><TrendingDown size={20} className="text-red-400"/> Decomisiones por Baja Anticipada (Resto Tarifas)</h3>
+                    <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                      <TrendingDown size={20} className="text-red-400" /> Regularización True-Up por Baja Anticipada (Resto Tarifas)
+                    </h3>
+                    <p className="text-xs text-slate-400 mb-4">
+                      * Recálculo sobre energía real facturada y potencias contratadas durante la vigencia del contrato (&lt; 365 días), usando los márgenes históricos del contrato.
+                    </p>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm text-left text-gray-400">
                         <thead className="text-xs uppercase bg-gray-800/50 text-gray-400 border-b border-gray-800">
@@ -523,7 +758,7 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                             <th className="px-2 py-2 text-[11px]">Producto</th>
                             <th className="px-2 py-2 text-[11px]">Tarifa</th>
                             <th className="px-2 py-2 text-[11px] min-w-[150px]">Potencias (kW)</th>
-                            <th className="px-2 py-2 text-[11px]">Consumo Anual</th>
+                            <th className="px-2 py-2 text-[11px]">Energía Real Extrap.</th>
                             <th className="px-2 py-2 text-[11px]">Días Activos</th>
                             <th className="px-2 py-2 text-[11px] text-right">Comisión Inicial</th>
                             <th className="px-2 py-2 text-[11px] text-right">Comisión Real</th>
@@ -531,28 +766,49 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                           </tr>
                         </thead>
                         <tbody>
-                          {result.decommissions.filter(c => c.tarifa !== '2.0TD').map((c, i) => (
-                            <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/20">
-                              <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
-                              <td className="px-2 py-2 text-[11px] font-medium text-gray-300">{c.codigoContrato}</td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">
-                                <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
-                                  {c.producto}
-                                </div>
-                              </td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
-                              <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
-                                {c.potencias && c.potencias.some((p: number) => p > 0) ? c.potencias.map((p: number, idx: number) => p > 0 ? `P${idx+1}:${p}` : '').filter(Boolean).join(' | ') : '-'}
-                              </td>
-                              <td className="px-2 py-2 text-[11px] text-gray-400">{c.consumoAnual} MWh</td>
-                              <td className="px-2 py-2 text-[11px]">{c.diasActivos} días</td>
-                              <td className="px-2 py-2 text-[11px] text-right text-gray-400">{c.comisionOriginal?.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</td>
-                              <td className="px-2 py-2 text-[11px] text-right text-gray-400">{c.comisionReal?.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</td>
-                              <td className={`px-2 py-2 text-[11px] text-right font-semibold ${c.importeLiquidado < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                {c.importeLiquidado > 0 ? '+' : ''}{c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
-                              </td>
-                            </tr>
-                          ))}
+                          {result.decommissions
+                            .filter((c) => c.tarifa !== '2.0TD')
+                            .map((c, i) => (
+                              <tr key={c.id || i} className="border-b border-gray-800 hover:bg-gray-800/20">
+                                <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
+                                <td className="px-2 py-2 text-[11px]">{renderContractCode(c)}</td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">
+                                  <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
+                                    {c.producto}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
+                                <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
+                                  {c.potencias && c.potencias.some((p: number) => p > 0)
+                                    ? c.potencias
+                                        .map((p: number, idx: number) => (p > 0 ? `P${idx + 1}:${p}` : ''))
+                                        .filter(Boolean)
+                                        .join(' | ')
+                                    : '-'}
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-gray-400">
+                                  {Number(c.energiaConsiderada ?? c.consumoAnual ?? 0).toLocaleString('es-ES', {
+                                    maximumFractionDigits: 2,
+                                  })}{' '}
+                                  MWh
+                                </td>
+                                <td className="px-2 py-2 text-[11px]">{c.diasActivos} días</td>
+                                <td className="px-2 py-2 text-[11px] text-right text-gray-400">
+                                  {c.comisionOriginal?.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                </td>
+                                <td className="px-2 py-2 text-[11px] text-right text-gray-400">
+                                  {c.comisionReal?.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                </td>
+                                <td
+                                  className={`px-2 py-2 text-[11px] text-right font-semibold ${
+                                    c.importeLiquidado < 0 ? 'text-red-400' : 'text-green-400'
+                                  }`}
+                                >
+                                  {c.importeLiquidado > 0 ? '+' : ''}
+                                  {c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -569,11 +825,14 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                     <thead className="text-xs uppercase bg-gray-800/50 text-gray-400 border-b border-gray-800">
                       <tr>
                         <th className="px-2 py-2 text-[11px] w-10">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             className="rounded border-gray-700 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
                             onChange={selectAll}
-                            checked={result.carterizadas.length > 0 && result.carterizadas.every(c => selectedContracts.includes(c.id))}
+                            checked={
+                              result.carterizadas.length > 0 &&
+                              result.carterizadas.every((c) => selectedContracts.includes(c.v0Id || c.id))
+                            }
                           />
                         </th>
                         <th className="px-2 py-2 text-[11px]">Titular</th>
@@ -582,53 +841,77 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
                         <th className="px-2 py-2 text-[11px]">Tarifa</th>
                         <th className="px-2 py-2 text-[11px] min-w-[150px]">Potencias (kW)</th>
                         <th className="px-2 py-2 text-[11px]">Consumo Anual</th>
+                        <th className="px-2 py-2 text-[11px] text-right">Comisión Anual</th>
                         <th className="px-2 py-2 text-[11px]">Días Devengados</th>
                         <th className="px-2 py-2 text-[11px] text-right">Importe Devengado</th>
                         <th className="px-2 py-2 text-[11px] text-center">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {result.carterizadas.map((c, i) => (
-                        <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/20">
-                          <td className="px-2 py-2 text-[11px]">
-                            <input 
-                              type="checkbox"
-                              className="rounded border-gray-700 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
-                              checked={selectedContracts.includes(c.id)}
-                              onChange={() => toggleSelection(c.id)}
-                            />
-                          </td>
-                          <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
-                          <td className="px-2 py-2 text-[11px] font-medium text-gray-300">{c.codigoContrato}</td>
-                          <td className="px-2 py-2 text-[11px] text-gray-400">
-                            <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
-                              {c.producto}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
-                          <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
-                            {c.potencias && c.potencias.some((p: number) => p > 0) ? c.potencias.map((p: number, idx: number) => p > 0 ? `P${idx+1}:${p}` : '').filter(Boolean).join(' | ') : '-'}
-                          </td>
-                          <td className="px-2 py-2 text-[11px] text-gray-400">{c.consumoAnual} MWh</td>
-                          <td className="px-2 py-2 text-[11px]">{c.diasComputados} días</td>
-                          <td className="px-2 py-2 text-[11px] text-right text-[var(--lime)] font-semibold">{c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</td>
-                          <td className="px-2 py-2 text-[11px] text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingCommission({ id: c.id, value: c.importeLiquidado, titular: c.titular, codigoContrato: c.codigoContrato });
-                                  setManualValue(c.importeLiquidado.toString());
-                                }}
-                                disabled={loading}
-                                className="text-xs font-semibold px-2 py-1 bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors disabled:opacity-50 flex items-center gap-1"
-                                title="Editar comisión manualmente"
-                              >
-                                <Edit2 size={12} /> Editar
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {result.carterizadas.map((c, i) => {
+                        const targetV0Id = c.v0Id || c.id;
+                        return (
+                          <tr key={c.id || i} className="border-b border-gray-800 hover:bg-gray-800/20">
+                            <td className="px-2 py-2 text-[11px]">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-700 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
+                                checked={selectedContracts.includes(targetV0Id)}
+                                onChange={() => toggleSelection(targetV0Id)}
+                              />
+                            </td>
+                            <td className="px-2 py-2 text-[11px] font-medium text-white">{c.titular}</td>
+                            <td className="px-2 py-2 text-[11px]">{renderContractCode(c)}</td>
+                            <td className="px-2 py-2 text-[11px] text-gray-400">
+                              <div className="max-w-[180px] xl:max-w-[250px] whitespace-normal leading-snug">
+                                {c.producto}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-[11px] text-gray-400">{c.tarifa}</td>
+                            <td className="px-2 py-2 text-[11px] text-xs text-gray-500 font-mono">
+                              {c.potencias && c.potencias.some((p: number) => p > 0)
+                                ? c.potencias
+                                    .map((p: number, idx: number) => (p > 0 ? `P${idx + 1}:${p}` : ''))
+                                    .filter(Boolean)
+                                    .join(' | ')
+                                : '-'}
+                            </td>
+                            <td className="px-2 py-2 text-[11px] text-gray-400">
+                              {Number(c.consumoAnual || 0).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MWh
+                            </td>
+                            <td className="px-2 py-2 text-[11px] text-right text-gray-300">
+                              {Number(c.comisionOriginal || 0).toLocaleString('es-ES', {
+                                style: 'currency',
+                                currency: 'EUR',
+                              })}
+                            </td>
+                            <td className="px-2 py-2 text-[11px]">{c.diasComputados} días</td>
+                            <td className="px-2 py-2 text-[11px] text-right text-[var(--lime)] font-semibold">
+                              {c.importeLiquidado.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                            </td>
+                            <td className="px-2 py-2 text-[11px] text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingCommission({
+                                      id: targetV0Id,
+                                      value: c.comisionOriginal,
+                                      titular: c.titular,
+                                      codigoContrato: c.codigoContrato,
+                                    });
+                                    setManualValue(String(c.comisionOriginal ?? 0));
+                                  }}
+                                  disabled={loading}
+                                  className="text-xs font-semibold px-2 py-1 bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                  title="Editar comisión anual base manualmente"
+                                >
+                                  <Edit2 size={12} /> Editar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -643,28 +926,44 @@ export default function LiquidacionComisionesClient({ channels }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-800/30">
-              <h2 className="text-lg font-bold text-white">Editar Comisión</h2>
-              <button onClick={() => setEditingCommission(null)} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+              <h2 className="text-lg font-bold text-white">Editar Comisión Anual</h2>
+              <button
+                onClick={() => setEditingCommission(null)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              >
                 <X size={20} />
               </button>
             </div>
             <div className="p-5">
-              <p className="text-xs text-slate-400 mb-4">
-                Editando comisión de <strong>{editingCommission.titular}</strong> ({editingCommission.codigoContrato})
+              <p className="text-xs text-slate-400 mb-3">
+                Editando comisión anual base de <strong>{editingCommission.titular}</strong> ({editingCommission.codigoContrato})
               </p>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Comisión Final (€)</label>
+              {mode === 'carterizada' && (
+                <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 mb-4">
+                  Introduce la <strong>comisión anual total (365 días)</strong>. El importe devengado del mes se recalculará proporcionalmente.
+                </p>
+              )}
+              <label className="block text-sm font-medium text-slate-300 mb-2">Comisión Anual Total (€)</label>
               <input
-                type="number" step="0.01"
+                type="number"
+                step="0.01"
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white font-bold focus:outline-none focus:border-indigo-500"
                 value={manualValue}
                 onChange={(e) => setManualValue(e.target.value)}
               />
             </div>
             <div className="p-5 border-t border-slate-800 bg-slate-800/30 flex justify-end gap-3">
-              <button onClick={() => setEditingCommission(null)} className="px-4 py-2 text-sm font-semibold text-slate-300 hover:text-white transition-colors">
+              <button
+                onClick={() => setEditingCommission(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-300 hover:text-white transition-colors"
+              >
                 Cancelar
               </button>
-              <button onClick={handleEditManual} disabled={loading} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-500 transition-colors disabled:opacity-50">
+              <button
+                onClick={handleEditManual}
+                disabled={loading}
+                className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-500 transition-colors disabled:opacity-50"
+              >
                 Guardar
               </button>
             </div>

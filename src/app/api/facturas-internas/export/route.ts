@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { getInvoiceVisibilityFilter } from '@/lib/permissions';
 import * as xlsx from 'xlsx';
 import { auth } from '@/auth';
+import {
+  formatMadridDateEs,
+  formatMadridInclusiveEndEs,
+} from '@/lib/services/internalInvoiceMapper';
 
 export async function GET(request: Request) {
   try {
@@ -17,104 +21,113 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get('from') || '';
     const dateTo = searchParams.get('to') || '';
 
-    const visibilityFilter = await getInvoiceVisibilityFilter();
-    
-    const internalVisibilityFilter = visibilityFilter.client?.brandId 
-      ? { contract: { client: { brandId: visibilityFilter.client.brandId } } } 
-      : {};
+    const visibilityFilter = (await getInvoiceVisibilityFilter()) as Record<string, any>;
 
-    const whereClause: any = { 
-      status: 'EMITIDA',
-      ...internalVisibilityFilter 
-    };
+    const andConditions: any[] = [
+      visibilityFilter,
+      { status: { in: ['EMITIDA', 'ABONO'] } },
+    ];
 
     if (filterType) {
-      whereClause.invoiceType = filterType;
+      andConditions.push({ invoiceType: filterType });
     }
 
     if (dateFrom || dateTo) {
-      whereClause.issueDate = {};
+      const issueDateFilter: Record<string, Date> = {};
       if (dateFrom) {
-        whereClause.issueDate.gte = new Date(dateFrom);
+        issueDateFilter.gte = new Date(dateFrom);
       }
       if (dateTo) {
         const endOfDay = new Date(dateTo);
         endOfDay.setHours(23, 59, 59, 999);
-        whereClause.issueDate.lte = endOfDay;
+        issueDateFilter.lte = endOfDay;
       }
+      andConditions.push({ issueDate: issueDateFilter });
     }
 
     if (searchTerm) {
-      whereClause.OR = [
-        { id: { contains: searchTerm, mode: 'insensitive' } },
-        { contract: { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } },
-      ];
+      andConditions.push({
+        OR: [
+          { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
+          { id: { contains: searchTerm, mode: 'insensitive' } },
+          { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
+          { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
+          { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
+          { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
+          { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
+          { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } },
+        ],
+      });
     }
 
     const invoicesRaw = await prisma.internalInvoice.findMany({
-      where: whereClause,
-      include: { 
+      where: { AND: andConditions },
+      include: {
+        client: true,
+        supplyPoint: true,
         contract: {
           include: {
             client: true,
-            supplyPoint: true
-          }
-        }
+            supplyPoint: true,
+          },
+        },
       },
-      orderBy: [
-        { issueDate: 'desc' },
-        { id: 'desc' }
-      ]
+      orderBy: [{ issueDate: 'desc' }, { id: 'desc' }],
     });
 
-    const rows = invoicesRaw.map(inv => {
-      const clientName = inv.contract?.client?.businessName || (inv.contract?.client ? `${inv.contract.client.firstName || ''} ${inv.contract.client.lastName || ''}`.trim() : '');
-      const cif = inv.contract?.client?.vatNumber || '';
-      
-      const formatDateES = (date: Date | null | undefined) => {
-        if (!date) return '';
-        const d = new Date(date);
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-      };
+    const rows = invoicesRaw.map((inv) => {
+      const clientObj = inv.client || inv.contract?.client;
+      const spObj = inv.supplyPoint || inv.contract?.supplyPoint;
+      const clientName =
+        clientObj?.businessName ||
+        (clientObj ? `${clientObj.firstName || ''} ${clientObj.lastName || ''}`.trim() : '');
+      const cif = clientObj?.vatNumber || '';
 
-      const row = [
-        inv.id.slice(-8).toUpperCase(),
+      return [
+        inv.invoiceNumber || inv.id.slice(-8).toUpperCase(),
         inv.contract?.contractCode || '',
         clientName,
         cif,
-        inv.contract?.supplyPoint?.cups || '',
+        spObj?.cups || '',
         inv.invoiceType || 'Normal',
-        formatDateES(inv.issueDate),
-        formatDateES(inv.billingStart),
-        formatDateES(inv.billingEnd),
+        inv.issueDate ? formatMadridDateEs(inv.issueDate) : '',
+        inv.billingStart ? formatMadridDateEs(inv.billingStart) : '',
+        inv.billingEnd ? formatMadridInclusiveEndEs(inv.billingStart, inv.billingEnd) : '',
         inv.totalMWh || 0,
+        (inv.totalMWh || 0) * 1000,
         inv.subtotal1 || 0,
         inv.taxAmount || 0,
         inv.totalAmount || 0,
         inv.margin || 0,
         inv.origin || '',
-        inv.f1InvoiceId || ''
+        inv.f1InvoiceId || '',
       ];
-
-      return row;
     });
 
     const headers = [
-      'Factura Interna', 'Contrato', 'Cliente', 'CIF', 'CUPS', 'Tipo Factura', 'Fecha Emision',
-      'Desde', 'Hasta', 'Total MWh', 'Base Imponible', 'Impuestos', 'Total Factura', 'Margen', 'Procedencia', 'ID F1'
+      'Factura Interna',
+      'Contrato',
+      'Cliente',
+      'CIF',
+      'CUPS',
+      'Tipo Factura',
+      'Fecha Emisión',
+      'Desde',
+      'Hasta',
+      'Total MWh',
+      'Total kWh',
+      'Base Imponible (€)',
+      'Impuestos (€)',
+      'Total Factura (€)',
+      'Margen (€)',
+      'Procedencia',
+      'ID F1',
     ];
 
     const worksheet = xlsx.utils.aoa_to_sheet([headers, ...rows]);
     const workbook = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(workbook, worksheet, "Facturas Internas");
-    
+    xlsx.utils.book_append_sheet(workbook, worksheet, 'Facturas Internas');
+
     const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
     return new Response(buffer, {
@@ -125,7 +138,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Export error:", error);
+    console.error('Export error:', error);
     return new NextResponse('Internal Error', { status: 500 });
   }
 }

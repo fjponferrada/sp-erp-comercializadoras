@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { isComprasAuthorized } from '@/lib/reganecuServer';
 
 export async function GET(req: Request) {
   try {
     const session = await auth();
-    if (!session) {
+    if (!isComprasAuthorized(session)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
@@ -18,15 +19,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Faltan parámetros de búsqueda' }, { status: 400 });
     }
 
+    const fromDate = new Date(`${startDate}T00:00:00.000Z`);
+    const toDate = new Date(`${endDate}T23:59:59.999Z`);
+
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      return NextResponse.json({ error: 'Rango de fechas inválido' }, { status: 400 });
+    }
+
     const prices = await prisma.systemComponentPrice.findMany({
       where: {
         component,
         date: {
-          gte: new Date(`${startDate}T00:00:00Z`),
-          lte: new Date(`${endDate}T23:59:59Z`)
-        }
+          gte: fromDate,
+          lte: toDate,
+        },
       },
-      orderBy: { date: 'asc' }
+      orderBy: { date: 'asc' },
     });
 
     return NextResponse.json(prices);

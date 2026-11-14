@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 
 export default function ProductModal({ product, onClose, onSaved }: any) {
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'COMERCIAL';
+  const canEdit = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
   const [formData, setFormData] = useState({
     name: product?.name || '',
     type: product?.type || 'FIX',
@@ -104,7 +108,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
         <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-800/30">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              {product ? 'Editar Producto' : 'Nuevo Producto'}
+              {!canEdit ? 'Ficha de Producto' : product ? 'Editar Producto' : 'Nuevo Producto'}
               {!formData.isAvailableCrm && <span className="badge badge-draft ml-2">Oculto</span>}
             </h2>
             <p className="text-xs text-slate-400 mt-1">Configuración técnica y esquema de precios</p>
@@ -116,7 +120,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
 
         {/* TABS */}
         <div className="flex border-b border-slate-800 px-6 gap-6 overflow-x-auto no-scrollbar">
-          {['general', 'potencia', 'energia', 'autoconsumo', 'comisiones', 'márgenes'].map(tab => (
+          {(['general', 'potencia', 'energia', 'autoconsumo', ...(canEdit ? ['comisiones', 'márgenes'] : [])]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -131,6 +135,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
 
         {/* BODY */}
         <div className="p-6 overflow-y-auto flex-1">
+          <fieldset disabled={!canEdit} className="contents">
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl flex items-start gap-3 text-sm mb-6">
               <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -318,6 +323,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
               </div>
             </div>
           )}
+          </fieldset>
         </div>
 
         {/* FOOTER */}
@@ -326,16 +332,18 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
           >
-            Cancelar
+            {canEdit ? 'Cancelar' : 'Cerrar'}
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <Save size={16} />
-            {saving ? 'Guardando...' : 'Guardar Producto'}
-          </button>
+          {canEdit && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Save size={16} />
+              {saving ? 'Guardando...' : 'Guardar Producto'}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1,93 +1,178 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { PROVINCES_GEO } from '@/lib/services/ProvinceService';
-import { getDay, getMonth, isWeekend, subDays } from 'date-fns';
+import { normalizeProvinceName, PROVINCE_NAMES } from '@/lib/services/ProvinceService';
 import { DecisionTreeRegression } from 'ml-cart';
 import { auth } from '@/auth';
-
+import { hasAdminOrBackofficeRole, resolveActiveCompanyId } from '@/lib/companyContext';
 import { AggregationService } from '@/lib/services/AggregationService';
+import { WeatherSyncService } from '@/lib/services/WeatherSyncService';
 
-const SEGMENTS = ['HOGAR 0-5kW', 'HOGAR 5-10kW', 'HOGAR 10-15kW', 'PYME <50 MWh', 'PYME >50 MWh', 'VE <15 MWh', 'VE >15 MWh', 'VIP'];
-const PROVINCES = Object.values(PROVINCES_GEO).map(p => p.name);
+export const maxDuration = 300;
+
+const LOCAL_FALLBACK_CRON_TOKEN = 'SpEnergia2026_UltraCron';
+
+const SEGMENTS = [
+  'HOGAR 0-5kW',
+  'HOGAR 5-10kW',
+  'HOGAR 10-15kW',
+  'PYME <50 MWh',
+  'PYME >50 MWh',
+  'VE <15 MWh',
+  'VE >15 MWh',
+  'VIP',
+];
+
+function subtractUtcDays(d: Date, days: number): Date {
+  const iso = d.toISOString().slice(0, 10);
+  const utc = new Date(`${iso}T00:00:00.000Z`);
+  utc.setUTCDate(utc.getUTCDate() - days);
+  return utc;
+}
 
 export async function GET(req: Request) {
-  // En producción, Vercel Cron llamará a este GET. 
   try {
-    const expectedSecret = process.env.CRON_SECRET || 'fallback_secret';
+    const expectedSecret = process.env.CRON_SECRET;
     const authHeader = req.headers.get('authorization');
+    const cronHeader = req.headers.get('x-vercel-cron');
     const { searchParams } = new URL(req.url);
     const cronSecret = searchParams.get('secret');
 
-    const session = await auth();
+    const isCronAuthorized =
+      (Boolean(expectedSecret) &&
+        (cronSecret === expectedSecret || authHeader === `Bearer ${expectedSecret}`)) ||
+      (cronHeader === '1' && Boolean(process.env.VERCEL)) ||
+      (!expectedSecret &&
+        (cronSecret === LOCAL_FALLBACK_CRON_TOKEN ||
+          authHeader === `Bearer ${LOCAL_FALLBACK_CRON_TOKEN}`));
 
-    // Permitir si se envía la contraseña (Vercel Cron) o si hay sesión activa (Botón UI)
-    if (
-      (expectedSecret !== 'fallback_secret' && cronSecret !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`)
-      && !session?.user
-    ) {
-      return NextResponse.json({ error: 'Unauthorized: Invalid cron secret or no session' }, { status: 401 });
+    let sessionCompanyId: string | undefined = undefined;
+
+    if (!isCronAuthorized) {
+      const session = await auth();
+      if (!session?.user) {
+        return NextResponse.json(
+          { error: 'No autorizado: requiere sesión activa o credencial CRON válida' },
+          { status: 401 }
+        );
+      }
+      if (!hasAdminOrBackofficeRole((session.user as any).role)) {
+        return NextResponse.json(
+          { error: 'Permisos insuficientes para entrenar el motor de predicción' },
+          { status: 403 }
+        );
+      }
+      const resolved = await resolveActiveCompanyId(session);
+      if (resolved) sessionCompanyId = resolved;
+    } else {
+      sessionCompanyId = searchParams.get('companyId') || undefined;
     }
 
-    console.log('Synchronizing history before training...');
-    await AggregationService.regenerateAggregates(30);
+    console.log(
+      `Synchronizing history before training (companyId=${sessionCompanyId || 'ALL'})...`
+    );
+    await AggregationService.regenerateAggregates(30, sessionCompanyId);
+
+    // Si WeatherHistory estaba vacía o existen provincias históricas sin normalizar, reparar automáticamente
+    const weatherCount = await prisma.weatherHistory.count();
+    if (weatherCount === 0) {
+      console.log('WeatherHistory vacía detectada: ejecutando saneado histórico y descarga Open-Meteo...');
+      await WeatherSyncService.repairHistoricalAggregates();
+    }
 
     console.log('Starting background model training...');
 
-    const maxAgg = await prisma.aggregatedLoadCurve.aggregate({ _max: { date: true } });
-    let dbMaxDate = maxAgg._max.date || new Date();
-    
-    // Fetch 12 months of historical data
-    const history = await prisma.aggregatedLoadCurve.findMany({
-      where: {
-        date: {
-          gte: subDays(dbMaxDate, 365)
-        }
+    // Priorizar histórico de la comercializadora activa si posee masa crítica (>= 500 curvas);
+    // de lo contrario emplear el pool histórico global de curvas físicas españolas.
+    let historyWhere: Record<string, any> = {};
+    if (sessionCompanyId) {
+      const companyMaxAgg = await prisma.aggregatedLoadCurve.aggregate({
+        where: { companyId: sessionCompanyId },
+        _max: { date: true },
+        _count: { _all: true },
+      });
+      if (companyMaxAgg._count._all >= 500 && companyMaxAgg._max.date) {
+        historyWhere = {
+          companyId: sessionCompanyId,
+          date: { gte: subtractUtcDays(companyMaxAgg._max.date, 365) },
+        };
       }
+    }
+
+    if (!historyWhere.date) {
+      const maxAgg = await prisma.aggregatedLoadCurve.aggregate({ _max: { date: true } });
+      const dbMaxDate = maxAgg._max.date || new Date();
+      historyWhere = {
+        date: { gte: subtractUtcDays(dbMaxDate, 365) },
+      };
+    }
+
+    const history = await prisma.aggregatedLoadCurve.findMany({
+      where: historyWhere,
     });
+
+    // Compresión determinista ponderada por número real de clientes (clientCount)
+    // Key: "segmentId|provinceId|dow|month|h|tempBin|isWknd"
+    const groupedData = new Map<
+      string,
+      { sumCons: number; sumClients: number; weightedTempSum: number }
+    >();
+
+    const seenProvinces = new Set<number>();
+    let realWeatherCurves = 0;
+    let totalEligibleCurves = 0;
+
+    for (const record of history) {
+      // VIP y VE se estiman determinísticamente por CUPS mediante SDA
+      if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(record.segment)) continue;
+      if (record.clientCount <= 0) continue;
+
+      const segmentId = SEGMENTS.indexOf(record.segment);
+      const canonicalProv = normalizeProvinceName(record.province);
+      const provinceId = PROVINCE_NAMES.indexOf(canonicalProv);
+      if (segmentId < 0 || provinceId < 0) continue;
+
+      seenProvinces.add(provinceId);
+      totalEligibleCurves++;
+      if (
+        record.temperature &&
+        record.temperature.length > 0 &&
+        record.temperature.some((t) => Math.abs(t - 20.0) > 0.001)
+      ) {
+        realWeatherCurves++;
+      }
+
+      // Fechas @db.Date almacenadas en medianoche UTC exacta (Regla 218)
+      const d = record.date;
+      const dow = d.getUTCDay();
+      const month = d.getUTCMonth();
+      const isWknd = dow === 0 || dow === 6 ? 1 : 0;
+
+      for (let h = 0; h < 24; h++) {
+        const temp = record.temperature[h] ?? 20.0;
+        const tempBin = Math.round(temp);
+        const cons = record.totalConsumption[h] ?? 0;
+
+        const key = `${segmentId}|${provinceId}|${dow}|${month}|${h}|${tempBin}|${isWknd}`;
+
+        let bucket = groupedData.get(key);
+        if (!bucket) {
+          bucket = { sumCons: 0, sumClients: 0, weightedTempSum: 0 };
+          groupedData.set(key, bucket);
+        }
+        bucket.sumCons += cons;
+        bucket.sumClients += record.clientCount;
+        bucket.weightedTempSum += temp * record.clientCount;
+      }
+    }
 
     let X_global: number[][] = [];
     let Y_global: number[] = [];
 
-    // Dictionary to group by unique configurations
-    // Key: "segmentId|provinceId|dow|month|h|tempBin"
-    const groupedData = new Map<string, { sumY: number, count: number, exactTempSum: number }>();
-
-    for (const record of history) {
-      if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(record.segment)) continue; // VIP and VE are handled via SDA dynamically
-      if (record.clientCount === 0) continue;
-
-      const segmentId = SEGMENTS.indexOf(record.segment);
-      const provinceId = PROVINCES.indexOf(record.province);
-      
-      const d = record.date;
-      const dow = getDay(d);
-      const month = getMonth(d);
-      const isWknd = isWeekend(d) ? 1 : 0;
-
-      for (let h = 0; h < 24; h++) {
-        const temp = record.temperature[h] ?? 20.0;
-        const tempBin = Math.round(temp); // Group by integer temperature to reduce cardinality
-        const cons = record.totalConsumption[h] ?? 0;
-        const yVal = cons / record.clientCount;
-
-        const key = `${segmentId}|${provinceId}|${dow}|${month}|${h}|${tempBin}|${isWknd}`;
-        
-        let bucket = groupedData.get(key);
-        if (!bucket) {
-          bucket = { sumY: 0, count: 0, exactTempSum: 0 };
-          groupedData.set(key, bucket);
-        }
-        bucket.sumY += yVal;
-        bucket.exactTempSum += temp;
-        bucket.count += 1;
-      }
-    }
-
-    // Convert buckets back to X and Y arrays
     for (const [key, bucket] of groupedData.entries()) {
-      const [segmentIdStr, provinceIdStr, dowStr, monthStr, hStr, tempBinStr, isWkndStr] = key.split('|');
-      const avgTemp = bucket.exactTempSum / bucket.count;
-      const avgY = bucket.sumY / bucket.count;
+      if (bucket.sumClients <= 0) continue;
+      const [segmentIdStr, provinceIdStr, dowStr, monthStr, hStr, , isWkndStr] = key.split('|');
+      const avgTemp = bucket.weightedTempSum / bucket.sumClients;
+      const avgY = bucket.sumCons / bucket.sumClients;
 
       X_global.push([
         parseInt(segmentIdStr, 10),
@@ -96,16 +181,20 @@ export async function GET(req: Request) {
         parseInt(monthStr, 10),
         parseInt(hStr, 10),
         avgTemp,
-        parseInt(isWkndStr, 10)
+        parseInt(isWkndStr, 10),
       ]);
       Y_global.push(avgY);
     }
 
+    const totalUniqueBuckets = X_global.length;
+
+    // Downsampling 100% determinista (Regla 205)
     const MAX_TRAINING_SAMPLES = 10000;
     if (X_global.length > MAX_TRAINING_SAMPLES) {
-      console.log(`Downsampling deterministically from ${X_global.length} to ${MAX_TRAINING_SAMPLES}...`);
-      
-      // Sort to guarantee 100% determinism regardless of Map iteration order
+      console.log(
+        `Downsampling deterministically from ${X_global.length} to ${MAX_TRAINING_SAMPLES}...`
+      );
+
       const combined = X_global.map((x, i) => ({ x, y: Y_global[i] }));
       combined.sort((a, b) => {
         for (let j = 0; j < a.x.length; j++) {
@@ -127,37 +216,68 @@ export async function GET(req: Request) {
     }
 
     if (X_global.length < 100) {
-      return NextResponse.json({ error: 'Not enough data to train model' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No hay suficientes muestras históricas para entrenar el modelo (< 100)' },
+        { status: 400 }
+      );
     }
 
     console.log(`Training model with ${X_global.length} samples...`);
     const regression = new DecisionTreeRegression({ maxDepth: 20 });
     regression.train(X_global, Y_global);
 
-    // Serialize model to JSON
-    const modelJson = regression.toJSON();
+    const trainedAt = new Date().toISOString();
+    const meta = {
+      trainedAt,
+      samplesUsed: X_global.length,
+      uniqueBuckets: totalUniqueBuckets,
+      rawCurvesCount: totalEligibleCurves,
+      provincesTrained: seenProvinces.size,
+      realWeatherPct:
+        totalEligibleCurves > 0
+          ? Math.round((realWeatherCurves / totalEligibleCurves) * 1000) / 10
+          : 0,
+    };
 
-    // Upsert into DB (we can just keep the latest version to save space)
-    const existingCache = await prisma.forecastModelCache.findFirst();
+    const modelJson = {
+      ...regression.toJSON(),
+      _meta: meta,
+    };
+
+    const existingCache = await prisma.forecastModelCache.findFirst({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let newVersion = 1;
+    let savedAt = new Date();
     if (existingCache) {
-      await prisma.forecastModelCache.update({
+      newVersion = existingCache.version + 1;
+      const updated = await prisma.forecastModelCache.update({
         where: { id: existingCache.id },
         data: {
           modelData: modelJson as any,
-          version: existingCache.version + 1
-        }
+          version: newVersion,
+        },
       });
+      savedAt = updated.updatedAt;
     } else {
-      await prisma.forecastModelCache.create({
+      const created = await prisma.forecastModelCache.create({
         data: {
           modelData: modelJson as any,
-          version: 1
-        }
+          version: 1,
+        },
       });
+      savedAt = created.updatedAt;
     }
 
-    console.log('Model trained and saved to database successfully!');
-    return NextResponse.json({ success: true, message: 'Model trained successfully' });
+    console.log(`Model v${newVersion} trained and saved to database successfully!`);
+    return NextResponse.json({
+      success: true,
+      message: 'Model trained successfully',
+      version: newVersion,
+      updatedAt: savedAt.toISOString(),
+      meta,
+    });
   } catch (error) {
     console.error('Cron Train Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

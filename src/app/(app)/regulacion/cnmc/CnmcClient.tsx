@@ -16,6 +16,7 @@ export default function CnmcClient() {
   const brand = useBrandTheme();
   const [opcion, setOpcion] = useState('');
   const [mes, setMes] = useState('');
+  const [version, setVersion] = useState('01');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -35,7 +36,8 @@ export default function CnmcClient() {
           return;
         }
 
-        const response = await fetch(`/api/cnmc/si-codage?mes=${mes}`, {
+        const normVer = /^\d{1,2}$/.test(version.trim()) ? version.trim().padStart(2, '0') : '01';
+        const response = await fetch(`/api/cnmc/si-codage?mes=${encodeURIComponent(mes)}&version=${encodeURIComponent(normVer)}`, {
           method: 'GET'
         });
 
@@ -174,6 +176,18 @@ export default function CnmcClient() {
                     value={mes}
                     onChange={(e) => setMes(e.target.value)}
                     className="form-input"
+                  />
+                </div>
+                <div className="space-y-2 w-36">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Versión entrega:</label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                    onBlur={() => setVersion(v => (/^\d{1,2}$/.test(v) && Number(v) > 0 ? v.padStart(2, '0') : '01'))}
+                    placeholder="01"
+                    className="form-input font-mono text-center"
                   />
                 </div>
               </div>

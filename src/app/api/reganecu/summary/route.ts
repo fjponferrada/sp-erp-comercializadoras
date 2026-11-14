@@ -1,40 +1,50 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import {
+  isComprasAuthorized,
+  mergeDailyReganecuRecords,
+  resolveActiveCompanyId,
+} from '@/lib/reganecuServer';
 
 export async function GET(req: Request) {
   try {
     const session = await auth();
-    if (!session || (session.user.role !== 'SUPERADMIN' && session.user.role !== 'COMPANYADMIN' && session.user.role !== 'BACKOFFICE')) {
+    if (!isComprasAuthorized(session)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const companyId = await resolveActiveCompanyId(session!.user);
+    if (!companyId) {
+      return NextResponse.json({ summary: {} });
     }
 
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get('date');
     const region = searchParams.get('region');
 
-    if (!dateStr) {
-      return NextResponse.json({ error: 'Falta mes' }, { status: 400 });
+    if (!dateStr || !/^\d{4}-\d{2}$/.test(dateStr)) {
+      return NextResponse.json({ error: 'Falta mes válido' }, { status: 400 });
     }
 
     const [year, month] = dateStr.split('-');
-    const startDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, 1));
-    const endDate = new Date(Date.UTC(parseInt(year), parseInt(month), 1));
+    const startDate = new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10) - 1, 1));
+    const endDate = new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10), 1));
 
     const rawRecords = await prisma.reganecuData.findMany({
       where: {
+        companyId,
         date: {
           gte: startDate,
           lt: endDate,
         },
         region: region || 'peninsula',
         total: true,
-      }
+      },
     });
 
     const summaryByCierre: Record<string, number> = {};
 
-    // Group by cierre
     const groupedByCierre = new Map<string, any[]>();
     rawRecords.forEach(rec => {
       if (!groupedByCierre.has(rec.cierre)) groupedByCierre.set(rec.cierre, []);
@@ -42,48 +52,21 @@ export async function GET(req: Request) {
     });
 
     for (const [cierre, recs] of Array.from(groupedByCierre.entries())) {
-      // Deduplicate by date (H vs QH logic)
-      const groupedByDate = new Map<string, any[]>();
-      recs.forEach(rec => {
-        const d = rec.date.toISOString().split('T')[0];
-        if (!groupedByDate.has(d)) groupedByDate.set(d, []);
-        groupedByDate.get(d)!.push(rec);
-      });
+      const mergedRecords = mergeDailyReganecuRecords(recs, false);
 
-      const deduplicatedRecords = Array.from(groupedByDate.values()).map(rList => {
-        const hRec = rList.find(r => r.resolution === 'H');
-        const qhRec = rList.find(r => r.resolution === 'QH');
-
-        if (qhRec && hRec) {
-          return {
-            ...qhRec,
-            jsonData: {
-              ...(hRec.jsonData as any),
-              ...(qhRec.jsonData as any)
-            }
-          };
-        }
-        return qhRec || hRec!;
-      });
-
-      // Sum everything for this cierre
       let totalDer = 0;
       let totalOblig = 0;
 
-      deduplicatedRecords.forEach(rec => {
+      mergedRecords.forEach(rec => {
         const data = rec.jsonData as Record<string, any>;
         for (const concept of Object.keys(data)) {
           const vals = data[concept];
-          if (vals.costDerechos !== undefined) {
-            totalDer += (vals.costDerechos || 0);
-            totalOblig += (vals.costObligaciones || 0);
-          } else {
-            totalDer += (vals.costSum || 0);
-          }
+          totalDer += vals.costDerechos || 0;
+          totalOblig += vals.costObligaciones || 0;
         }
       });
 
-      summaryByCierre[cierre] = totalDer - totalOblig;
+      summaryByCierre[cierre.toUpperCase()] = totalDer - totalOblig;
     }
 
     return NextResponse.json({ summary: summaryByCierre });

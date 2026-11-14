@@ -1,28 +1,40 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Client } from 'basic-ftp';
-import { processCchCsv } from '@/lib/services/cchParser';
-import JSZip from 'jszip';
+import { isRecognizedCchFilename, processCchBuffer } from '@/lib/services/cchParser';
+import { AggregationService } from '@/lib/services/AggregationService';
+import { runCalculatePendingEnergy } from '@/scripts/calculate_pending_energy';
 import SftpClient from 'ssh2-sftp-client';
+import { PassThrough } from 'stream';
 
-function shouldSkipDirectory(dirName: string, modifyTime: Date | null, lastSync: Date): boolean {
-  // NOTA: No usamos la fecha de modificación (modifyTime) de las carpetas para podar.
-  // En muchos servidores FTP/Linux, añadir un fichero en una subcarpeta NO actualiza
-  // la fecha de modificación de la carpeta padre. Si usáramos modifyTime, podríamos
-  // saltarnos carpetas raíz enteras (ej. /0021-1713) solo porque fueron creadas en 2022.
-  // Por tanto, la poda se hace ÚNICAMENTE por reglas heurísticas de nombre (YYYY o YYYYMM).
+export const maxDuration = 300; // Allow Vercel / Next up to 5 minutes per invocation
 
-  // Poda heurística por nombre de carpeta (YYYY o YYYYMM)
-  const lastSyncYear = lastSync.getFullYear();
-  const lastSyncMonth = lastSync.getMonth() + 1; // 1-12
+export interface FtpConfigItem {
+  configId: string;
+  companyId: string;
+  companyLabel?: string;
+  distributorId: string;
+  name: string;            // Display key in job results
+  distributorName: string; // Canonical distributor name for LoadCurve.source
+  ftpHost: string | null;
+  ftpPort: number | null;
+  ftpUser: string | null;
+  ftpPassword: string | null;
+  ftpTargetPath: string | null;
+  ftpLastSyncAt: Date | null;
+}
 
-  // Carpeta tipo "2023"
+function shouldSkipDirectory(dirName: string, _modifyTime: Date | null, lastSync: Date): boolean {
+  // Poda heurística únicamente por nombre de carpeta (YYYY o YYYYMM).
+  // No se usa modifyTime del directorio padre porque añadir ficheros en subcarpetas no siempre lo actualiza.
+  const lastSyncYear = lastSync.getUTCFullYear();
+  const lastSyncMonth = lastSync.getUTCMonth() + 1; // 1-12
+
   if (/^\d{4}$/.test(dirName)) {
     const year = parseInt(dirName, 10);
     if (year < lastSyncYear) return true;
   }
 
-  // Carpeta tipo "202301"
   if (/^\d{6}$/.test(dirName)) {
     const year = parseInt(dirName.substring(0, 4), 10);
     const month = parseInt(dirName.substring(4, 6), 10);
@@ -33,7 +45,12 @@ function shouldSkipDirectory(dirName: string, modifyTime: Date | null, lastSync:
   return false;
 }
 
-async function listSftpRecursive(sftpClient: SftpClient, currentPath: string, onProgress?: (path: string) => void, lastSync?: Date): Promise<any[]> {
+async function listSftpRecursive(
+  sftpClient: SftpClient,
+  currentPath: string,
+  onProgress?: (path: string) => void,
+  lastSync?: Date
+): Promise<any[]> {
   const files: any[] = [];
   try {
     if (onProgress) onProgress(currentPath);
@@ -54,8 +71,8 @@ async function listSftpRecursive(sftpClient: SftpClient, currentPath: string, on
         files.push({
           isDirectory: false,
           name: item.name,
-          fullPath: fullPath,
-          modifiedAt: new Date(item.modifyTime)
+          fullPath,
+          modifiedAt: new Date(item.modifyTime),
         });
       }
     }
@@ -65,7 +82,12 @@ async function listSftpRecursive(sftpClient: SftpClient, currentPath: string, on
   return files;
 }
 
-async function listFtpRecursive(ftpClient: Client, currentPath: string, onProgress?: (path: string) => void, lastSync?: Date): Promise<any[]> {
+async function listFtpRecursive(
+  ftpClient: Client,
+  currentPath: string,
+  onProgress?: (path: string) => void,
+  lastSync?: Date
+): Promise<any[]> {
   const files: any[] = [];
   try {
     if (onProgress) onProgress(currentPath);
@@ -83,13 +105,13 @@ async function listFtpRecursive(ftpClient: Client, currentPath: string, onProgre
         }
         const subFiles = await listFtpRecursive(ftpClient, fullPath, onProgress, lastSync);
         files.push(...subFiles);
-        await ftpClient.cd(currentPath); // volver al padre
+        await ftpClient.cd(currentPath);
       } else {
         files.push({
           isDirectory: false,
           name: item.name,
-          fullPath: fullPath,
-          modifiedAt: item.modifiedAt
+          fullPath,
+          modifiedAt: item.modifiedAt,
         });
       }
     }
@@ -98,32 +120,110 @@ async function listFtpRecursive(ftpClient: Client, currentPath: string, onProgre
   }
   return files;
 }
-export const maxDuration = 300; // Allow Vercel / Next up to 5 minutes to run this script
 
-export async function executeFtpSync(configs: any[], jobId?: string, requestUrl?: string) {
+function isSftpPort(port: number): boolean {
+  return [22, 2222, 6222, 11022].includes(port);
+}
+
+export async function loadActiveFtpConfigs(companyId?: string): Promise<FtpConfigItem[]> {
+  const rows = await prisma.distributorCompanyConfig.findMany({
+    where: {
+      ftpActive: true,
+      ...(companyId ? { companyId } : {}),
+    },
+    include: {
+      distributor: { select: { id: true, name: true } },
+      company: { select: { id: true, name: true, codigo: true } },
+    },
+    orderBy: [
+      { companyId: 'asc' },
+      { distributor: { name: 'asc' } },
+    ],
+  });
+
+  const multiCompany = !companyId && new Set(rows.map(r => r.companyId)).size > 1;
+
+  return rows.map(r => {
+    const companyTag = r.company.codigo || r.company.name;
+    return {
+      configId: r.id,
+      companyId: r.companyId,
+      companyLabel: companyTag,
+      distributorId: r.distributorId,
+      name: multiCompany ? `[${companyTag}] ${r.distributor.name}` : r.distributor.name,
+      distributorName: r.distributor.name,
+      ftpHost: r.ftpHost,
+      ftpPort: r.ftpPort,
+      ftpUser: r.ftpUser,
+      ftpPassword: r.ftpPassword,
+      ftpTargetPath: r.ftpTargetPath,
+      ftpLastSyncAt: r.ftpLastSyncAt,
+    };
+  });
+}
+
+export async function executeFtpSync(configs: FtpConfigItem[], jobId?: string, requestUrl?: string) {
   const startTime = Date.now();
-  const isLocal = requestUrl?.includes('127.0.0.1') || requestUrl?.includes('localhost');
+  const isLocal = Boolean(requestUrl?.includes('127.0.0.1') || requestUrl?.includes('localhost'));
   const MAX_EXECUTION_TIME_MS = isLocal ? 240000 : 50000;
 
-  let results: any = {};
-  const PRIORIDAD_MAP = ['F1', 'C1', 'Q1', 'F1H', 'F1QH', 'F5D', 'A5D', 'B5D', 'P5D', 'P1', 'P1D', 'P2', 'P2D', 'P0'];
+  let results: Record<string, any> = {};
   let hasMore = false;
+  let historyLog = '';
+
+  const updateJobStatus = async (statusLine: string, progressPct?: number) => {
+    if (!jobId) return;
+    const combinedLogs = historyLog ? `${historyLog}\n${statusLine}` : statusLine;
+    await prisma.syncJob.update({
+      where: { id: jobId },
+      data: {
+        ...(progressPct !== undefined ? { progress: progressPct } : {}),
+        logs: combinedLogs,
+      },
+    }).catch(() => {});
+  };
 
   try {
     if (jobId) {
       const existingJob = await prisma.syncJob.findUnique({ where: { id: jobId } });
       if (existingJob?.results) {
-        results = typeof existingJob.results === 'string' ? JSON.parse(existingJob.results) : existingJob.results;
+        results = typeof existingJob.results === 'string' ? JSON.parse(existingJob.results) : (existingJob.results as Record<string, any>);
       }
-      
+      historyLog = Array.isArray(results.__meta?.historyLogs) ? results.__meta.historyLogs.join('\n') : '';
+
       await prisma.syncJob.update({
         where: { id: jobId },
-        data: { status: 'RUNNING', logs: 'Iniciando proceso de sincronización...\n' }
+        data: {
+          status: 'RUNNING',
+          logs: historyLog || 'Iniciando proceso de sincronización...',
+        },
       });
     }
 
-    for (const config of configs) {
-      if (results[config.name]?.status === 'COMPLETED' || results[config.name]?.status === 'ERROR') {
+    const customSinceIso = results.__meta?.customSince as string | undefined;
+    const customSinceDate = customSinceIso ? new Date(customSinceIso) : null;
+    const historyLogs: string[] = Array.isArray(results.__meta?.historyLogs) ? [...results.__meta.historyLogs] : [];
+    const affectedDatesSet = new Set<string>(
+      Array.isArray(results.__meta?.affectedDates) ? results.__meta.affectedDates : []
+    );
+
+    const recordHistory = (line: string) => {
+      historyLogs.push(line);
+      historyLog = historyLogs.join('\n');
+      results.__meta = {
+        ...(results.__meta || {}),
+        historyLogs,
+        affectedDates: Array.from(affectedDatesSet),
+      };
+    };
+
+    const totalConfigs = Math.max(1, configs.length);
+
+    for (let cfgIdx = 0; cfgIdx < configs.length; cfgIdx++) {
+      const config = configs[cfgIdx];
+      const distKey = config.name;
+
+      if (results[distKey]?.status === 'COMPLETED' || results[distKey]?.status === 'ERROR') {
         continue;
       }
 
@@ -132,291 +232,339 @@ export async function executeFtpSync(configs: any[], jobId?: string, requestUrl?
         break;
       }
 
-      let filesToProcess: any[] = [];
+      if (!config.ftpHost) {
+        results[distKey] = {
+          processed: 0,
+          totalFiles: 0,
+          newFiles: 0,
+          success: 0,
+          skipped: 0,
+          errors: 1,
+          status: 'ERROR',
+          errorMsg: 'Host FTP no configurado',
+        };
+        recordHistory(`✗ ${distKey}: Host FTP no configurado`);
+        continue;
+      }
+
       let ftpClient: Client | null = null;
       let sftpClient: SftpClient | null = null;
 
       try {
-      
-      if (!results[config.name]) {
-        results[config.name] = { processed: 0, newFiles: 0, success: 0, skipped: 0, errors: 0, status: 'OK' };
-      }
-
-      if (results[config.name].pendingFiles) {
-        // En chunks posteriores, reutilizamos la lista de ficheros pendientes
-        filesToProcess = results[config.name].pendingFiles;
-      } else {
-        // Primer chunk: Exploramos el FTP y guardamos la lista
-        if (jobId) {
-          await prisma.syncJob.update({
-            where: { id: jobId },
-            data: { logs: `Conectando al FTP de ${config.name}...\n` }
-          });
+        if (!results[distKey]) {
+          results[distKey] = {
+            processed: 0,
+            totalFiles: 0,
+            newFiles: 0,
+            success: 0,
+            skipped: 0,
+            errors: 0,
+            status: 'OK',
+          };
         }
 
-        try {
-          const port = config.ftpPort || 21;
-          const isSftp = [22, 11022, 6222].includes(port);
+        const port = config.ftpPort || 21;
+        const useSftp = isSftpPort(port);
 
-          const updateProgress = (path: string) => {
-            if (jobId) {
-              prisma.syncJob.update({
-                where: { id: jobId },
-                data: { logs: `Conectado a ${config.name}. \nExplorando directorios buscando ficheros recientes...\nDirectorio actual: ${path}` }
-              }).catch(() => {});
+        if (!Array.isArray(results[distKey].pendingFiles)) {
+          const basePct = Math.floor((cfgIdx / totalConfigs) * 100);
+          await updateJobStatus(`Conectando al servidor de ${distKey} (${config.ftpHost}:${port})...`, basePct);
+
+          let lastExploreUpdate = 0;
+          const onExploreProgress = (path: string) => {
+            const now = Date.now();
+            if (jobId && now - lastExploreUpdate > 1500) {
+              lastExploreUpdate = now;
+              updateJobStatus(`Explorando ${distKey}: ${path}`);
             }
           };
 
-          const lastSync = config.ftpLastSyncAt || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+          const hasCustomSince = Boolean(customSinceDate && !isNaN(customSinceDate.getTime()));
+          const hasSavedSyncCursor = !hasCustomSince && Boolean(config.ftpLastSyncAt);
+          const effectiveSince = hasCustomSince
+            ? customSinceDate!
+            : config.ftpLastSyncAt || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+
           let fileList: any[] = [];
-
-          if (isSftp) {
-            sftpClient = new SftpClient();
-            await sftpClient.connect({
-              host: config.ftpHost || '',
-              port: port,
-              username: config.ftpUser || '',
-              password: config.ftpPassword || '',
-              readyTimeout: 5000
-            });
-            fileList = await listSftpRecursive(sftpClient, config.ftpTargetPath || '/', updateProgress, lastSync);
-          } else {
-            ftpClient = new Client(5000);
-            await ftpClient.access({
-              host: config.ftpHost || '',
-              port: port,
-              user: config.ftpUser || '',
-              password: config.ftpPassword || '',
-              secure: port === 21 ? false : 'implicit',
-              secureOptions: { rejectUnauthorized: false }
-            });
-            fileList = await listFtpRecursive(ftpClient, config.ftpTargetPath || '/', updateProgress, lastSync);
+          try {
+            if (useSftp) {
+              sftpClient = new SftpClient();
+              await sftpClient.connect({
+                host: config.ftpHost,
+                port,
+                username: config.ftpUser || '',
+                password: config.ftpPassword || '',
+                readyTimeout: 10000,
+              });
+              fileList = await listSftpRecursive(sftpClient, config.ftpTargetPath || '/', onExploreProgress, effectiveSince);
+            } else {
+              ftpClient = new Client(10000);
+              await ftpClient.access({
+                host: config.ftpHost,
+                port,
+                user: config.ftpUser || '',
+                password: config.ftpPassword || '',
+                secure: port === 21 ? false : 'implicit',
+                secureOptions: { rejectUnauthorized: false },
+              });
+              fileList = await listFtpRecursive(ftpClient, config.ftpTargetPath || '/', onExploreProgress, effectiveSince);
+            }
+          } catch (connErr: any) {
+            console.error(`FTP Connection/List Error for ${distKey}:`, connErr);
+            results[distKey].status = 'ERROR';
+            results[distKey].errorMsg = connErr.message;
+            recordHistory(`✗ ${distKey}: Error de conexión (${connErr.message})`);
+            await updateJobStatus(`Error conectando a ${distKey}`);
+            continue;
           }
 
-          filesToProcess = fileList.filter(file => {
-            if (file.isDirectory) return false;
-            
+          const filesToProcess = fileList
+            .filter(file => {
+              if (file.isDirectory) return false;
+              const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
+              if (hasSavedSyncCursor ? fileDate <= effectiveSince : fileDate < effectiveSince) return false;
+              return isRecognizedCchFilename(file.name, false);
+            })
+            .sort((a, b) => {
+              const timeA = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0;
+              const timeB = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0;
+              return timeA - timeB;
+            });
+
+          results[distKey].pendingFiles = filesToProcess;
+          results[distKey].totalFiles = filesToProcess.length;
+          results[distKey].newFiles = filesToProcess.length;
+        }
+
+        // Reconectar si venimos de un chunk subsiguiente con ficheros pendientes
+        if (results[distKey].pendingFiles.length > 0 && !ftpClient && !sftpClient) {
+          try {
+            if (useSftp) {
+              sftpClient = new SftpClient();
+              await sftpClient.connect({
+                host: config.ftpHost,
+                port,
+                username: config.ftpUser || '',
+                password: config.ftpPassword || '',
+                readyTimeout: 10000,
+              });
+            } else {
+              ftpClient = new Client(10000);
+              await ftpClient.access({
+                host: config.ftpHost,
+                port,
+                user: config.ftpUser || '',
+                password: config.ftpPassword || '',
+                secure: port === 21 ? false : 'implicit',
+                secureOptions: { rejectUnauthorized: false },
+              });
+            }
+          } catch (reconnErr: any) {
+            console.error(`FTP Re-Connection Error for ${distKey}:`, reconnErr);
+            results[distKey].status = 'ERROR';
+            results[distKey].errorMsg = 'Error reconectando para pendientes: ' + reconnErr.message;
+            recordHistory(`✗ ${distKey}: Error al reconectar (${reconnErr.message})`);
+            continue;
+          }
+        }
+
+        let newestDate: Date | null = config.ftpLastSyncAt ? new Date(config.ftpLastSyncAt) : null;
+
+        while (results[distKey].pendingFiles.length > 0) {
+          const file = results[distKey].pendingFiles[0];
+
+          try {
+            let buffer: Buffer;
+            if (useSftp && sftpClient) {
+              const raw = await sftpClient.get(file.fullPath);
+              buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw));
+            } else if (ftpClient) {
+              const stream = new PassThrough();
+              const chunks: Buffer[] = [];
+              stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+              await ftpClient.downloadTo(stream, file.fullPath);
+              buffer = Buffer.concat(chunks);
+            } else {
+              throw new Error('Cliente FTP/SFTP no inicializado');
+            }
+
+            const fileResult = await processCchBuffer(
+              buffer,
+              file.name,
+              `FTP_${config.distributorName}`,
+              true
+            );
+
+            results[distKey].success += fileResult.success;
+            results[distKey].skipped += fileResult.skipped;
+            results[distKey].errors += fileResult.errors;
+            if (fileResult.affectedDates && fileResult.affectedDates.length > 0) {
+              for (const d of fileResult.affectedDates) affectedDatesSet.add(d);
+              results.__meta = {
+                ...(results.__meta || {}),
+                historyLogs,
+                affectedDates: Array.from(affectedDatesSet),
+              };
+            }
+
             const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
-            if (fileDate < lastSync) return false;
-
-            const filenameUpper = file.name.toUpperCase();
-            return PRIORIDAD_MAP.some(pat => filenameUpper.includes(pat)) || filenameUpper.endsWith('.ZIP');
-          }).sort((a, b) => {
-            const timeA = a.modifiedAt ? new Date(a.modifiedAt).getTime() : 0;
-            const timeB = b.modifiedAt ? new Date(b.modifiedAt).getTime() : 0;
-            return timeA - timeB;
-          });
-
-          results[config.name].pendingFiles = filesToProcess;
-          results[config.name].totalFiles = filesToProcess.length;
-          results[config.name].newFiles = filesToProcess.length;
-        } catch (err: any) {
-          console.error(`FTP Connection/List Error for ${config.name}:`, err);
-          results[config.name].status = 'ERROR';
-          results[config.name].errorMsg = err.message;
-          continue;
-        }
-      }
-
-      // Si en este chunk no estamos conectados pero hay pendientes, conectamos de nuevo
-      if (filesToProcess.length > 0 && !ftpClient && !sftpClient) {
-        try {
-          const port = config.ftpPort || 21;
-          const isSftp = [22, 11022, 6222].includes(port);
-          if (isSftp) {
-            sftpClient = new SftpClient();
-            await sftpClient.connect({
-              host: config.ftpHost || '',
-              port: port,
-              username: config.ftpUser || '',
-              password: config.ftpPassword || '',
-              readyTimeout: 5000
-            });
-          } else {
-            ftpClient = new Client(5000);
-            await ftpClient.access({
-              host: config.ftpHost || '',
-              port: port,
-              user: config.ftpUser || '',
-              password: config.ftpPassword || '',
-              secure: port === 21 ? false : 'implicit',
-              secureOptions: { rejectUnauthorized: false }
-            });
-          }
-        } catch (err: any) {
-          console.error(`FTP Re-Connection Error for ${config.name}:`, err);
-          results[config.name].status = 'ERROR';
-          results[config.name].errorMsg = 'Error reconectando para procesar pendientes: ' + err.message;
-          continue;
-        }
-      }
-
-      // Necesitamos asegurar isSftp para el bucle
-      const isSftp = [22, 11022, 6222].includes(config.ftpPort || 21);
-      let newestDate = config.ftpLastSyncAt || new Date(0);
-
-      while (results[config.name].pendingFiles.length > 0) {
-        const file = results[config.name].pendingFiles[0];
-        let buffer: Buffer;
-
-        if (isSftp && sftpClient) {
-          buffer = (await sftpClient.get(file.fullPath)) as Buffer;
-        } else if (ftpClient) {
-          const stream = require('stream').PassThrough();
-          const chunks: Buffer[] = [];
-          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-          await ftpClient.downloadTo(stream, file.fullPath);
-          buffer = Buffer.concat(chunks);
-        } else {
-          continue;
-        }
-
-        if (file.name.toLowerCase().endsWith('.zip')) {
-          const zip = await JSZip.loadAsync(buffer);
-          for (const filename of Object.keys(zip.files)) {
-            if (!zip.files[filename].dir) {
-              const innerUpper = filename.toUpperCase();
-              if (PRIORIDAD_MAP.some(pat => innerUpper.includes(pat))) {
-                const content = await zip.files[filename].async('string');
-                const fileResult = await processCchCsv(content, filename, `FTP_${config.name}`);
-                results[config.name].success += fileResult.success;
-                results[config.name].skipped += fileResult.skipped;
-                results[config.name].errors += fileResult.errors;
-              }
+            if (!isNaN(fileDate.getTime()) && (!newestDate || fileDate > newestDate)) {
+              newestDate = fileDate;
             }
+          } catch (fileErr: any) {
+            console.error(`Error procesando fichero FTP ${file?.fullPath} en ${distKey}:`, fileErr);
+            results[distKey].errors += 1;
+            recordHistory(`⚠ ${distKey}: Error en fichero ${file?.name} (${fileErr.message})`);
           }
-        } else {
-          let content = '';
-          const lower = file.name.toLowerCase();
-          if (lower.endsWith('.gz')) {
-            const zlib = require('zlib');
-            content = zlib.gunzipSync(buffer).toString('utf8');
-          } else if (lower.endsWith('.xlsx')) {
-            const XLSX = require('xlsx');
-            const workbook = XLSX.read(buffer, { type: 'buffer' });
-            const sheetName = workbook.SheetNames[0];
-            content = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], { FS: ';' });
-          } else {
-            const decoder = new TextDecoder('utf-8'); // Asumimos utf-8
-            content = decoder.decode(buffer);
+
+          results[distKey].processed++;
+          results[distKey].pendingFiles.shift();
+
+          const totalFiles = results[distKey].totalFiles || 1;
+          const distFraction = Math.min(1, results[distKey].processed / totalFiles);
+          const overallPct = Math.min(99, Math.floor(((cfgIdx + distFraction) / totalConfigs) * 100));
+
+          await updateJobStatus(
+            `Procesando ${distKey}... (${results[distKey].processed}/${totalFiles}) — ${file.name}`,
+            overallPct
+          );
+
+          if (Date.now() - startTime > MAX_EXECUTION_TIME_MS && results[distKey].pendingFiles.length > 0) {
+            hasMore = true;
+            break;
           }
-          const fileResult = await processCchCsv(content, file.name, `FTP_${config.name}`);
-          results[config.name].success += fileResult.success;
-          results[config.name].skipped += fileResult.skipped;
-          results[config.name].errors += fileResult.errors;
         }
 
-        results[config.name].processed++;
-        const totalFiles = results[config.name].totalFiles || 1;
-        const pct = Math.floor((results[config.name].processed / totalFiles) * 100);
-        
-        const fileDate = file.modifiedAt ? new Date(file.modifiedAt) : new Date();
-        if (fileDate > newestDate) {
-          newestDate = fileDate;
-        }
-
-        if (jobId) {
-          await prisma.syncJob.update({
-            where: { id: jobId },
-            data: { 
-              progress: pct,
-              logs: `Procesando ${config.name}... (${results[config.name].processed}/${totalFiles})` 
-            }
+        // Persistir siempre el avance real de fecha por distribuidora/compañía (incluso si corta por chunk)
+        if (newestDate && (!config.ftpLastSyncAt || newestDate > config.ftpLastSyncAt)) {
+          await prisma.distributorCompanyConfig.update({
+            where: { id: config.configId },
+            data: { ftpLastSyncAt: newestDate },
           });
+          config.ftpLastSyncAt = newestDate;
         }
 
-        // Sacar el fichero de la cola ya que se procesó con éxito
-        results[config.name].pendingFiles.shift();
-
-        // CHUNKING: Cortar ejecución si nos acercamos a los 8 segundos
-        if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
-          hasMore = true;
-          break; // Rompe el bucle de ficheros
+        if (hasMore) {
+          break;
         }
+
+        results[distKey].status = 'COMPLETED';
+        recordHistory(
+          `✓ ${distKey}: ${results[distKey].processed} archivos (${results[distKey].success} curvas guardadas, ${results[distKey].skipped} ignoradas, ${results[distKey].errors} errores)`
+        );
+      } catch (err: any) {
+        console.error(`FTP Sync Error for ${distKey}:`, err);
+        results[distKey].status = 'ERROR';
+        results[distKey].errorMsg = err.message;
+        recordHistory(`✗ ${distKey}: ${err.message}`);
+        await updateJobStatus(`Error en ${distKey}: ${err.message}`);
+      } finally {
+        if (sftpClient) await sftpClient.end().catch(() => {});
+        if (ftpClient && !ftpClient.closed) ftpClient.close();
       }
+    }
 
-      // Guardamos el progreso de tiempo para no repetir lo procesado
-      await prisma.distributor.update({
-        where: { id: config.id },
-        data: { ftpLastSyncAt: newestDate }
-      });
-
-      if (hasMore) {
-        break; // Rompe el bucle de configuraciones (distribuidoras) si se acabó el tiempo
+    if (!hasMore && affectedDatesSet.size > 0) {
+      try {
+        const sortedDates = Array.from(affectedDatesSet).sort();
+        await updateJobStatus(`Actualizando agregados horarios CCH (${sortedDates.length} días)...`, 99);
+        await AggregationService.regenerateForDates(sortedDates);
+        const affectedMonths = Array.from(new Set(sortedDates.map(d => d.slice(0, 7)))).sort();
+        await runCalculatePendingEnergy(undefined, undefined, { targetMonths: affectedMonths });
+        recordHistory(`✓ Agregados CCH y Energía Pendiente actualizados (${affectedMonths.join(', ')})`);
+      } catch (aggErr: any) {
+        console.error('Aviso: error actualizando agregados tras FTP Sync:', aggErr);
       }
-      
-      results[config.name].status = 'COMPLETED';
+    }
 
-    } catch (err: any) {
-      console.error(`FTP Sync Error for ${config.name}:`, err);
-      results[config.name].status = 'ERROR';
-      results[config.name].errorMsg = err.message;
-      if (jobId) {
+    if (jobId) {
+      if (!hasMore) {
         await prisma.syncJob.update({
           where: { id: jobId },
-          data: { logs: `Error en ${config.name}: ${err.message}\n` }
+          data: {
+            status: 'COMPLETED',
+            results,
+            progress: 100,
+            logs: historyLog || 'Sincronización finalizada sin ficheros nuevos.',
+          },
+        });
+      } else {
+        await prisma.syncJob.update({
+          where: { id: jobId },
+          data: { results },
         });
       }
-    } finally {
-      if (sftpClient) await sftpClient.end();
-      if (ftpClient && !ftpClient.closed) ftpClient.close();
     }
-  }
 
-  if (jobId) {
-    if (!hasMore) {
+    return { results, hasMore };
+  } catch (globalErr: any) {
+    if (jobId) {
       await prisma.syncJob.update({
         where: { id: jobId },
-        data: { status: 'COMPLETED', results: results, progress: 100 }
-      });
-    } else {
-      await prisma.syncJob.update({
-        where: { id: jobId },
-        data: { results: results }
-      });
+        data: {
+          status: 'ERROR',
+          logs: `${historyLog ? historyLog + '\n' : ''}Error fatal: ${globalErr.message}`,
+        },
+      }).catch(() => {});
     }
+    throw globalErr;
   }
-
-  return { results, hasMore };
-} catch (globalErr: any) {
-  if (jobId) {
-    await prisma.syncJob.update({
-      where: { id: jobId },
-      data: { status: 'ERROR', logs: `Error fatal: ${globalErr.message}` }
-    });
-  }
-  throw globalErr;
-}
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const secret = url.searchParams.get('secret');
   const jobId = url.searchParams.get('jobId');
+  const companyId = url.searchParams.get('companyId') || undefined;
   const authHeader = req.headers.get('authorization');
-  
-  const expectedSecret = process.env.CRON_SECRET || 'fallback_secret';
-  if (secret !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+
+  const expectedSecret = process.env.CRON_SECRET;
+  const isAuthorized =
+    Boolean(expectedSecret) &&
+    (secret === expectedSecret || authHeader === `Bearer ${expectedSecret}`);
+
+  if (!isAuthorized) {
     return NextResponse.json({ error: 'Unauthorized: Invalid cron secret' }, { status: 401 });
   }
 
-  const configs = await prisma.distributor.findMany({
-    where: { ftpActive: true }
-  });
+  const configs = await loadActiveFtpConfigs(companyId);
 
   if (configs.length === 0) {
     return NextResponse.json({ message: 'No hay configuraciones FTP activas.' });
   }
 
-  if (jobId) {
-    // Modo asíncrono
-    // Lanzamos la promesa y no la esperamos (el cliente la llamará en bucle)
-    executeFtpSync(configs, jobId, req.url).catch(console.error);
-    return NextResponse.json({ message: 'Sincronización FTP iniciada en segundo plano', jobId, hasMore: true });
-  } else {
-    // Modo síncrono (legacy / vercel cron)
-    const { results, hasMore } = await executeFtpSync(configs, undefined, req.url);
-    return NextResponse.json({ message: 'Sincronización FTP chunk completado', results, hasMore });
-  }
-}
+  let effectiveJobId = jobId || undefined;
+  if (!effectiveJobId) {
+    const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+    const runningCronJob = await prisma.syncJob.findFirst({
+      where: {
+        type: 'CRON_FTP_SYNC',
+        status: { in: ['PENDING', 'RUNNING'] },
+        updatedAt: { gte: staleThreshold },
+        ...(companyId ? { companyId } : { companyId: null }),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
+    if (runningCronJob) {
+      effectiveJobId = runningCronJob.id;
+    } else {
+      const createdCronJob = await prisma.syncJob.create({
+        data: {
+          type: 'CRON_FTP_SYNC',
+          status: 'PENDING',
+          companyId: companyId || null,
+        },
+      });
+      effectiveJobId = createdCronJob.id;
+    }
+  }
+
+  const { results, hasMore } = await executeFtpSync(configs, effectiveJobId, req.url);
+  return NextResponse.json({
+    message: hasMore ? 'Sincronización FTP chunk completado (quedan pendientes)' : 'Sincronización FTP completada',
+    jobId: effectiveJobId,
+    results,
+    hasMore,
+  });
+}

@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { getUserVisibilityFilter } from '@/lib/permissions';
+import { resolveActiveCompanyId } from '@/lib/companyContext';
 import { auth } from '@/auth';
 
 export async function getPaginatedBajasAction(
@@ -429,6 +430,16 @@ export async function getBajasStatsAction() {
   }
 }
 
+function escapeXmlBaja(val: string | null | undefined): string {
+  if (!val) return '';
+  return String(val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export async function fetchBajaContext(cups: string) {
   try {
     const session = await auth();
@@ -436,26 +447,34 @@ export async function fetchBajaContext(cups: string) {
       throw new Error('No estás autenticado.');
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      include: { brand: { include: { company: true } } }
-    });
-
-    if (!user?.brand?.company) {
-      throw new Error('El usuario no tiene una compañía asociada.');
+    const activeCompanyId = await resolveActiveCompanyId(session);
+    let emisora = '';
+    if (activeCompanyId) {
+      const company = await prisma.company.findUnique({ where: { id: activeCompanyId }, select: { codigoRee: true } });
+      emisora = company?.codigoRee || '';
     }
-    const emisora = user.brand.company.codigoRee || '';
+    if (!emisora) {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { brand: { include: { company: true } } }
+      });
+      emisora = user?.brand?.company?.codigoRee || '';
+    }
 
     let destino = '';
-    if (cups && cups.length >= 6 && cups.startsWith('ES')) {
+    if (cups && cups.length >= 6 && cups.toUpperCase().startsWith('ES')) {
+      const cupsUpper = cups.trim().toUpperCase();
       const sp = await prisma.supplyPoint.findFirst({
-        where: { cups: { startsWith: cups.substring(0, 20) } }
+        where: {
+          cups: { startsWith: cupsUpper.substring(0, 20) },
+          ...(activeCompanyId ? { client: { brand: { companyId: activeCompanyId } } } : {})
+        }
       });
-      
+
       if (sp?.distributorReeCode) {
         destino = sp.distributorReeCode;
       } else {
-        destino = cups.substring(2, 6);
+        destino = cupsUpper.substring(2, 6);
       }
     }
 
@@ -475,51 +494,107 @@ export async function generateBajaXml(data: {
   fechaPrevista: string;
 }) {
   try {
-    const { emisora, destino, codigoSolicitud, cups, motivo, fechaPrevista } = data;
+    const session = await auth();
+    if (!session?.user?.id) {
+      throw new Error('No estás autenticado.');
+    }
+    const activeCompanyId = await resolveActiveCompanyId(session);
+
+    const emisora = (data.emisora || '').trim();
+    const destino = (data.destino || '').trim();
+    const codigoSolicitud = (data.codigoSolicitud || '').trim();
+    const cupsRaw = (data.cups || '').trim().toUpperCase();
+    const motivo = (data.motivo || '').trim();
+    const fechaPrevista = (data.fechaPrevista || '').trim();
+
+    if (!/^\d{4}$/.test(emisora)) {
+      throw new Error('El Código REE de la emisora debe tener 4 dígitos.');
+    }
+    if (!/^\d{4}$/.test(destino)) {
+      throw new Error('El Código REE de la distribuidora destino debe tener 4 dígitos.');
+    }
+    if (!/^\d{12}$/.test(codigoSolicitud)) {
+      throw new Error('El Código de Solicitud debe tener exactamente 12 dígitos numéricos.');
+    }
+    if (!/^ES\d{16}[A-Z0-9]{2,4}$/.test(cupsRaw)) {
+      throw new Error('El CUPS introducido no tiene un formato válido (20 o 22 caracteres comenzando por ES).');
+    }
+    if (!['01', '02', '03', '04'].includes(motivo)) {
+      throw new Error('El motivo de baja debe ser 01, 02, 03 o 04 (Tabla 10 CNMC).');
+    }
+    if (fechaPrevista && !/^\d{4}-\d{2}-\d{2}$/.test(fechaPrevista)) {
+      throw new Error('La fecha prevista debe tener formato YYYY-MM-DD.');
+    }
 
     const rootNode = 'MensajeBajaSuspension';
     const now = new Date();
-    const formattedDate = now.toISOString().split('.')[0];
-    
-    // Fetch client to put data in XML
+    const formattedDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+
     const sp = await prisma.supplyPoint.findFirst({
-      where: { cups: { startsWith: cups.substring(0, 20) } },
+      where: {
+        cups: { startsWith: cupsRaw.substring(0, 20) },
+        ...(activeCompanyId ? { client: { brand: { companyId: activeCompanyId } } } : {})
+      },
       include: {
+        client: true,
         contracts: {
           where: { status: { in: ['ACTIVO', 'TRAMITANDO'] } },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ version: 'desc' }, { activationDate: 'desc' }, { createdAt: 'desc' }],
           take: 1,
           include: { client: true }
         }
       }
     });
 
-    const client = sp?.contracts?.[0]?.client;
+    const client = sp?.contracts?.[0]?.client || sp?.client;
     if (!client) {
-      throw new Error('No se ha encontrado un cliente activo para este CUPS. Imposible generar el nodo <Cliente>.');
+      throw new Error('No se ha encontrado un cliente activo para este CUPS en la comercializadora activa.');
     }
 
-    // Determine type of doc
-    let tipoIdentificador = 'NI';
-    const vat = client.vatNumber.trim().toUpperCase();
-    if (vat.length > 9 && !vat.match(/^[ABCDEFGHJNPQRSUVW]/)) {
-      tipoIdentificador = 'PA';
+    const vat = (client.vatNumber || '').trim().toUpperCase();
+    if (!vat) {
+      throw new Error('El titular del suministro no tiene NIF/NIE/CIF registrado.');
     }
 
-    let tipoPersona = 'F';
-    if (vat.match(/^[ABCDEFGHJNPQRSUVW]/)) tipoPersona = 'J';
+    // Tabla 6 CNMC: NI, NE, PS, NV, OT (jamás PA)
+    let tipoIdentificador: 'NI' | 'NE' | 'PS' = 'NI';
+    if (/^[XYZ]\d{7}[A-Z]$/.test(vat)) {
+      tipoIdentificador = 'NE';
+    } else if (!/^(\d{8}[A-Z]|[ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J]|[KLM]\d{7}[A-Z])$/.test(vat)) {
+      tipoIdentificador = 'PS';
+    }
 
+    const isJuridica = /^[ABCDEFGHJNPQRSUVW]/.test(vat);
     let xmlNombre = '';
-    if (tipoPersona === 'F') {
-      const lastName = client.lastName || '';
-      xmlNombre = `<NombrePersona>${client.firstName || '-'}</NombrePersona>
-<PrimerApellido>${lastName.split(' ')[0] || '-'}</PrimerApellido>`;
-      const segApellido = lastName.split(' ').slice(1).join(' ');
-      if (segApellido) {
-        xmlNombre += `\n<SegundoApellido>${segApellido}</SegundoApellido>`;
+    if (!isJuridica) {
+      const firstName = (client.firstName || '').trim().slice(0, 80);
+      const rawLastName = (client.lastName || '').trim();
+      const rawLastName2 = ((client as any).lastName2 || '').trim();
+      let primerApellido = rawLastName;
+      let segundoApellido = rawLastName2;
+      if (!segundoApellido && rawLastName.includes(' ')) {
+        const parts = rawLastName.split(/\s+/);
+        primerApellido = parts[0];
+        segundoApellido = parts.slice(1).join(' ');
+      }
+      primerApellido = primerApellido.slice(0, 80);
+      segundoApellido = segundoApellido.slice(0, 80);
+
+      if (!firstName || !primerApellido) {
+        throw new Error('El cliente persona física debe tener Nombre y Primer Apellido informados en su ficha antes de generar B1_01.');
+      }
+
+      xmlNombre = `<NombreDePila>${escapeXmlBaja(firstName)}</NombreDePila>
+      <PrimerApellido>${escapeXmlBaja(primerApellido)}</PrimerApellido>`;
+      if (segundoApellido) {
+        xmlNombre += `\n      <SegundoApellido>${escapeXmlBaja(segundoApellido)}</SegundoApellido>`;
       }
     } else {
-      xmlNombre = `<RazonSocial>${client.businessName}</RazonSocial>`;
+      const razonSocial = (client.businessName || '').trim().slice(0, 80);
+      if (!razonSocial) {
+        throw new Error('El cliente persona jurídica debe tener Razón Social informada en su ficha antes de generar B1_01.');
+      }
+      xmlNombre = `<RazonSocial>${escapeXmlBaja(razonSocial)}</RazonSocial>`;
     }
 
     let telefonoXml = '';
@@ -527,40 +602,43 @@ export async function generateBajaXml(data: {
       const phone = client.contactPhone.replace(/\D/g, '').slice(-9);
       if (phone.length === 9) {
         telefonoXml = `
-<Telefono>
-  <PrefijoPais>34</PrefijoPais>
-  <Numero>${phone}</Numero>
-</Telefono>`;
+    <Telefono>
+      <PrefijoPais>0034</PrefijoPais>
+      <Numero>${phone}</Numero>
+    </Telefono>`;
       }
     }
 
-    const xml = `<${rootNode} xmlns="http://localhost/elegibilidad">
-<Cabecera>
-  <CodigoREEEmpresaEmisora>${emisora}</CodigoREEEmpresaEmisora>
-  <CodigoREEEmpresaDestino>${destino}</CodigoREEEmpresaDestino>
-  <CodigoDelProceso>B1</CodigoDelProceso>
-  <CodigoDePaso>01</CodigoDePaso>
-  <CodigoDeSolicitud>${codigoSolicitud}</CodigoDeSolicitud>
-  <SecuencialDeSolicitud>01</SecuencialDeSolicitud>
-  <FechaSolicitud>${formattedDate}</FechaSolicitud>
-  <CUPS>${cups}</CUPS>
-</Cabecera>
-<BajaSuspension>
-  <DatosSolicitud>
-    <IndActivacion>A</IndActivacion>${fechaPrevista ? `
-    <FechaPrevistaAccion>${fechaPrevista}</FechaPrevistaAccion>` : ''}
-    <Motivo>${motivo}</Motivo>
-  </DatosSolicitud>
-  <Cliente>
-    <IdCliente>
-      <TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
-      <Identificador>${vat}</Identificador>
-    </IdCliente>
-    <Nombre>
-      ${xmlNombre}
-    </Nombre>${telefonoXml}
-  </Cliente>
-</BajaSuspension>
+    const cupsFinal = cupsRaw.length === 20 ? `${cupsRaw}0F` : cupsRaw;
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<${rootNode} xmlns="http://localhost/elegibilidad">
+  <Cabecera>
+    <CodigoREEEmpresaEmisora>${escapeXmlBaja(emisora)}</CodigoREEEmpresaEmisora>
+    <CodigoREEEmpresaDestino>${escapeXmlBaja(destino)}</CodigoREEEmpresaDestino>
+    <CodigoDelProceso>B1</CodigoDelProceso>
+    <CodigoDePaso>01</CodigoDePaso>
+    <CodigoDeSolicitud>${escapeXmlBaja(codigoSolicitud)}</CodigoDeSolicitud>
+    <SecuencialDeSolicitud>01</SecuencialDeSolicitud>
+    <FechaSolicitud>${formattedDate}</FechaSolicitud>
+    <CUPS>${escapeXmlBaja(cupsFinal)}</CUPS>
+  </Cabecera>
+  <BajaSuspension>
+    <DatosSolicitud>
+      <IndActivacion>${fechaPrevista ? 'F' : 'A'}</IndActivacion>${fechaPrevista ? `
+      <FechaPrevistaAccion>${escapeXmlBaja(fechaPrevista)}</FechaPrevistaAccion>` : ''}
+      <Motivo>${escapeXmlBaja(motivo)}</Motivo>
+    </DatosSolicitud>
+    <Cliente>
+      <IdCliente>
+        <TipoIdentificador>${tipoIdentificador}</TipoIdentificador>
+        <Identificador>${escapeXmlBaja(vat)}</Identificador>
+      </IdCliente>
+      <Nombre>
+        ${xmlNombre}
+      </Nombre>${telefonoXml}
+    </Cliente>
+  </BajaSuspension>
 </${rootNode}>`;
 
     return { success: true, xml };

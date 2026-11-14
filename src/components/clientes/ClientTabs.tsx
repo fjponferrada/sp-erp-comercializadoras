@@ -1,19 +1,37 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download, FileText, Activity, Zap, CreditCard, RefreshCw, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { Download, FileText, Activity, Zap, CreditCard, RefreshCw, AlertTriangle, Eye } from 'lucide-react';
 import RenewContractModal from './RenewContractModal';
 import PenalizationModal from './PenalizationModal';
 import RequestPaymentButton from '@/components/facturas/RequestPaymentButton';
+import { formatDateUTC } from '@/lib/utils/date';
+
+function isValidCloudPdf(url: unknown): url is string {
+  return typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://')) && !url.includes('airtable');
+}
 
 export default function ClientTabs({ client, supplyPoints, contracts, invoices, userRole }: any) {
   const [activeTab, setActiveTab] = useState('resumen');
   const [contractToRenew, setContractToRenew] = useState<any>(null);
   const [contractToPenalize, setContractToPenalize] = useState<any>(null);
+  const canManageInvoices = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+  const isClientRole = userRole === 'CLIENT' || userRole === 'CLIENTE';
 
-  const totalFacturacion = invoices.reduce((acc: number, curr: any) => acc + curr.totalAmount, 0);
-  const activeContractsCount = contracts.filter((c: any) => c.status === 'ACTIVO').length;
-  const totalMWh = invoices.reduce((acc: number, curr: any) => acc + curr.totalMWh, 0);
+  const getSignedAmount = (inv: any) => {
+    const amt = inv.totalAmount || 0;
+    return inv.invoiceType?.toLowerCase().includes('abono') ? -Math.abs(amt) : amt;
+  };
+
+  const getSignedKwh = (inv: any) => {
+    const kwh = inv.totalMWh || 0;
+    return inv.invoiceType?.toLowerCase().includes('abono') ? -Math.abs(kwh) : kwh;
+  };
+
+  const totalFacturacion = invoices.reduce((acc: number, curr: any) => acc + getSignedAmount(curr), 0);
+  const activeContractsCount = contracts.filter((c: any) => c.status === 'ACTIVO' || c.status === 'Activo').length;
+  const totalMWh = invoices.reduce((acc: number, curr: any) => acc + getSignedKwh(curr), 0);
 
   return (
     <div className="space-y-6 mt-8 min-w-0 w-full">
@@ -98,29 +116,67 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700/50">
-                  {invoices.map((inv: any) => (
-                    <tr key={inv.id} className="hover:bg-slate-700/30 transition-colors">
-                      <td className="px-6 py-4 font-medium text-white">{inv.invoiceNumber}</td>
-                      <td className="px-6 py-4">{new Date(inv.issueDate).toLocaleDateString('es-ES')}</td>
-                      <td className="px-6 py-4 text-xs font-mono text-slate-400">{inv.supplyPoint?.cups || '-'}</td>
-                      <td className="px-6 py-4 text-right font-medium text-emerald-400">
-                        {inv.totalAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
-                      </td>
-                      <td className="px-6 py-4">
-                        {inv.pdfUrl ? (
-                          <div className="flex items-center gap-4">
-                            <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 text-xs">
-                              <Download size={14} /> Descargar
-                            </a>
-                            <RequestPaymentButton invoiceId={inv.id} type="transfer" />
-                            <RequestPaymentButton invoiceId={inv.id} type="overdue" />
+                  {invoices.map((inv: any) => {
+                    const signedAmt = getSignedAmount(inv);
+                    const isAbono = inv.invoiceType?.toLowerCase().includes('abono');
+                    const hasCloudPdf = isValidCloudPdf(inv.pdfUrl);
+                    const isLegacyPdf = Boolean(inv.pdfUrl && String(inv.pdfUrl).includes('airtable'));
+                    return (
+                      <tr key={inv.id} className="hover:bg-slate-700/30 transition-colors">
+                        <td className="px-6 py-4 font-medium text-white">
+                          <div className="flex items-center gap-2">
+                            {!isClientRole ? (
+                              <Link href={`/facturas/${inv.id}`} className="hover:text-indigo-400 transition-colors">
+                                {inv.invoiceNumber}
+                              </Link>
+                            ) : (
+                              <span>{inv.invoiceNumber}</span>
+                            )}
+                            {inv.invoiceType && inv.invoiceType !== 'Normal' && (
+                              <span className={`text-[10px] uppercase px-2 py-0.5 rounded-full border ${
+                                isAbono
+                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                              }`}>
+                                {inv.invoiceType}
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-slate-500 text-xs">Sin PDF</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-6 py-4">{formatDateUTC(inv.issueDate)}</td>
+                        <td className="px-6 py-4 text-xs font-mono text-slate-400">{inv.supplyPoint?.cups || '-'}</td>
+                        <td className={`px-6 py-4 text-right font-medium ${isAbono ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {signedAmt.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {!isClientRole && (
+                              <Link href={`/facturas/${inv.id}`} className="text-slate-300 hover:text-white flex items-center gap-1 text-xs" title="Ver Ficha">
+                                <Eye size={14} /> Ficha
+                              </Link>
+                            )}
+                            {hasCloudPdf ? (
+                              <>
+                                <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 text-xs">
+                                  <Download size={14} /> PDF
+                                </a>
+                                {canManageInvoices && (
+                                  <>
+                                    <RequestPaymentButton invoiceId={inv.id} type="transfer" />
+                                    <RequestPaymentButton invoiceId={inv.id} type="overdue" />
+                                  </>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-slate-500 text-xs italic">
+                                {isLegacyPdf ? 'PDF caducado' : 'Sin PDF'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {invoices.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-slate-500">Este cliente aún no tiene facturas emitidas.</td>
@@ -132,43 +188,62 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
 
             {/* Mobile View */}
             <div className="md:hidden space-y-4 w-full min-w-0">
-              {invoices.map((inv: any) => (
-                <div key={inv.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col gap-3 min-w-0 w-full">
-                  <div className="flex justify-between items-start gap-2 min-w-0">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-400 mb-1">Nº Factura</p>
-                      <p className="font-medium text-white truncate">{inv.invoiceNumber}</p>
+              {invoices.map((inv: any) => {
+                const signedAmt = getSignedAmount(inv);
+                const isAbono = inv.invoiceType?.toLowerCase().includes('abono');
+                const hasCloudPdf = isValidCloudPdf(inv.pdfUrl);
+                const isLegacyPdf = Boolean(inv.pdfUrl && String(inv.pdfUrl).includes('airtable'));
+                return (
+                  <div key={inv.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col gap-3 min-w-0 w-full">
+                    <div className="flex justify-between items-start gap-2 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-slate-400 mb-1">Nº Factura</p>
+                        <p className="font-medium text-white truncate">{inv.invoiceNumber}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-slate-400 mb-1">Total</p>
+                        <p className={`font-medium ${isAbono ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {signedAmt.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs text-slate-400 mb-1">Total</p>
-                      <p className="font-medium text-emerald-400">{inv.totalAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-400 mb-1">Fecha Emisión</p>
+                        <p className="text-sm text-slate-300 truncate">{formatDateUTC(inv.issueDate)}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-400 mb-1">CUPS</p>
+                        <p className="text-sm font-mono text-slate-400 truncate">{inv.supplyPoint?.cups || '-'}</p>
+                      </div>
+                    </div>
+                    <div className="pt-3 border-t border-slate-700/50 flex flex-wrap gap-2 mt-1">
+                      {!isClientRole && (
+                        <Link href={`/facturas/${inv.id}`} className="text-slate-200 flex items-center gap-1 text-xs bg-slate-700/50 px-2 py-1 rounded">
+                          <Eye size={14} /> Ficha
+                        </Link>
+                      )}
+                      {hasCloudPdf ? (
+                        <>
+                          <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 text-xs bg-indigo-500/10 px-2 py-1 rounded">
+                            <Download size={14} /> PDF
+                          </a>
+                          {canManageInvoices && (
+                            <>
+                              <RequestPaymentButton invoiceId={inv.id} type="transfer" />
+                              <RequestPaymentButton invoiceId={inv.id} type="overdue" />
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-slate-500 text-xs italic">
+                          {isLegacyPdf ? 'PDF caducado' : 'Sin PDF'}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="min-w-0">
-                      <p className="text-xs text-slate-400 mb-1">Fecha Emisión</p>
-                      <p className="text-sm text-slate-300 truncate">{new Date(inv.issueDate).toLocaleDateString('es-ES')}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-slate-400 mb-1">CUPS</p>
-                      <p className="text-sm font-mono text-slate-400 truncate">{inv.supplyPoint?.cups || '-'}</p>
-                    </div>
-                  </div>
-                  <div className="pt-3 border-t border-slate-700/50 flex flex-wrap gap-2 mt-1">
-                    {inv.pdfUrl ? (
-                      <>
-                        <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 text-xs bg-indigo-500/10 px-2 py-1 rounded">
-                          <Download size={14} /> PDF
-                        </a>
-                        <RequestPaymentButton invoiceId={inv.id} type="transfer" />
-                        <RequestPaymentButton invoiceId={inv.id} type="overdue" />
-                      </>
-                    ) : (
-                      <span className="text-slate-500 text-xs">Sin PDF</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {invoices.length === 0 && (
                 <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center text-slate-500">
                   Este cliente aún no tiene facturas emitidas.

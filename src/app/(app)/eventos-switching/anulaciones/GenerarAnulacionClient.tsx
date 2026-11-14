@@ -73,9 +73,7 @@ export default function GenerarAnulacionClient() {
       link.href = url;
       
       // Filename: [Proceso]_[Paso]_[CodigoSolicitud].xml
-      let paso = '08';
-      if (formData.proceso === 'A3' || formData.proceso === 'M1') paso = '06';
-      else if (formData.proceso === 'B1') paso = '03';
+      const paso = (response as any).paso || (formData.proceso === 'A3' || formData.proceso === 'M1' ? '06' : (formData.proceso === 'B1' || formData.proceso === 'E1' ? '03' : '08'));
 
       link.setAttribute('download', `${formData.proceso}_${paso}_${formData.codigoSolicitud}.xml`);
       document.body.appendChild(link);
@@ -144,6 +142,9 @@ export default function GenerarAnulacionClient() {
               <option value="A3">A3 - Alta de Suministro (Paso 06)</option>
               <option value="M1">M1 - Modificación Contractual (Paso 06)</option>
               <option value="B1">B1 - Baja de Suministro (Paso 03)</option>
+              <option value="E1">E1 - Desistimiento (Paso 03)</option>
+              <option value="E2">E2 - Reposición (Paso 08)</option>
+              <option value="R1">R1 - Reclamación (Paso 08)</option>
             </select>
           </div>
 

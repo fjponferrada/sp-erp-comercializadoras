@@ -1,77 +1,86 @@
 # Guía Maestra de Impuestos y Tasas (ERP Comercializadoras)
 
-Esta guía documenta toda la lógica de negocio, arquitectura y optimizaciones críticas relacionadas con la liquidación de impuestos (Modelo 560 AEAT) y tributos locales (Tasa Municipal). 
+Esta guía documenta toda la lógica de negocio, arquitectura, validaciones preventivas e integraciones implementadas en el ERP para la autoliquidación del Impuesto Especial sobre la Electricidad (**Modelo 560 AEAT y Haciendas Forales**) y los tributos locales (**Tasa Municipal del 1,5%**).
 
-Las reglas descritas a continuación son de obligado cumplimiento para garantizar que el ERP genere desgloses exactos, prevenga requerimientos por parte de la Agencia Tributaria y evite caídas de los servidores (Vercel) al procesar altos volúmenes de datos.
-
----
-
-## 1. MODELO 560 (IMPUESTO ESPECIAL SOBRE LA ELECTRICIDAD)
-
-El Modelo 560 es la declaración a la AEAT del Impuesto Eléctrico. La generación del fichero de desglose (TXT/CSV) requiere una precisión milimétrica.
-
-### 1.1 Exclusión de Zonas Forales
-La declaración del Modelo 560 que se presenta en la **AEAT Central** no debe incluir las facturas de territorios con régimen fiscal y hacienda propia (zonas forales).
-- **Regla:** El sistema debe excluir matemáticamente todas las facturas correspondientes al País Vasco (Álava, Guipúzcoa, Vizcaya) y Navarra.
-- **Detección:** Se realiza mediante los Códigos Postales (`01`, `20`, `31`, `48`) o leyendo explícitamente el nombre de la provincia del `SupplyPoint`.
-- **Riesgo:** Si no se aplica esta exclusión, se sobredeclara la Base Imponible y la Cuota Íntegra a la Hacienda Estatal, pagando impuestos de más. (Nota: Ceuta y Melilla sí se liquidan ante la AEAT y, por tanto, se mantienen junto al resto de España).
-
-### 1.2 Extracción Real del Impuesto (No aplicar Tipos Fijos a bulto)
-- **Error común de proveedores externos:** Coger la suma total de las bases imponibles de todos los suministros de baja tensión (SBFO) y multiplicarla por un tipo impositivo fijo (ej. 3,8% o 5,112696%). Esto genera cuotas irreales.
-- **Regla del ERP:** El cálculo de la cuota agregada **NUNCA** se hace multiplicando la suma de bases por un porcentaje. El ERP debe leer individualmente el campo `Importe Impuesto` extraído de cada factura en el momento de su emisión.
-- **Motivo:** A lo largo de un trimestre coexisten distintas tarifas, bonificaciones gubernamentales o reducciones de base imponible. Solo la suma del impuesto exacto cobrado factura a factura garantiza cuadrar al céntimo la contabilidad.
-
-### 1.3 Desglose de Exenciones (Clave 98.1E)
-- Cuando se declaran exenciones o reducciones (por ejemplo, usos industriales o riegos bajo la clave 98.1E), Hacienda exige trazabilidad absoluta.
-- **Regla:** Queda prohibido agrupar toda la energía y base imponible exenta en una única línea totalizadora. Cada exención debe ir desglosada individualmente con el **NIF del destinatario** y su **CIE** (Código de Identificación de la Electricidad). La omisión de estos datos provoca un requerimiento automático de la AEAT.
-
-### 1.4 Bug del Validador Web AEAT (Separación de Mínimos y Truncamiento)
-- **Problema de Agrupación:** Aunque el ERP agrega correctamente las cuotas, el validador web de la AEAT rechaza los ficheros TXT si se declaran en una misma línea (ej. `SBFO`) la cuota por porcentaje (Columna 11) y la cuota mínima (Columna 12). La normativa (artículos 99.1 y 99.2) exige que el impuesto se liquide por el mayor de los dos importes. Por tanto, los abonos o facturas que apliquen la cuota mínima deben exportarse obligatoriamente en **líneas independientes** con Base Liquidable = 0.
-- **Bug de Truncamiento en la AEAT:** La pasarela web de la AEAT padece un bug matemático crítico: valida la suma de las cuotas de las líneas (las cuales están redondeadas a 2 decimales) comparándola contra un cálculo global donde **trunca** los decimales (`Base Liquidable Total * Tipo Impositivo`). Esto provoca rechazos por descuadres artificiales de 1 céntimo (errores 39652 y 39641).
-- **Workaround actual:** Para sortear el bug en periodos con abonos de cuota mínima, se ha tenido que modificar el TXT a mano para "netear" las cuotas (eliminando la Columna 12 y pasándolo todo a la 11) y sumar estratégicamente unos céntimos a la Base Liquidable para que el cálculo global truncado coincida milimétricamente con la cuota a ingresar.
-- **⚠️ ACCIÓN REQUERIDA (DEUDA TÉCNICA):** En algún momento se deberá refactorizar el código del exportador del Modelo 560 (`route.ts`) para separar automáticamente las líneas de cuota mínima en el TXT e incluir una red de seguridad algorítmica que ajuste los céntimos de la base total, previniendo el rechazo por truncamiento en la sede electrónica.
+Las reglas descritas a continuación son de obligado cumplimiento conforme a la **Ley 38/1992 (LIIEE)**, la **Orden HAC/172/2021**, las especificaciones técnicas de validación de la AEAT (`INST_CUMPL_560` y `Desg560V2`) y el **TRLRHL (Art. 24.1.c)**.
 
 ---
 
-## 2. TASA MUNICIPAL (1.5% POR UTILIZACIÓN PRIVATIVA)
+## 1. ARQUITECTURA TRANSVERSAL Y COMPONENTES IMPLICADOS
 
-La Tasa Municipal exige declarar los ingresos facturados en un ayuntamiento específico, descontando impuestos y bonos sociales.
-
-### 2.1 Aislamiento de Datos por Marca (SaaS)
-- **Regla:** Todas las consultas a la base de datos (Prisma) deben inyectar obligatoriamente el `brandId` del usuario activo en la sesión. Bajo ninguna circunstancia se debe permitir que una comercializadora liquide o visualice consumo y tasas pertenecientes a otra marca del ecosistema.
-
-### 2.2 Algoritmo Híbrido de Cruce de Municipios (Fuzzy Matching Avanzado)
-El mayor problema al extraer los datos de la Tasa Municipal es que las distribuidoras introducen los nombres de las ciudades con múltiples erratas, sin tildes, sin apóstrofes o usando formatos acortados (ej. `LOSPITALET DE LINFANT` en lugar de `VANDELLÒS I L'HOSPITALET DE L'INFANT`).
-- **Problema de los Códigos Postales:** Buscar por Código Postal es insuficiente, ya que a menudo vienen mal registrados desde la distribuidora y Google/Correos los invalida.
-- **Solución implementada:** Se ignora el Código Postal y se utiliza un algoritmo mixto basado en **Distancia de Levenshtein**:
-  1. **Limpieza Extrema:** Se eliminan acentos, apóstrofes, caracteres especiales y palabras vacías o artículos ("DE", "I", "LA", "EL").
-  2. **Coincidencia Exacta o Substring:** Si el municipio limpio encaja 1 a 1, se acepta inmediatamente.
-  3. **Tolerancia a Errores (Levenshtein):** Si no hay coincidencia exacta, se trocean ambos nombres en palabras significativas (>= 4 letras). Se exige que **todas** las palabras clave del municipio de la factura existan en el municipio buscado, pero se permite un margen de error tipográfico de **1 o 2 letras** por palabra (distancia de Levenshtein).
-  4. **Prevención de Falsos Positivos:** Al exigir que *todas* las palabras del registro facturado coincidan con la cadena principal, evitamos mezclar municipios (ej. evita que "L'Hospitalet de Llobregat" se sume a "L'Hospitalet de l'Infant" porque "Llobregat" no encajará). Además, antes del cálculo, se recorta la provincia (`-- TARRAGONA`) de la cadena de búsqueda.
-
-### 2.3 Redondeo Comercial Exacto
-- El cálculo `(Base IVA - Bono Social - Impuesto Eléctrico - Base F1) * 0.015` genera flotantes infinitos.
-- **Regla:** El motor de cálculo en backend debe aplicar un redondeo comercial estricto a 2 decimales (`Math.round(valor * 100) / 100`) antes de agregar totales o pasarlos al Frontend/Excel, previniendo descuadres contables en la liquidación.
-
-### 2.4 Columnas en Reportes (Frontend y Excel)
-- Por reglas de negocio, los reportes de la Tasa Municipal deben excluir la columna "Base Imponible Factura".
-- Se exige mostrar "Base Imponible IVA" para dejar claro de dónde parte el cálculo.
-- Siempre deben aparecer el "NIF Cliente" y la "Distribuidora" en el desglose para que el Ayuntamiento pueda auditar los sujetos pasivos.
+| Módulo / Archivo | Responsabilidad Principal |
+| :--- | :--- |
+| [`src/lib/taxUtils.ts`](../src/lib/taxUtils.ts) | Motor fiscal centralizado: husos horarios `Europe/Madrid`, resolución territorial (`resolveTaxZone`), validación de CIE (`validateCieForRegimen`), motor del Modelo 560 (`computeModelo560`) y cruce difuso municipal (`matchesMunicipality`). |
+| [`src/lib/permissions.ts`](../src/lib/permissions.ts) | Helper multi-marca [`getActiveBrand`](../src/lib/permissions.ts) que resuelve la marca activa desde la cookie `active-brand` verificada contra `allowedBrands` (con soporte completo para `SUPERADMIN`). |
+| [`src/app/api/impuestos/electrico/route.ts`](../src/app/api/impuestos/electrico/route.ts) | API de cálculo trimestral del Modelo 560 por zonas fiscales (`España`, `Navarra`, `Álava`, `Guipúzcoa`, `Vizcaya`), modos (`oficial` / `neteado`), ajuste de céntimos y detección de tipos históricos. |
+| [`src/app/api/impuestos/electrico/export/route.ts`](../src/app/api/impuestos/electrico/export/route.ts) | Generador del fichero oficial `.TXT` de 12 columnas terminadas en `;` conforme a `Desg560V2`, con soporte para filtro de tipo histórico (`?rate=`) y CIE declarante (`?cie=`). |
+| [`src/app/(app)/impuestos/electrico/ElectricoClient.tsx`](../src/app/(app)/impuestos/electrico/ElectricoClient.tsx) | Interfaz del Modelo 560 con selectores de ámbito (`Marca activa` / `Toda la Comercializadora`), modo AEAT, CIE declarante por zona, panel de alertas preventivas y **Cuadro de Liquidación Casillas `(1)` a `(6)`** con copiado en 1 clic sin puntos de miles. |
+| [`src/app/(app)/puntos-suministro/EditSupplyPointModal.tsx`](../src/app/(app)/puntos-suministro/EditSupplyPointModal.tsx) y [`src/app/actions/supplyPointActions.ts`](../src/app/actions/supplyPointActions.ts) | Autocompletado del `% Reducción IE` según régimen LIIEE, pistas visuales de clave de actividad del CIE y validación estricta en servidor (`validateCieForRegimen`) al guardar el Punto de Suministro. |
+| [`src/app/api/impuestos/municipal/route.ts`](../src/app/api/impuestos/municipal/route.ts), [`poblaciones/route.ts`](../src/app/api/impuestos/municipal/poblaciones/route.ts) y [`src/app/(app)/impuestos/municipal/page.tsx`](../src/app/(app)/impuestos/municipal/page.tsx) | Liquidación y exportación Excel (Agrupada y Detallada con fila `TOTAL`) de la Tasa Municipal del 1,5%, desambiguación provincial (`MUNICIPIO -- PROVINCIA`), energía en MWh reales y redondeo comercial a 2 decimales. |
+| [`src/lib/services/InternalBillingEngine.ts`](../src/lib/services/InternalBillingEngine.ts) y [`src/app/api/facturacion/interna/confirm/route.ts`](../src/app/api/facturacion/interna/confirm/route.ts) | Cálculo normativo del Impuesto Eléctrico por régimen (`94.x`, `98.1A–D`, `98.1E–F`, `98.2–98.3`, `SBFI`/`SBFO`) y **Promoción Fase 5** a `Invoice` (`origin: 'INTERNAL_ENGINE'`) al confirmar facturas internas. |
 
 ---
 
-## 3. ARQUITECTURA Y RENDIMIENTO (PREVENCIÓN DE TIMEOUTS)
+## 2. MODELO 560 (IMPUESTO ESPECIAL SOBRE LA ELECTRICIDAD)
 
-Las consultas tributarias a menudo exigen analizar periodos larguísimos (ej. 4 a 7 años de facturación).
+Toda la lógica de cálculo de casillas y generación de ficheros `.TXT` está centralizada en [`src/lib/taxUtils.ts`](../src/lib/taxUtils.ts), garantizando **identidad matemática del 100%** entre la pantalla (`/impuestos/electrico`), las Casillas `(1)` a `(6)` de la carátula web AEAT y el fichero `.TXT` exportado (`/api/impuestos/electrico/export`).
 
-### 3.1 Vercel Serverless Timeouts (Error 504 / 500)
-- El entorno de Vercel (Hobby/Pro) destruye las peticiones API que superan los 15-60 segundos. 
-- Extraer todas las facturas de una marca para 7 años (pueden ser >60.000 registros) a memoria (RAM del proceso Node.js) y luego filtrarlas en Javascript toma más de 30 segundos, provocando un error 504 o de memoria (OOM).
+### 2.1 Ámbito Territorial y Exclusión de Zonas Forales (Art. 91.1 LIIEE)
+- **Territorio Común (AEAT Estatal — Zona `España`):** Incluye toda la Península, Baleares, **Canarias (`CP 35`, `38`), Ceuta (`CP 51`) y Melilla (`CP 52`)**. Conforme a los artículos 91.1 y 97 LIIEE, Canarias, Ceuta y Melilla **sí están sujetos** al Impuesto Eléctrico y se autoliquidan ante la AEAT Estatal tomando como base la base teórica de IVA peninsular excluido el propio IE (con independencia de que en factura repercutan IGIC o IPSI).
+- **Exclusión Estricta de Territorios Forales:** El bloque `España` excluye matemáticamente los suministros radicados en **Navarra (`CP 31`)** y **País Vasco (`CP 01` Álava, `20` Guipúzcoa y `48` Vizcaya)**, separándolos en 4 bloques forales independientes para su liquidación ante cada Hacienda Foral con su CIE foral correspondiente.
+- **Detección multicapa:** Se comprueba el Código Postal y provincia de `SupplyPoint` con *fallback* automático a `invoiceData['CP PS']` y `invoiceData['PROVINCIA PS']`.
+- **Selector de Ámbito (`scope=brand|company`):** Respeta por defecto la marca activa (`active-brand`) y permite conmutar en la cabecera a **Toda la Comercializadora (`companyId`)**, dado que el sujeto pasivo ante la AEAT y Haciendas Forales es el NIF/CIE único de la sociedad mercantil (`Company`).
 
-### 3.2 Optimización de Consultas en Prisma (Pre-Filtrado)
-- **Regla de Oro:** Nunca pedir a Prisma que cargue cientos de miles de facturas si el usuario solo quiere calcular un ayuntamiento concreto.
-- **Técnica:** 
-  1. Se consulta primero la tabla `SupplyPoint` filtrando únicamente los IDs de los suministros que pertenecen a ese ayuntamiento (usando la lógica de Fuzzy Matching). Este paso toma apenas milisegundos.
-  2. Una vez obtenidos esos IDs (ej. 4 suministros), se pide a `Invoice` que devuelva las facturas con `supplyPointId: { in: matchingIds }` en el rango de fechas.
-  3. Resultado: Se bajan 32 facturas en lugar de 60.000, reduciendo el tiempo de ejecución de la API de **34 segundos a menos de 0.1 segundos**.
-  4. El uso de `.select` en Prisma es obligatorio para traer solo los campos numéricos estrictamente necesarios (`taxAmount`, `subtotal1`, etc.) e ignorar objetos anidados pesados si no se van a utilizar en la agregación.
+### 2.2 Extracción Real Factura a Factura y Separación de Tipos Impositivos
+- **Prohibido aplicar porcentajes a bulto:** La cuota agregada **NUNCA** se calcula multiplicando la suma bruta de bases por un porcentaje fijo. Se extrae factura a factura (`Importe Impuesto CORR` / `Importe Impuesto` o `taxAmount`), deduplicando por `invoiceNumber`, invirtiendo signos en facturas de `Abono`, excluyendo facturas de penalización sin suministro y aplicando corte horario estricto en zona `Europe/Madrid` (`getQuarterMadridBounds`).
+- **Prohibición AEAT de mezclar tipos impositivos (`INST_CUMPL_560` pág. 1):** Los hechos imponibles gravados a tipos históricos reducidos (`0,5%`, `2,5%`, `3,8%` de refacturaciones o abonos de periodos anticrisis) **no pueden mezclarse** en una autoliquidación al `5,11269632%`. El motor separa automáticamente cualquier factura/abono a tipo histórico, muestra un banner de advertencia en UI y habilita botones específicos de descarga `.TXT` por tipo (`?rate=0.5`, `?rate=2.5`, `?rate=3.8`).
+
+### 2.3 Regímenes Legales, Detección de Cuota Mínima y Validación Preventiva de CIE (Arts. 94, 98 y 99 LIIEE)
+- **Comportamiento exacto por régimen fiscal (`REGIMEN_560_META` e `InternalBillingEngine`):**
+  - `SBFI` (Usos industriales, mínimo `0,50 €/MWh`) y `SBFO` (Otros usos, mínimo `1,00 €/MWh`): Tributan al `5,11269632%` sobre el 100% de la base salvo cuando la cuota mínima supera a la porcentual.
+  - `98.1A`, `98.1B`, `98.1C`, `98.1D`: Reducción del **85%** (base liquidable = `15%`) **SIN cuota mínima legal** (Art. 99.2 excluye expresamente las letras a, b, c y d del Art. 98.1).
+  - `98.1E` (Riegos agrícolas) y `98.1F`: Reducción del **85%** (base liquidable = `15%`) **CON suelo de cuota mínima** (`0,50 €/MWh` o `1,00 €/MWh`).
+  - `98.2` (Embarcaciones con suministro eléctrico desde tierra) y `98.3` (Transporte ferroviario): Reducción del **100%** sobre la base imponible, liquidándose **siempre por cuota mínima de `0,50 €/MWh`** (Casillas 4 y 5 / Columna 12).
+  - `94.1` a `94.10` (Exenciones): Cuota `0,00 €` (excluidos de las Casillas 1 a 6 del Cuadro de Liquidación, pero declarados obligatoriamente en kWh/MWh dentro del `.TXT` de desglose).
+- **Detección exacta de `isMinApplied`:** Prioriza el indicador explícito `Minimo Importe IE Superado` (`false`/`0`). En su ausencia, compara la cuota real repercutida contra la cuota porcentual teórica calculada sobre la **base liquidable reducida**, evitando falsos positivos en riegos agrícolas (`98.1E`).
+- **Agregación y Validación Preventiva del CIE (`13 caracteres ES000XXYYZZZW`):**
+  - `94.1–94.4` y `94.10`: Se agregan en **1 línea por régimen y signo**, dejando vacíos NIF y CIE del destinatario.
+  - `94.5–94.9`, `98.1A–F`, `98.2` y `98.3`: Se agrupan en **1 línea por `(régimen, NIF destinatario, CIE destinatario, tensión, concepto, signo, modalidad %/mínimo)`**.
+  - **Doble barrera de validación de CIE:** Tanto al editar un Punto de Suministro (`EditSupplyPointModal` + `updateSupplyPointAction`) como antes de exportar el `.TXT` del Modelo 560, `validateCieForRegimen` verifica longitud exacta de 13 caracteres y correspondencia de los **caracteres 8–9 (clave de actividad)** con el régimen declarado: `L3` comercializadora declarante, `LA` (`98.1E` riegos), `LV` (`98.1F`), `LQ`/`LM`/`LE`/`LI` (`98.1A–D`), `L0`/`LO` (`94.5`), `LP` (`94.6`), `L1`/`L7` (`94.7`).
+
+### 2.4 Cumplimiento Estricto del Validador Web AEAT y Controles Operativos en UI
+- ✅ **ESTADO: 100% IMPLEMENTADO Y OPERATIVO (`src/lib/taxUtils.ts` + `ElectricoClient.tsx`)**
+- **Formato exacto de 12 campos terminados en `;` (`Desg560V2` y `ANEXO: TABLA`):**
+  1. Todas las líneas terminan con `;` tras el campo 12 (con campo opcional de **CIE Declarante** personalizable por zona fiscal en pantalla antes de descargar el `.TXT`).
+  2. Las casillas marcadas como `NO` en el Anexo de la AEAT (como *Reducción* Col. 4 en `SBFO`/`SBFI`/`94.x`, o la columna de cuota no aplicable) se exportan **estrictamente vacías** (`;;`), nunca con `0.00`.
+  3. **Desdoble automático Art. 99.1 (%) vs. Art. 99.2 (Mínimos):** `SBFI`, `SBFO` y `98.1E–F` nunca mezclan Columna 11 y Columna 12 en la misma fila. En suministros en mínimo (`Art. 99.2`), se emite línea independiente con `Base Liquidable = 0.00`, Columna 11 vacía y Columna 12 rellena.
+- **Cuadro de Liquidación Interactivo Casillas `(1)` a `(6)` (Prevención Error `39621`):**
+  - La interfaz muestra las 6 casillas oficiales de la carátula AEAT formateadas **sin puntos de miles y con coma decimal** (ej. `630991,32`) con botón de copiado directo al portapapeles en 1 clic.
+- **Red de Seguridad de Céntimos (Prevención Errores `39641` / `39652`) y Modo Contingencia:**
+  - Con el check **"Ajuste auto céntimos AEAT"** activo (por defecto), si la suma de cuotas individuales redondeadas factura a factura difiere en algún céntimo de `trunc/round(Casilla 2 × 5,11269632%)`, el motor ajusta automáticamente los céntimos indispensables en la Base Imponible/Liquidable del bloque general (`SBFO`/`SBFI`) y muestra en pantalla el ajuste exacto aplicado (`Δ base`) para archivar en el papel de trabajo contable.
+  - Incluye selector de **Modo Contingencia AEAT (`neteado`)** para trimestres excepcionales en los que abonos de cuota mínima dejen la `Casilla (5)` en negativo y la Sede Electrónica rechace el envío.
+
+---
+
+## 3. TASA MUNICIPAL (1,5% POR UTILIZACIÓN PRIVATIVA — ART. 24.1.c TRLRHL)
+
+### 3.1 Seguridad, Ámbito Multi-Marca y Zona Horaria
+- Tanto `/api/impuestos/municipal` como `/api/impuestos/municipal/poblaciones` validan sesión activa con `auth()`, aplican `getActiveBrand(session.user)` con soporte de ámbito `Marca activa` o `Toda la Comercializadora` (`scope=brand|company`), y acotan las fechas `dateFrom` / `dateTo` en huso horario estricto `Europe/Madrid` (`getDateRangeMadridBounds`).
+
+### 3.2 Algoritmo Híbrido de Cruce de Municipios sin Pérdida de Datos
+- **Desambiguación de homónimos provinciales:** El selector de poblaciones devuelve valores compuestos `MUNICIPIO -- PROVINCIA`, impidiendo mezclar ayuntamientos homónimos de distintas provincias.
+- **Pre-filtrado híbrido sin pérdida de histórico:** La consulta en base de datos incluye los `SupplyPoint` cuyo municipio coincide **más** aquellos suministros con `city` vacía/nula o facturas con `supplyPointId = null`, evaluando después en memoria `supplyPoint.city || invoiceData['POBLACION PS']` (ignorando siempre `POBLACION SOC`, dado que el punto de conexión es el lugar de suministro).
+- **Prevención de falsos positivos en topónimos cortos (`matchesMunicipality`):** Exige coincidencia de palabra completa o distancia de Levenshtein graduada por longitud de token y validación de nombres bilingües oficiales separados por `/`, impidiendo que `"MORA"` coincida con `"ZAMORA"` o `"VERA"` con `"TALAVERA"`, pero manteniendo coincidencias compuestas y con erratas como `"LOSPITALET DE LINFANT"` ↔ `"VANDELLÒS I L'HOSPITALET DE L'INFANT"`.
+
+### 3.3 Base Imponible Depurada, Unidades (MWh) y Exportación Excel con Fila TOTAL
+- **Fórmula depurada:** `Base Tasa = Base Imponible IVA - Bono Social - Impuesto Eléctrico - Base F1 (ATR + Alquiler) - SVA separables`, excluyendo facturas de penalización por baja anticipada, invirtiendo signos en `Abono` y deduplicando por `invoiceNumber`.
+- **Redondeo comercial estricto:** La base y la tasa (`1,5%`) se redondean comercialmente a 2 decimales (`round2`) tanto por factura individual como en los subtotales por ayuntamiento y en el gran total.
+- **Columnas y exportación:** Muestra `Base Imponible IVA`, `NIF Cliente`, `Distribuidora` y `Energía Consumida (MWh)` (dividiendo `Invoice.totalMWh` entre `1.000` conforme a la Regla 81), e incorpora fila final **TOTAL** tanto en las tablas en pantalla como en los libros Excel Agrupado y Detallado.
+
+---
+
+## 4. INTEGRACIÓN CON EL MOTOR DE FACTURACIÓN INTERNA (FASE 5)
+
+Para evitar que las facturas generadas nativamente en el ERP queden aisladas de las liquidaciones tributarias:
+1. [`InternalBillingEngine.ts`](../src/lib/services/InternalBillingEngine.ts) calcula el Impuesto Eléctrico respetando estrictamente `supplyPoint.ieRegimen`, `supplyPoint.ieDiscount`, el suelo mínimo legal por régimen (`0,50` / `1,00 €/MWh` solo cuando procede legalmente) y la territorialidad de impuestos indirectos (`IVA 21%` en Península/Baleares, `IGIC` en Canarias, `IPSI` en Ceuta/Melilla, manteniendo Canarias/Ceuta/Melilla sujetos a IE).
+2. Al confirmar borradores en [`/api/facturacion/interna/confirm`](../src/app/api/facturacion/interna/confirm/route.ts), los registros `InternalInvoice` (`EMITIDA` / `ABONO`) se promocionan automáticamente mediante `upsert` a la tabla consolidada `Invoice` con `origin: 'INTERNAL_ENGINE'`, `subtotal1 = baseIEE`, `taxAmount = taxElectric`, `totalMWh` en kWh (Regla 81) y todas las claves fiscales en `invoiceData` (`Regimen Fiscal IE`, `Minimo Importe IE Superado`, `CIE`, `BaseImponibleF1`, `Importe Bono Social`, `Coste SVA`, `CP PS`, `POBLACION PS`, `PROVINCIA PS`), integrándose de inmediato en `/facturas`, **Modelo 560** y **Tasa Municipal**.

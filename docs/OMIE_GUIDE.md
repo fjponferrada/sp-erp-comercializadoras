@@ -1,65 +1,69 @@
 # Guía de Importación de OMIE (Mercado Diario SPOT)
 
-Esta guía detalla el funcionamiento interno del proceso de importación de los precios del pool eléctrico u OMIE a través del ERP.
+Esta guía detalla el funcionamiento interno del proceso de importación de los precios del mercado mayorista eléctrico (OMIE) en el SP ERP Comercializadoras y su auditoría posterior en el Visor de Precio Componentes.
 
 ## 1. ¿Qué es la Importación de OMIE?
 
-El proceso de importación de OMIE permite cargar manualmente los precios horarios (o cuartohorarios) del mercado diario. Estos datos son publicados típicamente por el operador del mercado (OMIE) o el operador del sistema (REE - ESIOS) y representan el componente principal de coste de la energía antes de aplicar desvíos, servicios de ajuste (COMPODEM) y costes regulados.
+El proceso de importación de OMIE permite cargar manualmente los precios horarios o cuartohorarios del mercado diario SPOT. Estos datos son publicados por el operador del mercado (OMIE) o el operador del sistema (REE - ESIOS) y representan el componente base del coste mayorista de la energía antes de sumar servicios de ajuste (COMPODEM), desvíos (REGANECU), pérdidas de red y peajes regulados.
 
-## 2. Origen de los Datos y Flujo de Importación
+## 2. Origen de los Datos, Seguridad y Flujo de Importación
 
-El usuario interactúa desde la vista `/compras/importar-omie`, donde puede subir un archivo exportado de plataformas oficiales.
+El usuario interactúa desde la vista `/compras/importar-omie`, donde sube el fichero exportado desde ESIOS u OMIE.
 
-**Ruta API:** `POST /api/compras/importar-omie`
-
-El backend procesa la subida en memoria sin guardar el archivo físico en el servidor. 
+- **Ruta API:** `POST /api/compras/importar-omie`
+- **Control de Acceso:** El endpoint verifica sesión activa mediante `auth()` y exige que el usuario pertenezca a uno de los roles autorizados del área de Compras (`SUPERADMIN`, `COMPANYADMIN` o `BACKOFFICE`).
+- **Procesamiento en memoria:** El backend procesa el `Buffer` íntegramente en RAM sin escribir archivos temporales en disco.
 
 ### 2.1 Formatos de Archivo Soportados
-El sistema está diseñado para ser muy robusto y soporta los formatos de exportación más comunes de la industria:
-1. **XLS (Falso Excel de ESIOS):** Archivos que tienen extensión `.xls` pero que internamente son código HTML puro (tablas `<tr>` y `<td>`).
-2. **Archivos tabulares reales:** CSV o verdaderos Excel XLSX, parseados mediante la librería nativa `xlsx`.
+El importador soporta de forma transparente los formatos habituales de exportación del sector:
+1. **XLS (HTML tabular de ESIOS):** Archivos descargados con extensión `.xls` cuyo contenido interno es una tabla HTML (`<tr>` y `<td>`).
+2. **Archivos tabulares reales (CSV / XLSX):** Hojas de cálculo o ficheros CSV estándar leídos mediante la librería `xlsx`.
 
 ## 3. Lógica de Extracción de Datos (Parsing)
 
-El parseador emplea una doble estrategia para garantizar la lectura de los precios:
+El parseador emplea una estrategia dual en cascada:
 
-1. **Estrategia Principal (Cheerio para HTML de ESIOS):** 
-   - El sistema carga el contenido del archivo como texto y busca etiquetas `<tr>`.
-   - Si la fila tiene suficientes columnas, extrae el **precio** de la quinta columna (`tds[4]`) y la **fecha/hora ISO** de la sexta columna (`tds[5]`).
-   - Parsea el string de fecha con la expresión regular `/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):\d{2}/` para separar Día, Hora y Minuto.
+1. **Estrategia Principal (`cheerio` para HTML de ESIOS):**
+   - Carga el contenido textual y localiza todas las filas `<tr>`.
+   - En cada fila con al menos 6 celdas `<td>`, extrae el **precio** de la quinta columna (`tds[4]`, normalizando separadores de miles `.` y coma decimal `,`) y el **timestamp ISO** de la sexta columna (`tds[5]`).
+   - Parsea la marca temporal con `/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):\d{2}/` para obtener `dateKey` (`YYYY-MM-DD`), `hour` y `minute`.
 
 2. **Estrategia Secundaria (Fallback con `xlsx`):**
-   - Si la primera técnica falla (0 filas detectadas), se lee el archivo como un libro de Excel.
-   - Itera por cada celda de cada fila buscando la expresión regular de fecha ISO. Cuando la encuentra, asume inmediatamente que **la celda anterior** contiene el precio flotante.
+   - Si no existen nodos HTML `<tr>`, interpreta el buffer como libro Excel/CSV (`xlsx.read(buffer, { type: 'buffer' })`).
+   - Recorre las celdas de cada fila buscando el patrón ISO de fecha/hora y toma automáticamente el valor numérico o texto decimal de la **celda inmediatamente anterior (`c - 1`)** como precio.
 
-## 4. Normalización Horaria vs Cuartohoraria
+## 4. Normalización Horaria vs Cuartohoraria (Regla 169)
 
-A diferencia de COMPODEM, OMIE ha sido tradicionalmente un mercado horario. Sin embargo, con los recientes cambios europeos, se introdujo resolución cuartohoraria. El ERP es agnóstico y se adapta al archivo subido:
+Con la transición del mercado ibérico a liquidación cuartohoraria (96 periodos por día), el importador es híbrido y autodetecta la resolución día a día:
 
-- El sistema agrupa todas las tuplas de precio-hora extraídas por día (`YYYY-MM-DD`).
-- **Autodetección:** Si el sistema detecta que hay alguna tupla donde los minutos no son `00` (`minute !== 0`) o si un día tiene más de 25 registros, asume formato **cuartohorario**.
-- **Generación de la Matriz:**
-  - Si es cuartohorario, construye un array de 96 posiciones (o más, en cambios de hora de invierno). Posición del array = `(hora * 4) + (minuto / 15)`.
-  - Si es horario, construye un array de 24 posiciones (o 25 en horario de invierno). Posición del array = `hora`.
+- Agrupa todas las tuplas `{ hour, minute, value }` por fecha (`YYYY-MM-DD`).
+- **Autodetección por día:** Si alguna tupla tiene `minute !== 0` o el día supera 25 registros, se clasifica como **cuartohorario**; en caso contrario, como **horario**.
+- **Construcción del vector `values`:**
+  - **Cuartohorario:** Construye un array de al menos **96 posiciones** (o hasta 100 en el cambio de hora de otoño), indexado mediante `(hour * 4) + (minute / 15)`.
+  - **Horario:** Construye un array de al menos **24 posiciones** (o 25 en el cambio de hora de otoño), indexado directamente por `hour`.
 
 ## 5. Almacenamiento en Base de Datos
 
-La información procesada se unifica en la misma tabla maestra que el resto de componentes del sistema.
+La información procesada se unifica en la misma tabla maestra que COMPODEM y el Factor K:
 
-**Tabla:** `SystemComponentPrice`
+**Tabla:** `SystemComponentPrice` (`@@unique([component, date])`)
 
 ### Campos Clave Guardados
-- `component`: Se guarda siempre con el valor rígido **`OMIE`**.
-- `date`: La fecha del día a las 00:00:00 UTC.
-- `values`: El array numérico `Float[]` con las 24 o 96 horas/cuartos de hora, rellenando con `0` los huecos sin datos de mercado.
-- `version`: Se marca como **`IMPORT`** para indicar que ha sido una importación manual directa.
+- `component`: Valor fijo **`OMIE`**.
+- `date`: Fecha base del día en medianoche UTC (`YYYY-MM-DDT00:00:00.000Z`).
+- `values`: Array `Float[]` con los 24 o 96 precios en `€/MWh`.
+- `version`: Se registra con el identificador **`IMPORT`**.
 
 ### Lógica de Sobreescritura
-Se utiliza la clave única `[component, date]`. Si ya existe la curva OMIE para un día determinado, el sistema hace un `update` y sobreescribe la curva por la nueva subida, permitiendo corregir fallos o actualizar datos provisionales.
+Si ya existe un registro para `('OMIE', date)`, el importador ejecuta `update` reemplazando `values` y manteniendo `version: 'IMPORT'`, permitiendo corregir o reimportar curvas de cualquier día.
 
-## 6. Integración en el ERP
+## 6. Integración en el ERP y Auditoría en Precio Componentes
 
-Una vez subido, este array `OMIE` es consumido directamente por:
-- **`PricingEngine`:** Para sumar OMIE base a la curva del portfolio en las cotizaciones a cliente.
-- **`InternalBillingEngine`:** Para la refacturación exacta horaria en los contratos Pass-Through indexados a OMIE puro.
-- **Auditoría visual (`PreciosComponentesPage`):** La vista gráfica de precios carga la evolución de la media diaria aritmética de este componente.
+Una vez almacenada, la serie `OMIE` es consumida directamente por:
+- **`PricingEngine` y Orquestador de Portfolio (`/api/cron/update-portfolio`):** Para construir las curvas horarias normalizadas de pato (ventana móvil de 365 días por `mes - díaSemana - hora`) que modulan los futuros Carga Base (`FuturePrice`) en `PortfolioBaseCurve`, comprimiendo curvas de 96 cuartos a medias horarias.
+- **Motor de Liquidaciones PPA (`POST /api/ppas/liquidaciones` y `src/lib/ppaEngine.ts`):** Cruza los precios reales de `OMIE` (tanto días horarios de 24h como cuartohorarios de 96qh, así como los domingos de cambio horario de marzo `23h`/`92qh` y octubre `25h`/`100qh` mapeados por `mapOmieIntervalToMadridClock`) contra los contratos PPA Físicos y Financieros (`CfD`) de la comercializadora activa para obtener el precio medio capturado solar/base y el importe exacto de liquidación.
+- **`InternalBillingEngine`:** Para facturar con exactitud horaria o cuartohoraria (Regla 169) los contratos indexados *Pass-Through* tras elevar el consumo a barras de central.
+- **Visor de Precios (`/compras/precios-componentes`):**
+  - **Componente por defecto:** `OMIE` aparece priorizado en **primera posición** del selector de componentes.
+  - **Visor gráfico y exportación:** Consulta `GET /api/precios-componentes` (protegido por `isComprasAuthorized` y acotado a días UTC completos `00:00:00.000Z..23:59:59.999Z`), muestra la media diaria en `€/MWh`, la columna `Versión` (`IMPORT`) y permite exportar el detalle horario/cuartohorario a CSV con BOM UTF-8 (`\uFEFF`) vía `Blob`.
+  - **Promedios Mensuales (Últimos 12 meses):** El servidor calcula primero la **media diaria (`dailyAvg`)** de cada día y luego promedia los días de cada mes UTC (`YYYY-MM`), garantizando que en meses híbridos los días de 24 horas y los días de 96 cuartos de hora pesen exactamente **1 día** cada uno sin distorsionar la media mensual de `OMIE`.

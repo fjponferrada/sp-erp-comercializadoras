@@ -5,17 +5,14 @@ import { auth } from '@/auth';
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    if (!session || (session.user.role !== 'SUPERADMIN' && session.user.role !== 'COMPANYADMIN')) {
+    if (!session || !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(session.user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const data = await req.json();
 
-    // The user needs a brandId. For superadmins creating a product, we use their current selected brand.
-    // However, the simplest way is just to take their primary brand or first assigned brand,
-    // or we could require brandId from frontend. Let's just use the user's primary brandId.
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email as string }
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: (session.user.email as string).trim(), mode: 'insensitive' } }
     });
     
     if (!user) {
@@ -94,8 +91,8 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
       }
 
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email as string }
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: (session.user.email as string).trim(), mode: 'insensitive' } }
       });
       
       if (!user) {

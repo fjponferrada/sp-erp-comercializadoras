@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { useBrandTheme } from '@/context/BrandThemeContext';
 import { useMobileSidebar } from '@/context/MobileSidebarContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import BrandSelector from './BrandSelector';
 import {
   LayoutDashboard,
@@ -59,16 +59,29 @@ const baseNavGroups = [
     ],
   },
   {
-    label: 'CRM Ventas',
+    label: 'Área de Cliente',
+    roles: ['CLIENT'],
     items: [
-      { href: '/leads', icon: Users, label: 'Leads', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
+      { href: '/contratos', icon: FileText, label: 'Mis Contratos' },
+      { href: '/facturas', icon: Receipt, label: 'Mis Facturas' },
+      { href: '/puntos-suministro', icon: Zap, label: 'Mis Suministros' },
+      { href: '/clientes', icon: Building2, label: 'Mis Datos' },
+      { href: '/incidencias', icon: AlertCircle, label: 'Mis Incidencias' },
+    ],
+  },
+  {
+    label: 'CRM Ventas',
+    roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'],
+    items: [
+      { href: '/leads', icon: Users, label: 'Leads' },
       { href: '/contratos', icon: FileText, label: 'Contratos' },
       { href: '/clientes', icon: Building2, label: 'Clientes' },
-      { href: '/puntos-suministro', icon: Zap, label: 'Puntos de Suministro' },
+      { href: '/puntos-suministro', icon: Zap, label: 'Puntos de Suministro', roles: ['BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
-      { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
-      { href: '/bajas', icon: TrendingDown, label: 'Bajas', roles: ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
-      { href: '/facturas-penalizaciones', icon: Receipt, label: 'Facturas Penalizaciones' },
+      { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones' },
+      { href: '/bajas', icon: TrendingDown, label: 'Bajas' },
+      { href: '/productos', icon: Package, label: 'Productos', roles: ['COMERCIAL', 'CANAL'] },
+      { href: '/facturas-penalizaciones', icon: Receipt, label: 'Facturas Penalizaciones', roles: ['BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
     ],
   },
   {
@@ -181,23 +194,32 @@ export default function Sidebar() {
   
   const userRole = session?.user?.role || 'CANAL';
 
-  const navGroups = baseNavGroups.filter(group => {
-    if (!group.roles) return true;
-    return group.roles.includes(userRole);
-  });
+  const navGroups = useMemo(() => {
+    return baseNavGroups.filter(group => {
+      if (!group.roles) return true;
+      return group.roles.includes(userRole);
+    });
+  }, [userRole]);
 
   // Estado para el Acordeón
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  // Inicializar grupo activo al cargar (solo cuando cambia la URL)
+  // Inicializar grupo activo al cargar o cambiar la URL / rol
   useEffect(() => {
-    const activeGroup = baseNavGroups.find(g => 
-      g.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))
+    const activeGroup = navGroups.find(g => 
+      g.items.some((item: any) => {
+        if (item.roles && !item.roles.includes(userRole)) return false;
+        return pathname === item.href || pathname.startsWith(item.href + '/');
+      })
     );
     if (activeGroup) {
       setOpenGroup(activeGroup.label);
     }
-  }, [pathname]);
+  }, [pathname, navGroups, userRole]);
+
+  const displayName = session?.user?.name || session?.user?.email?.split('@')[0] || 'Usuario';
+  const avatarInitials = (session?.user?.name || session?.user?.email || 'US').trim().substring(0, 2).toUpperCase();
+  const displayRole = userRole === 'CLIENT' ? 'CLIENTE' : userRole;
 
   return (
     <>
@@ -252,7 +274,10 @@ export default function Sidebar() {
       <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px', paddingTop: '8px' }}>
         {navGroups.map((group) => {
           const isGroupOpen = openGroup === group.label;
-          const isActiveGroup = group.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'));
+          const isActiveGroup = group.items.some((item: any) => {
+            if (item.roles && !item.roles.includes(userRole)) return false;
+            return pathname === item.href || pathname.startsWith(item.href + '/');
+          });
 
           return (
             <div key={group.label} style={{ marginBottom: '8px' }}>
@@ -311,13 +336,13 @@ export default function Sidebar() {
             background: 'var(--lime)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '0.8rem', fontWeight: 700, color: 'var(--bg-base)', flexShrink: 0,
           }}>
-            {session?.user?.email?.substring(0, 2).toUpperCase() || 'AD'}
+            {avatarInitials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {session?.user?.email?.split('@')[0] || 'Admin'}
+              {displayName}
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{userRole}</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{displayRole}</div>
           </div>
           <button 
             onClick={() => signOut({ callbackUrl: '/login' })}

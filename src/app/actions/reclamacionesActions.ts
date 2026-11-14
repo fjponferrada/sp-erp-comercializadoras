@@ -539,7 +539,11 @@ export async function generateClaim(data: any) {
       if (!omitClienteNode) {
         const vat = (activeClient?.vatNumber || '00000000T').trim().toUpperCase();
         const isCif = /^[ABCDEFGHJNPQRSUVW]/i.test(vat);
-        const tipoIdentificador = 'NI';
+        const tipoIdentificador = /^[XYZ]\d{7}[A-Z]$/.test(vat)
+          ? 'NE'
+          : /^(\d{8}[A-Z]|[ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J]|[KLM]\d{7}[A-Z])$/.test(vat)
+            ? 'NI'
+            : 'PS';
         const tipoPersona = isCif ? 'J' : 'F';
 
         let xmlNombre = '';
@@ -577,7 +581,7 @@ ${xmlNombre}
 </Telefono>
 <IndicadorTipoDireccion>F</IndicadorTipoDireccion>
 <Direccion>
-<Pais>Espana</Pais>
+<Pais>ESPAÑA</Pais>
 <Provincia>${normProvincia}</Provincia>
 <Municipio>${normMunicipio}</Municipio>
 <CodPostal>${zip}</CodPostal>
@@ -721,6 +725,10 @@ ${xmlNombre}
         registrosDocXml = `\n<RegistrosDocumento>\n<RegistroDoc>\n<TipoDocAportado>${escapeXml(tipoDoc)}</TipoDocAportado>\n<DireccionUrl>${escapeXml(cnmcUrl)}</DireccionUrl>\n</RegistroDoc>\n</RegistrosDocumento>`;
       }
 
+      // Regla 189 (C): omitir <Comentarios> si está vacío o solo contiene espacios
+      const trimmedComentarios = (comentarios || '').trim().substring(0, 4000);
+      const comentariosXmlLine = trimmedComentarios ? `\n<Comentarios>${escapeXml(trimmedComentarios)}</Comentarios>` : '';
+
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <MensajeReclamacionPeticion xmlns="http://localhost/elegibilidad">
 <CabeceraReclamacion>
@@ -741,8 +749,7 @@ ${xmlNombre}
 </DatosSolicitud>
 <VariablesDetalleReclamacion>${variablesDetalleReclamacionXml}
 </VariablesDetalleReclamacion>${clienteXmlBlock}
-<TipoReclamante>06</TipoReclamante>
-<Comentarios>${escapeXml((comentarios || '').substring(0, 4000))}</Comentarios>${registrosDocXml}
+<TipoReclamante>06</TipoReclamante>${comentariosXmlLine}${registrosDocXml}
 </SolicitudReclamacion>
 </MensajeReclamacionPeticion>`;
 

@@ -15,7 +15,7 @@ export default function ReposicionesClient() {
   // Form states for E2_01
   const [cups, setCups] = useState('');
   const [codigoRef, setCodigoRef] = useState('');
-  const [tipoReposicion, setTipoReposicion] = useState('135'); // Por defecto error
+  const [tipoReposicion, setTipoReposicion] = useState('01');
   
   // State for E2_15 response
   const [motivoRechazo, setMotivoRechazo] = useState('');

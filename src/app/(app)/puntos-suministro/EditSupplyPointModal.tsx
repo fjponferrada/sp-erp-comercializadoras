@@ -63,11 +63,43 @@ export default function EditSupplyPointModal({
 
   if (!isOpen) return null;
 
+  const CIE_HINTS: Record<string, string> = {
+    '94.5': 'LO / L0',
+    '94.6': 'LP',
+    '94.7': 'L1 / L7',
+    '98.1A': 'LQ',
+    '98.1B': 'LM',
+    '98.1C': 'LE',
+    '98.1D': 'LI',
+    '98.1E': 'LA',
+    '98.1F': 'LV',
+  };
+
+  const requiredCieKey = CIE_HINTS[formData.regimenFiscal];
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
       setFormData(prev => ({ ...prev, [name]: checked }));
+    } else if (name === 'regimenFiscal') {
+      let autoDiscount = formData.ieDiscount;
+      if (value.startsWith('98.1')) {
+        autoDiscount = '85';
+      } else if (value === '98.2' || value === '98.3') {
+        autoDiscount = '100';
+      } else if (value === 'SBFO' || value === 'SBFI' || value.startsWith('94.')) {
+        autoDiscount = '';
+      }
+      const noCieRegimes = ['SBFO', 'SBFI', '94.1', '94.2', '94.3', '94.4', '94.8', '94.9', '94.10', '98.2', '98.3'];
+      setFormData(prev => ({
+        ...prev,
+        regimenFiscal: value,
+        ieDiscount: autoDiscount,
+        cie: noCieRegimes.includes(value) ? '' : prev.cie,
+      }));
+    } else if (name === 'cie') {
+      setFormData(prev => ({ ...prev, cie: value.toUpperCase().replace(/\s+/g, '') }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
@@ -162,12 +194,15 @@ export default function EditSupplyPointModal({
                       >
                         <option value="">Seleccionar...</option>
                         <option value="2.0TD">2.0TD</option>
-                        <option value="3.0 A">2.0 A</option>
+                        <option value="2.0 A">2.0 A</option>
+                        <option value="3.0 A">3.0 A</option>
                         <option value="3.0TD">3.0TD</option>
                         <option value="6.1TD">6.1TD</option>
                         <option value="3.0TDVE">3.0TDVE</option>
                         <option value="6.1TDVE">6.1TDVE</option>
                         <option value="6.2TD">6.2TD</option>
+                        <option value="6.3TD">6.3TD</option>
+                        <option value="6.4TD">6.4TD</option>
                       </select>
                     </div>
                     <InputField label="Distribuidora" name="distributor" value={formData.distributor} onChange={handleChange} />
@@ -208,8 +243,13 @@ export default function EditSupplyPointModal({
                         <option value="94.10">Art. 94.10 LIE - Fuerzas armadas UE (Exento)</option>
                       </select>
                     </div>
-                    <InputField label="CIE (Opcional)" name="cie" value={formData.cie} onChange={handleChange} />
-                    <InputField label="Descuento IE (%)" name="ieDiscount" type="number" value={formData.ieDiscount} onChange={handleChange} />
+                    <InputField
+                      label={requiredCieKey ? `CIE Beneficiario * (Clave ${requiredCieKey})` : 'CIE (No exigible)'}
+                      name="cie"
+                      value={formData.cie}
+                      onChange={handleChange}
+                    />
+                    <InputField label="Reducción IE (%)" name="ieDiscount" type="number" value={formData.ieDiscount} onChange={handleChange} />
                   </div>
                 </div>
 

@@ -1,8 +1,19 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import { auth } from '@/auth';
 import { CompodemService } from '@/lib/services/CompodemService';
+import { isComprasAuthorized } from '@/lib/reganecuServer';
+import { runCalculatePendingEnergy } from '@/scripts/calculate_pending_energy';
+
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
+    const session = await auth();
+    if (!isComprasAuthorized(session)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
 
@@ -22,6 +33,18 @@ export async function POST(req: Request) {
     if (!result.success) {
       return NextResponse.json({ error: result.message }, { status: 400 });
     }
+
+    if (result.affectedMonths && result.affectedMonths.length > 0) {
+      try {
+        await runCalculatePendingEnergy(undefined, undefined, { targetMonths: result.affectedMonths });
+      } catch (syncErr) {
+        console.error('Aviso: error recalculando energía pendiente tras importar COMPODEM:', syncErr);
+      }
+    }
+
+    revalidatePath('/compras/importar-compodem');
+    revalidatePath('/compras/precios-componentes');
+    revalidatePath('/gestion/energia-pendiente');
 
     return NextResponse.json(result);
   } catch (error: any) {

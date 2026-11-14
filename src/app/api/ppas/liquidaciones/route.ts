@@ -1,140 +1,240 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getDaysInMonth } from 'date-fns';
+import { auth } from '@/auth';
+import { resolveActiveCompanyId } from '@/lib/companyContext';
+import {
+  calculatePpaHourlyMwh,
+  calculatePpaIntervalFinancials,
+  getClockHourOccurrencesInMonth,
+  getContractYearIndex,
+  getPpaMadridBounds,
+  mapOmieIntervalToMadridClock,
+} from '@/lib/ppaEngine';
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const companyId = await resolveActiveCompanyId(session);
+    if (!companyId) {
+      return NextResponse.json({ error: 'Empresa activa no encontrada' }, { status: 404 });
+    }
+
     const { ppaId, startDate, endDate } = await request.json();
 
     if (!ppaId || !startDate || !endDate) {
       return NextResponse.json({ error: 'Faltan parámetros requeridos' }, { status: 400 });
     }
 
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return NextResponse.json({ error: 'Formato de fecha inválido (se esperaba YYYY-MM-DD)' }, { status: 400 });
+    }
+
+    if (endDate < startDate) {
+      return NextResponse.json(
+        { error: 'La fecha Hasta no puede ser anterior a la fecha Desde.' },
+        { status: 400 }
+      );
+    }
+
     const ppa = await prisma.ppa.findUnique({
-      where: { id: ppaId }
+      where: { id: ppaId },
     });
 
-    if (!ppa) {
-      return NextResponse.json({ error: 'PPA no encontrado' }, { status: 404 });
+    if (!ppa || ppa.companyId !== companyId) {
+      return NextResponse.json({ error: 'PPA no encontrado o sin acceso' }, { status: 404 });
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    // Ensure end date includes the whole day
-    if (start.getTime() === end.getTime()) {
-      end.setHours(23, 59, 59, 999);
-    } else {
-      end.setHours(23, 59, 59, 999);
+    const bounds = getPpaMadridBounds(ppa);
+    const effectiveStartYmd = startDate > bounds.startYmd ? startDate : bounds.startYmd;
+    const effectiveEndYmd = bounds.endYmd && endDate > bounds.endYmd ? bounds.endYmd : endDate;
+
+    if (effectiveStartYmd > effectiveEndYmd) {
+      return NextResponse.json(
+        {
+          error: `El periodo seleccionado (${startDate} a ${endDate}) está fuera de la vigencia contractual de este PPA (${bounds.startYmd} a ${bounds.endYmd || 'Indefinido'}).`,
+        },
+        { status: 400 }
+      );
     }
 
-    // Fetch OMIE prices for the date range
+    const wasClippedToValidity =
+      effectiveStartYmd !== startDate || effectiveEndYmd !== endDate;
+
+    // @db.Date en PostgreSQL se consulta con medianoche UTC exacta sin desviación de huso del servidor
+    const startUtc = new Date(`${effectiveStartYmd}T00:00:00.000Z`);
+    const endUtc = new Date(`${effectiveEndYmd}T00:00:00.000Z`);
+
     const omiePrices = await prisma.systemComponentPrice.findMany({
       where: {
         component: 'OMIE',
         date: {
-          gte: start,
-          lte: end
-        }
+          gte: startUtc,
+          lte: endUtc,
+        },
       },
-      orderBy: { date: 'asc' }
+      orderBy: { date: 'asc' },
     });
 
     if (omiePrices.length === 0) {
-      return NextResponse.json({ error: 'No hay precios de OMIE para este rango de fechas' }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: `No hay precios reales de OMIE cargados para el periodo ${effectiveStartYmd} a ${effectiveEndYmd}.`,
+        },
+        { status: 404 }
+      );
     }
+
+    const isFijo = ppa.priceType === 'FIJO';
+    const isFinanciero = ppa.type === 'FINANCIERO';
 
     let totalMwh = 0;
     let totalEur = 0;
+    let totalCfdOrMtmEur = 0;
+    let totalPhysicalInvoiceEur = 0;
     let omieMedioPpaNumerator = 0;
-    const detailedRows = [];
+    let contractPriceNumerator = 0;
 
-    const profileData = ppa.profileData ? (ppa.profileData as any) : null;
-    const isFijo = ppa.priceType === 'FIJO';
-    const priceValue = ppa.priceValue || 0;
+    const detailedRows: Array<{
+      datetime: string;
+      omie: number;
+      mwh: number;
+      contractPrice: number;
+      appliedPrice: number;
+      liquidacionEur: number;
+      mtmEur: number;
+    }> = [];
+
+    const dailySummary: Array<{
+      date: string;
+      intervals: number;
+      mwh: number;
+      omieAvg: number;
+      contractPriceAvg: number;
+      liquidacionEur: number;
+      mtmEur: number;
+    }> = [];
+
+    const occCache = new Map<string, number[]>();
 
     for (const dailyData of omiePrices) {
       const dateStr = dailyData.date.toISOString().split('T')[0];
-      const month = dailyData.date.getMonth(); // 0-11
-      const daysInMonth = getDaysInMonth(dailyData.date);
-      
-      const values = dailyData.values; // 96 values usually
-      
-      const isQuarterly = values.length > 24;
+      const [year, month1to12, day] = dateStr.split('-').map(Number);
+
+      const ymKey = `${year}-${month1to12}`;
+      let hourOccurrences = occCache.get(ymKey);
+      if (!hourOccurrences) {
+        hourOccurrences = getClockHourOccurrencesInMonth(year, month1to12);
+        occCache.set(ymKey, hourOccurrences);
+      }
+
+      const values = dailyData.values;
+      let dayMwh = 0;
+      let dayOmieNum = 0;
+      let dayContractNum = 0;
+      let dayPrimaryEur = 0;
+      let dayMtmEur = 0;
 
       for (let i = 0; i < values.length; i++) {
         const omiePrice = values[i];
-        const hour = isQuarterly ? Math.floor(i / 4) : i;
-        
-        let mwhInterval = 0;
+        const mapped = mapOmieIntervalToMadridClock(i, values.length);
 
-        if (ppa.type === 'FISICO' && ppa.subtype === 'CARGA_BASE') {
-          const mw = ppa.basePowerMw || 0;
-          mwhInterval = isQuarterly ? (mw / 4) : mw; 
-        } else if (ppa.type === 'FINANCIERO' && ppa.subtype === 'PERFIL_FIJO' && profileData) {
-          // profileData is a 12x24 array.
-          // Handle DST edge cases if there are more than 24 hours (e.g. 25h = 100 intervals)
-          const profileHour = Math.min(hour, 23); 
-          const monthlyMwhForHour = profileData[month] ? profileData[month][profileHour] || 0 : 0;
-          const dailyMwhForHour = monthlyMwhForHour / daysInMonth;
-          mwhInterval = isQuarterly ? (dailyMwhForHour / 4) : dailyMwhForHour; 
-        }
+        const hourlyMwh = calculatePpaHourlyMwh(
+          ppa,
+          year,
+          month1to12,
+          day,
+          mapped.clockHour,
+          hourOccurrences
+        );
+        const mwhInterval = mapped.isQuarterly ? hourlyMwh / 4 : hourlyMwh;
 
-        let liquidacionEur = 0;
-        let appliedPrice = 0;
-
-        if (isFijo) {
-          // CfD: A favor del Productor (Gasto para comercializadora = negativo)
-          const diferencial = omiePrice - priceValue;
-          liquidacionEur = mwhInterval * diferencial;
-          appliedPrice = diferencial;
-        } else {
-          // Indexado
-          const cost = omiePrice + priceValue; // fee
-          liquidacionEur = mwhInterval * cost;
-          appliedPrice = cost;
-        }
+        const fin = calculatePpaIntervalFinancials(
+          ppa,
+          mwhInterval,
+          omiePrice,
+          year,
+          month1to12,
+          day
+        );
 
         totalMwh += mwhInterval;
-        totalEur += liquidacionEur;
-        omieMedioPpaNumerator += (omiePrice * mwhInterval);
+        totalEur += fin.primarySettlementEur;
+        totalCfdOrMtmEur += fin.cfdOrMtmEur;
+        totalPhysicalInvoiceEur += fin.physicalInvoiceCostEur;
+        omieMedioPpaNumerator += omiePrice * mwhInterval;
+        contractPriceNumerator += fin.unitContractPriceEurMwh * mwhInterval;
 
-        // Generate a datetime string for the row
-        const minutes = isQuarterly ? (i % 4) * 15 : 0;
-        const hourStr = hour.toString().padStart(2, '0');
-        const minStr = minutes.toString().padStart(2, '0');
-        const dtString = `${dateStr} ${hourStr}:${minStr}`;
+        dayMwh += mwhInterval;
+        dayOmieNum += omiePrice * mwhInterval;
+        dayContractNum += fin.unitContractPriceEurMwh * mwhInterval;
+        dayPrimaryEur += fin.primarySettlementEur;
+        dayMtmEur += fin.cfdOrMtmEur;
 
         detailedRows.push({
-          datetime: dtString,
+          datetime: `${dateStr} ${mapped.labelHm}`,
           omie: omiePrice,
           mwh: mwhInterval,
-          appliedPrice,
-          liquidacionEur
+          contractPrice: fin.unitContractPriceEurMwh,
+          appliedPrice: fin.primaryAppliedUnitEurMwh,
+          liquidacionEur: fin.primarySettlementEur,
+          mtmEur: fin.cfdOrMtmEur,
         });
       }
+
+      dailySummary.push({
+        date: dateStr,
+        intervals: values.length,
+        mwh: dayMwh,
+        omieAvg: dayMwh > 0 ? dayOmieNum / dayMwh : 0,
+        contractPriceAvg: dayMwh > 0 ? dayContractNum / dayMwh : 0,
+        liquidacionEur: dayPrimaryEur,
+        mtmEur: dayMtmEur,
+      });
     }
 
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const expectedDays = Math.round((end.getTime() - start.getTime() + 1) / msPerDay);
+    const expectedDays =
+      Math.round((endUtc.getTime() - startUtc.getTime()) / 86400000) + 1;
     const calculatedDays = omiePrices.length;
-    const missingDays = expectedDays > calculatedDays ? expectedDays - calculatedDays : 0;
+    const missingDays = Math.max(0, expectedDays - calculatedDays);
 
-    const omieMedioPpa = totalMwh > 0 ? (omieMedioPpaNumerator / totalMwh) : 0;
+    const omieMedioPpa = totalMwh > 0 ? omieMedioPpaNumerator / totalMwh : 0;
+    const effectiveContractPriceAvg = totalMwh > 0 ? contractPriceNumerator / totalMwh : 0;
+    const contractYearNumber = getContractYearIndex(bounds.startYmd, effectiveStartYmd) + 1;
 
     return NextResponse.json({
       summary: {
+        ppaName: ppa.name,
+        ppaType: ppa.type,
+        ppaSubtype: ppa.subtype,
+        priceType: ppa.priceType,
+        isFijo,
+        isFinanciero,
+        settlementMode: isFinanciero ? 'CFD' : 'FACTURA_FISICA',
         totalMwh,
         totalEur,
+        totalCfdOrMtmEur,
+        totalPhysicalInvoiceEur,
         omieMedioPpa,
-        isFijo,
-        missingDays
+        effectiveContractPriceAvg,
+        annualDegradationPct: ppa.annualDegradationPct ?? 0,
+        annualEscalationPct: ppa.annualEscalationPct ?? 0,
+        contractYearNumber,
+        calculatedDays,
+        expectedDays,
+        missingDays,
+        wasClippedToValidity,
+        effectiveStartDate: effectiveStartYmd,
+        effectiveEndDate: effectiveEndYmd,
       },
-      details: detailedRows
+      daily: dailySummary,
+      details: detailedRows,
     });
-
   } catch (error: any) {
-    console.error('Error calculando liquidacion:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error calculando liquidación PPA:', error);
+    return NextResponse.json({ error: error.message || 'Error interno' }, { status: 500 });
   }
 }

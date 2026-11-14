@@ -4,74 +4,100 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { ExternalLink } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
-import { format, subMonths, startOfMonth } from 'date-fns';
+import { format, subMonths, startOfMonth, getDaysInMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { SETTLEMENT_RANKS } from '@/lib/reganecuShared';
+import { isComprasAuthorized, resolveActiveCompanyId } from '@/lib/reganecuServer';
 
 export const dynamic = 'force-dynamic';
 
-const VERSION_RANKS: Record<string, number> = {
-  'A1': 1, 'C1': 2, 'A2': 3, 'C2': 4, 'C3': 5, 'C4': 6, 'C5': 7, 'C6': 8, 'C7': 9, 'C8': 10
-};
+const RANK_TO_CLOSURE: Record<number, string> = Object.entries(SETTLEMENT_RANKS).reduce(
+  (acc, [code, rank]) => {
+    acc[rank] = code;
+    return acc;
+  },
+  {} as Record<number, string>
+);
 
 export default async function ImportarReganecuPage() {
   const session = await auth();
-
-  if (!session || (session.user.role !== 'SUPERADMIN' && session.user.role !== 'COMPANYADMIN' && session.user.role !== 'BACKOFFICE')) {
+  if (!isComprasAuthorized(session)) {
     redirect('/login');
   }
 
+  const companyId = await resolveActiveCompanyId(session!.user);
   const now = new Date();
-  const startDate = startOfMonth(subMonths(now, 11)); // Last 12 months including current
+  const currentMonthStart = startOfMonth(now);
+  const earliestMonth = subMonths(currentMonthStart, 11);
+  const startDateUtc = new Date(
+    Date.UTC(earliestMonth.getFullYear(), earliestMonth.getMonth(), 1)
+  );
 
-  // Fetch REGANECU data from startDate to determine the version status of the whole month
-  const records = await prisma.reganecuData.findMany({
-    where: { 
-      companyId: session.user.companyId,
-      date: { gte: startDate },
-      matricial: false, // We just need one entry per day, total=true is guaranteed
-      total: true
-    },
-    select: { date: true, cierre: true }
-  });
+  const records = companyId
+    ? await prisma.reganecuData.findMany({
+        where: {
+          companyId,
+          date: { gte: startDateUtc },
+          matricial: false,
+          total: true,
+        },
+        select: { date: true, cierre: true },
+      })
+    : [];
 
-  // Group by month
-  const monthlyData: Record<string, { monthDate: Date, lowestVersion: string | null, rank: number }> = {};
+  const monthlyData: Record<
+    string,
+    {
+      monthDate: Date;
+      lowestVersion: string | null;
+      rank: number;
+      daysCount: number;
+      expectedDays: number;
+    }
+  > = {};
 
-  // Initialize last 12 months with "Sin datos" (Infinity rank)
   for (let i = 0; i < 12; i++) {
-    const d = subMonths(now, i);
+    const d = subMonths(currentMonthStart, i);
     const key = format(d, 'yyyy-MM');
-    monthlyData[key] = { monthDate: d, lowestVersion: null, rank: Infinity };
+    monthlyData[key] = {
+      monthDate: d,
+      lowestVersion: null,
+      rank: Infinity,
+      daysCount: 0,
+      expectedDays: getDaysInMonth(d),
+    };
   }
 
-  // First, find the highest version for each day
+  // 1. Obtener la liquidación más reciente alcanzada por cada día individual
   const dailyHighest: Record<string, number> = {};
   for (const r of records) {
     if (!r.cierre) continue;
-    const dayKey = format(r.date, 'yyyy-MM-dd');
-    const rank = VERSION_RANKS[r.cierre] || 0; // Higher is newer
+    const dayKey = r.date.toISOString().slice(0, 10);
+    const rank = SETTLEMENT_RANKS[r.cierre.toUpperCase()] || 0;
+    if (!rank) continue;
     if (!dailyHighest[dayKey] || rank > dailyHighest[dayKey]) {
       dailyHighest[dayKey] = rank;
     }
   }
 
-  // Now, calculate the lowest version among the highest versions of each day in the month
+  // 2. Para cada mes, tomar la versión más antigua entre las máximas diarias y contar días cubiertos
   for (const dayKey of Object.keys(dailyHighest)) {
-    const monthKey = dayKey.substring(0, 7); // yyyy-MM
-    if (!monthlyData[monthKey]) continue;
+    const monthKey = dayKey.substring(0, 7);
+    const bucket = monthlyData[monthKey];
+    if (!bucket) continue;
 
+    bucket.daysCount += 1;
     const rank = dailyHighest[dayKey];
-    if (rank < monthlyData[monthKey].rank) {
-      monthlyData[monthKey].rank = rank;
-      // Find the name of the closure from the rank
-      monthlyData[monthKey].lowestVersion = Object.keys(VERSION_RANKS).find(k => VERSION_RANKS[k] === rank) || null;
+    if (rank < bucket.rank) {
+      bucket.rank = rank;
+      bucket.lowestVersion = RANK_TO_CLOSURE[rank] || null;
     }
   }
 
-  // Sort months descending (newest first)
-  const sortedMonths = Object.values(monthlyData).sort((a, b) => b.monthDate.getTime() - a.monthDate.getTime());
+  const sortedMonths = Object.values(monthlyData).sort(
+    (a, b) => b.monthDate.getTime() - a.monthDate.getTime()
+  );
 
-  // Function to get styling based on version
   const getBadgeStyle = (version: string | null) => {
     if (!version) return { background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' };
     if (version.startsWith('A')) return { background: 'rgba(245, 158, 11, 0.2)', color: '#FCD34D' };
@@ -82,17 +108,16 @@ export default async function ImportarReganecuPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Topbar 
-        title="Importar Liquidaciones REGANECU" 
+      <Topbar
+        title="Importar Liquidaciones REGANECU"
         subtitle="Carga de archivo con las liquidaciones de REE. El sistema procesará los datos para el análisis de desvíos."
         showSearch={false}
       />
       <div style={{ padding: '24px 32px', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <a 
-            href="https://participa.esios.ree.es" 
-            target="_blank" 
+          <a
+            href="https://participa.esios.ree.es"
+            target="_blank"
             rel="noopener noreferrer"
             className="btn-primary"
             style={{ textDecoration: 'none' }}
@@ -111,7 +136,7 @@ export default async function ImportarReganecuPage() {
           <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.875rem' }}>
             Sube un archivo ZIP que contenga liquidaciones particulares de REE (ej. C2_liquidacion_AEDEN_202603.1.zip). También puedes subir un ZIP que contenga varios archivos ZIP de liquidaciones en su interior.
           </p>
-          
+
           <ReganecuImportClient />
         </div>
 
@@ -124,7 +149,7 @@ export default async function ImportarReganecuPage() {
               Se muestra la liquidación más antigua encontrada de cualquier día dentro del mes correspondiente.
             </p>
           </div>
-          
+
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
@@ -134,26 +159,46 @@ export default async function ImportarReganecuPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedMonths.map((m) => (
-                  <tr key={format(m.monthDate, 'yyyy-MM')} className="hover:bg-[var(--bg-elevated)] transition-colors duration-200" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '16px 24px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
-                      {format(m.monthDate, 'MMMM yyyy', { locale: es })}
-                    </td>
-                    <td style={{ padding: '16px 24px', fontSize: '0.875rem' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '4px 10px',
-                        borderRadius: '9999px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        ...getBadgeStyle(m.lowestVersion)
-                      }}>
-                        {m.lowestVersion || 'Sin datos'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {sortedMonths.map(m => {
+                  const isPartial = m.daysCount > 0 && m.daysCount < m.expectedDays;
+                  return (
+                    <tr key={format(m.monthDate, 'yyyy-MM')} className="hover:bg-[var(--bg-elevated)] transition-colors duration-200" style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '16px 24px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                        {format(m.monthDate, 'MMMM yyyy', { locale: es })}
+                      </td>
+                      <td style={{ padding: '16px 24px', fontSize: '0.875rem' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '4px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              ...getBadgeStyle(m.lowestVersion),
+                            }}
+                          >
+                            {m.lowestVersion || 'Sin datos'}
+                          </span>
+                          {isPartial && (
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                color: '#FCD34D',
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
+                              }}
+                            >
+                              Parcial ({m.daysCount}/{m.expectedDays} días)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

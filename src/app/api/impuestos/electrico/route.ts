@@ -1,170 +1,143 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { getActiveBrand } from '@/lib/permissions';
+import {
+  computeModelo560,
+  ExportMode560,
+  getQuarterMadridBounds,
+  IeeRateBucket,
+} from '@/lib/taxUtils';
 
 export async function GET(req: Request) {
   try {
     const session = await auth();
-    if (!session || !session.user || !session.user.brandId) {
+    if (!session || !session.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const brandId = session.user.brandId;
+    const userRole = (session.user as any).role as string | undefined;
+    if (userRole && !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole)) {
+      return NextResponse.json({ error: 'Permisos insuficientes para liquidación fiscal' }, { status: 403 });
+    }
+
+    const activeBrandId = await getActiveBrand(session.user);
+    if (!activeBrandId) {
+      return NextResponse.json({ error: 'No hay marca activa seleccionada' }, { status: 400 });
+    }
+
     const url = new URL(req.url);
     const yearStr = url.searchParams.get('year');
     const quarterStr = url.searchParams.get('quarter');
+    const scope = url.searchParams.get('scope') === 'company' ? 'company' : 'brand';
+    const modeParam = url.searchParams.get('mode');
+    const mode: ExportMode560 = modeParam === 'neteado' ? 'neteado' : 'oficial';
+    const adjustCents = url.searchParams.get('adjustCents') !== 'false';
+    const rateParam = (url.searchParams.get('rate') || '5.11') as IeeRateBucket;
+    const validRates: IeeRateBucket[] = ['5.11', '3.8', '2.5', '0.5'];
+    const targetRateBucket: IeeRateBucket = validRates.includes(rateParam) ? rateParam : '5.11';
 
     if (!yearStr || !quarterStr) {
-      return NextResponse.json({ error: 'Falta year o quarter' }, { status: 400 });
+      return NextResponse.json({ error: 'Falta año o trimestre' }, { status: 400 });
     }
 
-    const year = parseInt(yearStr);
-    const quarter = parseInt(quarterStr);
-
-    let startDate: Date;
-    let endDate: Date;
-
-    if (quarter === 1) {
-      startDate = new Date(Date.UTC(year, 0, 1));
-      endDate = new Date(Date.UTC(year, 2, 31, 23, 59, 59, 999));
-    } else if (quarter === 2) {
-      startDate = new Date(Date.UTC(year, 3, 1));
-      endDate = new Date(Date.UTC(year, 5, 30, 23, 59, 59, 999));
-    } else if (quarter === 3) {
-      startDate = new Date(Date.UTC(year, 6, 1));
-      endDate = new Date(Date.UTC(year, 8, 30, 23, 59, 59, 999));
-    } else {
-      startDate = new Date(Date.UTC(year, 9, 1));
-      endDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+    const year = parseInt(yearStr, 10);
+    const quarter = parseInt(quarterStr, 10);
+    if (Number.isNaN(year) || Number.isNaN(quarter) || quarter < 1 || quarter > 4) {
+      return NextResponse.json({ error: 'Año o trimestre inválido' }, { status: 400 });
     }
+
+    const brand = await prisma.brand.findUnique({
+      where: { id: activeBrandId },
+      include: {
+        company: {
+          include: {
+            brands: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    if (!brand) {
+      return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 });
+    }
+
+    const { startDate, endDate } = getQuarterMadridBounds(year, quarter);
+
+    const clientWhere =
+      scope === 'company' && brand.companyId
+        ? { brand: { companyId: brand.companyId } }
+        : { brandId: activeBrandId };
 
     const invoices = await prisma.invoice.findMany({
       where: {
-        client: { brandId },
+        client: clientWhere,
         issueDate: {
           gte: startDate,
           lte: endDate,
         },
       },
-      include: {
-        supplyPoint: true,
+      select: {
+        id: true,
+        invoiceNumber: true,
+        invoiceType: true,
+        subtotal1: true,
+        taxPercentage: true,
+        taxAmount: true,
+        totalMWh: true,
+        origin: true,
+        invoiceData: true,
+        client: {
+          select: {
+            vatNumber: true,
+          },
+        },
+        supplyPoint: {
+          select: {
+            cups: true,
+            postalCode: true,
+            sipsPostalCode: true,
+            province: true,
+            tariff: true,
+            cnae: true,
+            regimenFiscal: true,
+            cie: true,
+            ieDiscount: true,
+          },
+        },
       },
+      orderBy: { issueDate: 'asc' },
     });
 
-    const parseNum = (v: any) => v ? parseFloat(v.toString().replace(',', '.')) : 0;
+    const declarantCie = brand.company?.cie || '';
+    const companyName = brand.company?.name || brand.name;
 
-    // Agrupar por Zona y Tipo
-    const resultsMap = new Map<string, any>();
-    const seenInvoices = new Set<string>();
-
-    for (const inv of invoices) {
-      if (inv.invoiceNumber) {
-        if (seenInvoices.has(inv.invoiceNumber)) continue;
-        seenInvoices.add(inv.invoiceNumber);
-      }
-
-      const isAbono = inv.invoiceType?.toLowerCase().includes('abono') || false;
-      const data = inv.invoiceData as any;
-
-      // Extract fields from Airtable JSON (exact CSV headers)
-      // The user explicitly confirmed that the CSV column they use for the base is "Subtotal 1"
-      let subtotal = data ? parseNum(data['Subtotal 1']) : 0;
-      let taxAmount = data ? parseNum(data['Importe Impuesto']) : 0;
-      let energy = data ? parseNum(data['Energía Total Consumida']) : 0;
-      if (energy) energy = energy / 1000;
-
-      // EXTREMELY IMPORTANT: If the invoice has 0 tax, it shouldn't contribute to the tax bases!
-      if (taxAmount === 0) continue;
-
-      // Apply sign ONLY if the amount is positive and it's an Abono.
-      if (isAbono) {
-        if (subtotal > 0) subtotal = -subtotal;
-        if (taxAmount > 0) taxAmount = -taxAmount;
-        if (energy > 0) energy = -energy;
-      }
-
-      // Check if it reached the minimum
-      let isMinApplied = false;
-      const minSuperadoValue = data ? (data['Minimo Importe IE Superado'] ?? data.minimoImporteIESuperado) : undefined;
-      
-      if (minSuperadoValue !== undefined && String(minSuperadoValue).trim() !== '') {
-         const flag = String(minSuperadoValue).trim().toLowerCase();
-         // If "Superado" is false or 0, it means the minimum was applied.
-         isMinApplied = flag === '0' || flag === 'false';
-      } else {
-         if (energy !== 0) {
-            const ratio = Math.abs(taxAmount / energy);
-            // Common minimums are 0.5 or 1.0. We use a threshold.
-            if (Math.abs(ratio - 0.5) < 0.05 || Math.abs(ratio - 1.0) < 0.05) {
-               isMinApplied = true;
-            }
-         }
-      }
-
-      const cp = inv.supplyPoint?.postalCode?.trim() || '';
-      const prov = (inv.supplyPoint?.province || '').toLowerCase();
-      
-      let zona = 'España';
-      if (cp.startsWith('31') || prov.includes('navarra')) {
-        zona = 'Navarra';
-      } else if (cp.startsWith('01') || prov.includes('alava') || prov.includes('álava')) {
-        zona = 'Álava';
-      } else if (cp.startsWith('20') || prov.includes('guipuzcoa') || prov.includes('guipúzcoa') || prov.includes('gipuzkoa')) {
-        zona = 'Guipúzcoa';
-      } else if (cp.startsWith('48') || prov.includes('vizcaya') || prov.includes('bizkaia')) {
-        zona = 'Vizcaya';
-      }
-
-      let taxPct = data?.['Impuesto (%)'] ? parseNum(data['Impuesto (%)']) : (inv.taxPercentage || 5.11);
-      
-      // Some percentages may be formatted strangely or exact floating points
-      // Let's normalize it to 2 decimal places for grouping
-      taxPct = Math.round(taxPct * 100) / 100;
-
-      // If minimum is applied, the theoretical percentage doesn't matter for grouping
-      if (isMinApplied) {
-         taxPct = 0;
-      }
-
-      const key = `${zona}_${taxPct}_${isMinApplied}`;
-
-      if (!resultsMap.has(key)) {
-        resultsMap.set(key, {
-          zona,
-          tipo: taxPct,
-          baseSujeta: 0,
-          impuestoBase: 0,
-          consumoMinimo: 0,
-          impuestoMinimo: 0,
-          total: 0,
-          isMinApplied
-        });
-      }
-
-      const row = resultsMap.get(key);
-      if (isMinApplied) {
-        row.consumoMinimo += energy;
-        row.impuestoMinimo += taxAmount;
-      } else {
-        row.baseSujeta += subtotal;
-        row.impuestoBase += taxAmount;
-      }
-      row.total += taxAmount;
-    }
-
-    const finalResults = Array.from(resultsMap.values());
-    
-    // Sort logic: España first, then alphabetical. Then by tax descending.
-    finalResults.sort((a, b) => {
-      if (a.zona === 'España' && b.zona !== 'España') return -1;
-      if (b.zona === 'España' && a.zona !== 'España') return 1;
-      if (a.zona !== b.zona) return a.zona.localeCompare(b.zona);
-      return b.tipo - a.tipo;
+    const computation = computeModelo560({
+      invoices,
+      declarantCie,
+      companyName,
+      targetRateBucket,
+      mode,
+      adjustCents,
     });
 
-    return NextResponse.json({ results: finalResults });
+    return NextResponse.json({
+      results: computation.summaryRows,
+      cuadrosByZone: computation.cuadrosByZone,
+      warnings: computation.warnings,
+      cieErrors: computation.cieErrors,
+      historicalZones: computation.historicalZones,
+      declarantCie: computation.declarantCie,
+      companyName,
+      brandName: brand.name,
+      companyBrandsCount: brand.company?.brands?.length || 1,
+      scope,
+      mode,
+      adjustCents,
+      rateBucket: targetRateBucket,
+    });
   } catch (error: any) {
     console.error('Error calculando IE:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Error interno' }, { status: 500 });
   }
 }

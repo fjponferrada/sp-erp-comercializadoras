@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { getSupplyPointVisibilityFilter } from '@/lib/permissions';
+import { resolveActiveCompanyId } from '@/lib/companyContext';
 import {
   MOTIVOS_R1,
   SUBMOTIVOS_R1,
@@ -108,10 +109,21 @@ export async function getClaimsAction(
 
     const spFilter = await getSupplyPointVisibilityFilter();
     const hasSpRestriction = Object.keys(spFilter).length > 0;
+    const activeCompanyId = await resolveActiveCompanyId(session);
 
     const whereClause: any = { procesoBase: 'R1' };
     if (hasSpRestriction) {
       whereClause.supplyPoint = spFilter;
+    } else if (activeCompanyId) {
+      whereClause.AND = [
+        {
+          OR: [
+            { contract: { brand: { companyId: activeCompanyId } } },
+            { supplyPoint: { client: { brand: { companyId: activeCompanyId } } } },
+            { AND: [{ contractId: null }, { supplyPointId: null }] },
+          ],
+        },
+      ];
     }
 
     // Resolver alcance por contrato o puntos de suministro del CUPS (clones incluidos según Regla 21)

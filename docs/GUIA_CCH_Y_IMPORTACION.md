@@ -21,13 +21,13 @@ Las distribuidoras envían constantemente ficheros con diferentes niveles de mad
 La prioridad (de mayor a menor) es la siguiente:
 
 1. **Datos Históricos Auditados (`MIGRACION_PKL`)**: Prioridad `999`. Son los datos heredados del sistema antiguo. Son inmutables y nunca serán sobrescritos.
-2. **Facturación Definitiva (`F1`, `C1`, `Q1`, `F1H`, `F1QH`)**: Prioridad máxima regular. Es el dato certificado por el que se ha cobrado/pagado.
-3. **Curvas Definitivas (`F5D`, `A5D`, `B5D`)**: Ficheros mensuales ya cerrados por la distribuidora.
-4. **Curvas Provisionales Mensuales (`P5D`)**: Ficheros que la distribuidora envía antes del cierre definitivo.
-5. **Curvas Diarias (`P1`, `P1D`, `P2`, `P2D`)**: Envíos del día a día, muy sujetos a estimaciones y fallos de telemedida.
-6. **Curvas sin clasificar (`P0`)**: Prioridad mínima.
+2. **Facturación Definitiva (`F1`, `C1`, `Q1`, `F1H`, `F1QH`)**: Prioridad `100` (máxima regular). Es el dato certificado por el que se ha cobrado/pagado. (Los `C1` se ignoran en curvas al contener cierres totales sin perfil horario).
+3. **Curvas Definitivas (`F5D`, `RF5D`, `A5D`, `B5D`)**: Prioridad `90` (`F5D`/`RF5D`) y `80` (`A5D`/`B5D`). Ficheros mensuales cerrados por la distribuidora.
+4. **Curvas Provisionales Mensuales (`P5D`)**: Prioridad `40`. Ficheros que la distribuidora envía antes del cierre definitivo.
+5. **Curvas Diarias (`P1`, `P1D`, `P2`, `P2D`)**: Prioridad `20`. Envíos del día a día, sujetos a estimaciones y fallos de telemedida.
+6. **Curvas sin clasificar (`P0`)**: Prioridad `10`.
 
-**Regla de Oro**: El sistema *JAMÁS* sobrescribirá una curva existente en base de datos si el fichero entrante tiene una prioridad MENOR que el dato ya almacenado.
+**Regla de Oro**: Al guardar en `LoadCurve`, el sistema prefija `source` con el tipo CNMC detectado (ej. `F5D_FTP_EDISTRIBUCION...`, `P2_UPLOAD_ZIP`) y *JAMÁS* sobrescribe una curva existente si el fichero entrante tiene una prioridad menor que el dato ya almacenado o si intenta pisar un dato definitivo con uno provisional.
 
 ---
 
@@ -52,27 +52,32 @@ Para cada fila válida, el `cchParser.ts` lee estas magnitudes a la vez y genera
 (Solo se insertará la curva `SURPLUS` si contiene al menos un cuarto de hora con inyección mayor que cero, para evitar saturar la base de datos).
 
 ### B. Corrección de Unidades (Wh a kWh)
-La base de datos almacena estricta y únicamente en **kWh**. Algunas distribuidoras envían los ficheros diarios (P1D) en Vatios-hora (Wh). El parser implementa un umbral heurístico: si la suma diaria excede un límite ilógico (ej. > 2000 para tarifa VIP, > 300 para PYME), el motor deduce que está en Wh y aplica automáticamente un divisor `/ 1000`.
+La base de datos almacena estricta y únicamente en **kWh**:
+- **Familia `5D` (`F5D`, `RF5D`, `A5D`, `B5D`, `P5D`)**: Por estándar CNMC v4.3 vienen siempre en **Wh** enteros, por lo que todas las lecturas se dividen entre `1000`.
+- **Resto de ficheros (`F1`, `F1QH`, `P1`, `P1D`, `P2`, `P2D`)**: Por estándar vienen en **kWh** (con decimales), pero ante distribuidoras que remitan anomalías en Wh, el parser cruza los 20 primeros caracteres del CUPS contra `SupplyPoint` y evalúa el **pico máximo horario/cuarto-horario de la curva diaria completa** (`> 2000` en suministros VIP/`>50kW`/`6.XTD` o `> 300` en resto). Si supera el umbral, divide de forma uniforme los 24/96 periodos del día entre `1000` (evitando partir curvas nocturnas/diurnas o dividir por error consumos `3.0TD` legítimos en kWh).
 
-### C. Zonas Horarias (Local vs. UTC)
-Las distribuidoras proporcionan los ficheros CCH en **Hora Local Española**. Sin embargo, Prisma y PostgreSQL operan obligatoriamente en **UTC**.
-Sumar horas directamente al UTC provocaría desplazamientos de madrugada. El motor usa `fromZonedTime(fechaLocal, 'Europe/Madrid')` para transformar con precisión milimétrica la hora local al instante UTC correspondiente, respetando los cambios de horario de verano/invierno.
+### C. Timestamps de Fin de Periodo (-15 min vs -60 min) y Zonas Horarias
+Las distribuidoras etiquetan cada registro en **Hora Local Española al final del intervalo medido**:
+- **Ficheros horarios (`F5D`, `P5D`, `F1`, `P1`, `P1D`)**: Los 24 intervalos del día `D` vienen sellados desde `D 01:00` hasta `(D+1) 00:00` -> se restan **60 minutos** para asignarlos a `00:00 .. 23:00` del día `D`.
+- **Ficheros cuarto-horarios (`P2`, `P2D`, `F1QH`, `Q1` o curvas con minutos `:15/:30/:45`)**: Los 96 intervalos del día `D` vienen sellados desde `D 00:15` hasta `(D+1) 00:00` -> se restan **15 minutos** para asignarlos a `00:00 .. 23:45` del día `D`.
+- **Cálculo agnóstico al huso del servidor**: `cchParser.ts` opera con aritmética pura `Date.UTC` sobre los componentes numéricos locales para guardar `LoadCurve.date` (`@db.Date` `YYYY-MM-DDT00:00:00.000Z`) y el array `readings` en hora local española sin verse afectado por el huso del servidor Windows/Linux. En el día de cambio horario de octubre (25 horas, doble bandera verano `1` e invierno `0`), ambas lecturas de la hora repetida se suman en su hueco horario para no perder energía. Posteriormente, `InternalBillingEngine` utiliza `fromZonedTime(fechaLocal, 'Europe/Madrid')` al cruzar contra OMIE y periodos tarifarios REE.
 
 ---
 
-## 4. Vías de Importación
+## 4. Vías de Importación y Aislamiento Multi-Comercializadora
 
-Existen dos vías principales para introducir curvas al sistema, centralizadas en la página `/ajustes/importador`:
+Existen dos vías principales para introducir curvas al sistema, centralizadas en la página `/ajustes/importador` (restringida a `SUPERADMIN`, `COMPANYADMIN` y `BACKOFFICE`):
 
-### Vía 1: Sincronización FTP Automática
-Conecta de manera directa a los servidores SFTP/FTP de distribuidoras (ej. e-Distribución, UFD, CIDE).
-- **Lógica de Ejecución (Chunking)**: Debido a que las funciones Serverless de Vercel tienen un tiempo de vida máximo (10s a 60s), el backend procesa los archivos en pequeños lotes ("chunks"). El front-end (`page.tsx`) llama en bucle al endpoint `/api/cron/ftp-sync/execute` mientras este responda con la bandera `hasMore: true`. Esto evita los errores 504 (Timeout).
-- **Polling**: Un proceso interno de la UI consulta cada 3 segundos el estado del Job (`/api/jobs/sync/`) para mostrar el log en vivo.
+### Vía 1: Sincronización FTP Automática (Aislada por `companyId`)
+Cada comercializadora (`Company`) dispone de sus propios servidores y credenciales FTP/SFTP por distribuidora en la tabla `DistributorCompanyConfig` (gestionables desde `/distribuidoras` según la marca/comercializadora activa resuelta por `resolveActiveCompanyId`).
+- **Lógica de Ejecución (Chunking y Persistencia de Cola)**: Debido a que las funciones Serverless de Vercel tienen un tiempo de vida acotado (`50s` en cloud / `240s` en local), el backend procesa los archivos en lotes ("chunks"). El front-end (`page.tsx`) llama en bucle al endpoint `/api/cron/ftp-sync/execute` mientras responda con `hasMore: true`. En modo CRON nocturno (`/api/cron/ftp-sync`), el servidor reutiliza automáticamente un `SyncJob` (`type = 'CRON_FTP_SYNC'`) entre iteraciones de `trigger-cron.ps1` para conservar la cola `pendingFiles` sin re-escanear los árboles SFTP en cada bloque, recorriendo las configuraciones activas de todas las comercializadoras.
+- **Mutex y Ventana Manual No Destructiva**: `triggerFtpSyncManually` impide lanzar trabajos duplicados simultáneos sobre la misma comercializadora (expirando automáticamente jobs zombis `> 10 min`), y cuando se usa la opción *"Hacia atrás: X días"*, inyecta `customSince` en los metadatos del job sin machacar `ftpLastSyncAt` en base de datos si falla la conexión.
+- **Polling y Resiliencia**: La UI consulta cada 3 segundos el estado del Job (`/api/jobs/sync/[id]`, saneando en tránsito la cola interna `pendingFiles`) mostrando el progreso global acumulado y el desglose final por distribuidora; si un archivo individual falla al descomprimir o parsear, se registra el aviso y la cola continúa sin bloquear el resto del servidor FTP.
 
 ### Vía 2: Subida Manual (UI Drag & Drop)
 Útil para inyectar históricos masivos desde el ordenador del usuario.
-- **Procesamiento en Memoria**: Soporta archivos comprimidos `.zip`, `.gz` (Endesa/Iberdrola) y `.bz2` (ASEME). Usando `jszip` y `zlib`, los archivos se descomprimen en la memoria RAM y se iteran al vuelo. No se escriben archivos temporales en disco.
-- **Límite de Vercel (4.5 MB)**: El Dropzone sube los ficheros **de uno en uno**, recomendando que los ZIP no excedan los 4.5 MB, ya que Vercel rechaza peticiones HTTP cuyo `Body` supere este tamaño de payload.
+- **Procesamiento Unificado en Memoria**: Tanto el FTP como el Dropzone comparten `processCchBuffer`, soportando archivos `.zip` (incluidos `.zip`, `.gz`, `.bz2` o `.xlsx` anidados en su interior), `.gz`, `.bz2`, `.xlsx` y `.csv`/`.txt` en memoria RAM sin escribir temporales en disco.
+- **Límite Inteligente Cloud vs. Local (4.5 MB)**: El Dropzone sube los ficheros de uno en uno con parseo defensivo ante errores HTTP no-JSON (`413` / `504`). Cuando se accede desde despliegue cloud (Vercel), pre-valida en cliente el límite de `4.5 MB` por archivo; cuando se opera desde `localhost` o red local del servidor Windows, permite subir ZIPs de mayor tamaño sin restricción artificial.
 
 ---
 
@@ -85,10 +90,12 @@ Durante la generación de facturas, si un cliente indexado inyecta excedentes se
 
 ---
 
-## 6. Agregación de Demanda BC
+## 6. Agregación de Demanda BC (`AggregationService`)
 
-Para liquidar compras en el mercado eléctrico (REE/OMIE), se debe conocer la demanda total de la cartera:
+Para liquidar compras en el mercado eléctrico (REE/OMIE), se consolida la demanda horaria de la cartera en `AggregatedLoadCurve` (`/api/cron/aggregate-history`):
 
-- **Sin Inventos**: El servicio de agregación (`AggregationService`) es conservador. Suma únicamente lo medido. Si un cliente no tiene CCH reportada por la distribuidora en un día, suma `0`. No rellena huecos con perfiles estimados, porque la intención es visualizar el déficit "real" de medida.
-- **Ventana Contractual**: Al sumar las curvas, el servicio evalúa la ventana temporal del contrato (`activationDate` a `terminationDate`). Una curva solo suma al pool global si pertenece a un día en el que el contrato del cliente estaba formalmente `ACTIVO`.
-- **Descuadres Estructurales**: Es normal que en meses recientes el volumen agrupado sea mucho menor que el facturado por REE (generando "Energía Pendiente a Cobrar" negativa). Esto ocurre por falta temporal de telemedida y se corrige a medida que van llegando los ficheros mensuales P5D/F5D.
+- **Sin Inventos**: El servicio de agregación (`AggregationService`) es conservador. Suma únicamente lo medido (`type = 'CONSUMPTION'`). Si un cliente no tiene CCH reportada por la distribuidora en un día, suma `0`. No rellena huecos con perfiles estimados, porque la intención es visualizar el déficit real de medida.
+- **Alineación Exacta `@db.Date` (`Europe/Madrid` -> UTC `00:00:00Z`)**: Todas las fechas de consulta, borrado e inserción se calculan a partir de la fecha natural española (`Europe/Madrid`) anclada a medianoche UTC exacta (`YYYY-MM-DDT00:00:00.000Z`), evitando desfases de `-1 día` en servidores Windows con huso horario local.
+- **Ventana Contractual y Multi-Titularidad por CUPS**: El servicio agrupa una lista de fichas por `baseCups` (20 caracteres), permitiendo que un mismo contador físico que haya cambiado de titular, tarifa o comercializadora del grupo impute cada día al `companyId`, `segment`, `province` y `tariff` vigentes en esa fecha (`activationDate <= fecha <= terminationDate`), excluyendo contratos en estado `BORRADOR`, `ANULADO` o `RECHAZADO` (`Rechazo Distribuidora`) y evitando doble conteo dentro de la misma agrupación.
+- **Optimización por Bloques**: Precarga `WeatherHistory` para todo el horizonte en una sola consulta y procesa `LoadCurve` en bloques de 7 días (filtrando por los CUPS de la comercializadora cuando se regenera manualmente una empresa concreta).
+- **Descuadres Estructurales**: Es normal que en meses recientes el volumen agrupado sea menor que el facturado provisionalmente por REE (generando "Energía Pendiente a Cobrar" negativa). Esto ocurre por falta temporal de telemedida y converge a medida que llegan los ficheros mensuales `P5D`/`F5D` y `F1`.

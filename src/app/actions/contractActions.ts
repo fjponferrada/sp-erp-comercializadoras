@@ -8,6 +8,10 @@ import docusign from 'docusign-esign';
 import { createAndSendEnvelope } from '@/lib/docusign';
 import { buildTemplateDataFromLead, getSupplyAddress } from '@/lib/templateBuilder';
 import { getTramitationCodes } from '@/lib/tramitationMapper';
+import {
+  calculateAndSnapshotContractCommission,
+  extractContractMarginSnapshots,
+} from '@/lib/services/CommissionEngine';
 
 export async function convertLeadToContractAction(leadId: string) {
   try {
@@ -326,17 +330,20 @@ export async function convertLeadToContractAction(leadId: string) {
       }
     }
 
-    // 5. Crear el contrato
+    // 5. Crear el contrato con snapshots inmutables de márgenes y auto-cálculo de comisión
+    const marginSnap = extractContractMarginSnapshots(cData, product, lead.productType);
+
     const contract = await prisma.contract.create({
       data: {
         userId: lead.userId,
+        brandId: lead.user?.brandId || product.brandId || null,
         clientId: client.id,
         supplyPointId: supplyPoint.id,
         productId: product.id,
         status: isMultipoint ? 'ACEPTADO' : 'BORRADOR',
         previousContractId: previousContractId,
         contractCode,
-        annualConsumption: supplyPoint.annualConsumption || (sipsConsumoKWh ? sipsConsumoKWh / 1000 : null),
+        annualConsumption: supplyPoint.annualConsumption || lead.estimatedMWh || (sipsConsumoKWh ? sipsConsumoKWh / 1000 : null),
         iban: cData.iban || null,
         tramitationType: cData.tipoTramitacion || 'Alta nueva',
         tipo: getTramitationCodes(cData.tipoTramitacion || 'Alta nueva').tipo,
@@ -359,7 +366,15 @@ export async function convertLeadToContractAction(leadId: string) {
         p4e: parseFloat(cData['P4E'] || cData['P4E (from Producto)']?.[0]) || product.p4e || null,
         p5e: parseFloat(cData['P5E'] || cData['P5E (from Producto)']?.[0]) || product.p5e || null,
         p6e: parseFloat(cData['P6E'] || cData['P6E (from Producto)']?.[0]) || product.p6e || null,
-        fee: parseFloat(cData['Fee Index'] || cData['Fee Index (from Producto)']?.[0]) || product.fee || null,
+        fee: marginSnap.fee,
+        marginFC: marginSnap.marginFC,
+        ip1: marginSnap.ip1,
+        ip2: marginSnap.ip2,
+        ip3: marginSnap.ip3,
+        ip4: marginSnap.ip4,
+        ip5: marginSnap.ip5,
+        ip6: marginSnap.ip6,
+        productTypeSnapshot: marginSnap.productTypeSnapshot,
         pexc: parseFloat(cData.pexc) || product.pexc || null,
         feeExcedentes: parseFloat(cData.feeExcedentes) || product.feeExcedentes || null,
         cgBolsilloSolar: parseFloat(cData.cgBolsilloSolar) || product.cgBolsilloSolar || null,
@@ -367,7 +382,7 @@ export async function convertLeadToContractAction(leadId: string) {
         pricingModel: product.pricingModel || null,
         commissionType: product.commissionType || null,
         powerTiersCommission: product.powerTiersCommission ? product.powerTiersCommission : undefined,
-        permanenceMonths: product.permanenceMonths || null,
+        permanenceMonths: product.permanenceMonths ?? null,
         svaConcept: svaConceptToSave,
         svaPrice: svaPriceToSave,
         svaDuration: svaDurationToSave,
@@ -375,6 +390,10 @@ export async function convertLeadToContractAction(leadId: string) {
         AdditionalService: additionalServiceConnect,
       },
     });
+
+    await calculateAndSnapshotContractCommission(contract.id).catch((err) =>
+      console.warn('Auto-cálculo de comisión omitido en convertLeadToContractAction:', err)
+    );
 
     // 3. Generar DOCX, convertir a PDF vía DocuSign y subir a R2
     try {
@@ -698,13 +717,16 @@ export async function remakeContractAction(leadId: string) {
       }
     }
 
-    // Actualizar Contrato
+    // Actualizar Contrato con nuevos snapshots inmutables y recalcular comisión
+    const remakeSnap = extractContractMarginSnapshots(cData, product, lead.productType);
+
     await prisma.contract.update({
       where: { id: lead.contract.id },
       data: {
         productId: product?.id || lead.contract.productId,
         status: isMultipoint ? 'ACEPTADO' : 'BORRADOR', // Vuelve a Borrador al rehacer salvo si es Multipunto
         updatedAt: new Date(),
+        annualConsumption: lead.estimatedMWh || lead.contract.annualConsumption || lead.contract.supplyPoint.annualConsumption || null,
         p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
         p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
         p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
@@ -723,7 +745,15 @@ export async function remakeContractAction(leadId: string) {
         p4e: parseFloat(cData['P4E'] || cData['P4E (from Producto)']?.[0]) || product?.p4e || null,
         p5e: parseFloat(cData['P5E'] || cData['P5E (from Producto)']?.[0]) || product?.p5e || null,
         p6e: parseFloat(cData['P6E'] || cData['P6E (from Producto)']?.[0]) || product?.p6e || null,
-        fee: parseFloat(cData['Fee Index'] || cData['Fee Index (from Producto)']?.[0]) || product?.fee || null,
+        fee: remakeSnap.fee,
+        marginFC: remakeSnap.marginFC,
+        ip1: remakeSnap.ip1,
+        ip2: remakeSnap.ip2,
+        ip3: remakeSnap.ip3,
+        ip4: remakeSnap.ip4,
+        ip5: remakeSnap.ip5,
+        ip6: remakeSnap.ip6,
+        productTypeSnapshot: remakeSnap.productTypeSnapshot,
         pexc: parseFloat(cData.pexc) || product?.pexc || null,
         feeExcedentes: parseFloat(cData.feeExcedentes) || product?.feeExcedentes || null,
         cgBolsilloSolar: parseFloat(cData.cgBolsilloSolar) || product?.cgBolsilloSolar || null,
@@ -731,9 +761,13 @@ export async function remakeContractAction(leadId: string) {
         pricingModel: product?.pricingModel || null,
         commissionType: product?.commissionType || null,
         powerTiersCommission: product?.powerTiersCommission ? product.powerTiersCommission : undefined,
-        permanenceMonths: product?.permanenceMonths || null,
+        permanenceMonths: product?.permanenceMonths ?? null,
       },
     });
+
+    await calculateAndSnapshotContractCommission(lead.contract.id).catch((err) =>
+      console.warn('Auto-cálculo de comisión omitido en remakeContractAction:', err)
+    );
 
     await prisma.lead.update({
       where: { id: leadId },
@@ -864,67 +898,12 @@ export async function updateContractDatesAction(
     });
 
     // =====================================
-    // GENERACIÓN AUTOMÁTICA DE COMISIONES
+    // AUTO-CÁLCULO DE COMISIÓN (si aún no estaba fijada)
     // =====================================
     if (newStatus === "ACTIVO" && contract.status !== "ACTIVO") {
-      // 1. Buscamos el usuario y su canal
-      const user = await prisma.user.findUnique({
-        where: { id: contract.userId },
-        include: { channel: true }
-      });
-
-      if (user?.channelId) {
-        // 2. Comprobamos si ya existe la comisión
-        const existingCommission = await prisma.commission.findUnique({
-          where: { contractId: contract.id }
-        });
-
-        if (!existingCommission && contract.product) {
-          // 3. Calculamos la comisión usando el tipo configurado en el Producto
-          let amount = 0;
-          const consumption = contract.supplyPoint?.annualConsumption ? contract.supplyPoint.annualConsumption : 5000;
-          const channelPct = user.channel?.fixedCommissionPct || 0.65;
-
-          if (contract.product.commissionType === "POWER_TIERS") {
-            // Ejemplo de cálculo por tramos de potencia para 2.0
-            // Usamos p1c (Potencia en P1) del SupplyPoint
-            const power = contract.supplyPoint.p1c || 3.3;
-            const tiers = contract.product.powerTiersCommission as Record<string, number> || { "0-5": 20, "5-10": 30 };
-            
-            if (power <= 5) amount = tiers["0-5"] || 20;
-            else if (power <= 10) amount = tiers["5-10"] || 30;
-            else amount = 40; // Default
-            
-            // Si el tramo ya es neto para el canal, o si hay que multiplicarlo por el % del canal
-            // amount = amount * channelPct; (Dependerá de la regla de negocio)
-          } else {
-            // "MARGIN_PERCENTAGE" (Sobre margen)
-            // Calculamos un margen bruto dummy (fee * consumo + feePotencia * potencia)
-            const feeEnergy = contract.product.fee || 0.015;
-            const power = contract.supplyPoint.p1c || 5;
-            const feePower = 0.05; // 5 centimos de margen de potencia al dia (ejemplo)
-            
-            const marginEnergy = consumption * feeEnergy;
-            const marginPower = power * feePower * 365;
-            const grossMargin = marginEnergy + marginPower;
-            
-            amount = grossMargin * channelPct;
-          }
-
-          await prisma.commission.create({
-            data: {
-              contractId: contract.id,
-              channelId: user.channelId,
-              consumptionBasis: consumption,
-              amount: amount,
-              relativeAmount: amount / consumption,
-              signatureDate: mergedSignature,
-              activationDate: mergedActivation,
-              status: "PENDIENTE"
-            }
-          });
-        }
-      }
+      await calculateAndSnapshotContractCommission(contract.id, { onlyIfEmpty: true }).catch((err) =>
+        console.warn('Auto-cálculo de comisión omitido en updateContractDatesAction:', err)
+      );
     }
 
     // Si el estado es ACTIVO (o BAJA, implica que llegó a activarse), actualizamos el SupplyPoint
@@ -1380,6 +1359,12 @@ export async function updateContractFull(formData: FormData) {
         fileAnexoFirmado: fileAnexoFirmadoUrl || undefined,
       }
     });
+
+    if (existing.status !== 'ACTIVO' && isActivo && commissionFinal === undefined) {
+      await calculateAndSnapshotContractCommission(contractId, { onlyIfEmpty: true }).catch((err) =>
+        console.warn('Auto-cálculo de comisión omitido en updateContractFull:', err)
+      );
+    }
 
     revalidatePath('/contratos');
     revalidatePath(`/contratos/${contractId}`);

@@ -1,107 +1,141 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import JSZip from 'jszip';
+import { normalizeReganecuConcept } from '@/lib/reganecuShared';
+import { isComprasAuthorized, resolveActiveCompanyId } from '@/lib/reganecuServer';
+import { runCalculatePendingEnergy } from '@/scripts/calculate_pending_energy';
+
+export const maxDuration = 300;
+
+function parseDecimal(val: string | undefined): number {
+  if (!val) return 0;
+  const cleaned = val.trim().replace(',', '.');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+}
 
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    if (!session || (session.user.role !== 'SUPERADMIN' && session.user.role !== 'COMPANYADMIN' && session.user.role !== 'BACKOFFICE')) {
+    if (!isComprasAuthorized(session)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const companyId = session.user.companyId;
+    const companyId = await resolveActiveCompanyId(session!.user);
     if (!companyId) {
-      return NextResponse.json({ error: 'No companyId in session' }, { status: 400 });
+      return NextResponse.json({ error: 'No se encontró comercializadora activa en la sesión' }, { status: 400 });
     }
 
     const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get('file') as File | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No se subió ningún archivo' }, { status: 400 });
+    }
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      return NextResponse.json({ error: 'El archivo debe tener extensión .zip' }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
     const mainZip = await JSZip.loadAsync(arrayBuffer);
 
     let processedCount = 0;
+    const pendingUpserts: Array<{
+      date: Date;
+      cierre: string;
+      region: string;
+      matricial: boolean;
+      total: boolean;
+      upr: boolean;
+      resolution: string;
+      jsonData: any;
+      fileName: string;
+      companyId: string;
+    }> = [];
 
     async function processZip(zip: JSZip) {
       for (const relativePath of Object.keys(zip.files)) {
         const zipEntry = zip.files[relativePath];
         if (zipEntry.dir) continue;
+        if (relativePath.includes('__MACOSX')) continue;
 
-        if (relativePath.endsWith('.zip')) {
+        const lowerPath = relativePath.toLowerCase();
+        const baseName = relativePath.replace(/\\/g, '/').split('/').pop() || relativePath;
+        const lowerBase = baseName.toLowerCase();
+        if (lowerBase.startsWith('._')) continue;
+
+        if (lowerPath.endsWith('.zip')) {
           const nestedBuffer = await zipEntry.async('arraybuffer');
           const nestedZip = await JSZip.loadAsync(nestedBuffer);
           await processZip(nestedZip);
-        } else if (relativePath.includes('_reganecu_') || relativePath.includes('_reganecuQH_')) {
-          // Process reganecu (H) and reganecuQH (QH)
+        } else if (lowerBase.includes('_reganecu_') || lowerBase.includes('_reganecuqh_')) {
           const content = await zipEntry.async('text');
-          await processReganecuData(content, relativePath);
+          collectReganecuUpserts(content, baseName);
           processedCount++;
         }
       }
     }
 
-    async function processReganecuData(content: string, fileName: string) {
-      // fileName is like C2_reganecu_20260301_18X000000000O0IA or C2_reganecuQH_...
-      const nameParts = fileName.split('_');
+    function collectReganecuUpserts(content: string, baseFileName: string) {
+      // baseFileName ej: C2_reganecu_20260301_18X000000000O0IA o C2_reganecuQH_20260301_...
+      const cleanBase = baseFileName.replace(/\.[^.]+$/, '');
+      const nameParts = cleanBase.split('_');
       if (nameParts.length < 3) return;
-      
-      const cierre = nameParts[0]; // C2
-      const typeStr = nameParts[1]; // reganecu or reganecuQH
-      const dateStr = nameParts[2]; // 20260301
-      if (dateStr.length !== 8) return;
 
-      const resolution = typeStr.includes('QH') ? 'QH' : 'H';
-      
-      const year = parseInt(dateStr.substring(0, 4));
-      const month = parseInt(dateStr.substring(4, 6)) - 1;
-      const day = parseInt(dateStr.substring(6, 8));
+      const cierre = nameParts[0].trim().toUpperCase();
+      const typeStr = nameParts[1].trim();
+      const dateStr = nameParts[2].trim();
+      if (!/^[AC]\d+$/i.test(cierre) || !/^\d{8}$/.test(dateStr)) return;
+
+      const resolution = typeStr.toUpperCase().includes('QH') ? 'QH' : 'H';
+
+      const year = parseInt(dateStr.substring(0, 4), 10);
+      const month = parseInt(dateStr.substring(4, 6), 10) - 1;
+      const day = parseInt(dateStr.substring(6, 8), 10);
       const date = new Date(Date.UTC(year, month, day));
 
-      const lines = content.split('\n');
-      
-      // Structure to aggregate data:
-      // We need to group by Total (aggregated) and Matricial (raw QH records)
-      const recordsMap: Record<string, any> = {
-        'TOTAL': { total: true, matricial: false, upr: false, jsonData: {} },
-        'MATRICIAL': { total: false, matricial: true, upr: false, jsonData: [] }
+      const lines = content.split(/\r?\n/);
+
+      const recordsMap: Record<string, { total: boolean; matricial: boolean; upr: boolean; jsonData: any }> = {
+        TOTAL: { total: true, matricial: false, upr: false, jsonData: {} },
+        MATRICIAL: { total: false, matricial: true, upr: false, jsonData: [] },
       };
 
       for (const line of lines) {
         const parts = line.split(';');
         if (parts.length < 13) continue;
-        
-        let unit = parts[2].trim();
-        let energy = Math.abs(parseFloat(parts[3]) || 0); // Keep positive for separating
-        let price = parseFloat(parts[5]) || 0;
-        let cost = Math.abs(parseFloat(parts[7]) || 0); // Keep positive
-        let concept = parts[10].trim();
-        let upr = parts[12] ? parts[12].trim() : '';
-        let sign = parseFloat(parts[14]) || 1;
 
-        // sometimes the file starts with header lines, check if it's data
-        if (!concept || concept === '' || concept.length > 80) continue;
+        const unit = parts[2].trim();
+        const energy = Math.abs(parseDecimal(parts[3]));
+        const cost = Math.abs(parseDecimal(parts[7]));
+        const rawConcept = parts[10].trim();
 
-        let signCost = parseFloat(parts[14]) || 1;
-        let signEnergy = parseFloat(parts[15]);
-        if (isNaN(signEnergy) || signEnergy === 0) {
-          signEnergy = signCost;
-        }
+        // Regla 138: soportar nombres descriptivos hasta 80 caracteres y normalizar acrónimo
+        if (!rawConcept || rawConcept.length > 80) continue;
+        const concept = normalizeReganecuConcept(rawConcept);
+        if (!concept) continue;
 
-        // Add to TOTAL (aggregated)
-        let target = recordsMap['TOTAL'].jsonData;
+        const upr = parts[12] ? parts[12].trim() : '';
+
+        const signCostRaw = parseDecimal(parts[14]);
+        const signCost = signCostRaw === 0 ? 1 : signCostRaw;
+        const signEnergyRaw = parseDecimal(parts[15]);
+        const signEnergy = signEnergyRaw === 0 ? signCost : signEnergyRaw;
+
+        const target = recordsMap.TOTAL.jsonData;
         if (!target[concept]) {
-          target[concept] = { 
-            energyVentas: 0, energyCompras: 0, 
-            costDerechos: 0, costObligaciones: 0, 
-            count: 0 
+          target[concept] = {
+            energyVentas: 0,
+            energyCompras: 0,
+            costDerechos: 0,
+            costObligaciones: 0,
+            count: 0,
           };
         }
-        let stats = target[concept];
+        const stats = target[concept];
 
         if (signEnergy === 1) {
           stats.energyVentas += energy;
@@ -116,29 +150,25 @@ export async function POST(req: Request) {
         }
         stats.count += 1;
 
-        // Add to MATRICIAL (raw records)
         if (unit) {
-          let parsedPeriod = parseInt(parts[1]);
+          // Regla 140: Deducir periodo exacto (1-96 en QH o 1-24 en H) desde columna 0 si columna 1 viene vacía
+          let parsedPeriod = parseInt(parts[1], 10);
           if (isNaN(parsedPeriod)) {
             const timeMatch = parts[0].match(/\s+(\d{2}):(\d{2}):\d{2}/);
             if (timeMatch) {
               const h = parseInt(timeMatch[1], 10);
               const m = parseInt(timeMatch[2], 10);
-              if (resolution === 'QH') {
-                parsedPeriod = h * 4 + Math.floor(m / 15) + 1;
-              } else {
-                parsedPeriod = h + 1;
-              }
+              parsedPeriod = resolution === 'QH' ? h * 4 + Math.floor(m / 15) + 1 : h + 1;
             } else {
               parsedPeriod = 0;
             }
           }
-          
-          recordsMap['MATRICIAL'].jsonData.push({
+
+          recordsMap.MATRICIAL.jsonData.push({
             period: parsedPeriod || 0,
-            unit: unit,
-            upr: upr,
-            concept: concept,
+            unit,
+            upr,
+            concept,
             energyVentas: signEnergy === 1 ? energy : 0,
             energyCompras: signEnergy !== 1 ? energy : 0,
             costDerechos: signCost === 1 ? cost : 0,
@@ -147,56 +177,90 @@ export async function POST(req: Request) {
         }
       }
 
-      // Upsert into database
       for (const key of Object.keys(recordsMap)) {
         const rec = recordsMap[key];
-        
-        // Only save if there's actual data
-        if (Array.isArray(rec.jsonData)) {
-          if (rec.jsonData.length === 0) continue;
-        } else {
-          if (Object.keys(rec.jsonData).length === 0) continue;
-        }
+        const isEmpty = Array.isArray(rec.jsonData)
+          ? rec.jsonData.length === 0
+          : Object.keys(rec.jsonData).length === 0;
+        if (isEmpty) continue;
 
-        await prisma.reganecuData.upsert({
-          where: {
-            date_cierre_region_matricial_total_upr_resolution_companyId: {
-              date: date,
-              cierre: cierre,
-              region: 'peninsula', 
-              matricial: rec.matricial,
-              total: rec.total,
-              upr: rec.upr,
-              resolution: resolution,
-              companyId: companyId
-            }
-          },
-          update: {
-            jsonData: rec.jsonData,
-            fileName: fileName,
-            updatedAt: new Date()
-          },
-          create: {
-            date: date,
-            cierre: cierre,
-            region: 'peninsula',
-            matricial: rec.matricial,
-            total: rec.total,
-            upr: rec.upr,
-            resolution: resolution,
-            jsonData: rec.jsonData,
-            fileName: fileName,
-            companyId: companyId
-          }
+        pendingUpserts.push({
+          date,
+          cierre,
+          region: 'peninsula',
+          matricial: rec.matricial,
+          total: rec.total,
+          upr: rec.upr,
+          resolution,
+          jsonData: rec.jsonData,
+          fileName: baseFileName,
+          companyId: companyId!,
         });
       }
     }
 
     await processZip(mainZip);
 
-    return NextResponse.json({ message: `Importación exitosa. Se procesaron ${processedCount} archivos reganecu (Horarios/Cuartohorarios).` });
+    if (processedCount === 0) {
+      return NextResponse.json(
+        { error: 'No se encontraron ficheros REGANECU válidos dentro del ZIP.' },
+        { status: 400 }
+      );
+    }
+
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < pendingUpserts.length; i += CHUNK_SIZE) {
+      const chunk = pendingUpserts.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(item =>
+          prisma.reganecuData.upsert({
+            where: {
+              date_cierre_region_matricial_total_upr_resolution_companyId: {
+                date: item.date,
+                cierre: item.cierre,
+                region: item.region,
+                matricial: item.matricial,
+                total: item.total,
+                upr: item.upr,
+                resolution: item.resolution,
+                companyId: item.companyId,
+              },
+            },
+            update: {
+              jsonData: item.jsonData,
+              fileName: item.fileName,
+              updatedAt: new Date(),
+            },
+            create: item,
+          })
+        )
+      );
+    }
+
+    const affectedMonths = Array.from(
+      new Set(pendingUpserts.map(item => item.date.toISOString().slice(0, 7)))
+    ).sort();
+
+    if (affectedMonths.length > 0) {
+      try {
+        await runCalculatePendingEnergy(undefined, companyId, { targetMonths: affectedMonths });
+      } catch (syncErr) {
+        console.error('Aviso: error recalculando energía pendiente tras importar REGANECU:', syncErr);
+      }
+    }
+
+    revalidatePath('/compras/importar-reganecu');
+    revalidatePath('/compras/reganecu');
+    revalidatePath('/gestion/energia-pendiente');
+
+    return NextResponse.json({
+      message: `Importación exitosa. Se procesaron ${processedCount} archivos REGANECU (Horarios/Cuartohorarios).`,
+    });
   } catch (error: any) {
     console.error('Error in reganecu import:', error);
-    return NextResponse.json({ error: error.message || 'Error interno del servidor al procesar el archivo.' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Error interno del servidor al procesar el archivo.' },
+      { status: 500 }
+    );
   }
 }

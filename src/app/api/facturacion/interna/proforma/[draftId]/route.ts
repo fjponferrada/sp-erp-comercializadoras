@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import React from 'react';
 import { InvoicePdfTemplate } from '@/components/pdf/InvoicePdfTemplate';
 import { renderToStream } from '@react-pdf/renderer';
+import { buildInvoiceTemplateData } from '@/lib/services/internalInvoiceMapper';
 
 export async function GET(req: Request, context: { params: Promise<{ draftId: string }> }) {
   try {
@@ -17,59 +18,36 @@ export async function GET(req: Request, context: { params: Promise<{ draftId: st
     const invoice = await prisma.internalInvoice.findUnique({
       where: { id: draftId },
       include: {
-        client: true,
+        client: {
+          include: {
+            brand: { include: { company: true } },
+          },
+        },
+        company: true,
+        supplyPoint: true,
+        f1Invoice: {
+          include: { supplyPoint: true },
+        },
         contract: {
-          include: { supplyPoint: true, product: true }
-        }
-      }
+          include: {
+            supplyPoint: true,
+            product: true,
+            brand: { include: { company: true } },
+          },
+        },
+      },
     });
 
     if (!invoice) return new NextResponse('Not found', { status: 404 });
 
-    const templateData = {
-      invoiceNumber: invoice.invoiceNumber || `PROFORMA-${invoice.id.substring(0,6).toUpperCase()}`,
-      invoiceType: invoice.invoiceType,
-      issueDate: invoice.issueDate,
-      clientName: invoice.client?.businessName || 'Desconocido',
-      clientNif: invoice.client?.vatNumber || 'S/N',
-      clientAddress: invoice.client?.billingAddress || '',
-      cups: invoice.contract?.supplyPoint?.cups || 'S/N',
-      tariff: (() => {
-        const airTarifa = (invoice.contract?.airtableData as any)?.Tarifa || (invoice.contract?.airtableData as any)?.tarifa;
-        return (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || invoice.contract?.product?.tariff || invoice.contract?.supplyPoint?.tariff || '';
-      })(),
-      contractedPower: invoice.contract?.p1c || invoice.contract?.supplyPoint?.p1c || '',
-      billingStart: invoice.billingStart,
-      billingEnd: invoice.billingEnd,
-      totalMWh: invoice.totalMWh,
-      subtotal1: invoice.subtotal1,
-      taxPercentage: invoice.taxPercentage,
-      taxAmount: invoice.taxAmount,
-      totalAmount: invoice.totalAmount,
-      
-      powerDetails: (invoice.invoiceData as any)?.powerDetails || [],
-      energyAtrDetails: (invoice.invoiceData as any)?.energyAtrDetails || [],
-      energyMarketDetails: (invoice.invoiceData as any)?.energyMarketDetails || [],
-      alquilerEquipo: (invoice.invoiceData as any)?.alquilerEquipo || 0,
-      bonoSocial: (invoice.invoiceData as any)?.bonoSocial || 0,
-      bonoSocialLabel: (invoice.invoiceData as any)?.bonoSocialLabel || '',
-      taxElectric: (invoice.invoiceData as any)?.taxElectric || 0,
-      excesosPotencia: (invoice.invoiceData as any)?.excesosPotencia || 0,
-      excedentesAutoconsumo: (invoice.invoiceData as any)?.excedentesAutoconsumo || 0,
-      excedentesKwh: (invoice.invoiceData as any)?.excedentesKwh || 0,
-      maxExcedentes: (invoice.invoiceData as any)?.maxExcedentes || 0,
-      bolsilloSolarLlenado: (invoice.invoiceData as any)?.bolsilloSolarLlenado || 0,
-      f1Readings: (invoice.invoiceData as any)?.f1Readings || null,
-      reactiveDetails: (invoice.invoiceData as any)?.reactiveDetails || [],
-      svaCost: (invoice.invoiceData as any)?.svaCost || 0,
-      svaConcept: (invoice.invoiceData as any)?.svaConcept || '',
-    };
+    const templateData = await buildInvoiceTemplateData(invoice);
+    if (!invoice.invoiceNumber) {
+      templateData.invoiceNumber = `PROFORMA-${invoice.id.substring(0, 6).toUpperCase()}`;
+    }
 
     const element = React.createElement(InvoicePdfTemplate, { data: templateData }) as any;
     const pdfStream = await renderToStream(element);
-    
-    // We can pipe the stream directly to the NextResponse, but Next.js responses can take web streams or buffers.
-    // Let's buffer it and return it as a Blob/Buffer.
+
     const pdfChunks: any[] = [];
     for await (const chunk of pdfStream) {
       pdfChunks.push(chunk);
@@ -80,8 +58,8 @@ export async function GET(req: Request, context: { params: Promise<{ draftId: st
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="Proforma-${templateData.invoiceNumber}.pdf"`
-      }
+        'Content-Disposition': `inline; filename="${templateData.invoiceNumber}.pdf"`,
+      },
     });
   } catch (error: any) {
     console.error('Error generating proforma pdf:', error);

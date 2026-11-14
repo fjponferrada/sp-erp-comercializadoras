@@ -1,55 +1,79 @@
 import Topbar from '@/components/Topbar';
 import ImportarClient from './ImportarClient';
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { format, subMonths, subYears, startOfMonth } from 'date-fns';
+import { format, subMonths, subYears, startOfMonth, getDaysInMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { SETTLEMENT_RANKS } from '@/lib/reganecuShared';
+import { isComprasAuthorized } from '@/lib/reganecuServer';
 
 export const dynamic = 'force-dynamic';
 
-const VERSION_RANKS: Record<string, number> = {
-  'A1': 1, 'C1': 2, 'A2': 3, 'C2': 4, 'C3': 5, 'C4': 6, 'C5': 7, 'C6': 8, 'C7': 9, 'C8': 10
-};
-
 export default async function ImportarCompodemPage() {
-  const now = new Date();
-  const startDate = startOfMonth(subMonths(now, 11)); // Last 12 months including current
-
-  // Fetch TOTAL_COMPODEM component prices from startDate to determine the version status of the whole month
-  const prices = await prisma.systemComponentPrice.findMany({
-    where: { 
-      date: { gte: startDate },
-      component: 'TOTAL_COMPODEM'
-    },
-    select: { date: true, version: true }
-  });
-
-  // Group by month
-  const monthlyData: Record<string, { monthDate: Date, lowestVersion: string | null, rank: number }> = {};
-
-  // Initialize last 12 months with "Sin datos" (Infinity rank)
-  for (let i = 0; i < 12; i++) {
-    const d = subMonths(now, i);
-    const key = format(d, 'yyyy-MM');
-    monthlyData[key] = { monthDate: d, lowestVersion: null, rank: Infinity };
+  const session = await auth();
+  if (!isComprasAuthorized(session)) {
+    redirect('/login');
   }
 
-  // Calculate lowest version
+  const now = new Date();
+  const currentMonthStart = startOfMonth(now);
+  const earliestMonth = subMonths(currentMonthStart, 11);
+  const startDateUtc = new Date(
+    Date.UTC(earliestMonth.getFullYear(), earliestMonth.getMonth(), 1)
+  );
+
+  const prices = await prisma.systemComponentPrice.findMany({
+    where: {
+      date: { gte: startDateUtc },
+      component: 'TOTAL_COMPODEM',
+    },
+    select: { date: true, version: true },
+  });
+
+  const monthlyData: Record<
+    string,
+    {
+      monthDate: Date;
+      lowestVersion: string | null;
+      rank: number;
+      daysSet: Set<string>;
+      expectedDays: number;
+    }
+  > = {};
+
+  for (let i = 0; i < 12; i++) {
+    const d = subMonths(currentMonthStart, i);
+    const key = format(d, 'yyyy-MM');
+    monthlyData[key] = {
+      monthDate: d,
+      lowestVersion: null,
+      rank: Infinity,
+      daysSet: new Set<string>(),
+      expectedDays: getDaysInMonth(d),
+    };
+  }
+
   for (const p of prices) {
     if (!p.version) continue;
-    const key = format(p.date, 'yyyy-MM');
-    if (!monthlyData[key]) continue; // outside of 12 months range
+    const dayKey = p.date.toISOString().slice(0, 10);
+    const monthKey = dayKey.slice(0, 7);
+    const bucket = monthlyData[monthKey];
+    if (!bucket) continue;
 
-    const rank = VERSION_RANKS[p.version] || Infinity;
-    if (rank < monthlyData[key].rank) {
-      monthlyData[key].rank = rank;
-      monthlyData[key].lowestVersion = p.version;
+    bucket.daysSet.add(dayKey);
+
+    const rank = SETTLEMENT_RANKS[p.version.toUpperCase()] ?? Infinity;
+    if (rank < bucket.rank) {
+      bucket.rank = rank;
+      bucket.lowestVersion = p.version.toUpperCase();
     }
   }
 
-  // Sort months descending (newest first)
-  const sortedMonths = Object.values(monthlyData).sort((a, b) => b.monthDate.getTime() - a.monthDate.getTime());
+  const sortedMonths = Object.values(monthlyData).sort(
+    (a, b) => b.monthDate.getTime() - a.monthDate.getTime()
+  );
 
-  // Function to get styling based on version
   const getBadgeStyle = (version: string | null) => {
     if (!version) return { background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' };
     if (version.startsWith('A')) return { background: 'rgba(245, 158, 11, 0.2)', color: '#FCD34D' };
@@ -62,18 +86,17 @@ export default async function ImportarCompodemPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Topbar 
-        title="Importar COMPODEM" 
+      <Topbar
+        title="Importar COMPODEM"
         subtitle="Carga de archivo maestro con los ficheros de liquidación de REE (C1, C2, C3, C4, C5). El sistema procesará todos los componentes internamente."
         showSearch={false}
       />
 
       <div style={{ padding: '24px 32px', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <a 
+          <a
             href={reeUrl}
-            target="_blank" 
+            target="_blank"
             rel="noopener noreferrer"
             className="btn-primary"
             style={{ textDecoration: 'none' }}
@@ -98,7 +121,7 @@ export default async function ImportarCompodemPage() {
               Se muestra la liquidación más antigua encontrada de cualquier día dentro del mes correspondiente.
             </p>
           </div>
-          
+
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
@@ -108,26 +131,47 @@ export default async function ImportarCompodemPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedMonths.map((m) => (
-                  <tr key={format(m.monthDate, 'yyyy-MM')} className="hover:bg-[var(--bg-elevated)] transition-colors duration-200" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '16px 24px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
-                      {format(m.monthDate, 'MMMM yyyy', { locale: es })}
-                    </td>
-                    <td style={{ padding: '16px 24px', fontSize: '0.875rem' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '4px 10px',
-                        borderRadius: '9999px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        ...getBadgeStyle(m.lowestVersion)
-                      }}>
-                        {m.lowestVersion || 'Sin datos'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {sortedMonths.map(m => {
+                  const daysCount = m.daysSet.size;
+                  const isPartial = daysCount > 0 && daysCount < m.expectedDays;
+                  return (
+                    <tr key={format(m.monthDate, 'yyyy-MM')} className="hover:bg-[var(--bg-elevated)] transition-colors duration-200" style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '16px 24px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                        {format(m.monthDate, 'MMMM yyyy', { locale: es })}
+                      </td>
+                      <td style={{ padding: '16px 24px', fontSize: '0.875rem' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '4px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              ...getBadgeStyle(m.lowestVersion),
+                            }}
+                          >
+                            {m.lowestVersion || 'Sin datos'}
+                          </span>
+                          {isPartial && (
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                color: '#FCD34D',
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
+                              }}
+                            >
+                              Parcial ({daysCount}/{m.expectedDays} días)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

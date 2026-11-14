@@ -15,6 +15,45 @@ interface ImportarSwitchingClientProps {
   userRole: string;
 }
 
+const TERMINAL_JOB_STATUSES = ['COMPLETED', 'PARTIAL', 'ERROR', 'FAILED'];
+
+function getSyncBadgeMeta(webLastSyncAt: Date | string | null): { text: string; badgeClass: string; textClass: string; stale: boolean } {
+  if (!webLastSyncAt) {
+    return {
+      text: 'Nunca',
+      badgeClass: 'border-red-500/40 bg-red-950/20',
+      textClass: 'text-red-400 font-semibold',
+      stale: true,
+    };
+  }
+  const d = new Date(webLastSyncAt);
+  const diffHours = (Date.now() - d.getTime()) / (1000 * 60 * 60);
+  const formatted = d.toLocaleString('es-ES');
+  if (diffHours > 36) {
+    const days = Math.floor(diffHours / 24);
+    return {
+      text: `${formatted} (hace ${days}d)`,
+      badgeClass: 'border-red-500/40 bg-red-950/20',
+      textClass: 'text-red-400 font-semibold',
+      stale: true,
+    };
+  }
+  if (diffHours > 12) {
+    return {
+      text: `${formatted} (hace ${Math.round(diffHours)}h)`,
+      badgeClass: 'border-amber-500/40 bg-amber-950/20',
+      textClass: 'text-amber-400 font-medium',
+      stale: true,
+    };
+  }
+  return {
+    text: formatted,
+    badgeClass: 'border-[var(--border)] bg-[var(--bg-base)]',
+    textClass: 'text-[var(--lime)]',
+    stale: false,
+  };
+}
+
 export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingClientProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -23,10 +62,10 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
   const [processedFiles, setProcessedFiles] = useState(0);
   const [results, setResults] = useState<{ file: string; success: boolean; message: string; type: string }[]>([]);
   const [finished, setFinished] = useState(false);
-  
+
   // Scraping states
   const [isScraping, setIsScraping] = useState(false);
-  const [distributorStatuses, setDistributorStatuses] = useState<{name: string; webLastSyncAt: Date | null}[]>([]);
+  const [distributorStatuses, setDistributorStatuses] = useState<{ name: string; webLastSyncAt: Date | null }[]>([]);
   const [scrapingJobId, setScrapingJobId] = useState<string | null>(null);
   const [scrapingJobStatus, setScrapingJobStatus] = useState<any>(null);
 
@@ -50,7 +89,7 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
           if (res.ok) {
             const data = await res.json();
             setScrapingJobStatus(data);
-            if (data.status === 'COMPLETED' || data.status === 'ERROR') {
+            if (TERMINAL_JOB_STATUSES.includes(data.status)) {
               setIsScraping(false);
               clearInterval(interval);
               fetchStatuses();
@@ -103,9 +142,8 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
         try {
           const contents = await zip.loadAsync(file);
           for (const [relativePath, zipEntry] of Object.entries(contents.files)) {
-            if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.xml')) {
+            if (!zipEntry.dir && /\.(xml|\d+)$/i.test(relativePath)) {
               const blob = await zipEntry.async('blob');
-              // Quitamos las rutas del nombre del archivo en el zip
               const cleanName = zipEntry.name.split('/').pop() || zipEntry.name;
               flattenedFiles.push(new File([blob], cleanName, { type: 'text/xml' }));
             }
@@ -135,17 +173,17 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
     for (let i = 0; i < flattenedFiles.length; i++) {
       const file = flattenedFiles[i];
       setCurrentFile(file.name);
-      
+
       const formData = new FormData();
       formData.append('file', file);
-      
+
       let result;
       if (isF1) {
         result = await ingestF1XmlAction(formData);
       } else {
         result = await ingestSwitchingXmlAction(formData);
       }
-      
+
       let message = '';
       let isSuccess = false;
 
@@ -153,11 +191,11 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
         successCount++;
         isSuccess = true;
         if ('warning' in result && result.warning) {
-           message = `Aviso: Guardado pero requiere revisión`;
+          message = `Aviso: Guardado pero requiere revisión`;
         } else if (result.count && result.count > 1) {
-           message = `Ingestado correctamente (${result.count} registros procesados dentro del ZIP)`;
+          message = `Ingestado correctamente (${result.count} registros procesados dentro del ZIP)`;
         } else {
-           message = 'Ingestado correctamente';
+          message = 'Ingestado correctamente';
         }
       } else {
         errorCount++;
@@ -167,7 +205,7 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
 
       newResults.push({ file: file.name, success: isSuccess, message, type: fileTypeStr });
       setResults([...newResults]);
-      
+
       setProcessedFiles(i + 1);
       setProgress(Math.round(((i + 1) / flattenedFiles.length) * 100));
     }
@@ -176,9 +214,9 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
       setCurrentFile('Realizando barrido de eventos pendientes...');
       const retryResult = await retryUnresolvedSwitchingEventsAction();
       if (retryResult.success && retryResult.processedCount! > 0) {
-        newResults.push({ 
-          file: 'Sistema de Barrido', 
-          success: true, 
+        newResults.push({
+          file: 'Sistema de Barrido',
+          success: true,
           message: `${retryResult.resolvedCount}/${retryResult.processedCount} warnings resueltos automáticamente`,
           type: 'SCTD'
         });
@@ -202,223 +240,232 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
   const dropzoneSctd = useDropzone({
     onDrop: onDropSctd,
     accept: { 'text/xml': ['.xml'], 'application/zip': ['.zip'], 'application/x-zip-compressed': ['.zip'] },
-    noClick: uploading, 
+    noClick: uploading,
     noKeyboard: uploading
   });
 
   const dropzoneF1 = useDropzone({
     onDrop: onDropF1,
     accept: { 'text/xml': ['.xml'], 'application/zip': ['.zip'], 'application/x-zip-compressed': ['.zip'] },
-    noClick: uploading, 
+    noClick: uploading,
     noKeyboard: uploading
   });
 
+  const isJobActive = scrapingJobStatus?.status === 'PENDING' || scrapingJobStatus?.status === 'PROCESSING';
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Topbar 
-        title="Importador de Archivos XML" 
-        subtitle="Sube los archivos XML enviados por las distribuidoras. Selecciona el cajón correcto según sea un archivo de Switching (SCTD) o de Facturación ATR (F1)." 
+      <Topbar
+        title="Importador de Archivos XML"
+        subtitle="Sube los archivos XML enviados por las distribuidoras. Selecciona el cajón correcto según sea un archivo de Switching (SCTD) o de Facturación ATR (F1)."
       />
 
       <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-      {/* AUTOMATIC SCRAPING */}
-      {!uploading && !finished && (
-        <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl p-8 shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
-                <Server className="w-6 h-6 text-[var(--lime)]" />
-                Scraping Automático (Worker)
-              </h2>
-              <p className="text-gray-400 max-w-2xl text-sm">
-                Al pulsar este botón, se añadirá un trabajo a la cola. El Worker local descargará automáticamente los ficheros (tanto F1 como SCTD) y los enrutará por ti.
-              </p>
-              
-              {distributorStatuses.length > 0 && (
-                <div className="flex flex-wrap gap-3 mt-4">
-                  {distributorStatuses.map((s, idx) => (
-                    <div key={idx} className="bg-[var(--bg-base)] border border-[var(--border)] rounded px-3 py-1.5 text-xs flex items-center gap-2">
-                      <span className="font-semibold text-gray-300">{s.name}:</span>
-                      <span className="text-[var(--lime)]">
-                        {s.webLastSyncAt ? new Date(s.webLastSyncAt).toLocaleString('es-ES') : 'Nunca'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleTriggerScraping}
-              disabled={isScraping && !scrapingJobStatus}
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-all shadow-lg ${
-                isScraping && !scrapingJobStatus
-                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
-                  : 'bg-[var(--lime)] text-black hover:bg-opacity-90'
-              }`}
-            >
-              {isScraping && !scrapingJobStatus ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Encolando...
-                </>
-              ) : (
-                <>
-                  <RefreshCcw className="w-5 h-5" />
-                  Gatillar Scraping Ahora
-                </>
-              )}
-            </button>
-          </div>
+        {/* AUTOMATIC SCRAPING */}
+        {!uploading && !finished && (
+          <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl p-8 shadow-md">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
+                  <Server className="w-6 h-6 text-[var(--lime)]" />
+                  Scraping Automático (Worker)
+                </h2>
+                <p className="text-gray-400 max-w-2xl text-sm">
+                  Al pulsar este botón, se añadirá un trabajo a la cola. El Worker local descargará automáticamente los ficheros (tanto F1 como SCTD) y los enrutará por ti.
+                </p>
 
-          {scrapingJobStatus && (
-            <div className="w-full p-4 rounded-lg mt-6 bg-gray-800/50 border border-gray-700">
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-sm text-gray-300">
-                  <span className="font-semibold text-[var(--lime)]">{scrapingJobStatus.status}</span>
-                </div>
-                {scrapingJobStatus.status === 'PENDING' || scrapingJobStatus.status === 'PROCESSING' ? (
-                  <div className="w-full bg-gray-900 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-[var(--lime)] h-2.5 rounded-full transition-all duration-500 w-full animate-pulse"></div>
-                  </div>
-                ) : null}
-                {scrapingJobStatus.logs && (
-                  <pre className="mt-2 text-xs text-gray-400 bg-black/50 p-2 rounded-md max-h-32 overflow-y-auto whitespace-pre-wrap">
-                    {scrapingJobStatus.logs}
-                  </pre>
-                )}
-                {scrapingJobStatus.status === 'COMPLETED' && (
-                  <div className="mt-2 p-3 bg-green-900/20 border border-green-800 rounded-md">
-                    <p className="text-green-400 font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Scraping finalizado con éxito.</p>
-                  </div>
-                )}
-                {scrapingJobStatus.status === 'ERROR' && (
-                  <div className="mt-2 p-3 bg-red-900/20 border border-red-800 rounded-md">
-                    <p className="text-red-400 font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Ocurrió un error en el scraping.</p>
+                {distributorStatuses.length > 0 && (
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    {distributorStatuses.map((s, idx) => {
+                      const meta = getSyncBadgeMeta(s.webLastSyncAt);
+                      return (
+                        <div key={idx} className={`border rounded px-3 py-1.5 text-xs flex items-center gap-2 ${meta.badgeClass}`}>
+                          {meta.stale && <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                          <span className="font-semibold text-gray-300">{s.name}:</span>
+                          <span className={meta.textClass}>{meta.text}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* DUAL DROPZONES */}
-      {!uploading && !finished && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* CAJÓN SCTD */}
-          <div 
-            {...dropzoneSctd.getRootProps()} 
-            className={`relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
-              dropzoneSctd.isDragActive 
-                ? 'border-[var(--lime)] bg-[rgba(205,255,100,0.05)] scale-[1.02]' 
-                : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-gray-400'
-            }`}
-          >
-            <input {...dropzoneSctd.getInputProps()} />
-            <UploadCloud className={`w-16 h-16 mx-auto mb-4 ${dropzoneSctd.isDragActive ? 'text-[var(--lime)] animate-bounce' : 'text-gray-500'}`} />
-            <h3 className="text-2xl font-bold text-gray-200 mb-2">
-              Importar XML Switching (SCTD)
-            </h3>
-            <p className="text-gray-500">Procesos C1, C2, M1, A3, R1...</p>
-          </div>
-
-          {/* CAJÓN F1 */}
-          <div 
-            {...dropzoneF1.getRootProps()} 
-            className={`relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
-              dropzoneF1.isDragActive 
-                ? 'border-[var(--lime)] bg-[rgba(205,255,100,0.05)] scale-[1.02]' 
-                : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-gray-400'
-            }`}
-          >
-            <input {...dropzoneF1.getInputProps()} />
-            <FileText className={`w-16 h-16 mx-auto mb-4 ${dropzoneF1.isDragActive ? 'text-[var(--lime)] animate-bounce' : 'text-blue-500'}`} />
-            <h3 className="text-2xl font-bold text-gray-200 mb-2">
-              Importar XML Facturación (F1)
-            </h3>
-            <p className="text-gray-500">Facturas de Peajes ATR</p>
-          </div>
-        </div>
-      )}
-
-      {/* PROGRESS UI */}
-      {uploading && (
-        <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl p-8 space-y-6 shadow-xl">
-          <div className="text-center space-y-2">
-            <RefreshCcw className="w-12 h-12 text-[var(--lime)] mx-auto animate-spin" />
-            <h2 className="text-2xl font-bold text-gray-100">Procesando Archivos...</h2>
-            <p className="text-gray-400">Por favor, no cierres esta pestaña. {processedFiles} de {totalFiles} completados.</p>
-          </div>
-
-          <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden">
-            <div 
-              className="bg-[var(--lime)] h-4 transition-all duration-300 ease-out"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400 font-mono truncate max-w-md">Actual: {currentFile}</span>
-            <span className="text-[var(--lime)] font-bold">{progress}%</span>
-          </div>
-        </div>
-      )}
-
-      {/* RESULT UI */}
-      {finished && (
-        <div className="space-y-6">
-          <div className="bg-[rgba(205,255,100,0.05)] border border-[var(--lime)] rounded-xl p-8 text-center shadow-xl">
-            <CheckCircle className="w-16 h-16 text-[var(--lime)] mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-white mb-2">Importación Finalizada</h2>
-            <p className="text-gray-400 text-lg mb-6">
-              Se han procesado {totalFiles} archivos correctamente.
-            </p>
-            <div className="flex justify-center gap-4">
-              <button 
-                onClick={() => setFinished(false)}
-                className="bg-[var(--bg-elevated)] border border-[var(--border)] text-white px-6 py-3 rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors font-medium"
+              <button
+                onClick={handleTriggerScraping}
+                disabled={isScraping || isJobActive}
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-all shadow-lg ${
+                  isScraping || isJobActive
+                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    : 'bg-[var(--lime)] text-black hover:bg-opacity-90'
+                }`}
               >
-                Subir más archivos
+                {isScraping || isJobActive ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    {isJobActive ? 'Ejecutando...' : 'Encolando...'}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw className="w-5 h-5" />
+                    Gatillar Scraping Ahora
+                  </>
+                )}
               </button>
-              <Link href="/switching-warnings">
-                <button className="bg-[var(--lime)] text-black px-6 py-3 rounded-lg hover:bg-opacity-90 transition-colors font-bold shadow-lg">
-                  Revisar Warnings Generados
-                </button>
-              </Link>
+            </div>
+
+            {scrapingJobStatus && (
+              <div className="w-full p-4 rounded-lg mt-6 bg-gray-800/50 border border-gray-700">
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between text-sm text-gray-300">
+                    <span className="font-semibold text-[var(--lime)]">{scrapingJobStatus.status}</span>
+                  </div>
+                  {isJobActive ? (
+                    <div className="w-full bg-gray-900 rounded-full h-2.5 overflow-hidden">
+                      <div className="bg-[var(--lime)] h-2.5 rounded-full transition-all duration-500 w-full animate-pulse"></div>
+                    </div>
+                  ) : null}
+                  {scrapingJobStatus.logs && (
+                    <pre className="mt-2 text-xs text-gray-400 bg-black/50 p-2 rounded-md max-h-40 overflow-y-auto whitespace-pre-wrap">
+                      {scrapingJobStatus.logs}
+                    </pre>
+                  )}
+                  {scrapingJobStatus.status === 'COMPLETED' && (
+                    <div className="mt-2 p-3 bg-green-900/20 border border-green-800 rounded-md">
+                      <p className="text-green-400 font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Scraping finalizado con éxito.</p>
+                    </div>
+                  )}
+                  {scrapingJobStatus.status === 'PARTIAL' && (
+                    <div className="mt-2 p-3 bg-amber-900/20 border border-amber-700 rounded-md">
+                      <p className="text-amber-400 font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Scraping finalizado parcialmente (revisa los avisos o errores por distribuidora en el log).</p>
+                    </div>
+                  )}
+                  {(scrapingJobStatus.status === 'ERROR' || scrapingJobStatus.status === 'FAILED') && (
+                    <div className="mt-2 p-3 bg-red-900/20 border border-red-800 rounded-md">
+                      <p className="text-red-400 font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Ocurrió un error o timeout en el scraping.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DUAL DROPZONES */}
+        {!uploading && !finished && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* CAJÓN SCTD */}
+            <div
+              {...dropzoneSctd.getRootProps()}
+              className={`relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
+                dropzoneSctd.isDragActive
+                  ? 'border-[var(--lime)] bg-[rgba(205,255,100,0.05)] scale-[1.02]'
+                  : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-gray-400'
+              }`}
+            >
+              <input {...dropzoneSctd.getInputProps()} />
+              <UploadCloud className={`w-16 h-16 mx-auto mb-4 ${dropzoneSctd.isDragActive ? 'text-[var(--lime)] animate-bounce' : 'text-gray-500'}`} />
+              <h3 className="text-2xl font-bold text-gray-200 mb-2">
+                Importar XML Switching (SCTD)
+              </h3>
+              <p className="text-gray-500">Procesos C1, C2, M1, A3, R1, J1...</p>
+            </div>
+
+            {/* CAJÓN F1 */}
+            <div
+              {...dropzoneF1.getRootProps()}
+              className={`relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
+                dropzoneF1.isDragActive
+                  ? 'border-[var(--lime)] bg-[rgba(205,255,100,0.05)] scale-[1.02]'
+                  : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-gray-400'
+              }`}
+            >
+              <input {...dropzoneF1.getInputProps()} />
+              <FileText className={`w-16 h-16 mx-auto mb-4 ${dropzoneF1.isDragActive ? 'text-[var(--lime)] animate-bounce' : 'text-blue-500'}`} />
+              <h3 className="text-2xl font-bold text-gray-200 mb-2">
+                Importar XML Facturación (F1)
+              </h3>
+              <p className="text-gray-500">Facturas de Peajes ATR</p>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* LOG HISTORY */}
-      {(uploading || finished) && results.length > 0 && (
-        <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl p-6 max-h-96 overflow-y-auto custom-scrollbar">
-          <h3 className="text-lg font-bold text-gray-200 mb-4 sticky top-0 bg-[var(--bg-elevated)] py-2 border-b border-[var(--border)]">Registro de Operaciones</h3>
-          <ul className="space-y-3 text-sm">
-            {results.map((r, i) => (
-              <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
-                {r.success ? (
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                ) : (
-                  <X className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                )}
-                <div className="overflow-hidden w-full flex justify-between items-center pr-2">
-                  <div>
-                    <p className="font-mono text-gray-300 truncate" title={r.file}>
-                      <span className="text-[var(--lime)] font-bold mr-2">[{r.type}]</span>
-                      {r.file}
-                    </p>
-                    <p className={`text-xs mt-1 ${r.success ? 'text-gray-500' : 'text-red-400 font-semibold'}`}>
-                      {r.message}
-                    </p>
+        {/* PROGRESS UI */}
+        {uploading && (
+          <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl p-8 space-y-6 shadow-xl">
+            <div className="text-center space-y-2">
+              <RefreshCcw className="w-12 h-12 text-[var(--lime)] mx-auto animate-spin" />
+              <h2 className="text-2xl font-bold text-gray-100">Procesando Archivos...</h2>
+              <p className="text-gray-400">Por favor, no cierres esta pestaña. {processedFiles} de {totalFiles} completados.</p>
+            </div>
+
+            <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden">
+              <div
+                className="bg-[var(--lime)] h-4 transition-all duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-400 font-mono truncate max-w-md">Actual: {currentFile}</span>
+              <span className="text-[var(--lime)] font-bold">{progress}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* RESULT UI */}
+        {finished && (
+          <div className="space-y-6">
+            <div className="bg-[rgba(205,255,100,0.05)] border border-[var(--lime)] rounded-xl p-8 text-center shadow-xl">
+              <CheckCircle className="w-16 h-16 text-[var(--lime)] mx-auto mb-4" />
+              <h2 className="text-3xl font-bold text-white mb-2">Importación Finalizada</h2>
+              <p className="text-gray-400 text-lg mb-6">
+                Se han procesado {totalFiles} archivos correctamente.
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => setFinished(false)}
+                  className="bg-[var(--bg-elevated)] border border-[var(--border)] text-white px-6 py-3 rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors font-medium"
+                >
+                  Subir más archivos
+                </button>
+                <Link href="/switching-warnings">
+                  <button className="bg-[var(--lime)] text-black px-6 py-3 rounded-lg hover:bg-opacity-90 transition-colors font-bold shadow-lg">
+                    Revisar Warnings Generados
+                  </button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LOG HISTORY */}
+        {(uploading || finished) && results.length > 0 && (
+          <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl p-6 max-h-96 overflow-y-auto custom-scrollbar">
+            <h3 className="text-lg font-bold text-gray-200 mb-4 sticky top-0 bg-[var(--bg-elevated)] py-2 border-b border-[var(--border)]">Registro de Operaciones</h3>
+            <ul className="space-y-3 text-sm">
+              {results.map((r, i) => (
+                <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
+                  {r.success ? (
+                    <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <X className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="overflow-hidden w-full flex justify-between items-center pr-2">
+                    <div>
+                      <p className="font-mono text-gray-300 truncate" title={r.file}>
+                        <span className="text-[var(--lime)] font-bold mr-2">[{r.type}]</span>
+                        {r.file}
+                      </p>
+                      <p className={`text-xs mt-1 ${r.success ? 'text-gray-500' : 'text-red-400 font-semibold'}`}>
+                        {r.message}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { getUserVisibilityFilter } from '@/lib/permissions';
+import { calculateAndSnapshotContractCommission } from '@/lib/services/CommissionEngine';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key');
@@ -337,6 +338,14 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         p6p: product.p6p,
         
         fee: product.fee,
+        marginFC: product.marginFC ?? product.fee ?? null,
+        ip1: product.ip1 ?? null,
+        ip2: product.ip2 ?? null,
+        ip3: product.ip3 ?? null,
+        ip4: product.ip4 ?? null,
+        ip5: product.ip5 ?? null,
+        ip6: product.ip6 ?? null,
+        productTypeSnapshot: product.type || null,
         svaConcept: svaConcept,
         svaPrice: svaPrice,
         svaDuration: svaDurationToSave,
@@ -349,7 +358,7 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         powerTiersCommission: product.powerTiersCommission ? product.powerTiersCommission : undefined,
         permanenceMonths: product.permanenceMonths,
         
-        annualConsumption: oldContract.annualConsumption,
+        annualConsumption: oldContract.annualConsumption ?? oldContract.supplyPoint?.annualConsumption ?? null,
         autoconsumo: oldContract.autoconsumo,
         bolsilloSolar: oldContract.bolsilloSolar,
         isMultipoint: oldContract.isMultipoint,
@@ -361,6 +370,10 @@ export async function renewContractAction(oldContractId: string, newProductId: s
         }
       }
     });
+
+    await calculateAndSnapshotContractCommission(newContract.id).catch((err) =>
+      console.warn('Auto-cálculo de comisión omitido en renewContractAction:', err)
+    );
 
     if (renewalType === 'TACITA') {
       return { success: true, contractId: newContract.id };

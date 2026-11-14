@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
+import { resolveActiveCompanyId } from '@/lib/companyContext';
 import * as fs from 'fs';
 import { parse } from 'csv-parse/sync';
 
 export async function GET() {
   try {
+    const session = await auth();
+    if (!session?.user || (session.user as any).role !== 'SUPERADMIN') {
+      return NextResponse.json({ success: false, error: 'Solo SUPERADMIN' }, { status: 403 });
+    }
+    const companyId = await resolveActiveCompanyId(session);
     const results: any = {};
     
     // 1. IMPORT BD_REE.csv
@@ -130,7 +137,9 @@ export async function GET() {
       const content = fs.readFileSync(curvaPath, 'utf-8');
       const records = parse(content, { columns: true, skip_empty_lines: true, delimiter: ';' });
 
-      await prisma.portfolioBaseCurve.deleteMany({});
+      await prisma.portfolioBaseCurve.deleteMany({
+        where: companyId ? { companyId } : {},
+      });
       
       const portfolioRecords: any[] = [];
       for (const r of records as any[]) {
@@ -139,6 +148,7 @@ export async function GET() {
         if (isNaN(dt.getTime())) continue;
 
         portfolioRecords.push({
+          companyId: companyId || null,
           datetime: dt,
           basePriceEurMwh: parseFloat(r.Precio_Base_Portfolio?.replace(',', '.') || '0'),
           omiePriceEurMwh: parseFloat(r.precio_omie?.replace(',', '.') || '0'),

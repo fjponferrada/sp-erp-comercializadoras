@@ -1,38 +1,117 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { XMLBuilder } from 'fast-xml-parser';
+import { auth } from '@/auth';
+import { resolveActiveCompanyId } from '@/lib/companyContext';
+
+function extractMotivoRechazoCode(pasoRechazado: any): string {
+  const pickCode = (raw: any): string | null => {
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      const cleaned = raw.trim().toUpperCase();
+      return /^[A-Z0-9]{1,2}$/.test(cleaned) ? cleaned.padStart(2, '0') : null;
+    }
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        const found = pickCode(item);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (typeof raw === 'object') {
+      const direct =
+        raw.codigo ||
+        raw.CodigoMotivo ||
+        raw.CodigoMotivoRechazo ||
+        raw.Motivo ||
+        raw.MotivoRechazo ||
+        raw.Rechazo;
+      return pickCode(direct);
+    }
+    return null;
+  };
+
+  if (pasoRechazado?.motivosRechazo) {
+    try {
+      const parsed =
+        typeof pasoRechazado.motivosRechazo === 'string'
+          ? JSON.parse(pasoRechazado.motivosRechazo)
+          : pasoRechazado.motivosRechazo;
+      const code = pickCode(parsed);
+      if (code) return code;
+    } catch {
+      // Ignore parse error and fallback below
+    }
+  }
+
+  if (pasoRechazado?.observaciones && typeof pasoRechazado.observaciones === 'string') {
+    // Check formatted "[29 - ...]" pattern first
+    const bracketMatch = pasoRechazado.observaciones.match(/\[([A-Z0-9]{1,2})\s*-/i);
+    if (bracketMatch?.[1]) {
+      return bracketMatch[1].toUpperCase().padStart(2, '0');
+    }
+    try {
+      const obsObj = JSON.parse(pasoRechazado.observaciones);
+      const code = pickCode(obsObj?.Motivo || obsObj?.MotivosRechazo?.Motivo || obsObj);
+      if (code) return code;
+    } catch {
+      // Non-JSON text
+    }
+  }
+
+  return '99';
+}
 
 export async function GET(request: Request) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+    const userRole = (session.user as any).role || 'CANAL';
+    if (['COMERCIAL', 'CANAL'].includes(userRole)) {
+      return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const mes = searchParams.get('mes'); // e.g. "2026-04"
+    const rawVersion = (searchParams.get('version') || '01').trim();
+    const version = /^\d{1,2}$/.test(rawVersion) ? rawVersion.padStart(2, '0') : '01';
 
-    if (!mes) {
-      return NextResponse.json({ error: 'Falta el parámetro mes' }, { status: 400 });
+    if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
+      return NextResponse.json({ error: 'Falta o es inválido el parámetro mes (YYYY-MM)' }, { status: 400 });
     }
 
     const [yearStr, monthStr] = mes.split('-');
-    const year = parseInt(yearStr);
-    const month = parseInt(monthStr);
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
 
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 1);
 
-    // Get Brand/Company details (Assuming the user operates from their primary brand)
-    const brand = await prisma.brand.findFirst({
-      include: { company: true }
-    });
+    const activeCompanyId = await resolveActiveCompanyId(session);
+    const company = activeCompanyId
+      ? await prisma.company.findUnique({ where: { id: activeCompanyId } })
+      : await prisma.company.findFirst();
 
-    if (!brand || !brand.company) {
+    if (!company) {
       return NextResponse.json({ error: 'No se encontró información de la empresa comercializadora' }, { status: 500 });
     }
 
-    const codigoAgente = brand.company.ordenCnmc || 'R2-950'; // Defaulting to AED's if missing
+    const codigoAgente = company.ordenCnmc || 'R2-950';
 
-    // Fetch all Distributors for fallback mapping
+    // Fetch all Distributors for R1-xxx mapping
     const distributorsList = await prisma.distributor.findMany();
 
-    // Fetch Switching Events for the month
+    const companyScopeOr: any[] = [
+      { contract: { brand: { companyId: company.id } } },
+      { supplyPoint: { client: { brand: { companyId: company.id } } } },
+    ];
+    if (company.codigoRee) {
+      companyScopeOr.push({ uniqueProcess: { startsWith: `${company.codigoRee}_` } });
+    }
+
+    // Fetch Switching Events for the month scoped to active company
     const events = await prisma.switchingEvent.findMany({
       where: {
         fechaSolicitud: {
@@ -40,8 +119,9 @@ export async function GET(request: Request) {
           lt: endDate,
         },
         procesoBase: {
-          in: ['C1', 'C2', 'A3', 'T1', 'E1', 'E2'] 
-        }
+          in: ['C1', 'C2', 'A3', 'T1', 'E1', 'E2'],
+        },
+        OR: companyScopeOr,
       },
       include: {
         supplyPoint: {
@@ -50,9 +130,9 @@ export async function GET(request: Request) {
             distributorReeCode: true,
             distributor: true,
             tariff: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     // Grouping structure for the output XML
@@ -60,25 +140,38 @@ export async function GET(request: Request) {
     const groupedData: Record<string, any> = {};
 
     const mapDistribuidor = (sp: any) => {
-      if (sp?.distributorReeCode) return sp.distributorReeCode;
-      
-      const d = sp?.distributor?.toUpperCase() || '';
-      
-      // Intentar buscar en la tabla de distribuidores por nombre aproximado
-      const matchedDistributor = distributorsList.find(dist => d.includes(dist.name.toUpperCase()) || dist.name.toUpperCase().includes(d));
-      if (matchedDistributor && matchedDistributor.registroCnmc) {
-        return matchedDistributor.registroCnmc;
-      } else if (matchedDistributor && matchedDistributor.reeCode) {
-        return matchedDistributor.reeCode;
+      const ree = sp?.distributorReeCode?.trim();
+      if (ree) {
+        const byRee = distributorsList.find(dist => dist.reeCode === ree);
+        if (byRee?.registroCnmc) return byRee.registroCnmc;
+        if (ree === '0021') return 'R1-001';
+        if (ree === '0031' || ree === '0288' || ree === '0029') return 'R1-002';
+        if (ree === '0022' || ree === '0390') return 'R1-299';
+        if (ree === '0026') return 'R1-053';
+        if (ree === '0027') return 'R1-008';
       }
 
-      // Hardcoded fallback if DB match fails
-      if (d.includes('IBERDROLA')) return 'R1-001';
-      if (d.includes('EDISTRIBUCION') || d.includes('ENDESA')) return 'R1-002';
-      if (d.includes('UFD') || d.includes('UNION FENOSA')) return 'R1-299';
-      if (d.includes('E-REDES') || d.includes('CANTABRICO')) return 'R1-053';
-      if (d.includes('VIESGO')) return 'R1-008';
-      return 'R1-299'; // Default to UFD if unknown
+      const d = sp?.distributor?.toUpperCase() || '';
+      if (d) {
+        const matchedDistributor = distributorsList.find(
+          dist => d.includes(dist.name.toUpperCase()) || dist.name.toUpperCase().includes(d)
+        );
+        if (matchedDistributor?.registroCnmc) {
+          return matchedDistributor.registroCnmc;
+        }
+        if (matchedDistributor?.reeCode) {
+          return matchedDistributor.reeCode;
+        }
+
+        if (d.includes('IBERDROLA') || d.includes('I-DE')) return 'R1-001';
+        if (d.includes('EDISTRIBUCION') || d.includes('ENDESA')) return 'R1-002';
+        if (d.includes('UFD') || d.includes('UNION FENOSA')) return 'R1-299';
+        if (d.includes('E-REDES') || d.includes('CANTABRICO')) return 'R1-053';
+        if (d.includes('VIESGO')) return 'R1-008';
+      }
+
+      if (ree) return ree;
+      return 'R1-299';
     };
 
     const mapTariff = (tariff: string) => {
@@ -93,19 +186,14 @@ export async function GET(request: Request) {
     };
 
     const mapProceso = (procesoBase: string) => {
-      // C1/C2/E2 (Switching/Reposición) -> C3
       if (procesoBase === 'C1' || procesoBase === 'C2' || procesoBase === 'E2') return 'C3';
-      // A3 (Altas) -> C4
       if (procesoBase === 'A3') return 'C4';
-      // T1 (Traspasos) -> C5
       if (procesoBase === 'T1') return 'C5';
-      // E1 (Desistimientos) -> C6
       if (procesoBase === 'E1') return 'C6';
-      
-      return 'C3'; // fallback
+      return 'C3';
     };
 
-    // First group events by `codigoSolicitud` since one request can have multiple steps (pasos)
+    // Group events by `codigoSolicitud` since one request can have multiple steps (pasos)
     const solicitudes: Record<string, any[]> = {};
     for (const ev of events) {
       if (ev.codigoSolicitud) {
@@ -115,19 +203,16 @@ export async function GET(request: Request) {
     }
 
     // Process each 'solicitud' as a single entity
-    for (const [codSol, pasos] of Object.entries(solicitudes)) {
-      // Find the initial step to determine metadata
-      // Si no hay paso 01, significa que el trámite no lo iniciamos nosotros 
-      // (ej. es una notificación de baja C1_05). No debemos reportarlo.
+    for (const [, pasos] of Object.entries(solicitudes)) {
+      // Si no hay paso 01, significa que el trámite no lo iniciamos nosotros
       const pasoInicial = pasos.find(p => p.paso === '01');
       if (!pasoInicial) continue;
 
       const sp = pasoInicial.supplyPoint;
-      
       const provincia = sp?.postalCode ? sp.postalCode.substring(0, 2) + '000' : '28000';
       const distribuidor = mapDistribuidor(sp);
       const comerEntrante = codigoAgente;
-      const comerSaliente = pasoInicial.procesoBase === 'A3' ? '0' : '0'; // A3 is definitely 0, for C3 it could be populated if known, but 0 is safe
+      const comerSaliente = '0';
       const tipoCambio = mapProceso(pasoInicial.procesoBase);
       const tipoPunto = '5';
       const tarifaAtr = mapTariff(sp?.tariff);
@@ -150,91 +235,70 @@ export async function GET(request: Request) {
           NumImpagados: 0,
           aceptadas: { sum: 0, count: 0 },
           rechazadas: {},
-          activadas: { sum: 0, count: 0 }
+          activadas: { sum: 0, count: 0, incidencias: 0 },
         };
       }
 
       const g = groupedData[key];
-      
+
       if (pasoInicial.procesoBase === 'E2') {
         g.Reposiciones++;
       } else {
         g.TotalSolicitudesEnviadas++;
       }
 
-      // Evaluate states based on steps (only for non-E2 processes, or E2 if you track them)
       if (pasoInicial.procesoBase !== 'E2') {
         const isAnulada = pasos.some(p => p.isAnnulled);
-      if (isAnulada) {
-        g.SolicitudesAnuladas++;
-      }
-
-      const pasoAceptado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR?.includes('ACEPTAD') || ((p.paso === '02' || p.paso === '04') && !p.tipoError));
-      if (pasoAceptado && pasoAceptado.fechaAR && pasoInicial.fechaSolicitud) {
-        const diffDays = Math.max(0, (pasoAceptado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24));
-        g.aceptadas.sum += diffDays;
-        g.aceptadas.count++;
-      }
-
-      const pasoRechazado = pasos.find(p => (p.paso === '02' || p.paso === '04') && p.estadoAR?.includes('RECHAZAD'));
-      if (pasoRechazado && pasoInicial.fechaSolicitud) {
-        const diffDays = pasoRechazado.fechaAR ? Math.max(0, (pasoRechazado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)) : 0;
-        
-        let motivo = '99'; // default reason code
-        
-        if (pasoRechazado.motivosRechazo) {
-          try {
-            const mObj: any = pasoRechazado.motivosRechazo;
-            
-            if (Array.isArray(mObj) && typeof mObj[0] === 'string') {
-              // parser.ts ya lo mapeó a array de strings (ej. paso 04)
-              motivo = mObj[0];
-            } else {
-              // Objeto XML crudo (ej. paso 02)
-              const m = mObj?.Motivo || mObj?.MotivoRechazo || mObj;
-              if (m) {
-                if (Array.isArray(m) && m.length > 0) {
-                  motivo = m[0].CodigoMotivo || m[0].CodigoMotivoRechazo || m[0];
-                } else {
-                  motivo = m.CodigoMotivo || m.CodigoMotivoRechazo || m;
-                }
-              }
-            }
-          } catch(e) {}
-        } else if (pasoRechazado.observaciones) {
-          try {
-            const obsObj = JSON.parse(pasoRechazado.observaciones);
-            const m = obsObj?.Motivo || obsObj?.MotivosRechazo?.Motivo || obsObj;
-            if (m) {
-              if (Array.isArray(m) && m.length > 0 && m[0].CodigoMotivo) {
-                motivo = m[0].CodigoMotivo;
-              } else if (m.CodigoMotivo) {
-                motivo = m.CodigoMotivo;
-              }
-            }
-          } catch(e) {} // Si no es JSON, ignora
+        if (isAnulada) {
+          g.SolicitudesAnuladas++;
         }
-        
-        // Si no se encontró un código oficial en el XML de la distribuidora,
-        // lo dejamos como '99' (Otros motivos) que es el estándar de las Tablas Maestras.
-        // No debemos inyectar códigos internos como 'CO' o 'ES'.
 
-        // Must be short CNMC code, e.g. "01", "B7"
-        motivo = String(motivo).substring(0, 2);
+        // Only Paso 02 is an acceptance in C1/C2/A3/T1/E1 (Paso 04 in C1/C2/A3/M1 is always MensajeRechazo)
+        const pasoAceptado = pasos.find(
+          p =>
+            p.paso === '02' &&
+            (p.estadoAR?.includes('ACEPTAD') || (!p.estadoAR?.includes('RECHAZ') && !p.tipoError))
+        );
+        if (pasoAceptado && pasoAceptado.fechaAR && pasoInicial.fechaSolicitud) {
+          const diffDays = Math.max(
+            0,
+            (pasoAceptado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)
+          );
+          g.aceptadas.sum += diffDays;
+          g.aceptadas.count++;
+        }
 
-        if (!g.rechazadas[motivo]) g.rechazadas[motivo] = { sum: 0, count: 0 };
-        g.rechazadas[motivo].sum += diffDays;
-        g.rechazadas[motivo].count++;
+        const pasoRechazado = pasos.find(
+          p => (p.paso === '02' && p.estadoAR?.includes('RECHAZ')) || p.paso === '04'
+        );
+        if (pasoRechazado && pasoInicial.fechaSolicitud) {
+          const diffDays = pasoRechazado.fechaAR
+            ? Math.max(
+                0,
+                (pasoRechazado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)
+              )
+            : 0;
+
+          const motivo = extractMotivoRechazoCode(pasoRechazado);
+          if (!g.rechazadas[motivo]) g.rechazadas[motivo] = { sum: 0, count: 0 };
+          g.rechazadas[motivo].sum += diffDays;
+          g.rechazadas[motivo].count++;
+        }
+
+        const pasoActivado = pasos.find(p => p.paso === '05' || p.fechaActivacionAlta);
+        if (pasoActivado && (pasoActivado.fechaActivacionAlta || pasoActivado.fechaAviso) && pasoInicial.fechaSolicitud) {
+          const fechaAct = pasoActivado.fechaActivacionAlta || pasoActivado.fechaAviso;
+          const diffDays = Math.max(
+            0,
+            (fechaAct.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)
+          );
+          g.activadas.sum += diffDays;
+          g.activadas.count++;
+          if (pasos.some(p => p.paso === '03')) {
+            g.activadas.incidencias++;
+          }
+        }
       }
-
-      const pasoActivado = pasos.find(p => p.paso === '05' || p.fechaActivacionAlta);
-      if (pasoActivado && (pasoActivado.fechaActivacionAlta || pasoActivado.fechaAviso) && pasoInicial.fechaSolicitud) {
-        const fechaAct = pasoActivado.fechaActivacionAlta || pasoActivado.fechaAviso;
-        const diffDays = Math.max(0, (fechaAct.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24));
-        g.activadas.sum += diffDays;
-        g.activadas.count++;
-      }
-      } // End of if (pasoInicial.procesoBase !== 'E2')
     }
 
     // Prepare XML Object
@@ -258,7 +322,7 @@ export async function GET(request: Request) {
         node.DetalleAceptadas = {
           TipoRetraso: '00',
           TMSolicitudesAceptadas: (g.aceptadas.sum / g.aceptadas.count).toFixed(1),
-          NumSolicitudesAceptadas: g.aceptadas.count
+          NumSolicitudesAceptadas: g.aceptadas.count,
         };
       }
 
@@ -267,14 +331,12 @@ export async function GET(request: Request) {
         rechazosList.push({
           TipoRetraso: '00',
           TMSolicitudesRechazadas: (data.sum / data.count).toFixed(1),
-          MotivoRechazo: motivo.substring(0, 2), // Must be short CNMC code, e.g. "01", "B7"
-          NumSolicitudesRechazadas: data.count
+          MotivoRechazo: motivo.substring(0, 2),
+          NumSolicitudesRechazadas: data.count,
         });
       }
-      
-      // fast-xml-parser can render arrays if we just give it an array of objects
+
       if (rechazosList.length > 0) {
-        // According to standard, it's multiple <DetalleRechazadas> nodes
         node.DetalleRechazadas = rechazosList;
       }
 
@@ -282,23 +344,18 @@ export async function GET(request: Request) {
         node.DetalleActivadas = {
           TipoRetraso: '00',
           TMActivacion: (g.activadas.sum / g.activadas.count).toFixed(1),
-          NumIncidencias: 0,
-          NumSolicitudesActivadas: g.activadas.count
+          NumIncidencias: g.activadas.incidencias,
+          NumSolicitudesActivadas: g.activadas.count,
         };
       }
 
       return node;
     });
 
-    // Handle empty data
-    if (datosSolicitudes.length === 0) {
-       // Return a dummy/empty structure if no data? No, let's just make it empty but valid
-    }
-
     const xmlObj = {
       '?xml': {
         '@_version': '1.0',
-        '@_encoding': 'UTF-8'
+        '@_encoding': 'UTF-8',
       },
       MensajeSolicitudesRealizadas: {
         '@_xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
@@ -307,36 +364,33 @@ export async function GET(request: Request) {
           CodigoAgente: codigoAgente,
           TipoMercado: 'E',
           TipoAgente: 'C',
-          Periodo: `${yearStr}${monthStr}`
+          Periodo: `${yearStr}${monthStr}`,
         },
         SolicitudesRealizadas: {
-          DatosSolicitudes: datosSolicitudes
-        }
-      }
+          DatosSolicitudes: datosSolicitudes,
+        },
+      },
     };
 
     const builder = new XMLBuilder({
       ignoreAttributes: false,
-      format: true
+      format: true,
     });
-    
+
     let xmlData = builder.build(xmlObj);
-    
-    // Some minor string manipulation because XMLBuilder can't format the first line if it's treated as a normal node easily sometimes
     if (!xmlData.includes('<?xml')) {
-       xmlData = `<?xml version="1.0" encoding="UTF-8"?>\n` + xmlData;
+      xmlData = `<?xml version="1.0" encoding="UTF-8"?>\n` + xmlData;
     }
 
-    const filename = `SI_${codigoAgente}_E_${yearStr}${monthStr}_01.xml`;
+    const filename = `SI_${codigoAgente}_E_${yearStr}${monthStr}_${version}.xml`;
 
     return new NextResponse(xmlData, {
       status: 200,
       headers: {
         'Content-Type': 'application/xml',
-        'Content-Disposition': `attachment; filename="${filename}"`
-      }
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
     });
-
   } catch (error: any) {
     console.error('Error generating SI CODAGE XML:', error);
     return NextResponse.json({ error: 'Error interno del servidor al generar el XML' }, { status: 500 });

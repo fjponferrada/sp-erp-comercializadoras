@@ -4,99 +4,98 @@ import { prisma } from '@/lib/prisma';
 import { getInvoiceVisibilityFilter } from '@/lib/permissions';
 
 export async function getPaginatedConfirmedInternalInvoicesAction(
-  page: number, 
-  itemsPerPage: number, 
-  searchTerm: string, 
+  page: number,
+  itemsPerPage: number,
+  searchTerm: string,
   filterType: string,
   dateFrom?: string,
   dateTo?: string
 ) {
   try {
-    const visibilityFilter = await getInvoiceVisibilityFilter();
-    
-    // Convert visibility filter from 'Invoice' style to 'InternalInvoice'
-    // where client is related through contract.client
-    const internalVisibilityFilter = visibilityFilter.client?.brandId 
-      ? { contract: { client: { brandId: visibilityFilter.client.brandId } } } 
-      : {};
+    const visibilityFilter = (await getInvoiceVisibilityFilter()) as Record<string, any>;
 
-    const whereClause: any = { 
-      status: 'EMITIDA',
-      ...internalVisibilityFilter 
-    };
+    const andConditions: any[] = [
+      visibilityFilter,
+      { status: { in: ['EMITIDA', 'ABONO'] } },
+    ];
 
     if (filterType) {
-      whereClause.invoiceType = filterType;
+      andConditions.push({ invoiceType: filterType });
     }
 
     if (dateFrom || dateTo) {
-      whereClause.issueDate = {};
+      const issueDateFilter: Record<string, Date> = {};
       if (dateFrom) {
-        whereClause.issueDate.gte = new Date(dateFrom);
+        issueDateFilter.gte = new Date(dateFrom);
       }
       if (dateTo) {
         const endOfDay = new Date(dateTo);
         endOfDay.setHours(23, 59, 59, 999);
-        whereClause.issueDate.lte = endOfDay;
+        issueDateFilter.lte = endOfDay;
       }
+      andConditions.push({ issueDate: issueDateFilter });
     }
 
     if (searchTerm) {
-      whereClause.OR = [
-        { id: { contains: searchTerm, mode: 'insensitive' } },
-        { contract: { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } } },
-        { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } },
-      ];
+      andConditions.push({
+        OR: [
+          { invoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
+          { id: { contains: searchTerm, mode: 'insensitive' } },
+          { client: { businessName: { contains: searchTerm, mode: 'insensitive' } } },
+          { client: { firstName: { contains: searchTerm, mode: 'insensitive' } } },
+          { client: { lastName: { contains: searchTerm, mode: 'insensitive' } } },
+          { client: { vatNumber: { contains: searchTerm, mode: 'insensitive' } } },
+          { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
+          { contract: { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } } },
+        ],
+      });
     }
 
+    const whereClause = { AND: andConditions };
     const skip = (page - 1) * itemsPerPage;
-    
+
     const [invoicesRaw, totalCount] = await Promise.all([
       prisma.internalInvoice.findMany({
         where: whereClause,
-        include: { 
+        include: {
+          client: true,
+          supplyPoint: true,
           contract: {
             include: {
               client: true,
-              supplyPoint: true
-            }
-          }
+              supplyPoint: true,
+            },
+          },
         },
-        orderBy: [
-          { issueDate: 'desc' },
-          { id: 'desc' }
-        ],
+        orderBy: [{ issueDate: 'desc' }, { id: 'desc' }],
         skip,
         take: itemsPerPage,
       }),
-      prisma.internalInvoice.count({ where: whereClause })
+      prisma.internalInvoice.count({ where: whereClause }),
     ]);
 
-    // Map to a format similar to what FacturasClient expects
-    const invoices = invoicesRaw.map(inv => ({
+    const invoices = invoicesRaw.map((inv) => ({
       id: inv.id,
-      invoiceNumber: inv.id.slice(-8).toUpperCase(), // InternalInvoice does not have a formal invoiceNumber field in schema, using ID snippet
+      invoiceNumber: inv.invoiceNumber || inv.id.slice(-8).toUpperCase(),
       invoiceType: inv.invoiceType || 'Normal',
       issueDate: inv.issueDate,
       totalAmount: inv.totalAmount || 0,
-      pdfUrl: (inv.invoiceData as any)?.pdfUrl || null,
-      clientId: inv.contract?.clientId,
-      client: inv.contract?.client,
-      supplyPointId: inv.contract?.supplyPointId,
-      supplyPoint: inv.contract?.supplyPoint,
+      pdfUrl: inv.pdfUrl || (inv.invoiceData as any)?.pdfUrl || null,
+      xmlUrl: inv.xmlUrl || null,
+      clientId: inv.clientId || inv.contract?.clientId || '',
+      client: inv.client || inv.contract?.client || null,
+      supplyPointId: inv.supplyPointId || inv.contract?.supplyPointId || null,
+      supplyPoint: inv.supplyPoint || inv.contract?.supplyPoint || null,
       billingStart: inv.billingStart,
       billingEnd: inv.billingEnd,
       origin: inv.origin,
       totalMWh: inv.totalMWh || 0,
-      communicatedAt: null // Not applicable for internal invoices yet
+      communicatedAt: inv.communicatedAt || null,
     }));
 
     return { success: true, invoices, totalCount };
   } catch (error: any) {
-    console.error("Error fetching paginated internal invoices:", error);
+    console.error('Error fetching paginated internal invoices:', error);
     return { success: false, error: error.message };
   }
 }

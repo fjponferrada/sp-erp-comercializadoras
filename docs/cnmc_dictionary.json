@@ -4641,6 +4641,11 @@
   ],
   "Tabla_113_113 Tipo de Autoconsumo": [
     {
+      "CÓDIGO": "00",
+      "DESCRIPCIÓN": "Sin autoconsumo",
+      "COMENTARIOS": "CNMC V3.0"
+    },
+    {
       "CÓDIGO": "01",
       "DESCRIPCIÓN": "Sin excedentes",
       "COMENTARIOS": ""
@@ -4654,6 +4659,51 @@
       "CÓDIGO": "03",
       "DESCRIPCIÓN": "Con excedentes acogida a compensación simplificada",
       "COMENTARIOS": ""
+    },
+    {
+      "CÓDIGO": "11",
+      "DESCRIPCIÓN": "Sin excedentes",
+      "COMENTARIOS": "CNMC V3.0"
+    },
+    {
+      "CÓDIGO": "12",
+      "DESCRIPCIÓN": "Con excedentes",
+      "COMENTARIOS": "CNMC V3.0"
+    },
+    {
+      "CÓDIGO": "0C",
+      "DESCRIPCIÓN": "Baja como miembro de autoconsumo colectivo",
+      "COMENTARIOS": "CNMC V3.0"
+    },
+    {
+      "CÓDIGO": "31",
+      "DESCRIPCIÓN": "Sin excedentes (Individual)",
+      "COMENTARIOS": "RD 244/2019 histórico"
+    },
+    {
+      "CÓDIGO": "32",
+      "DESCRIPCIÓN": "Sin excedentes (Colectivo)",
+      "COMENTARIOS": "RD 244/2019 histórico"
+    },
+    {
+      "CÓDIGO": "41",
+      "DESCRIPCIÓN": "Con excedentes acogida a compensación (Individual)",
+      "COMENTARIOS": "RD 244/2019 histórico"
+    },
+    {
+      "CÓDIGO": "42",
+      "DESCRIPCIÓN": "Con excedentes acogida a compensación (Colectivo sin red interior)",
+      "COMENTARIOS": "RD 244/2019 histórico"
+    },
+    {
+      "CÓDIGO": "43",
+      "DESCRIPCIÓN": "Con excedentes acogida a compensación (Colectivo a través de red)",
+      "COMENTARIOS": "RD 244/2019 histórico"
+    },
+    {
+      "CÓDIGO": "51",
+      "DESCRIPCIÓN": "Con excedentes no acogida a compensación (Individual)",
+      "COMENTARIOS": "RD 244/2019 histórico"
     }
   ],
   "Tabla_115_115 Tipo de Persona": [
@@ -4705,6 +4755,162 @@
       "CÓDIGO": "11",
       "DESCRIPCIÓN": "Aceptación a Comercializador Saliente",
       "COMENTARIOS": "Aviso inicial al antiguo comercializador de que hay un cambio en curso"
+    }
+  ],
+  "Tabla_44_44 Procedencia": [
+    {
+      "CÓDIGO": "10",
+      "DESCRIPCIÓN": "Telemedida",
+      "COMENTARIOS": "CNMC V3.0 TiposSencillos.xsd",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "20",
+      "DESCRIPCIÓN": "TPL",
+      "COMENTARIOS": "Terminal Portátil de Lectura",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "30",
+      "DESCRIPCIÓN": "Visual",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "40",
+      "DESCRIPCIÓN": "Estimada",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "50",
+      "DESCRIPCIÓN": "Autolectura",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "60",
+      "DESCRIPCIÓN": "Telegestión",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "70",
+      "DESCRIPCIÓN": "Calculada",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "99",
+      "DESCRIPCIÓN": "Sin lectura",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    }
+  ],
+  "Tabla_101_101 Motivo de Facturación": [
+    {
+      "CÓDIGO": "01",
+      "DESCRIPCIÓN": "De ciclo",
+      "COMENTARIOS": "Facturación periódica ordinaria",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "02",
+      "DESCRIPCIÓN": "Modificación de Contrato",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "03",
+      "DESCRIPCIÓN": "Baja de Contrato",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "04",
+      "DESCRIPCIÓN": "Derechos de Contratación",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "05",
+      "DESCRIPCIÓN": "Depósito de garantía",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "06",
+      "DESCRIPCIÓN": "Inspección - Anomalía",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "07",
+      "DESCRIPCIÓN": "Atenciones (verificaciones)",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "08",
+      "DESCRIPCIÓN": "Indemnización",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "09",
+      "DESCRIPCIÓN": "Intereses de demora",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "10",
+      "DESCRIPCIÓN": "Servicios",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "11",
+      "DESCRIPCIÓN": "Inspección - Fraude",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "12",
+      "DESCRIPCIÓN": "Derechos de contratación por reposición",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    }
+  ],
+  "Tabla_102_102 Tipo de Factura": [
+    {
+      "CÓDIGO": "A",
+      "DESCRIPCIÓN": "Anuladora",
+      "COMENTARIOS": "Equivalente a Abono en comercialización",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "N",
+      "DESCRIPCIÓN": "Normal",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "R",
+      "DESCRIPCIÓN": "Rectificadora",
+      "COMENTARIOS": "Equivalente a Rectificativa",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "C",
+      "DESCRIPCIÓN": "Complementaria",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
+    },
+    {
+      "CÓDIGO": "G",
+      "DESCRIPCIÓN": "Regularizadora",
+      "COMENTARIOS": "",
+      "FECHA BAJA": ""
     }
   ]
 }

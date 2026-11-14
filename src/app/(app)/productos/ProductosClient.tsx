@@ -1,12 +1,17 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Package, Plus, Search, Filter, Info } from 'lucide-react';
+import { Package, Plus, Search, Info } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import PaginationFooter from '@/components/PaginationFooter';
 import ProductModal from './ProductModal';
 import Topbar from '@/components/Topbar';
 
 export default function ProductosClient({ initialProducts }: { initialProducts: any[] }) {
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || 'COMERCIAL';
+  const canEdit = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterTariff, setFilterTariff] = useState('');
@@ -21,6 +26,7 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
   };
 
   const handleNew = () => {
+    if (!canEdit) return;
     setEditingProduct(null);
     setIsModalOpen(true);
   };
@@ -44,16 +50,18 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
 
       <div style={{ padding: '24px 32px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '120px' }}>
       
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button 
-            onClick={handleNew}
-            className="btn-primary"
-            style={{ padding: '8px 16px', fontSize: '0.875rem', gap: '8px' }}
-          >
-            <Plus size={18} />
-            Nuevo Producto
-          </button>
-        </div>
+        {canEdit && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button 
+              onClick={handleNew}
+              className="btn-primary"
+              style={{ padding: '8px 16px', fontSize: '0.875rem', gap: '8px' }}
+            >
+              <Plus size={18} />
+              Nuevo Producto
+            </button>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="card animate-fade-in-up" style={{ padding: '16px 20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -170,9 +178,11 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
           <div className="card animate-fade-in-up" style={{ padding: '48px', textAlign: 'center' }}>
             <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-400">No hay productos en el catálogo.</p>
-            <button className="mt-4 font-medium text-sm" style={{ color: 'var(--lime)' }} onClick={handleNew}>
-              Crear tu primer producto
-            </button>
+            {canEdit && (
+              <button className="mt-4 font-medium text-sm" style={{ color: 'var(--lime)' }} onClick={handleNew}>
+                Crear tu primer producto
+              </button>
+            )}
           </div>
         )}
       <div className="card animate-fade-in-up delay-300" style={{ padding: '16px 24px', display: 'flex', justifyContent: 'center' }}>
