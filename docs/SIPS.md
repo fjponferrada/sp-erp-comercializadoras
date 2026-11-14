@@ -1,184 +1,320 @@
-# Arquitectura, Estructura CNMC, API Drop-In y Exportador CSV SIPS (`SIPS.md`)
+# Manual Técnico y Operativo del Sistema SIPS Corporativo (`SIPS.md`)
 
+**Estado:** En Producción (`READY` en `https://ultra.sp-energia.com`)  
 **Última actualización:** 14 de Noviembre de 2026  
-**Propósito:** Especificación técnica definitiva para evolucionar el sistema SIPS provisional de `Z:\AED\SIPS\BD_AEDEN_SIPS` (Google Cloud BigQuery + Cloud Run) y dotar al ERP de:
-1. **API SIPS 100% compatible con el JSON de Ingebau** (para que todos los procesos del ERP sigan funcionando cambiando únicamente la URL de consulta).
-2. **Módulo Visual Frontend `"Consulta de CUPS"`** (inspirado en UniEléctrica / Ingebau).
-3. **Exportador de CSVs idénticos a los de Ingebau (`{CUPS}_consumos.csv` y `{CUPS}_ps.csv`)** desde el Frontend SIPS para que el apartado **`SIPS CSV` del Cotizador (`/pricing`)** siga funcionando exactamente igual que cuando se descargaban los CSV de Ingebau.
+**Alcance:** Documentación integral de la infraestructura de datos CNMC en Google Cloud, la API corporativa SIPS, el motor traductor interno del ERP, el visor frontend **Consulta de CUPS**, los exportadores CSV para Excel/Cotizador y todos los flujos del ERP conectados al sistema SIPS propio.
 
 ---
 
-## 1. Contexto Actual: De Ingebau y el SIPS Provisional (`Z:\AED\SIPS\BD_AEDEN_SIPS`) al SIPS Definitivo del ERP
+## 1. Visión General de la Arquitectura SIPS
 
-### 1.1. Cómo consumía el ERP los datos de Ingebau
-En el ERP existen **dos vías** que dependían del formato de Ingebau:
-1. **Vía API Automática (JSON)**:
-   - **`src/app/api/sips/route.ts`** y **`src/lib/sips.ts`** consultaban la API de Ingebau y recibían un JSON con `{ data: { ps: [...], consumos: [...] } }`.
-   - Ese JSON lo consumen directamente el modo **"Por CUPS" del Cotizador** (`fetchSipsForPricingAction` en `supplyPointActions.ts`), el **Alta de Leads/Contratos** (`NewLeadModal.tsx` y `leadActions.ts`) y la pestaña **SIPS** dentro de Contratos (`ContractDetailClient.tsx`) y Puntos de Suministro (`SupplyPointDetailClient.tsx`).
-2. **Vía Subida Manual de Archivo CSV en el Cotizador (`/pricing` $\rightarrow$ `Cálculo Genérico` $\rightarrow$ `SIPS CSV`)**:
-   - En `src/app/(app)/pricing/page.tsx` (`handleFileUpload`, líneas 173–262), el usuario puede arrastrar el archivo `{CUPS}_consumos.csv` descargado del visor web SIPS de Ingebau.
-   - El parser de `/pricing` lee la cabecera del CSV buscando:
-     - Columna de fecha: **`Lectura Hasta`** (o `Lectura Desde`) para filtrar automáticamente los últimos **365 días** (`cutoff = maxDate - 1 año`).
-     - Columna de tarifa: **`Tarifa ATR`** (esperando texto legible como `"2.0TD"`, `"3.0TD"`, `"6.1TD"`, etc.).
-     - Columnas de consumo activo en **`kWh`** (excluyendo explícitamente las que contienen `Reactiva`): **`Energia Activa P1 (kWh)`** a **`Energia Activa P6 (kWh)`**.
+El ERP cuenta con un **Sistema de Información de Puntos de Suministro (SIPS) 100% propio**, independiente de proveedores externos (como Ingebau), pero manteniendo **compatibilidad exacta 1:1 con el contrato JSON y CSV histórico de Ingebau** para que todos los módulos del ERP operen de forma transparente.
 
----
+```mermaid
+flowchart TD
+    CNMC["API Oficial CNMC (SIPS2 Mensual)\nOAuth1 + Certificado Mutuo (.pem)"]
+    ZDRIVE["Respaldo Red Corporativa\nZ:\\AED\\SIPS\\BD_AEDEN_SIPS\\"]
+    GCS["Google Cloud Storage\ngs://bucket-sips-aeden/archivos_crudos/"]
+    CRJOB["Google Cloud Run Job\nsips-ingesta-masiva (32 GB RAM / 8 vCPU)"]
+    BQ["Google BigQuery (Dataset: sips_nacional)\n• datos_ps (57 cols, ~30M CUPS)\n• datos_consumos (24 cols, +500M lecturas)"]
+    CRAPI["API Puente Google Cloud Run\nhttps://api-sips-aeden-1090285260522.europe-southwest1.run.app\nGET /cups/{cups} (X-API-KEY)"]
+    ERPLIB["Motor & Traductor SIPS del ERP\nsrc/lib/sips.ts + Mapas INE Prisma (Municipality / Province)"]
+    ERPAPI["Endpoint REST del ERP\nGET https://ultra.sp-energia.com/api/sips"]
+    ERPUI["Módulo Visual ERP: Consulta de CUPS\n/consulta-cups (4 pestañas + Exportador CSV Excel)"]
+    ERPMODS["Procesos Internos del ERP\n• Cotizador (/pricing Por CUPS y SIPS CSV)\n• Alta y Validación de Leads (/leads)\n• Contratos (/contratos/[id])\n• Puntos de Suministro (/puntos-suministro/[id])"]
 
-## 2. Diagnóstico Completo de Todo el Contenido de `Z:\AED\SIPS\BD_AEDEN_SIPS`
-
-Se han analizado **absolutamente todos los archivos** de `Z:\AED\SIPS\BD_AEDEN_SIPS` (`Manual_Tecnico_Arquitectura_SIPS_AEDEN.docx`, `convertir_certificado.py`, `0_descargador_masivo_cnmc.py`, `1_ingesta_bigquery.py`, `3_SIPS_TO_CSV.py`, `sips_aeden.db`, `api_error_log.txt`, los CSVs `*_ING.csv` vs generados, `backups/`, `SCRIPT ZIP TO BD NUBE/` y `SCRIPT API SIPS NUBE/`):
-
-### 2.1. Inventario Real de la Arquitectura V3.1 Desplegada en Google Cloud (`custom-cycling-496811-q2`)
-Según el **`Manual_Tecnico_Arquitectura_SIPS_AEDEN.docx`** y los scripts de la carpeta:
-1. **Extracción de Certificado y Descarga Oficial CNMC (`convertir_certificado.py` + `0_descargador_masivo_cnmc.py`)**:
-   - Convierte el certificado `.p12` de la comercializadora a `certificado_aeden.pem` y conecta por `OAuth1` + certificado mutuo contra `https://api.cnmc.gob.es/ficheros/v1/consultar?idProcedimiento=2&nifEmpresa=B10915544&estado=DISPONIBLE`, descargando los `.zip` mensuales en `Z:\AED\SIPS\BD_AEDEN_SIPS`.
-2. **Motor de Ingesta V3.1 en Cloud Run Jobs (`SCRIPT ZIP TO BD NUBE/job_ingesta.py`)**:
-   - En producción (según el Dossier Técnico V3.1, superando la nota antigua de `16Gi` del `.txt`), el Job `sips-ingesta-masiva` se despliega con **`--memory 32Gi --cpu 8 --task-timeout=28800`** sobre la imagen `sips-ingesta-v2:latest`.
-   - Descarga el `.zip` de `gs://bucket-sips-aeden/archivos_crudos/` en los 32 GB de RAM y usa el *trick* `data_file.mode = "rb"` para inyectar los **124 GB** en BigQuery (`WRITE_TRUNCATE`) en **~39,5 minutos**.
-   - **Mejora clave pendiente en `job_ingesta.py` (`clustering_fields=["cups"]`)**: Añadir `clustering_fields=["cups"]` al `bigquery.LoadJobConfig` de `datos_ps` y `datos_consumos`. Sin clustering, cada consulta sobre `datos_consumos` escanea 124 GB completos en BigQuery; con `clustering_fields=["cups"]`, BigQuery ordena físicamente los bloques por CUPS, escaneando **solo ~10 MB por consulta** (velocidad `< 300 ms` y **coste prácticamente 0 €/mes** dentro del primer TB gratuito mensual de BigQuery).
-3. **API Online en Cloud Run (`SCRIPT API SIPS NUBE` vs Versión en Consola GCP)**:
-   - El archivo local `SCRIPT API SIPS NUBE/main.py` quedó en una versión preliminar v1.1 (que solo hacía `SELECT * FROM datos_ps WHERE cups = @cups_param`), mientras que **en el editor online de Google Cloud Console** ya evolucionasteis el endpoint `https://api-sips-aeden-1090285260522.europe-southwest1.run.app/cups/{cups}` (protegido por `X-API-KEY`) para consultar con `WHERE STARTS_WITH(cups, SUBSTR(@cups_parametro, 1, 20))` y devolver ambas claves `{"ps": [...], "consumos": [...]}` con las **57 columnas crudas de PS** y las **24 columnas crudas de Consumos** de la CNMC.
-4. **Prototipo Local Inicial (`sips_aeden.db` y `api_error_log.txt`)**:
-   - Base SQLite inicial donde se modelaron las 36 columnas de `datos_ps` y 23 columnas de `datos_consumos` imitando los CSV de Ingebau (`*_ING.csv`), y un servidor Uvicorn local en puerto `8000` (`GET /Cups?cups=...&token=...`).
-
-### 2.2. Qué Falta Exactamente para Conectar Nuestra API de Google Cloud al ERP con Compatibilidad 100% Ingebau
-
-Dado que la API desplegada en Cloud Run (`api-sips-aeden`) devuelve actualmente las **columnas crudas de BigQuery/CNMC** (`57 columnas en datos_ps` y `24 columnas en datos_consumos`, en minúsculas y en Vatios `W`/`Wh`), tenemos dos opciones muy limpias (recomendando hacer el mapeo directamente en un **Traductor SIPS dentro de nuestro ERP `src/lib/sipsTranslator.ts`** o en el propio `main.py` de Cloud Run):
-- Si hacemos la traducción en **`src/lib/sips.ts`** al recibir la respuesta de `https://api-sips-aeden-1090285260522.europe-southwest1.run.app/cups/{cups}` (o actualizamos `main.py` y sincronizamos la copia local de `Z:\`), convertimos al vuelo las 57 columnas de `ps` y las 24 de `consumos` de CNMC al **JSON exacto de Ingebau** y a los **CSVs exactos de Ingebau** sin ningún desplazamiento de columnas.
-
-### 2.3. Por qué no cuadraban los CSV generados por `3_SIPS_TO_CSV.py`
-
-### ⚠️ Diferencia 1: Desplazamiento de Columnas en `consumos.csv` (Renombrado por Posición en vez de por Nombre)
-En el CSV bruto de la CNMC (`202604_SIPS2_CONSUMOS_ELECTRICIDAD_peninsular.csv`), el orden de las columnas es distinto al del CSV de Ingebau:
-- En **CNMC**, la columna 3 es `codigoTarifaATR` (`"019"`), la columna 4 es `consumoEnergiaActivaEnWhP1`, las columnas 10–15 son **Reactiva (`VArh`)**, las columnas 16–21 son **Maxímetro (`W`)** y la última columna (índice 23) es `codigoTipoLectura` (`"30"` / `"60"`).
-- En **Ingebau (`_consumos_ING.csv`)**, la columna 3 es `"Tipo Lectura"`, la columna 4 es `"Tarifa ATR"`, las columnas 5–10 son **Activa (`kWh`)**, las columnas 11–16 son **Maxímetro (`kW`)** y las columnas 17–22 son **Reactiva (`Varh`)**.
-- **Qué pasaba en `3_SIPS_TO_CSV.py`**: Al sobrescribir los nombres de las cabeceras por posición (`df_consumos.columns = CABECERAS_CONSUMOS_ORIGINAL`) sin reordenar antes las columnas:
-  - El código de tarifa `"019"` caía debajo de `"Tipo Lectura"`.
-  - El consumo de **`P1` caía debajo de `"Tarifa ATR"`** y el de **`P2` caía debajo de `"Energia Activa P1 (kWh)"`** (desplazando todos los periodos un hueco a la izquierda).
-  - La **Reactiva** caía debajo de las columnas de **Maxímetro**, y el **Maxímetro** caía debajo de las columnas de **Reactiva**.
-
-### ⚠️ Diferencia 2: Orden de Columnas y Falta de Consumo Anual en `ps.csv`
-- El CSV bruto de la CNMC (`SIPS2_PS_ELECTRICIDAD`) tiene **57 columnas** y **NO trae las 8 columnas de consumo anual** (`Consumo Anual kWh`, `Consumo Anual P1 kWh`..`P6 kWh`, `Consumo Anual Anterior`).
-- Ingebau devuelve en su `_ps_ING.csv` **36 columnas específicas**, calculando esas 8 columnas de consumo anual a partir de la suma del último año de `SIPS2_CONSUMOS_ELECTRICIDAD`. Al renombrar por posición sin mapear por clave, en el script provisional los campos de `ps.csv` también quedaban desplazados.
-
-### ⚠️ Diferencia 3: Unidades en Vatios (`W` / `Wh`) en la CNMC frente a Kilovatios (`kW` / `kWh`) en Ingebau
-- La CNMC entrega en sus CSV todas las potencias (`potenciasContratadasEnWP1..P6`, `potenciaMaximaBIEW`, `valorDerechosExtensionW`, `potenciaDemandadaEnWP1..P6`) en **Vatios (`W`)** (ej. `5750`, `8000`) y todos los consumos de activa (`consumoEnergiaActivaEnWhP1..P6`) en **Vatios-hora (`Wh`)** (ej. `542000`).
-- Ingebau y nuestro ERP (`/pricing`, `leadActions`, `ContractDetailClient`) trabajan estrictamente en **`kW`** y **`kWh`**, por lo que **es obligatorio dividir todos esos valores entre `1000`** (`5.75 kW`, `8 kW`, `542 kWh`).
-
-### ⚠️ Diferencia 4: Códigos Numéricos CNMC (`"018"`, `"019"`, `"60"`) sin Traducir
-- En los CSV de la CNMC la tarifa viene como `"018"` (en lugar de `"2.0TD"`), `"019"` (en lugar de `"3.0TD"`), `"020"` (en lugar de `"6.1TD"`), y el tipo de lectura como `"60"` (en lugar de `"Telegestión"` / `"REAL"`).
-- Cuando se sube un CSV al Cotizador (`/pricing`), el parser lee la columna `Tarifa ATR` esperando encontrar `"2.0"`, `"3.0"`, `"6.1"`, etc. Si recibe `"018"` o `"019"`, no puede cambiar automáticamente el selector de tarifa del Cotizador.
-
----
-
-## 3. Estructura Real de los 2 ZIP de la CNMC (`Z:\AED\SIPS\BD_AEDEN_SIPS`)
-
-A continuación queda documentada la estructura exacta de ambos ficheros de la CNMC para que cualquier script o servicio del ERP los mapee por nombre de columna (nunca por posición ciega):
-
-### 3.1. `202604_SIPS2_PS_ELECTRICIDAD_peninsular.zip` (`985 MB` $\rightarrow$ `8,68 GB` descomprimido)
-Contiene un único archivo `202604_SIPS2_PS_ELECTRICIDAD_peninsular.csv` con **57 columnas** (en `1_ingesta_bigquery.py` se normalizan a minúsculas en la tabla `sips_nacional.datos_ps`):
-
-1. `codigoempresadistribuidora` (Ej: `"0022"`, `"0031"`)
-2. `cups` (22 caracteres, ej: `"ES0022000001000003SL1P"`)
-3. `nombreempresadistribuidora` (Ej: `"UNION FENOSA DISTRIBUCION, S.A."`)
-4. `codigopostalps` (Ej: `"15300"`)
-5. `municipiops` (Código INE de 5 dígitos, ej: `"15009"`)
-6. `codigoprovinciaps` (Código INE de 2 dígitos, ej: `"15"`)
-7. `fechaaltasuministro` (`YYYY-MM-DD`)
-8. `codigotarifaatrenvigor` (`"018"`=`2.0TD`, `"019"`=`3.0TD`, `"020"`=`6.1TD`, `"021"`=`6.2TD`, `"022"`=`6.3TD`, `"023"`=`6.4TD`, `"024"`=`3.0TDVE`, `"025"`=`6.1TDVE`)
-9. `codigotensionv` (`"02"`=`1X230`, `"06"`=`3X400`, etc.)
-10. `potenciamaximabiew` (En **Vatios `W`** $\rightarrow$ dividir `/ 1000` para `Potencia Max BIE (kW)`)
-11. `potenciamaximaapmw` (En **Vatios `W`** $\rightarrow$ dividir `/ 1000`)
-12. `codigoclasificacionps` (`"01"`..`"05"` $\rightarrow$ `"Tipo 1"`..`"Tipo 5"`)
-13. `codigodisponibilidadicp` (`"0"` / `"1"`)
-14. `tipoperfilconsumo` (`"P2.0TD"`, `"P3.0TD"`)
-15. `valorderechosextensionw` (En **Vatios `W`** $\rightarrow$ dividir `/ 1000` para `valorDerechosExtensionkW`)
-16. `valorderechosaccesow` (En **Vatios `W`** $\rightarrow$ dividir `/ 1000` para `valorDerechosAccesokW`)
-17. `codigopropiedadequipomedida` (`"1"`=`Distribuidor`, `"2"`=`Cliente`)
-18. `codigopropiedadicp` (`"1"`=`Distribuidor`, `"2"`=`Cliente`, `"4"`=`Otros`)
-19. `potenciascontratadasenwp1` .. `potenciascontratadasenwp6` (Columnas 19 a 24, en **Vatios `W`** $\rightarrow$ dividir `/ 1000` para `Potencia Contratada P1..P6 kW`)
-20. `fechaultimomovimientocontrato`, `fechaultimocambiocomercializador`, `fechalimitederechosreconocidos`, `fechaultimalectura` (Columnas 25 a 28, `YYYY-MM-DD`)
-21. `informacionimpagos`, `importedepositogarantiaeuros`, `tipoidtitular`, `esviviendahabitual`, `codigocomercializadora` (Columnas 29 a 33)
-22. `codigotelegestion` (`"01"`=`Telegestión operativa con curva de carga horaria`, `"02"`=`Telegestión operativa sin curva de carga horaria`, `"03"`=`Sin telegestión`)
-23. `codigofasesequipomedida` (`"M"` / `"T"`), `codigoautoconsumo` (`"00"` $\rightarrow$ `"0"`), `codigotipocontrato`, `codigoperiodicidadfacturacion`, `codigobie`, `fechaemisionbie`, `fechacaducidadbie`, `codigoapm`, `fechaemisionapm`, `fechacaducidadapm`, `relaciontransformacionintensidad` (Columnas 35 a 45)
-24. `cnae` (Columna 46), `codigomodocontrolpotencia` (Columna 47), `potenciacgpw` (Columna 48), `codigodhequipodemedida` (Columna 49), `codigoaccesibilidadcontador` (Columna 50), `codigopscontratable` (Columna 51), `motivoestadonocontratable` (Columna 52), `codigotensionmedida` (Columna 53), `codigoclaseexpediente` (Columna 54), `codigomotivoexpediente` (Columna 55), `codigotiposuministro` (Columna 56), `aplicacionbonosocial` (Columna 57).
-
-### 3.2. `202604_SIPS2_CONSUMOS_ELECTRICIDAD_peninsular.zip` (`23,05 GB` $\rightarrow$ `124,23 GB` descomprimido)
-Contiene un único archivo `202604_SIPS2_CONSUMOS_ELECTRICIDAD_peninsular.csv` con **24 columnas** (en `1_ingesta_bigquery.py` se normalizan a minúsculas en la tabla `sips_nacional.datos_consumos`):
-
-1. `cups` (22 caracteres)
-2. `fechainiciomesconsumo` (`YYYY-MM-DD` $\rightarrow$ `Lectura Desde` / `LecturaDesde`)
-3. `fechafinmesconsumo` (`YYYY-MM-DD` $\rightarrow$ `Lectura Hasta` / `LecturaHasta`)
-4. `codigotarifaatr` (`"018"` $\rightarrow$ `"2.0TD"`, `"019"` $\rightarrow$ `"3.0TD"`, etc. $\rightarrow$ `Tarifa ATR` / `TarifaATR`)
-5. `consumoenergiaactivaenwhp1` .. `consumoenergiaactivaenwhp6` (Columnas 5 a 10, en **`Wh`** $\rightarrow$ **dividir `/ 1000`** $\rightarrow$ `Energia Activa P1 (kWh)`..`P6 (kWh)`)
-6. `consumoenergiareactivaenvarhp1` .. `consumoenergiareactivaenvarhp6` (Columnas 11 a 16, en **`VArh`** $\rightarrow$ `Energía Reactiva P1 (Varh)`..`P6 (Varh)`)
-7. `potenciademandadaenwp1` .. `potenciademandadaenwp6` (Columnas 17 a 22, en **`W`** $\rightarrow$ **dividir `/ 1000`** $\rightarrow$ `Maxímetro P1 (kW)`..`P6 (kW)`)
-8. `codigodhequipodemedida` (Columna 23)
-9. `codigotipolectura` (Columna 24: `"60"` $\rightarrow$ `"Telegestión"`, `"10"`/`"30"` $\rightarrow$ `"Real"`, `"20"`/`"40"` $\rightarrow$ `"Estimada"`).
-
----
-
-## 4. Mapeo Exacto 1:1 para Exportación de CSVs en el Frontend SIPS (Compatibilidad Total con `/pricing`)
-
-En el nuevo módulo visual **`/consulta-cups`** de nuestro ERP, añadiremos el botón **"📥 Descargar CSV SIPS (Formato Cotizador / Ingebau)"**, que generará en el navegador los dos archivos CSV con las **cabeceras, unidades y orden de columnas 100% idénticos a los de Ingebau** (`ES0031101457409001HM_consumos_ING.csv` y `ES0031101457409001HM_ps_ING.csv`):
-
-### 4.1. Formato Exacto de `{CUPS}_consumos.csv` (23 Columnas — Compatible con `/pricing` $\rightarrow$ `SIPS CSV`)
-
-Cabecera exacta (todos los valores entrecomillados con `"..."` y separados por coma `,`):
-```csv
-"CUPS","Lectura Desde","Lectura Hasta","Tipo Lectura","Tarifa ATR","Energia Activa P1 (kWh)","Energia Activa P2 (kWh)","Energia Activa P3 (kWh)","Energia Activa P4 (kWh)","Energia Activa P5 (kWh)","Energia Activa P6 (kWh)","Maxímetro P1 (kW)","Maxímetro P2 (kW)","Maxímetro P3 (kW)","Maxímetro P4 (kW)","Maxímetro P5 (kW)","Maxímetro P6 (kW)","Energía Reactiva P1 (Varh)","Energía Reactiva P2 (Varh)","Energía Reactiva P3 (Varh)","Energía Reactiva P4 (Varh)","Energía Reactiva P5 (Varh)","Energía Reactiva P6 (Varh)"
-```
-Ejemplo de fila generada:
-```csv
-"ES0031101457409001HM0F","2026-02-15","2026-03-15","Telegestión","2.0TD","123","114","115","0","0","0","3.38","0","3.924","0","0","0","0","0","0","0","0","0"
-```
-- **Por qué funciona al 100% con el Cotizador (`/pricing`)**:
-  - `handleFileUpload` en `src/app/(app)/pricing/page.tsx` detecta `"Lectura Hasta"` (`2026-03-15`), filtra los últimos 365 días, detecta `"Tarifa ATR"` (`2.0TD`) seleccionando automáticamente la tarifa en el desplegable, y suma `"Energia Activa P1 (kWh)"` a `"Energia Activa P6 (kWh)"` ya convertidas a `kWh`.
-
-### 4.2. Formato Exacto de `{CUPS}_ps.csv` (36 Columnas — Ficha Maestro Ingebau)
-
-Cabecera exacta:
-```csv
-"Codigo Distribuidora","Nombre Distribuidora","CUPS","Código Postal PS","Municipio PS","Fecha Alta PS","Tarifa ATR","Tension","Potencia Max BIE (kW)","Tipo PM","Consumo Anual kWh","Consumo Anual P1 kWh","Consumo Anual P2 kWh","Consumo Anual P3 kWh","Consumo Anual P4 kWh","Consumo Anual P5 kWh","Consumo Anual P6 kWh","Consumo Anual Anterior","Potencia Contratada P1 kW","Potencia Contratada P2 kW","Potencia Contratada P3 kW","Potencia Contratada P4 kW","Potencia Contratada P5 kW","Potencia Contratada P6 kW","valorDerechosExtensionkW","valorDerechosAccesokW","Propietario EM","fechaUltimoMovimientoContrato","fechaUltimoCambioComercializador","fechaLimiteDerechosReconocidos","fechaUltimaLectura","codigoTelegestion","codigoAutoconsumo","CNAE","codigoModoControlPotencia","aplicacionBonoSocial"
+    CNMC --> ZDRIVE --> GCS --> CRJOB --> BQ --> CRAPI --> ERPLIB
+    ERPLIB --> ERPAPI
+    ERPAPI --> ERPUI
+    ERPLIB --> ERPMODS
+    ERPUI -- "CSV Consumos / ?cups=" --> ERPMODS
 ```
 
 ---
 
-## 5. Mapeo Exacto 1:1 en la API (`SCRIPT API SIPS NUBE/main.py`) para Devolver el JSON de Ingebau
+## 2. Dónde se Aloja la Base de Datos CNMC y la Infraestructura Cloud
 
-Para que el servidor de Google Cloud Run (`https://api-sips-aeden-1090285260522.europe-southwest1.run.app/cups/{cups_id}`) devuelva exactamente el JSON que el ERP espera en `src/lib/sips.ts` y `src/app/api/sips/route.ts`:
+Dado el volumen masivo de los ficheros nacionales SIPS2 publicados mensualmente por la CNMC (**~133 GB descomprimidos por cada mes**), la base de datos SIPS está desacoplada de la base de datos transaccional PostgreSQL del ERP (`pooled.db.prisma.io`, ~1,8 GB) y se aloja en **Google Cloud Platform (GCP)**:
 
-1. **Consulta en BigQuery por prefijo de 20 caracteres (`cups20`)**:
-   - Tanto en `sips_nacional.datos_ps` como en `sips_nacional.datos_consumos`, se busca por `STARTS_WITH(cups, SUBSTR(@cups_param, 1, 20))` (para que funcione tanto si el comercial escribe 20 caracteres `ES0031101457409001HM` como si escribe los 22 caracteres `ES0031101457409001HM0F`).
-   - En `1_ingesta_bigquery.py` / `job_ingesta.py`, se añade `clustering_fields=["cups"]` al `LoadJobConfig` para que BigQuery indexe físicamente los bloques por CUPS y responda en milisegundos sin escanear los 124 GB.
-2. **Construcción del JSON de Respuesta en `main.py`**:
-   - Convierte `potenciascontratadasenwp1..p6`, `potenciamaximabiew`, `valorderechosextensionw`, `valorderechosaccesow` y `potenciademandadaenwp1..p6` de `W` a `kW` (`/ 1000`).
-   - Convierte `consumoenergiaactivaenwhp1..p6` de `Wh` a `kWh` (`/ 1000`).
-   - Suma los últimos 365 días de `datos_consumos` para rellenar `ConsumoAnualP1kWh..P6kWh` y `ConsumoAnualkWh` dentro de `data.ps[0]`.
-   - Devuelve el objeto con doble compatibilidad (`result: "OK"`, campos raíz `tarifa, p1..p6, cp, poblacion, provincia, cnae, autoconsumo, consumo` y el bloque `data: { ps: [ps_mapped], consumos: consumos_mapped }`).
+### 2.1. Mapa de Alojamiento e Infraestructura
 
----
+| Componente | Plataforma / Ubicación | Identificador / Ruta Exacta | Función |
+| :--- | :--- | :--- | :--- |
+| **Proyecto Google Cloud** | Google Cloud Platform | `custom-cycling-496811-q2` (`europe-southwest1` - Madrid) | Entorno cloud corporativo de datos y microservicios SIPS. |
+| **Repositorio Local / Red** | Servidor Local (`Z:\`) | `Z:\AED\SIPS\BD_AEDEN_SIPS\` | Custodia histórica de los `.zip` descargados de la CNMC, certificados y scripts de soporte/ingesta. |
+| **Almacenamiento de ZIPs en Nube** | Google Cloud Storage (GCS) | `gs://bucket-sips-aeden/archivos_crudos/` | Bucket donde se depositan los `.zip` oficiales de PS y Consumos antes de volcarlos en BigQuery. |
+| **Proceso ETL de Carga Masiva** | Google Cloud Run Jobs | Job: `sips-ingesta-masiva` (Imagen `sips-ingesta-v2:latest`, `32Gi` RAM, `8` vCPU, timeout `28800s`) | Descomprime en memoria RAM los `.zip` desde GCS e inyecta los ~133 GB en BigQuery (`WRITE_TRUNCATE`) en ~39,5 min. |
+| **Base de Datos SIPS Activa** | **Google BigQuery** | Dataset: `custom-cycling-496811-q2.sips_nacional`<br>• Tabla `datos_ps`<br>• Tabla `datos_consumos` | Base de datos analítica serverless que almacena el censo nacional completo de CUPS y sus lecturas históricas. |
+| **API Cloud SIPS (Backend GCP)** | **Google Cloud Run** | `https://api-sips-aeden-1090285260522.europe-southwest1.run.app` | Microservicio FastAPI/Python que consulta BigQuery por prefijo de 20 caracteres del CUPS y devuelve los registros crudos CNMC protegidos por `X-API-KEY`. |
+| **ERP Frontend + API Drop-In** | **Vercel (Producción)** | `https://ultra.sp-energia.com` (Proyecto Vercel: `sp-erp-comercializadoras`) | Aloja el ERP Next.js, el traductor `src/lib/sips.ts`, el endpoint `/api/sips`, el visor `/consulta-cups` y el exportador CSV `src/lib/sipsCsvExporter.ts`. |
+| **Diccionarios Geográficos INE** | **PostgreSQL (Prisma)** | Tablas `Municipality` (8.203 códigos INE) y `Province` (52 códigos INE) | Traducen en memoria los códigos numéricos INE de la CNMC (`"14075"`, `"14"`) a nombres oficiales (`"Zuheros"`, `"Córdoba"`). |
 
-## 6. Diseño del Módulo Visual Frontend `"Consulta de CUPS"` en el ERP
-
-Además de los botones de descarga CSV y conexión automática por API, el ERP incorporará en el menú lateral (`Sidebar.tsx`) la sección **"Consulta de CUPS"** (`/consulta-cups`):
-
-1. **Buscador por CUPS (20 o 22 caracteres)** + **Texto Legal Obligatorio (Ley 24/2013 y RD 1435/2002)** con auditoría de accesos (`SipsAuditLog`).
-2. **Vista de Resultados en 4 Pestañas (estilo UniEléctrica / Ingebau)**:
-   - **`Datos generales`**: Todos los datos de `data.ps[0]` (`CUPS`, `Distribuidora`, `Población`, `Provincia`, `Tarifa`, `Potencia contratada P1..P6`, `Potencia máxima instalación (BIE)`, `Derechos de extensión/acceso`, `Tensión`, `Tipo de punto de medida`, `Última modificación de contrato`, `Último cambio de comercializadora`, `Última lectura`, `Alta de suministro`, `Propiedad ICP`, `Propiedad Contador`, `Trans./Rel. de Intensidad`, `Autoconsumo`, `CNAE` y `Bono Social`).
-   - **`Lecturas de activa`**: Tabla superior de **Consumo anual estimado (`P1..P6` + Total kWh)** + Tabla inferior de **Últimas lecturas** (`Fecha`, `Tipo: REAL / ESTIMADO`, `Consumo P1..P6` en `kWh`).
-   - **`Lecturas de reactiva`**: Tabla superior de **Consumo anual de reactiva** + Tabla inferior de **Últimas lecturas de reactiva** (`Fecha`, `Tipo`, `Consumo P1..P6` en `Varh`).
-   - **`Lecturas de maxímetro`**: Tabla de **Últimas lecturas de maxímetro** (`Fecha`, `Tipo`, `Maxímetro P1..P6` en `kW`).
-3. **Barra Superior de Acciones en 1 Clic**:
-   - **`📥 Descargar CSV Consumos (para Cotizador)`**: Descarga `{CUPS}_consumos.csv` con las 23 columnas exactas de Ingebau listo para subir en `/pricing` $\rightarrow$ `SIPS CSV`.
-   - **`📥 Descargar CSV Datos PS`**: Descarga `{CUPS}_ps.csv` con las 36 columnas exactas de Ingebau.
-   - **`⚡ Cotizar Directamente en Pricing`**: Abre `/pricing` con el CUPS ya cargado sin necesidad siquiera de descargar y subir el CSV manualmente.
-   - **`➕ Crear Lead / Contrato`**: Abre el modal de nuevo Lead autocompletado con los datos del SIPS.
+### 2.2. Obtención de los Ficheros Oficiales desde la CNMC
+Los ficheros mensuales SIPS2 se obtienen del portal de APIs de la CNMC:
+- **Endpoint CNMC**: `https://api.cnmc.gob.es/ficheros/v1/consultar?idProcedimiento=2&nifEmpresa=B10915544&estado=DISPONIBLE`
+- **Autenticación**: `OAuth1` + Certificado digital de representante (`certificado_aeden.pem`, extraído desde el `.p12` mediante `Z:\AED\SIPS\BD_AEDEN_SIPS\convertir_certificado.py` y utilizado por `0_descargador_masivo_cnmc.py`).
+- **Archivos mensuales entregados por la CNMC (ámbito peninsular)**:
+  1. `YYYYMM_SIPS2_PS_ELECTRICIDAD_peninsular.zip` (~985 MB comprimido $\rightarrow$ **~8,68 GB** CSV descomprimido).
+  2. `YYYYMM_SIPS2_CONSUMOS_ELECTRICIDAD_peninsular.zip` (~23,05 GB comprimido $\rightarrow$ **~124,23 GB** CSV descomprimido).
 
 ---
 
-## 7. Automatización Mensual 100% Cloud (Día 5 de cada mes — Sin Subidas Manuales desde `Z:\`)
+## 3. Estructura de las Tablas de Base de Datos CNMC en BigQuery
 
-Como evolución programada (registrada también en [`docs/ROADMAP.md`](./ROADMAP.md)), se unificará `0_descargador_masivo_cnmc.py` dentro del propio **Cloud Run Job (`sips-ingesta-masiva`)** en Google Cloud:
-1. **Certificado en Google Secret Manager**: `certificado_aeden.pem` y las claves OAuth1 de la CNMC se guardarán cifrados en Google Secret Manager.
-2. **Disparo Automático el Día 5 (`Cloud Scheduler`)**: El día 5 de cada mes (con reintento automático los días 6 y 7 si aún no hay fichero `DISPONIBLE` en la sede CNMC), el Cloud Run Job descargará directamente desde la API de la CNMC los `.zip` de `PS_ELECTRICIDAD` y `CONSUMOS_ELECTRICIDAD`, los respaldará en `gs://bucket-sips-aeden/archivos_crudos/` y los inyectará en BigQuery con `clustering_fields=["cups"]`, sin tener que abrir consola ni subir archivos desde `Z:\`.
+En el dataset `sips_nacional` de Google BigQuery existen dos tablas cuyos nombres de columna están normalizados en minúsculas:
+
+### 3.1. Tabla `sips_nacional.datos_ps` (57 Columnas — Maestro de Puntos de Suministro)
+Contiene una fila por cada CUPS nacional con sus características técnicas y contractuales:
+
+| # | Columna en BigQuery (`datos_ps`) | Contenido / Unidad Original CNMC | Traducción Aplicada en el ERP (`src/lib/sips.ts`) |
+| :--- | :--- | :--- | :--- |
+| 1 | `codigoempresadistribuidora` | Código REE distribuidora (`"0031"`, `"0022"`) | `CódigoDistribuidora` sin ceros a la izquierda (`"31"`) + `codigoDistribuidora` (`"0031"`). |
+| 2 | `cups` | CUPS completo de 22 caracteres | `CUPS` en mayúsculas. Se busca por los primeros 20 caracteres (`cups20`). |
+| 3 | `nombreempresadistribuidora` | Razón social de la distribuidora | `NombreDistribuidora` / `distribuidora`. |
+| 4 | `codigopostalps` | Código postal de 5 dígitos | `CódigoPostalPS` / `cp`. |
+| 5 | `municipiops` | Código INE municipio (5 dígitos, ej. `"14075"`) | Cruzado con tabla Prisma `Municipality` $\rightarrow$ `MunicipioPS` / `poblacion` (`"Zuheros"`). |
+| 6 | `codigoprovinciaps` | Código INE provincia (2 dígitos, ej. `"14"`) | Cruzado con tabla Prisma `Province` $\rightarrow$ `ProvinciaPS` / `provincia` (`"Córdoba"`). |
+| 7 | `fechaaltasuministro` | Fecha `YYYY-MM-DD` | `FechaAltaPS` (mostrada como `DD/MM/YYYY` en el visor). |
+| 8 | `codigotarifaatrenvigor` | Código CNMC (`"018"`, `"019"`, `"020"`...) | `TarifaATR` / `tarifa`: `018`$\rightarrow$`2.0TD`, `019`$\rightarrow$`3.0TD`, `020`$\rightarrow$`6.1TD`, `021`$\rightarrow$`6.2TD`, `022`$\rightarrow$`6.3TD`, `023`$\rightarrow$`6.4TD`, `024`/`026`$\rightarrow$`3.0TDVE`, `025`/`027`$\rightarrow$`6.1TDVE`. |
+| 9 | `codigotensionv` | Código numérico de tensión (`"02"`, `"06"`...) | `Tension`: `01`$\rightarrow$`1X127`, `02`$\rightarrow$`1X230`, `03`$\rightarrow$`1X220`, `04`$\rightarrow$`3X230`, `05`$\rightarrow$`3X380`, `06`$\rightarrow$`3X400`, `09`..`20`$\rightarrow$rangos AT (`1KV-11KV`..`220KV-400KV`). |
+| 10 | `potenciamaximabiew` | Potencia máx. boletín BIE en **Vatios (`W`)** | Dividida `/ 1000` $\rightarrow$ `PotenciaMaxBIE(kW)`. |
+| 11 | `potenciamaximaapmw` | Potencia máx. acta APM en **Vatios (`W`)** | Dividida `/ 1000` $\rightarrow$ `potenciaMaximaAPM(KW)`. |
+| 12 | `codigoclasificacionps` | Punto de medida (`"01"` a `"05"`) | `TipoPM`: `"Tipo 1"` a `"Tipo 5"`. |
+| 13 | `codigodisponibilidadicp` | Disponibilidad ICP (`"0"` / `"1"`) | `codigoDisponibilidadICP`. |
+| 14 | `tipoperfilconsumo` | Perfil REE (`"P2.0TD"`, `"P3.0TD"`) | `tipoPerfilConsumo`. |
+| 15 | `valorderechosextensionw` | Derechos de extensión en **Vatios (`W`)** | Dividido `/ 1000` $\rightarrow$ `valorDerechosExtensionkW`. |
+| 16 | `valorderechosaccesow` | Derechos de acceso en **Vatios (`W`)** | Dividido `/ 1000` $\rightarrow$ `valorDerechosAccesokW`. |
+| 17 | `codigopropiedadequipomedida` | Propiedad contador (`1`..`4`) | `Propietario EM`: `1`$\rightarrow$`Distribuidor`, `2`$\rightarrow$`Cliente`, `3`$\rightarrow$`Comercializador`, `4`$\rightarrow$`Otros`. |
+| 18 | `codigopropiedadicp` | Propiedad ICP (`1`..`4`) | `codigoPropiedadICP` (mismo catálogo de propiedad). |
+| 19–24 | `potenciascontratadasenwp1` .. `p6` | Potencias contratadas P1..P6 en **Vatios (`W`)** | Divididas `/ 1000` $\rightarrow$ `PotenciaContratadaP1kW`..`P6kW` y campos raíz `p1`..`p6` en `kW`. |
+| 25–28 | `fechaultimomovimientocontrato`, `fechaultimocambiocomercializador`, `fechalimitederechosreconocidos`, `fechaultimalectura` | Fechas regulatorias (`YYYY-MM-DD`) | Mapeadas con nombres exactos camelCase en `data.ps[0]`. |
+| 29–33 | `informacionimpagos`, `importedepositogarantiaeuros`, `tipoidtitular`, `esviviendahabitual`, `codigocomercializadora` | Indicadores administrativos | Normalizados en `data.ps[0]`. |
+| 34 | `codigotelegestion` | Estado telegestión (`"01"`, `"02"`, `"03"`) | `01`$\rightarrow$`Telegestión operativa con curva de carga horaria`, `02`$\rightarrow$`Telegestión operativa sin curva de carga horaria`, `03`$\rightarrow$`Sin telegestión`. |
+| 35–45 | `codigofasesequipomedida`, `codigoautoconsumo`, `codigotipocontrato`, `codigoperiodicidadfacturacion`, `codigobie`, `fechaemisionbie`, `fechacaducidadbie`, `codigoapm`, `fechaemisionapm`, `fechacaducidadapm`, `relaciontransformacionintensidad` | Datos técnicos de equipo, BIE, APM y autoconsumo | `codigoAutoconsumo` (`"00"` normalizado a `"0"` y descrito en el visor según códigos RD 244/2019: `31`, `41`, `42`, `43`, `51`, etc.). |
+| 46–57 | `cnae`, `codigomodocontrolpotencia`, `potenciacgpw` (`W`$\rightarrow$`kW`), `codigodhequipodemedida`, `codigoaccesibilidadcontador`, `codigopscontratable`, `motivoestadonocontratable`, `codigotensionmedida`, `codigoclaseexpediente`, `codigomotivoexpediente`, `codigotiposuministro`, `aplicacionbonosocial` | CNAE, contratabilidad y Bono Social | Mapeados en `data.ps[0]`, incluyendo validación visual de suministro contratable / no contratable. |
+
+> **Cálculo Dinámico de Consumos Anuales en `data.ps[0]`**: La tabla `datos_ps` de la CNMC no incluye columnas de consumo anual. Nuestro motor `src/lib/sips.ts` calcula al vuelo **`ConsumoAnualP1kWh`..`ConsumoAnualP6kWh`**, **`ConsumoAnualkWh`** y **`ConsumoAnualAnterior`** sumando `consumoenergiaactivaenwhpX / 1000` (redondeado a 2 decimales) de todos los ciclos de lectura cuya ventana `[fechainiciomesconsumo, fechafinmesconsumo]` esté comprendida dentro de los últimos **365 días** respecto a la última fecha de lectura cerrada (`max(fechafinmesconsumo)`).
+
+### 3.2. Tabla `sips_nacional.datos_consumos` (24 Columnas — Histórico de Lecturas)
+Contiene los últimos ~36 ciclos de facturación/lectura de cada CUPS:
+
+| # | Columna en BigQuery (`datos_consumos`) | Contenido / Unidad Original CNMC | Traducción Aplicada en el ERP (`data.consumos[]`) |
+| :--- | :--- | :--- | :--- |
+| 1 | `cups` | CUPS de 22 caracteres | `CUPS` |
+| 2 | `fechainiciomesconsumo` | Inicio de lectura (`YYYY-MM-DD`) | `LecturaDesde` |
+| 3 | `fechafinmesconsumo` | Fin de lectura (`YYYY-MM-DD`) | `LecturaHasta` (ordenado de más reciente a más antiguo) |
+| 4 | `codigotarifaatr` | Código numérico CNMC (`"018"`, `"019"`...) | `TarifaATR` (`"2.0TD"`, `"3.0TD"`, `"6.1TD"`, etc.) |
+| 5–10 | `consumoenergiaactivaenwhp1` .. `p6` | Energía activa en **Vatios-hora (`Wh`)** | Dividida `/ 1000` y redondeada a entero $\rightarrow$ `EnergiaActivaP1(kWh)` .. `EnergiaActivaP6(kWh)` |
+| 11–16 | `consumoenergiareactivaenvarhp1` .. `p6` | Energía reactiva en **`VArh`** | Redondeada a entero $\rightarrow$ `EnergíaReactivaP1(Varh)` .. `EnergíaReactivaP6(Varh)` |
+| 17–22 | `potenciademandadaenwp1` .. `p6` | Maxímetro demandado en **Vatios (`W`)** | Dividida `/ 1000` con 3 decimales $\rightarrow$ `MaxímetroP1(kW)` .. `MaxímetroP6(kW)` |
+| 23 | `codigodhequipodemedida` | Código discriminación horaria | `codigoDHEquipoDeMedida` |
+| 24 | `codigotipolectura` | Tipo lectura (`60`, `10`, `30`, `20`, `40`...) | `codigoTipoLectura` + `TipoLectura`: `60`$\rightarrow$`Telegestión` (`REAL`), `10`/`30`/`50`$\rightarrow$`Real` (`REAL`), `20`/`40`/`70`/`99`$\rightarrow$`Estimada` (`ESTIMADO`) |
+
+---
+
+## 4. Funcionamiento de la API SIPS
+
+Existen **dos niveles de API** trabajando en cadena:
+
+### 4.1. Nivel 1: Microservicio Cloud Run sobre BigQuery (Uso Interno Backend)
+- **URL Base**: `https://api-sips-aeden-1090285260522.europe-southwest1.run.app`
+- **Ruta**: `GET /cups/{cups}` (acepta 20 o 22 caracteres; filtra en BigQuery por `STARTS_WITH(cups, SUBSTR(@cups, 1, 20))`).
+- **Cabecera de Seguridad**: `X-API-KEY: <SIPS_API_KEY>`
+- **Variables de Entorno en `.env` y en Vercel Producción**:
+  - `SIPS_API_URL="https://api-sips-aeden-1090285260522.europe-southwest1.run.app"`
+  - `SIPS_API_KEY="<clave_configurada_en_vercel_y_env>"`
+- **Respuesta**: JSON crudo `{ "ps": { ...57 cols... }, "consumos": [ ...24 cols... ] }`.
+
+### 4.2. Nivel 2: API Oficial del ERP (`GET /api/sips`) — Formato 100% Compatible con Ingebau
+- **Archivo fuente**: `src/app/api/sips/route.ts` (apoyado en `src/lib/sips.ts`, con `maxDuration = 60` segundos en Vercel y caché en memoria de 10 minutos por `CUPS20`).
+- **URL en Producción**: `https://ultra.sp-energia.com/api/sips`
+- **Métodos de Autenticación aceptados**:
+  1. **Sesión de usuario del ERP (NextAuth Cookie)**: Cualquier usuario autenticado con rol `SUPERADMIN`, `COMPANYADMIN`, `BACKOFFICE`, `COMERCIAL` o `CANAL` (el rol `CLIENT` recibe `403 Forbidden` por normativa de confidencialidad SIPS).
+  2. **API Key Máquina-a-Máquina (Scripts externos / Integraciones)**: Enviando cabecera `X-API-KEY: <API_KEY>` o `Authorization: Bearer <API_KEY>` (valida contra `AED_API_KEY` y `SIPS_API_KEY`).
+- **Auditoría**: Cada petición registra en los logs del servidor `[SIPS AUDIT] Actor="..." CUPS="..." Format="..."`.
+
+#### Parámetros Query (`GET /api/sips`)
+| Parámetro | Obligatorio | Valores | Descripción |
+| :--- | :---: | :--- | :--- |
+| `cups` | Sí | `ES00...` (20 o 22 chars) | Código CUPS a consultar (con o sin los 2 dígitos finales de control). |
+| `format` | No | `json` *(defecto)* \| `csv_consumos` \| `csv_ps` | Devuelve el JSON estructurado o descarga directamente los archivos CSV listos para Excel/Cotizador. |
+| `refresh` | No | `1` \| `true` | Ignora la caché en memoria de 10 minutos y fuerza lectura directa contra Google Cloud Run / BigQuery. |
+
+#### Ejemplos de Uso por API (`curl`)
+```bash
+# 1. Obtener JSON completo formato Ingebau
+curl -H "X-API-KEY: <TU_API_KEY>" \
+  "https://ultra.sp-energia.com/api/sips?cups=ES0031101457409001HM"
+
+# 2. Descargar directamente el CSV de Consumos (23 columnas) por API
+curl -OJ -H "X-API-KEY: <TU_API_KEY>" \
+  "https://ultra.sp-energia.com/api/sips?cups=ES0031101457409001HM&format=csv_consumos"
+
+# 3. Descargar directamente el CSV de Datos del Punto de Suministro (36 columnas) por API
+curl -OJ -H "X-API-KEY: <TU_API_KEY>" \
+  "https://ultra.sp-energia.com/api/sips?cups=ES0031101457409001HM&format=csv_ps"
+```
+
+#### Estructura del JSON Devuelto (`format=json`)
+```json
+{
+  "success": true,
+  "data": {
+    "result": "OK",
+    "messages": "",
+    "tarifa": "2.0TD",
+    "p1": 4.4,
+    "p2": 4.4,
+    "p3": 0,
+    "p4": 0,
+    "p5": 0,
+    "p6": 0,
+    "cp": "14870",
+    "poblacion": "Zuheros",
+    "municipio": "Zuheros",
+    "provincia": "Córdoba",
+    "codigoProvincia": "14",
+    "codigoMunicipio": "14075",
+    "distribuidora": "ENDESA DISTRIBUCION ELECTRICA, S.L.",
+    "codigoDistribuidora": "0031",
+    "cnae": "9820",
+    "autoconsumo": "0",
+    "consumo": 3291.69,
+    "data": {
+      "ps": [
+        {
+          "CUPS": "ES0031101457409001HM0F",
+          "TarifaATR": "2.0TD",
+          "Tension": "1X230",
+          "TipoPM": "Tipo 5",
+          "MunicipioPS": "Zuheros",
+          "ProvinciaPS": "Córdoba",
+          "CódigoPostalPS": "14870",
+          "NombreDistribuidora": "ENDESA DISTRIBUCION ELECTRICA, S.L.",
+          "CódigoDistribuidora": "31",
+          "PotenciaContratadaP1kW": "4.4",
+          "PotenciaContratadaP2kW": "4.4",
+          "ConsumoAnualkWh": 3291.69,
+          "ConsumoAnualP1kWh": 903.69,
+          "ConsumoAnualP2kWh": 993.91,
+          "ConsumoAnualP3kWh": 1394.09,
+          "ConsumoAnualAnterior": 2742.6,
+          "Propietario EM": "Distribuidor",
+          "codigoTelegestion": "Telegestión operativa con curva de carga horaria"
+        }
+      ],
+      "consumos": [
+        {
+          "CUPS": "ES0031101457409001HM0F",
+          "LecturaDesde": "2026-02-15",
+          "LecturaHasta": "2026-03-15",
+          "TipoLectura": "Telegestión",
+          "codigoTipoLectura": "60",
+          "TarifaATR": "2.0TD",
+          "EnergiaActivaP1(kWh)": 123,
+          "EnergiaActivaP2(kWh)": 114,
+          "EnergiaActivaP3(kWh)": 115,
+          "EnergiaActivaP4(kWh)": 0,
+          "EnergiaActivaP5(kWh)": 0,
+          "EnergiaActivaP6(kWh)": 0,
+          "MaxímetroP1(kW)": 3.38,
+          "MaxímetroP2(kW)": 0,
+          "MaxímetroP3(kW)": 3.924,
+          "MaxímetroP4(kW)": 0,
+          "MaxímetroP5(kW)": 0,
+          "MaxímetroP6(kW)": 0,
+          "EnergíaReactivaP1(Varh)": 0,
+          "EnergíaReactivaP2(Varh)": 0,
+          "EnergíaReactivaP3(Varh)": 0,
+          "EnergíaReactivaP4(Varh)": 0,
+          "EnergíaReactivaP5(Varh)": 0,
+          "EnergíaReactivaP6(Varh)": 0
+        }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 5. Módulo Visual Frontend: `Consulta de CUPS` (`/consulta-cups`)
+
+Ubicado en `src/app/(app)/consulta-cups/page.tsx` y accesible desde el menú lateral del ERP en **`SIPS` $\rightarrow$ `Consulta de CUPS`** para los roles `SUPERADMIN`, `COMPANYADMIN`, `BACKOFFICE`, `COMERCIAL` y `CANAL`.
+
+### 5.1. Funcionalidades del Visor
+1. **Buscador Inteligente por CUPS**:
+   - Acepta CUPS de 20 o 22 caracteres (limpia espacios y convierte a mayúsculas automáticamente).
+   - Permite navegación directa por URL mediante `/consulta-cups?cups=ES00...`.
+   - Guarda en `sessionStorage` las últimas 6 consultas de la sesión como chips de acceso instantáneo y ofrece un botón de refresco (`refresh=1`) para saltar caché si se desea.
+2. **Aviso Legal Reglamentario Desplegable**:
+   - Incluye el texto normativo obligatorio conforme a la **Ley 24/2013 del Sector Eléctrico**, **RD 1011/2009** y **RD 1435/2002**, adaptado dinámicamente a la marca activa en el selector del ERP (`AED Energía`, `SP Energía`, etc.).
+3. **Cabecera Resumen del Suministro**:
+   - Muestra de un vistazo el CUPS completo de 22 caracteres, badge de tarifa ATR, badge de contratabilidad (`Contratable` en verde / `No contratable` en rojo con motivo), CP + Municipio + Provincia, Distribuidora y Consumo Anual total con el número de lecturas disponibles.
+4. **4 Pestañas de Información Técnica**:
+   - **`Datos generales`**: Identificación completa, distribuidora, población/provincia, tarifa, potencias contratadas `P1..P6` (`kW`), potencia máxima BIE y APM, derechos de extensión y acceso, tensión, tipo de punto de medida, fechas de última modificación de contrato, último cambio de comercializador, última lectura, alta de suministro y límite de derechos reconocidos, propiedad de ICP y contador, estado de telegestión, relación de transformación, autoconsumo, CNAE, vivienda habitual y Bono Social.
+   - **`Lecturas de activa`**: Tarjetas superiores con el **Consumo anual estimado (`P1..P6` + Total en `kWh`)** y comparativa frente al año móvil anterior, seguidas de la tabla completa de lecturas históricas (`Fecha`, `Periodo Desde → Hasta`, badge `REAL` / `ESTIMADO`, `Tarifa`, `Consumo P1..P6` y `Total kWh` por ciclo).
+   - **`Lecturas de reactiva`**: Tarjetas superiores con el resumen anual de reactiva (`P1..P6` + Total en `Varh`) y tabla histórica completa por ciclo.
+   - **`Lecturas de maxímetro`**: Tarjetas superiores que enfrentan **Potencia Contratada vs. Pico Máximo Registrado (`kW`)** por cada periodo `P1..P6`, iluminando automáticamente en **ámbar** los periodos y lecturas donde el cliente ha superado la potencia contratada (ideal para estudios de optimización de potencia).
+5. **Barra de Acciones Rápidas**:
+   - **`CSV Consumos (Cotizador)`**: Descarga `{CUPS}_consumos.csv`.
+   - **`CSV Datos PS`**: Descarga `{CUPS}_ps.csv`.
+   - **`Cotizar CUPS`** *(visible para `SUPERADMIN`, `COMPANYADMIN`, `BACKOFFICE`)*: Abre `/pricing?cups={CUPS}`, activando automáticamente la pestaña `Por CUPS` y cargando los consumos en el Cotizador en un solo clic.
+   - **`Copiar`** / **`Ir a Leads`**: Copia el CUPS al portapapeles y navega a `/leads` para dar de alta la oportunidad comercial.
+
+---
+
+## 6. Qué Podemos Exportar: Especificación de Archivos CSV (`src/lib/sipsCsvExporter.ts`)
+
+Todos los archivos CSV exportados desde `/consulta-cups` o desde `/api/sips?format=csv_*` cuentan con tres características clave diseñadas para **Microsoft Excel en España** y para el **Cotizador Comercial (`/pricing`)**:
+1. **Marca `UTF-8 BOM` (`\uFEFF`) al inicio del archivo**: Garantiza que Excel abra todas las tildes (`Telegestión`, `Maxímetro`, `Energía`, `Código`) sin errores de codificación.
+2. **Separador de columnas punto y coma (`;`)**: Al ser `;` el separador regional de listas de Windows/Excel en España, **al hacer doble clic sobre el archivo `.csv` descargado se abre directamente separado en columnas (`A`, `B`, `C`...) sin tener que pulsar "Texto en columnas"**.
+3. **Decimales con coma española (`,`)**: Los números con decimales (`3,38`, `3,924`, `3291,69`) se exportan con coma decimal para que Excel los reconozca inmediatamente como celdas numéricas operables y nunca confunda 3 decimales (`3.924` kW) con miles (`3924`).
+
+### 6.1. Archivo 1: `{CUPS}_consumos.csv` (23 Columnas — Compatible 100% con Cotizador `SIPS CSV`)
+Contiene el histórico completo de lecturas del suministro con las **23 columnas exactas del estándar Ingebau**:
+1. `CUPS`
+2. `Lectura Desde` (`YYYY-MM-DD`)
+3. `Lectura Hasta` (`YYYY-MM-DD`)
+4. `Tipo Lectura` (`Telegestión`, `Real`, `Estimada`)
+5. `Tarifa ATR` (`2.0TD`, `3.0TD`, `6.1TD`, etc.)
+6. `Energia Activa P1 (kWh)` .. 11. `Energia Activa P6 (kWh)`
+12. `Maxímetro P1 (kW)` .. 17. `Maxímetro P6 (kW)`
+18. `Energía Reactiva P1 (Varh)` .. 23. `Energía Reactiva P6 (Varh)`
+
+> **Compatibilidad dual en el Cotizador (`/pricing` $\rightarrow$ `Cálculo Genérico` $\rightarrow$ `SIPS CSV`)**: El lector `Papa.parse` de `src/app/(app)/pricing/page.tsx` limpia el BOM UTF-8 (`transformHeader`) y autodetecta tanto archivos separados por `;` (nuestro nuevo CSV Excel-ready, incluso si el usuario lo abre, modifica y guarda desde Excel) como archivos antiguos separados por `,` descargados históricamente de Ingebau.
+
+### 6.2. Archivo 2: `{CUPS}_ps.csv` (36 Columnas — Ficha Técnica Maestro del Suministro)
+Contiene una fila resumen con las **36 columnas exactas del estándar Ingebau**:
+`Codigo Distribuidora`, `Nombre Distribuidora`, `CUPS`, `Código Postal PS`, `Municipio PS`, `Fecha Alta PS`, `Tarifa ATR`, `Tension`, `Potencia Max BIE (kW)`, `Tipo PM`, `Consumo Anual kWh`, `Consumo Anual P1 kWh`..`Consumo Anual P6 kWh`, `Consumo Anual Anterior`, `Potencia Contratada P1 kW`..`Potencia Contratada P6 kW`, `valorDerechosExtensionkW`, `valorDerechosAccesokW`, `Propietario EM`, `fechaUltimoMovimientoContrato`, `fechaUltimoCambioComercializador`, `fechaLimiteDerechosReconocidos`, `fechaUltimaLectura`, `codigoTelegestion`, `codigoAutoconsumo`, `CNAE`, `codigoModoControlPotencia` y `aplicacionBonoSocial`.
+
+---
+
+## 7. Procesos del ERP Integrados con Nuestro SIPS
+
+Ningún módulo del ERP llama ya a Ingebau; todos consumen `getSipsData()` (`src/lib/sips.ts`) o `/api/sips`:
+
+1. **Cotizador Comercial — Modo `Por CUPS` (`src/app/(app)/pricing/page.tsx` + `fetchSipsForPricingAction` en `src/app/actions/supplyPointActions.ts`)**:
+   - Busca simultáneamente si existen curvas horarias reales de telemedida (`LoadCurve`) en el ERP y consulta nuestro SIPS en tiempo real para obtener `TarifaATR` y los consumos `P1..P6` del último año (usando `SupplyPoint.sipsRawData` de PostgreSQL únicamente como respaldo offline si hubiera caída de red).
+2. **Cotizador Comercial — Modo `Cálculo Genérico` $\rightarrow$ `SIPS CSV` (`src/app/(app)/pricing/page.tsx`)**:
+   - Procesa cualquier `{CUPS}_consumos.csv` exportado desde `/consulta-cups`, selecciona automáticamente la tarifa ATR detectada y reconstruye la curva horaria anual mediante perfiles REE.
+3. **Creación y Validación de Leads (`src/app/(app)/leads/NewLeadModal.tsx` y `src/app/actions/leadActions.ts`)**:
+   - Al escribir un CUPS en el modal de nuevo Lead, llama a `GET /api/sips?cups=...` para autocompletar tarifa, potencias `P1..P6`, CP, municipio, provincia y distribuidora.
+   - Al guardar el Lead (`createLeadAction`), valida los datos contra `getSipsData()` en segundo plano y persiste el JSON completo en `SupplyPoint.sipsRawData` y `Lead.sipsRawData`.
+4. **Ficha de Contrato (`/contratos/[id]`) y Ficha de Punto de Suministro (`/puntos-suministro/[id]`)**:
+   - El botón **"Actualizar Datos SIPS"** ejecuta `updateSupplyPointSipsAction` (`src/app/actions/supplyPointActions.ts`), refresca los datos desde nuestra API Cloud Run + BigQuery y actualiza `SupplyPoint.sipsRawData` en PostgreSQL.
+
+---
+
+## 8. Operativa de Actualización Mensual y Mejora Planificada
+
+### 8.1. Operativa Actual de Actualización de Datos CNMC
+Cuando la CNMC publica la nueva edición mensual de SIPS2:
+1. Descargar los 2 ficheros `.zip` (`SIPS2_PS_ELECTRICIDAD_peninsular.zip` y `SIPS2_CONSUMOS_ELECTRICIDAD_peninsular.zip`) mediante `Z:\AED\SIPS\BD_AEDEN_SIPS\0_descargador_masivo_cnmc.py`.
+2. Subirlos al bucket `gs://bucket-sips-aeden/archivos_crudos/` en Google Cloud Storage.
+3. Ejecutar en Google Cloud Console el Cloud Run Job **`sips-ingesta-masiva`**, que reemplaza (`WRITE_TRUNCATE`) las tablas `sips_nacional.datos_ps` y `sips_nacional.datos_consumos` en ~40 minutos sin tiempo de inactividad en el ERP.
+
+### 8.2. Próxima Automatización Desatendida (Documentada en `docs/ROADMAP.md`)
+Tal como figura planificado en [`docs/ROADMAP.md`](./ROADMAP.md) (*Prioridad 6*), el siguiente paso evolutivo sobre la infraestructura de Google Cloud consistirá en:
+- Almacenar `certificado_aeden.pem` y las credenciales OAuth1 de la CNMC en **Google Secret Manager**.
+- Programar **Google Cloud Scheduler** el **día 5 de cada mes** (con reintento automático días 6 y 7) para que el propio Cloud Run Job `sips-ingesta-masiva` descargue directamente los `.zip` desde la API de la CNMC e inyecte las tablas en BigQuery añadiendo **`clustering_fields=["cups"]`** (lo que reducirá además el tiempo de respuesta de cada consulta de ~6-12s a `< 500 ms` y el escaneo en BigQuery a pocos MB por petición).
