@@ -1322,39 +1322,7 @@ export async function updateContractFull(formData: FormData) {
       cDataObj['Código Tarifa'] = [tariff];
     }
 
-    // Update SupplyPoint if technical fields were edited
-    if (existing.supplyPointId && (tariff || annualConsumptionStr || cnae || distributor || iban || p1c !== undefined)) {
-      const spUpdate: any = {};
-      if (tariff) spUpdate.tariff = tariff;
-      if (annualConsumptionStr && !isNaN(parseFloat(annualConsumptionStr))) spUpdate.annualConsumption = parseFloat(annualConsumptionStr);
-      if (cnae) spUpdate.cnae = cnae;
-      if (distributor) spUpdate.distributor = distributor;
-      if (iban) spUpdate.iban = iban;
-      if (p1c !== undefined) spUpdate.p1c = p1c;
-      if (p2c !== undefined) spUpdate.p2c = p2c;
-      if (p3c !== undefined) spUpdate.p3c = p3c;
-      if (p4c !== undefined) spUpdate.p4c = p4c;
-      if (p5c !== undefined) spUpdate.p5c = p5c;
-      if (p6c !== undefined) spUpdate.p6c = p6c;
-
-      await prisma.supplyPoint.update({
-        where: { id: existing.supplyPointId },
-        data: spUpdate
-      });
-    }
-
-    // Update Client if contact fields were edited
-    if (existing.clientId && (contactEmail || invoiceEmail || contactPhone)) {
-      const clUpdate: any = {};
-      if (contactEmail) clUpdate.contactEmail = contactEmail;
-      if (invoiceEmail) clUpdate.invoiceEmail = invoiceEmail;
-      if (contactPhone) clUpdate.contactPhone = contactPhone;
-
-      await prisma.client.update({
-        where: { id: existing.clientId },
-        data: clUpdate
-      });
-    }
+    // Contract data is a snapshot. We no longer update Client or SupplyPoint from here (Reglas 69, 73 y 75).
 
     // Update Contract
     await prisma.contract.update({

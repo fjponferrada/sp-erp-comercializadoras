@@ -500,7 +500,7 @@ export default function ContractDetailClient({
                   <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">
                     {displayTariff}
                   </span>} />
-                  <DataItem label="Consumo Anual Estimado (MWh)" value={supplyPoint.annualConsumption ?? lead.estimatedMWh} />
+                  <DataItem label="Consumo Anual Estimado (MWh)" value={lead.estimatedMWh ?? initialContract.annualConsumption ?? supplyPoint.annualConsumption} />
                   <DataItem label="Distribuidora" value={supplyPoint.distributorName ? supplyPoint.distributorName.replace(/^\[.*?\]\s*/, '') : (supplyPoint.distributor ? supplyPoint.distributor.replace(/^\[.*?\]\s*/, '') : 'EDISTRIBUCION')} />
                   
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Dirección de Suministro</h3></div>
