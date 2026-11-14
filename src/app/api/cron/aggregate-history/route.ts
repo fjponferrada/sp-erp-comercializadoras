@@ -12,10 +12,38 @@ const LOCAL_FALLBACK_CRON_TOKEN = 'SpEnergia2026_UltraCron';
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
     const daysParam = searchParams.get('days');
     const rawDays = daysParam ? parseInt(daysParam, 10) : 60;
 
-    if (isNaN(rawDays) || rawDays <= 0 || rawDays > 730) {
+    const isRangeMode = Boolean(startDateParam && endDateParam);
+    let rangeDates: string[] = [];
+
+    if (isRangeMode) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(startDateParam!) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDateParam!)
+      ) {
+        return NextResponse.json(
+          { error: 'startDate y endDate deben tener formato YYYY-MM-DD' },
+          { status: 400 }
+        );
+      }
+      const startDt = new Date(`${startDateParam}T00:00:00.000Z`);
+      const endDt = new Date(`${endDateParam}T00:00:00.000Z`);
+      const spanDays = Math.round((endDt.getTime() - startDt.getTime()) / 86_400_000) + 1;
+      if (isNaN(spanDays) || spanDays <= 0 || spanDays > 65) {
+        return NextResponse.json(
+          { error: 'El rango [startDate..endDate] debe comprender entre 1 y 65 días' },
+          { status: 400 }
+        );
+      }
+      for (let i = 0; i < spanDays; i++) {
+        const cur = new Date(startDt.getTime() + i * 86_400_000);
+        rangeDates.push(cur.toISOString().slice(0, 10));
+      }
+    } else if (isNaN(rawDays) || rawDays <= 0 || rawDays > 730) {
       return NextResponse.json({ error: 'Parámetro days inválido (debe estar entre 1 y 730)' }, { status: 400 });
     }
 
@@ -51,24 +79,40 @@ export async function GET(req: Request) {
       targetCompanyId = companyId;
     }
 
-    console.log(`API Sincronización Histórico llamada. Días: ${rawDays}, CompanyId: ${targetCompanyId || 'ALL'}`);
-    const rows = await AggregationService.regenerateAggregates(rawDays, targetCompanyId);
+    let rows = 0;
+    let processedDaysCount = rawDays;
+
+    if (isRangeMode) {
+      processedDaysCount = rangeDates.length;
+      console.log(
+        `API Sincronización Histórico (ventana ${startDateParam} → ${endDateParam}, ${processedDaysCount}d), CompanyId: ${targetCompanyId || 'ALL'}`
+      );
+      rows = await AggregationService.regenerateForDates(rangeDates, targetCompanyId);
+    } else {
+      console.log(
+        `API Sincronización Histórico llamada. Días: ${rawDays}, CompanyId: ${targetCompanyId || 'ALL'}`
+      );
+      rows = await AggregationService.regenerateAggregates(rawDays, targetCompanyId);
+    }
 
     let weatherRepair = null;
-    if (rawDays >= 365 || searchParams.get('repairWeather') === '1') {
+    if ((!isRangeMode && rawDays >= 365) || searchParams.get('repairWeather') === '1') {
       weatherRepair = await WeatherSyncService.repairHistoricalAggregates();
     }
 
-    try {
-      await runCalculatePendingEnergy(undefined, targetCompanyId);
-    } catch (pendingErr) {
-      console.error('Aviso: error recalculando energía pendiente en cron aggregate-history:', pendingErr);
+    if (searchParams.get('skipPending') !== '1') {
+      try {
+        await runCalculatePendingEnergy(undefined, targetCompanyId);
+      } catch (pendingErr) {
+        console.error('Aviso: error recalculando energía pendiente en cron aggregate-history:', pendingErr);
+      }
     }
 
     return NextResponse.json({
       success: true,
       rowsInserted: rows,
-      daysProcessed: rawDays,
+      daysProcessed: processedDaysCount,
+      ...(isRangeMode ? { startDate: startDateParam, endDate: endDateParam } : {}),
       ...(weatherRepair ? { weatherRepair } : {}),
     });
   } catch (error: any) {

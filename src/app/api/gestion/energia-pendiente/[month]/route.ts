@@ -4,9 +4,10 @@ import { prisma } from '@/lib/prisma';
 import { hasAdminOrBackofficeRole, resolveActiveCompanyId } from '@/lib/companyContext';
 
 const EXCLUDED_CONTRACT_STATUS_REGEX = /rechaz|borrador|draft|anulad|cancel|tramit|solicitud/i;
+const madridDateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' });
 
 function toUtcDateOnly(d: Date | string): Date {
-  const iso = typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10);
+  const iso = typeof d === 'string' ? d.slice(0, 10) : madridDateFmt.format(d);
   return new Date(`${iso}T00:00:00.000Z`);
 }
 
@@ -102,6 +103,7 @@ export async function GET(
     const monthStartUtc = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
     const monthEndDateOnlyUtc = new Date(Date.UTC(yearNum, monthNum, 0, 0, 0, 0, 0));
     const monthEndUtc = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
+    const queryStartPadded = new Date(monthStartUtc.getTime() - 6 * 3_600_000);
     const daysInMonth = monthEndDateOnlyUtc.getUTCDate();
     const monthStartMs = monthStartUtc.getTime();
     const monthEndDateOnlyMs = monthEndDateOnlyUtc.getTime();
@@ -148,7 +150,7 @@ export async function GET(
       prisma.invoice.findMany({
         where: {
           billingStart: { lte: monthEndUtc },
-          billingEnd: { gte: monthStartUtc },
+          billingEnd: { gte: queryStartPadded },
           OR: [
             { companyId: activeCompanyId },
             { companyId: null, client: { brand: { companyId: activeCompanyId } } },
@@ -170,7 +172,7 @@ export async function GET(
           status: { in: ['EMITIDA', 'ABONO'] },
           hidden: false,
           billingStart: { lte: monthEndUtc },
-          billingEnd: { gte: monthStartUtc },
+          billingEnd: { gte: queryStartPadded },
           OR: [
             { companyId: activeCompanyId },
             { companyId: null, client: { brand: { companyId: activeCompanyId } } },
@@ -192,7 +194,7 @@ export async function GET(
         where: {
           tipoDocumento: 'FacturaATR',
           fechaInicio: { lte: monthEndUtc },
-          fechaFin: { gte: monthStartUtc },
+          fechaFin: { gte: queryStartPadded },
           invoices: { none: {} },
           internalInvoices: { none: { status: { in: ['EMITIDA', 'ABONO'] }, hidden: false } },
           supplyPoint: { client: { brand: { companyId: activeCompanyId } } },
@@ -207,7 +209,7 @@ export async function GET(
       prisma.$queryRaw<
         Array<{
           baseCups: string;
-          date: Date;
+          dateStr: string;
           type: string;
           isProvisional: boolean;
           kwh: number;
@@ -215,7 +217,7 @@ export async function GET(
       >`
         SELECT
           SUBSTRING(lc.cups FROM 1 FOR 20) AS "baseCups",
-          lc.date AS "date",
+          TO_CHAR(lc.date, 'YYYY-MM-DD') AS "dateStr",
           lc.type::text AS "type",
           lc."isProvisional" AS "isProvisional",
           (SELECT COALESCE(SUM(v), 0) FROM unnest(lc.readings) AS v)::float8 AS "kwh"
@@ -390,7 +392,7 @@ export async function GET(
       const bucket = byBaseCups.get(lc.baseCups);
       if (!bucket) continue;
 
-      const dayMs = toUtcDateOnly(lc.date).getTime();
+      const dayMs = toUtcDateOnly(lc.dateStr).getTime();
       if (!isDayWithinContracts(bucket.spans, dayMs)) continue;
 
       const mwh = (Number(lc.kwh) || 0) / 1000;

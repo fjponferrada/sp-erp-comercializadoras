@@ -11,8 +11,15 @@ export interface CalculatePendingOptions {
   rebuildAggregates?: boolean;
 }
 
+const madridDateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' });
+
 function toUtcDateOnly(d: Date): Date {
   const iso = d.toISOString().slice(0, 10);
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
+function toMadridCalendarUtc(d: Date): Date {
+  const iso = madridDateFmt.format(d);
   return new Date(`${iso}T00:00:00.000Z`);
 }
 
@@ -54,8 +61,8 @@ function prorateEnergyForMonth(
   monthEndDateOnlyUtc: Date,
   signedMwh: number
 ): number {
-  const sUtc = toUtcDateOnly(rawStart);
-  const eUtc = toUtcDateOnly(rawEnd);
+  const sUtc = toMadridCalendarUtc(rawStart);
+  const eUtc = toMadridCalendarUtc(rawEnd);
   if (eUtc < sUtc) return 0;
 
   const oStart = sUtc < monthStartUtc ? monthStartUtc : sUtc;
@@ -112,7 +119,7 @@ export async function runCalculatePendingEnergy(
   console.log(`Iniciando cálculo de energía pendiente. Compañía objetivo: ${targetCompanyId || 'TODAS'}`);
   if (onProgress) onProgress('Iniciando cálculo de energía pendiente...');
 
-  const defaultMonths = getClosedMonthsList(12);
+  const defaultMonths = getClosedMonthsList(18);
   const maxClosedMonth = defaultMonths[defaultMonths.length - 1];
 
   let monthsToProcess = defaultMonths;
@@ -224,8 +231,8 @@ export async function runCalculatePendingEnergy(
     console.log(`=== PROCESANDO COMPAÑÍA: ${company.name} ===`);
 
     if (options?.rebuildAggregates) {
-      if (onProgress) onProgress(`Reconstruyendo curvas CCH agregadas de 12 meses para ${company.name}...`);
-      await AggregationService.regenerateAggregates(380, company.id, onProgress);
+      if (onProgress) onProgress(`Reconstruyendo curvas CCH agregadas de 18 meses para ${company.name}...`);
+      await AggregationService.regenerateAggregates(560, company.id, onProgress);
     }
 
     // Precargar AggregatedLoadCurve filtrando estrictamente por companyId
@@ -269,6 +276,7 @@ export async function runCalculatePendingEnergy(
       const monthStartUtc = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
       const monthEndDateOnlyUtc = new Date(Date.UTC(yearNum, monthNum, 0, 0, 0, 0, 0));
       const monthEndUtc = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
+      const queryStartPadded = new Date(monthStartUtc.getTime() - 6 * 3_600_000);
       const daysInMonth = monthEndDateOnlyUtc.getUTCDate();
 
       // 1. Facturas emitidas (Invoice + InternalInvoice emitidas no solapadas) + F1 pendientes de facturar
@@ -276,7 +284,7 @@ export async function runCalculatePendingEnergy(
         prisma.invoice.findMany({
           where: {
             billingStart: { lte: monthEndUtc },
-            billingEnd: { gte: monthStartUtc },
+            billingEnd: { gte: queryStartPadded },
             OR: [
               { companyId: company.id },
               { companyId: null, client: { brand: { companyId: company.id } } },
@@ -297,7 +305,7 @@ export async function runCalculatePendingEnergy(
             status: { in: ['EMITIDA', 'ABONO'] },
             hidden: false,
             billingStart: { lte: monthEndUtc },
-            billingEnd: { gte: monthStartUtc },
+            billingEnd: { gte: queryStartPadded },
             OR: [
               { companyId: company.id },
               { companyId: null, client: { brand: { companyId: company.id } } },
@@ -318,7 +326,7 @@ export async function runCalculatePendingEnergy(
           where: {
             tipoDocumento: 'FacturaATR',
             fechaInicio: { lte: monthEndUtc },
-            fechaFin: { gte: monthStartUtc },
+            fechaFin: { gte: queryStartPadded },
             invoices: { none: {} },
             internalInvoices: { none: { status: { in: ['EMITIDA', 'ABONO'] }, hidden: false } },
             supplyPoint: { client: { brand: { companyId: company.id } } },

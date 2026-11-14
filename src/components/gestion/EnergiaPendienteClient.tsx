@@ -132,6 +132,7 @@ export default function EnergiaPendienteClient() {
   const [error, setError] = useState<string | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [rebuildAggregates, setRebuildAggregates] = useState(false);
+  const [monthsRange, setMonthsRange] = useState<number>(12);
   const [progressMsg, setProgressMsg] = useState<string>('');
 
   // Estado del modal de auditoría mensual
@@ -141,11 +142,11 @@ export default function EnergiaPendienteClient() {
   const [auditTab, setAuditTab] = useState<'resumen' | 'distribuidoras' | 'cups'>('cups');
   const [cupsSearch, setCupsSearch] = useState('');
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (months: number = monthsRange) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/gestion/energia-pendiente', { cache: 'no-store' });
+      const res = await fetch(`/api/gestion/energia-pendiente?months=${months}`, { cache: 'no-store' });
       const json = await res.json();
       if (!json.success) {
         setError(json.error || 'Error desconocido al cargar los datos.');
@@ -158,7 +159,7 @@ export default function EnergiaPendienteClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [monthsRange]);
 
   useEffect(() => {
     loadData();
@@ -691,6 +692,25 @@ export default function EnergiaPendienteClient() {
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <select
+                value={monthsRange}
+                onChange={(e) => setMonthsRange(Number(e.target.value))}
+                disabled={isRecalculating}
+                title="Ventana temporal mostrada (el ciclo completo de cierres REE hasta C8 abarca 18 meses)"
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-base)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.83rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value={12}>Últimos 12 meses</option>
+                <option value={18}>Últimos 18 meses (Ciclo C8)</option>
+              </select>
+
               <label
                 title="Si activas esta opción, antes de calcular se regenerarán desde cero las curvas agregadas CCH de los últimos 380 días a partir de las lecturas individuales de cada CUPS."
                 style={{

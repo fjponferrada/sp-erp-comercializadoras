@@ -10,13 +10,17 @@ function getMaxClosedMonthMadrid(): string {
   return lastClosed.toISOString().slice(0, 7);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await auth();
     const role = (session?.user as any)?.role as string | undefined;
     if (!session || !hasAdminOrBackofficeRole(role)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
+
+    const { searchParams } = new URL(req.url);
+    const rawLimit = parseInt(searchParams.get('months') || '12', 10);
+    const takeMonths = [12, 18, 24].includes(rawLimit) ? rawLimit : 12;
 
     let activeCompanyId = await resolveActiveCompanyId(session);
     if (!activeCompanyId && role === 'SUPERADMIN') {
@@ -41,7 +45,7 @@ export async function GET() {
           month: { lte: maxClosedMonth },
         },
         orderBy: { month: 'desc' },
-        take: 12,
+        take: takeMonths,
       }),
     ]);
 
