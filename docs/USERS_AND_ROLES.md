@@ -36,8 +36,8 @@ Todo registro `User` cuenta con el interruptor booleano **`isActive`** (`@defaul
 | **`SUPERADMIN`** | Global (todas las empresas y marcas) | Todas las marcas | **Global** (incluye ver/crear `SUPERADMIN`) | Lectura y escritura completa | Todos los módulos ERP |
 | **`COMPANYADMIN`** | Sus `companies` (todas sus marcas hijas) + `assignedBrands` | Sus marcas autorizadas | **Acotado a sus comercializadoras** (prohibido ver/crear `SUPERADMIN`) | Lectura y escritura en sus marcas | Todos los módulos ERP de sus marcas |
 | **`BACKOFFICE`** | Exclusivamente sus `assignedBrands` | Sus marcas autorizadas | Sin acceso | Lectura y escritura en su marca activa | Módulos operativos y Configuración (sin `/usuarios` ni `/comisiones-config`) |
-| **`CANAL`** | Su cartera + comerciales de su `channelId` en su marca | Marca de su canal / `assignedBrands` | Sin acceso | **Solo lectura** (catálogo habilitado a su canal, sin comisiones internas) | `CRM Ventas` (incl. `Productos`) |
-| **`COMERCIAL`** | Exclusivamente sus propios registros (`userId`) | Sus `assignedBrands` | Sin acceso | **Solo lectura** (catálogo publicado de su marca, sin comisiones internas) | `CRM Ventas` (incl. `Productos`) |
+| **`CANAL`** | Su cartera + comerciales de su `channelId` en su marca | Marca de su canal / `assignedBrands` | Sin acceso | **Solo lectura** (catálogo habilitado a su canal, sin comisiones internas) | `CRM Ventas` (incl. `Productos`) + `SIPS` (`Consulta de CUPS`) |
+| **`COMERCIAL`** | Exclusivamente sus propios registros (`userId`) | Sus `assignedBrands` | Sin acceso | **Solo lectura** (catálogo publicado de su marca, sin comisiones internas) | `CRM Ventas` (incl. `Productos`) + `SIPS` (`Consulta de CUPS`) |
 | **`CLIENT`** | Sus contratos/facturas/CUPS por `brandId` + email | Fijo a su `user.brandId` | Sin acceso | Sin acceso | `Área de Cliente` |
 
 ---
@@ -103,9 +103,15 @@ Todo registro `User` cuenta con el interruptor booleano **`isActive`** (`@defaul
 
 ## 5. Flujos de Alta Comercial y Notas de Migración Histórica
 
-### 5.1 Flujos de Alta en `/leads` para Comerciales y Canales
-1. **Crear Oferta (Estudio Comercial)**: Flujo ágil de baja fricción que solicita únicamente datos básicos de contacto/suministro y adjuntos esenciales (DNI/Factura) sin exigir IBAN, dirección completa ni firma.
-2. **Alta Luz (Contrato Directo)**: Flujo completo con validación estricta (NIF, domicilios, representante legal en personas jurídicas según Regla 75, IBAN, verificación documental y selección de plantilla SEPA `CORE` vs `B2B`).
+### 5.1 Flujos de Alta en `/leads` y `/consulta-cups` para Comerciales, Canales y Backoffice
+1. **Crear Oferta (Estudio Comercial, `mode = 'opportunity'`)**:
+   - Flujo ágil de baja fricción (accesible desde `/leads` y en 1 clic desde `/consulta-cups` con precarga instantánea SIPS en `0 ms`) que permite seleccionar tarifas de suministro o autoconsumo, autocalcular la **Cuota Estimada del Cliente** y el **Ahorro Anual (`€` y `%`)**, visualizar **Tu Comisión Estimada (12 meses)** calculada confidencialmente en servidor (`estimateLeadCommissionAction`, sin exponer `marginFC` ni `ip1..ip6` en `GET /api/products`) y descargar/enviar por email el PDF oficial de la oferta en `/leads/[id]`.
+   - Tanto `COMERCIAL` como `CANAL` pueden promocionar sus propias ofertas no contratadas mediante el botón **Pasar a Alta Luz** en `/leads/[id]` (`updateLeadAction`), completando IBAN, dirección y documentación sin duplicar el Lead.
+2. **Alta Luz (Contrato Directo, `mode = 'contract'`)**:
+   - Flujo completo con validación matemática en tiempo real (`src/lib/spanishValidators.ts`: letra `DNI`/`NIE` y control `CIF`, **IBAN ISO 13616 MOD-97** con detección de banco español y **CUPS Módulo-529** con autodisparo SIPS), validación obligatoria del Apoderado B2B (Regla 75), cruce técnico con SIPS (Regla 74) y flujo multisuministro **«Guardar y + Otro CUPS»**.
+   - **Autocompletado RBAC de Cartera (`GET /api/clients/search`)**: Filtra por `getClientVisibilityFilter()` y `getLeadVisibilityFilter()` para que cada `COMERCIAL` o `CANAL` solo pueda autocompletar titulares existentes dentro de su propia cartera autorizada, reutilizando de forma ligera URLs de documentos de identidad (`DNI`, `ESCRITURAS`, `DNI_APODERADO`) y **bloqueando por regla de negocio el autocompletado de `IBAN` y `Última Factura`**.
+   - **Generación Automática en 1 Paso del Borrador PDF de Contrato**: Exclusiva para `SUPERADMIN`, `COMPANYADMIN` y `BACKOFFICE` dentro de `NewLeadModal.tsx` (`autoGenerateContract`), creando directamente el `Contract` en estado `BORRADOR` y redirigiendo a `/contratos/[id]`.
+   - *(Nota de alcance UI)*: Se eliminaron el botón `Estudio FV` de `Topbar` y el acceso `/autoconsumo` de `Sidebar.tsx` para mantener el ERP 100% enfocado en comercialización eléctrica (Regla 267).
 
 ### 5.2 Reglas de Coherencia con Datos Migrados de Airtable
 - Los usuarios comerciales importados desde Airtable (`CANALES LINK`) mantienen su vinculación relacional a través de `User.email` y `channelId`, asignándose `role = 'CANAL'` + `isChannelSupervisor = true` cuando tenían activo `"Supervisor canal"`, o `role = 'COMERCIAL'` en caso contrario (Regla 26).

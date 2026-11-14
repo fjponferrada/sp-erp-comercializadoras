@@ -4,11 +4,24 @@ import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { UploadCloud, File as FileIcon, CheckCircle, XCircle } from 'lucide-react';
+import { parseJsonResponseSafe, prepareFilteredZipBatches } from '@/lib/zipClientFilter';
+
+function isCompodemRelevantFile(lowerBaseName: string): boolean {
+  return (
+    lowerBaseName.includes('_compodem_') ||
+    lowerBaseName.includes('kestimado') ||
+    lowerBaseName.includes('kreal') ||
+    lowerBaseName.includes('kestmedio') ||
+    lowerBaseName.includes('kestimqh') ||
+    lowerBaseName.includes('krealqh')
+  );
+}
 
 export default function ImportarClient() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [statusLabel, setStatusLabel] = useState<string>('Procesando...');
   const [result, setResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -23,6 +36,7 @@ export default function ImportarClient() {
     accept: {
       'application/zip': ['.zip', '.ZIP'],
       'application/x-zip-compressed': ['.zip', '.ZIP'],
+      'application/octet-stream': ['.zip', '.ZIP'],
     },
     maxFiles: 1,
   });
@@ -31,30 +45,77 @@ export default function ImportarClient() {
     if (!file) return;
 
     setLoading(true);
+    setStatusLabel('Filtrando ficheros del ZIP...');
     setResult(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const res = await fetch('/api/compodem/import', {
-        method: 'POST',
-        body: formData,
-      });
+      const { matchedCount, batches } = await prepareFilteredZipBatches(file, isCompodemRelevantFile);
 
-      const data = await res.json();
-
-      if (res.ok) {
-        setResult({ success: true, message: data.message, details: data });
-        setFile(null);
-        router.refresh();
-      } else {
-        setResult({ success: false, message: data.error || 'Error al procesar el archivo' });
+      if (matchedCount === 0 || batches.length === 0) {
+        setResult({
+          success: false,
+          message: 'No se encontraron ficheros válidos de COMPODEM ni Factor K dentro del ZIP.',
+        });
+        return;
       }
+
+      let totalFilesProcessed = 0;
+      let totalRowsInserted = 0;
+      const accumulatedMonths = new Set<string>();
+
+      for (let i = 0; i < batches.length; i++) {
+        const isLastBatch = i === batches.length - 1;
+        setStatusLabel(
+          batches.length > 1
+            ? `Importando lote ${i + 1} de ${batches.length}...`
+            : 'Importando en base de datos...'
+        );
+
+        const formData = new FormData();
+        formData.append('file', batches[i], `compodem_batch_${i + 1}.zip`);
+        if (!isLastBatch) {
+          formData.append('skipRecalc', 'true');
+        } else if (accumulatedMonths.size > 0) {
+          formData.append('extraMonths', JSON.stringify(Array.from(accumulatedMonths)));
+        }
+
+        const res = await fetch('/api/compodem/import', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await parseJsonResponseSafe(res);
+
+        if (!res.ok) {
+          setResult({
+            success: false,
+            message: data.error || `Error al procesar el lote ${i + 1} de ${batches.length}`,
+          });
+          return;
+        }
+
+        totalFilesProcessed += data.filesProcessed || 0;
+        totalRowsInserted += data.rowsInserted || 0;
+        if (Array.isArray(data.affectedMonths)) {
+          data.affectedMonths.forEach((m: string) => accumulatedMonths.add(m));
+        }
+      }
+
+      setResult({
+        success: true,
+        message: `Se procesaron ${totalFilesProcessed} ficheros válidos y se actualizaron/insertaron ${totalRowsInserted} registros en la base de datos.`,
+        details: {
+          filesProcessed: totalFilesProcessed,
+          rowsInserted: totalRowsInserted,
+        },
+      });
+      setFile(null);
+      router.refresh();
     } catch (error: any) {
-      setResult({ success: false, message: error.message });
+      setResult({ success: false, message: error.message || 'Error al procesar el archivo ZIP' });
     } finally {
       setLoading(false);
+      setStatusLabel('Procesando...');
     }
   };
 
@@ -105,7 +166,7 @@ export default function ImportarClient() {
             className="btn-primary"
             style={{ opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
           >
-            {loading ? 'Procesando...' : 'Iniciar Importación'}
+            {loading ? statusLabel : 'Iniciar Importación'}
           </button>
         </div>
       )}

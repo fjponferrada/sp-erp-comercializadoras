@@ -2,23 +2,30 @@
 
 import { prisma } from '@/lib/prisma';
 import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
+import { normalizeSpanishPostalCode, normalizeSpanishPostalCodeOrNull } from '@/lib/postalCode';
 import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
 import docusign from 'docusign-esign';
 import { createAndSendEnvelope } from '@/lib/docusign';
-import { buildTemplateDataFromLead, getSupplyAddress } from '@/lib/templateBuilder';
+import { buildTemplateDataFromLead, getSupplyAddress, getTitularAddress } from '@/lib/templateBuilder';
 import { getTramitationCodes } from '@/lib/tramitationMapper';
 import {
   calculateAndSnapshotContractCommission,
   extractContractMarginSnapshots,
 } from '@/lib/services/CommissionEngine';
 
-export async function convertLeadToContractAction(leadId: string) {
+export async function convertLeadToContractAction(leadId: string): Promise<{
+  success?: boolean;
+  contractId?: string;
+  pdfWarning?: string;
+  error?: string;
+  validationErrors?: string[];
+}> {
   try {
     // 1. Verificar si ya existe un contrato para este Lead
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { contract: true, user: { include: { brand: true } } },
+      include: { contract: true, documents: true, user: { include: { brand: true } } },
     });
 
     if (!lead) {
@@ -32,44 +39,55 @@ export async function convertLeadToContractAction(leadId: string) {
     // --- VALIDACIONES DE NEGOCIO ---
     const validationErrors: string[] = [];
     const cData: any = lead.contractData || {};
+    const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
 
     // 1. SIPS OK
-    if (!lead.sipsOk && lead.sipsMessages && lead.sipsMessages.length > 0 && lead.sipsMessages !== 'SIPS Refrescado Correctamente') {
+    if (
+      !lead.sipsOk &&
+      lead.sipsMessages &&
+      lead.sipsMessages.length > 0 &&
+      lead.sipsMessages !== 'SIPS Refrescado Correctamente' &&
+      lead.sipsMessages !== 'Validado correctamente contra SIPS'
+    ) {
       validationErrors.push(`Aviso de SIPS pendiente de revisión: ${lead.sipsMessages}`);
     }
 
     // 2. Error NIF apoderado/titular
-    const vat = lead.vatNumber || cData.nif || '';
+    const vat = (lead.vatNumber || cData.nif || '').trim().toUpperCase();
     if (!vat || !/^[A-Z0-9]{8,9}$/i.test(vat.replace(/[-\s]/g, ''))) {
       validationErrors.push("El NIF/CIF del titular está vacío o no tiene un formato válido.");
     }
 
-    // 2.5 Validación de Apoderado para Personas Jurídicas
-    const isJuridica = /^[A-W]/i.test(vat.replace(/[-\s]/g, '')) && !/^[XYZ]/i.test(vat.replace(/[-\s]/g, ''));
-    if (isJuridica) {
-      const apoderadoNombre = cData.contactoNombre || '';
-      const apoderadoApellidos = cData.contactoApellidos || '';
-      const apoderadoNif = cData.contactoNif;
+    // 2.5 Validación de Apoderado para Personas Jurídicas (Regla 75)
+    const cleanVat = vat.replace(/[-\s]/g, '');
+    const isJuridica = /^[A-W]/i.test(cleanVat) && !/^[XYZ]/i.test(cleanVat);
+    const apoderadoNombre = String(cData.contactoNombre || cData.representativeName || '').trim();
+    const apoderadoApellidos = String(cData.contactoApellidos || cData.representativeLastName || '').trim();
+    const apoderadoNif = String(cData.contactoNif || cData.representativeVat || '').trim().toUpperCase();
 
+    if (isJuridica) {
       if (!apoderadoNombre || !apoderadoApellidos || !apoderadoNif) {
         validationErrors.push("Para personas jurídicas (empresas o comunidades), es obligatorio rellenar los datos del Apoderado (Nombre, Apellidos y NIF).");
       }
     }
 
     // 3. Error CP Titular y Suministro
-    const cpTitular = cData.cp || cData.codigoPostal || cData.direccion?.cp;
-    if (cpTitular && !/^\d{5}$/.test(String(cpTitular).trim())) {
+    const cpTitular = normalizeSpanishPostalCodeOrNull(cData.cp || cData.codigoPostal || cData.direccion?.cp);
+    if (cpTitular && !/^\d{5}$/.test(cpTitular)) {
       validationErrors.push("El Código Postal del Titular debe tener 5 dígitos.");
     }
-    const cpSuministro = cData.sCp || cData.direccionSuministro?.cp || cData.direccion?.cp || cpTitular;
-    if (!cpSuministro || !/^\d{5}$/.test(String(cpSuministro).trim())) {
+    const cpSuministro = normalizeSpanishPostalCodeOrNull(
+      cData.sCp || cData.direccionSuministro?.cp || cData.direccionSuministro?.postalCode || cData.direccion?.cp || cpTitular
+    );
+    if (!cpSuministro || !/^\d{5}$/.test(cpSuministro)) {
       validationErrors.push("El Código Postal del Punto de Suministro debe tener 5 dígitos.");
     }
 
     // 4. Tarifa / Consumo (SIPS Jerarquía)
     let finalConsumptionMWh = lead.estimatedMWh || 0;
     const sRaw: any = lead.sipsRawData || {};
-    const sipsConsumoKWh = Number(sRaw.consumo || sRaw.Consumo || sRaw.annualConsumption || 0);
+    const sipsPs: any = sRaw?.data?.ps?.[0] || {};
+    const sipsConsumoKWh = Number(sRaw.consumo || sRaw.Consumo || sRaw.annualConsumption || sipsPs.ConsumoAnualkWh || 0);
     const sipsConsumoMWh = sipsConsumoKWh / 1000;
 
     if (sipsConsumoMWh > 0) {
@@ -87,8 +105,11 @@ export async function convertLeadToContractAction(leadId: string) {
     }
 
     // 5. Comparar CP y CNAE con SIPS (Universal: BD o sipsRawData)
+    let resolvedSipsPostalCode: string | null = null;
+    let resolvedSipsCnae: string | null = null;
+    let resolvedSipsTariff: string | null = null;
+
     if (lead.cups) {
-      const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
       const dbSupplyPoint = await prisma.supplyPoint.findFirst({
         where: {
           cups: { startsWith: lead.cups.substring(0, 20) },
@@ -108,32 +129,36 @@ export async function convertLeadToContractAction(leadId: string) {
          sipsP = [dbSupplyPoint.sipsP1c, dbSupplyPoint.sipsP2c, dbSupplyPoint.sipsP3c, dbSupplyPoint.sipsP4c, dbSupplyPoint.sipsP5c, dbSupplyPoint.sipsP6c];
       }
 
-      // Fallback a lead.sipsRawData
-      const sRaw: any = lead.sipsRawData || {};
-      if (!sipsPostalCode && (sRaw.postalCode || sRaw.codigoPostal || sRaw.cp)) {
-         sipsPostalCode = String(sRaw.postalCode || sRaw.codigoPostal || sRaw.cp);
+      // Fallback a lead.sipsRawData y sipsPs
+      if (!sipsPostalCode && (sRaw.postalCode || sRaw.codigoPostal || sRaw.cp || sipsPs.CódigoPostalPS)) {
+         sipsPostalCode = String(sRaw.postalCode || sRaw.codigoPostal || sRaw.cp || sipsPs.CódigoPostalPS);
       }
-      if (!sipsCnae && sRaw.cnae) sipsCnae = String(sRaw.cnae);
-      if (!sipsTariff && (sRaw.tariff || sRaw.tarifa)) sipsTariff = String(sRaw.tariff || sRaw.tarifa);
+      if (!sipsCnae && (sRaw.cnae || sipsPs.CNAE)) sipsCnae = String(sRaw.cnae || sipsPs.CNAE);
+      if (!sipsTariff && (sRaw.tariff || sRaw.tarifa || sipsPs.TarifaATR)) sipsTariff = String(sRaw.tariff || sRaw.tarifa || sipsPs.TarifaATR);
       
-      for(let i=1; i<=6; i++) {
-         if (sipsP[i-1] === null) {
-            const rawP = sRaw[`p${i}`] || sRaw[`p${i}c`];
-            if (rawP !== undefined && rawP !== null) {
-                sipsP[i-1] = parseFloat(rawP);
+      for (let i = 1; i <= 6; i++) {
+         if (sipsP[i - 1] === null) {
+            const rawP = sRaw[`p${i}`] ?? sRaw[`p${i}c`] ?? sipsPs[`PotenciaContratadaP${i}kW`];
+            if (rawP !== undefined && rawP !== null && rawP !== '') {
+                sipsP[i - 1] = parseFloat(String(rawP).replace(',', '.'));
             }
          }
       }
 
+      sipsPostalCode = normalizeSpanishPostalCodeOrNull(sipsPostalCode);
+      resolvedSipsPostalCode = sipsPostalCode;
+      resolvedSipsCnae = sipsCnae;
+      resolvedSipsTariff = sipsTariff;
+
       if (sipsPostalCode && cpSuministro && sipsPostalCode !== cpSuministro) {
         validationErrors.push(`El Código Postal introducido (${cpSuministro}) no coincide con el del SIPS (${sipsPostalCode}).`);
       }
-      if (sipsCnae && cData.cnae && sipsCnae !== cData.cnae) {
+      if (sipsCnae && cData.cnae && String(sipsCnae).trim() !== String(cData.cnae).trim()) {
         validationErrors.push(`El CNAE introducido (${cData.cnae}) no coincide con el del SIPS (${sipsCnae}).`);
       }
 
-      // 6. Validar Potencias y Tarifa si no hay cambios técnicos
-      const tramitacion = cData.tipoTramitacion || '';
+      // 6. Validar Potencias y Tarifa si no hay cambios técnicos (Regla 74)
+      const tramitacion = cData.tipoTramitacion || cData.tramitationType || '';
       const requiereVerificacionTecnica = [
         'Cambio comercializadora sin cambios',
         'Cambio comercializadora con cambios administrativos',
@@ -144,11 +169,12 @@ export async function convertLeadToContractAction(leadId: string) {
         if (sipsTariff && lead.tariff && sipsTariff !== lead.tariff) {
           validationErrors.push(`La tarifa solicitada (${lead.tariff}) no coincide con la del SIPS (${sipsTariff}) para este tipo de tramitación.`);
         }
-        for (let i = 1; i <= 6; i++) {
-          const reqPStr = cData.potencias?.[`p${i}`] || cData[`p${i}c`] || cData[`p${i}`];
-          const reqP = parseFloat(reqPStr);
-          const sP = sipsP[i-1];
-          if (!isNaN(reqP) && sP !== null && sP !== undefined) {
+        const periodsToCheck = (lead.tariff || '2.0TD') === '2.0TD' ? [1, 2] : [1, 2, 3, 4, 5, 6];
+        for (const i of periodsToCheck) {
+          const reqPStr = cData.potencias?.[`p${i}`] ?? cData[`p${i}c`] ?? cData[`p${i}`];
+          const reqP = parseFloat(String(reqPStr ?? '').replace(',', '.'));
+          const sP = sipsP[i - 1];
+          if (!isNaN(reqP) && sP !== null && sP !== undefined && !isNaN(sP)) {
              if (Math.abs(reqP - sP) > 0.01) {
                 validationErrors.push(`La potencia P${i} solicitada (${reqP} kW) no coincide con la del SIPS (${sP} kW). Selecciona un trámite 'con cambios técnicos' si deseas alterarla.`);
              }
@@ -157,13 +183,15 @@ export async function convertLeadToContractAction(leadId: string) {
       }
     }
 
-    // 7. Validar congruencia de Tarifa del Producto
+    // 7. Validar congruencia de Tarifa del Producto (Regla 73)
     if (lead.product) {
       let p = null;
       if (lead.product.startsWith('cm')) {
         p = await prisma.product.findUnique({ where: { id: lead.product } });
       } else {
-        p = await prisma.product.findFirst({ where: { name: lead.product.trim() } });
+        p =
+          (await prisma.product.findFirst({ where: { name: lead.product.trim(), brandId: brandIdToUse } })) ||
+          (await prisma.product.findFirst({ where: { name: lead.product.trim() } }));
       }
       
       if (p && p.tariff && lead.tariff && p.tariff !== lead.tariff) {
@@ -192,9 +220,23 @@ export async function convertLeadToContractAction(leadId: string) {
        cData.duracionSVA = 1;
     }
 
+    const wantsPaperInvoice =
+      cData.envioFactura === 'Postal' ||
+      cData.envioFactura === 'Ambos' ||
+      cData.facturasPapel === 'SI' ||
+      cData.facturasPapel === 'Si';
+    const titularBillingAddr = getTitularAddress(cData) || null;
+    const titularCity = cData.direccion?.poblacion || cData.poblacion || null;
+    const titularProvince = cData.direccion?.provincia || cData.provincia || null;
+    const indivFirstName = !isJuridica
+      ? String(cData.nombre || '').trim() || undefined
+      : undefined;
+    const indivLastName1 = !isJuridica ? String(cData.primerApellido || '').trim() || undefined : undefined;
+    const indivLastName2 = !isJuridica ? String(cData.segundoApellido || '').trim() || undefined : undefined;
+    const repFullName = isJuridica ? `${apoderadoNombre} ${apoderadoApellidos}`.trim() || undefined : undefined;
+
     // 2. Necesitamos un Client. Buscamos por NIF o creamos.
-    const vatNum = lead.vatNumber || `PENDING-${lead.id}`;
-    const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
+    const vatNum = vat || `PENDING-${lead.id}`;
     let client = await prisma.client.findUnique({
       where: { vatNumber_brandId: { vatNumber: vatNum, brandId: brandIdToUse } }
     });
@@ -204,13 +246,25 @@ export async function convertLeadToContractAction(leadId: string) {
         where: { id: client.id },
         data: {
           businessName: lead.businessName,
-          firstName: cData.contactoNombre || '',
-          lastName: cData.contactoApellidos || '',
+          ...(indivFirstName ? { firstName: indivFirstName } : {}),
+          ...(indivLastName1 ? { lastName: indivLastName1 } : {}),
+          ...(indivLastName2 ? { lastName2: indivLastName2 } : {}),
+          ...(repFullName ? { representativeName: repFullName } : {}),
+          ...(isJuridica && apoderadoNif ? { representativeVat: apoderadoNif } : {}),
+          ...(isJuridica && apoderadoNombre ? { contactName: apoderadoNombre } : {}),
+          ...(isJuridica && apoderadoApellidos ? { contactLastName: apoderadoApellidos } : {}),
+          ...(isJuridica && apoderadoNif ? { contactVat: apoderadoNif } : {}),
+          ...(cData.cnae ? { cnae: String(cData.cnae) } : {}),
+          paperInvoice: wantsPaperInvoice,
+          ...(titularBillingAddr ? { billingAddress: titularBillingAddr } : {}),
+          ...(cpTitular ? { billingPostalCode: cpTitular } : {}),
+          ...(titularCity ? { billingCity: titularCity } : {}),
+          ...(titularProvince ? { billingProvince: titularProvince } : {}),
           contactEmail: contactEmail || client.contactEmail,
           contactEmail2: contactEmail2 || client.contactEmail2,
           contactEmail3: contactEmail3 || client.contactEmail3,
           contactPhone: lead.phone || client.contactPhone,
-          clientType: cData.tipoCliente || client.clientType,
+          clientType: cData.tipoCliente || (isJuridica ? 'Empresa' : 'Persona física'),
           isMultipoint: isMultipoint || client.isMultipoint,
         }
       });
@@ -218,55 +272,100 @@ export async function convertLeadToContractAction(leadId: string) {
       client = await prisma.client.create({
         data: {
           businessName: lead.businessName,
-          firstName: cData.contactoNombre || '',
-          lastName: cData.contactoApellidos || '',
+          firstName: indivFirstName || '',
+          lastName: indivLastName1 || '',
+          lastName2: indivLastName2 || null,
+          representativeName: repFullName || null,
+          representativeVat: isJuridica && apoderadoNif ? apoderadoNif : null,
+          contactName: isJuridica && apoderadoNombre ? apoderadoNombre : null,
+          contactLastName: isJuridica && apoderadoApellidos ? apoderadoApellidos : null,
+          contactVat: isJuridica && apoderadoNif ? apoderadoNif : null,
+          cnae: cData.cnae ? String(cData.cnae) : null,
+          paperInvoice: wantsPaperInvoice,
+          billingAddress: titularBillingAddr,
+          billingPostalCode: cpTitular,
+          billingCity: titularCity,
+          billingProvince: titularProvince,
           vatNumber: vatNum,
           contactEmail: contactEmail,
           contactEmail2: contactEmail2,
           contactEmail3: contactEmail3,
           contactPhone: lead.phone,
-          clientType: cData.tipoCliente || (/^([0-9XYZ])/i.test(vatNum) ? 'Persona física' : 'Empresa'),
+          clientType: cData.tipoCliente || (isJuridica ? 'Empresa' : 'Persona física'),
           brandId: brandIdToUse,
           isMultipoint: isMultipoint,
         }
       });
     }
 
-    // 3. Necesitamos un SupplyPoint. Buscamos por CUPS.
-    const targetCups = lead.cups || `CUPS-PENDING-${lead.id}`;
-    let supplyPoint = await findOrUpdateSupplyPointByCups(prisma, targetCups, client.id, {
-      address: getSupplyAddress(cData) || 'Pendiente',
-      city: cData.sPoblacion || cData.poblacion || cData['Población Instalación'] || 'Pendiente',
-      postalCode: cData.sCp || cData.cp || cData['Código Postal Instalación'] || '00000',
-      province: cData.sProvincia || cData.provincia || cData['Provincia Instalación'] || 'Pendiente',
+    const hasAutoconsumo =
+      cData.autoconsumo === 'SI' ||
+      cData.autoconsumo === 'Sí' ||
+      cData.autoconsumo === 'Si' ||
+      cData.autoconsumo === true;
+    const hasBolsilloSolar =
+      hasAutoconsumo &&
+      (cData.bolsilloSolar === 'SI' ||
+        cData.bolsilloSolar === 'Sí' ||
+        cData.bolsilloSolar === 'Si' ||
+        cData.bolsilloSolar === true);
+    const isTransferencia = String(cData.formaPago || '').toLowerCase().includes('transferencia');
+
+    // 3. Necesitamos un SupplyPoint. Buscamos por CUPS + clientId (Regla 72).
+    const targetCups = (lead.cups || `CUPS-PENDING-${lead.id}`).trim().toUpperCase();
+    const supplyPoint = await findOrUpdateSupplyPointByCups(prisma, targetCups, client.id, {
+      address: getSupplyAddress(cData) || titularBillingAddr || 'Pendiente',
+      city: cData.direccionSuministro?.poblacion || cData.sPoblacion || cData.poblacion || cData['Población Instalación'] || 'Pendiente',
+      postalCode: cpSuministro || cData.sCp || cData.cp || cData['Código Postal Instalación'] || '00000',
+      province: cData.direccionSuministro?.provincia || cData.sProvincia || cData.provincia || cData['Provincia Instalación'] || 'Pendiente',
       tariff: lead.tariff || '2.0TD',
+      cnae: cData.cnae ? String(cData.cnae) : null,
+      annualConsumption: finalConsumptionMWh > 0 ? finalConsumptionMWh : null,
+      p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
+      p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
+      p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
+      p4c: parseFloat(cData.potencias?.p4 || cData.p4c || cData.p4) || null,
+      p5c: parseFloat(cData.potencias?.p5 || cData.p5c || cData.p5) || null,
+      p6c: parseFloat(cData.potencias?.p6 || cData.p6c || cData.p6) || null,
+      iban: cData.iban || null,
+      paymentMethod: cData.formaPago || null,
+      hasSelfConsumption: hasAutoconsumo,
+      sipsPostalCode: resolvedSipsPostalCode,
+      sipsCnae: resolvedSipsCnae,
+      sipsTariff: resolvedSipsTariff,
     });
 
-    let previousContractId = null;
-
-    if (supplyPoint) {
-      if (supplyPoint.contracts && supplyPoint.contracts.length > 0) {
-        previousContractId = supplyPoint.contracts[0].id;
+    let previousContractId: string | null = null;
+    if (supplyPoint?.contracts && supplyPoint.contracts.length > 0) {
+      const candidatePrevId = supplyPoint.contracts[0].id;
+      const alreadyLinked = await prisma.contract.findUnique({
+        where: { previousContractId: candidatePrevId },
+        select: { id: true },
+      });
+      if (!alreadyLinked) {
+        previousContractId = candidatePrevId;
       }
     }
 
-    // 4. Necesitamos un Product. Buscamos uno o creamos genérico.
+    // 4. Necesitamos un Product de la marca activa (con fallback).
     let product = null;
     if (lead.product && lead.product.startsWith('cm')) {
       product = await prisma.product.findUnique({ where: { id: lead.product } });
     } else {
       const pName = (lead.product || 'Producto Genérico').trim();
-      product = await prisma.product.findFirst({ where: { name: pName } });
+      product =
+        (await prisma.product.findFirst({ where: { name: pName, brandId: brandIdToUse } })) ||
+        (await prisma.product.findFirst({ where: { name: pName } }));
     }
 
     if (!product) {
-      const brand = await prisma.brand.findFirst(); // Asumimos que hay al menos una marca
-      if (!brand) throw new Error("No hay marcas configuradas en el sistema.");
+      if (!brandIdToUse) throw new Error("No hay marcas configuradas en el sistema.");
       product = await prisma.product.create({
         data: {
           name: (lead.product || 'Producto Genérico').trim(),
           type: lead.productType || 'FIX',
-          brandId: brand.id,
+          brandId: brandIdToUse,
+          tariff: lead.tariff || '2.0TD',
         }
       });
     }
@@ -279,7 +378,7 @@ export async function convertLeadToContractAction(leadId: string) {
     const hour = String(now.getHours()).padStart(2, '0');
     const min = String(now.getMinutes()).padStart(2, '0');
     
-    const isCompany = client.vatNumber.toUpperCase().startsWith('A') || client.vatNumber.toUpperCase().startsWith('B');
+    const isCompany = isJuridica || client.vatNumber.toUpperCase().startsWith('A') || client.vatNumber.toUpperCase().startsWith('B');
     const typeChar = isCompany ? 'E' : 'P';
     
     const brandPrefix = lead.user?.brand?.codigoMarca || 'AED';
@@ -332,6 +431,7 @@ export async function convertLeadToContractAction(leadId: string) {
 
     // 5. Crear el contrato con snapshots inmutables de márgenes y auto-cálculo de comisión
     const marginSnap = extractContractMarginSnapshots(cData, product, lead.productType);
+    const tramName = cData.tipoTramitacion || cData.tramitationType || 'Cambio comercializadora sin cambios';
 
     const contract = await prisma.contract.create({
       data: {
@@ -345,9 +445,14 @@ export async function convertLeadToContractAction(leadId: string) {
         contractCode,
         annualConsumption: supplyPoint.annualConsumption || lead.estimatedMWh || (sipsConsumoKWh ? sipsConsumoKWh / 1000 : null),
         iban: cData.iban || null,
-        tramitationType: cData.tipoTramitacion || 'Alta nueva',
-        tipo: getTramitationCodes(cData.tipoTramitacion || 'Alta nueva').tipo,
-        tipoC2: getTramitationCodes(cData.tipoTramitacion || 'Alta nueva').tipoC2,
+        transferencia: isTransferencia,
+        isMultipoint,
+        autoconsumo: hasAutoconsumo,
+        bolsilloSolar: hasBolsilloSolar,
+        internalComments: cData.comments || null,
+        tramitationType: tramName,
+        tipo: getTramitationCodes(tramName).tipo,
+        tipoC2: getTramitationCodes(tramName).tipoC2,
         p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
         p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
         p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
@@ -375,9 +480,10 @@ export async function convertLeadToContractAction(leadId: string) {
         ip5: marginSnap.ip5,
         ip6: marginSnap.ip6,
         productTypeSnapshot: marginSnap.productTypeSnapshot,
-        pexc: parseFloat(cData.pexc) || product.pexc || null,
-        feeExcedentes: parseFloat(cData.feeExcedentes) || product.feeExcedentes || null,
-        cgBolsilloSolar: parseFloat(cData.cgBolsilloSolar) || product.cgBolsilloSolar || null,
+        // Reglas 207 y 230: Solo copiar PExc / FeeExcedentes si hay autoconsumo, y CG Bolsillo Solar solo si Bolsillo Solar fue contratado
+        pexc: hasAutoconsumo ? (parseFloat(cData.pexc) || product.pexc || null) : null,
+        feeExcedentes: hasAutoconsumo ? (parseFloat(cData.feeExcedentes) || product.feeExcedentes || null) : null,
+        cgBolsilloSolar: hasBolsilloSolar ? (parseFloat(cData.cgBolsilloSolar) || product.cgBolsilloSolar || null) : null,
         deviationCost: parseFloat(cData.deviationCost) || product.deviationCost || null,
         pricingModel: product.pricingModel || null,
         commissionType: product.commissionType || null,
@@ -391,72 +497,23 @@ export async function convertLeadToContractAction(leadId: string) {
       },
     });
 
+    // Vincular la documentación subida en el Lead también al Contrato, Cliente y Punto de Suministro
+    if (lead.documents && lead.documents.length > 0) {
+      await prisma.document.updateMany({
+        where: { leadId: lead.id },
+        data: {
+          contractId: contract.id,
+          clientId: client.id,
+          supplyPointId: supplyPoint.id,
+        },
+      });
+    }
+
     await calculateAndSnapshotContractCommission(contract.id).catch((err) =>
       console.warn('Auto-cálculo de comisión omitido en convertLeadToContractAction:', err)
     );
 
-    // 3. Generar DOCX, convertir a PDF vía DocuSign y subir a R2
-    try {
-      const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
-      const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
-      const { uploadFileToR2 } = await import('@/lib/r2');
-      
-      const vat = (lead.vatNumber || '').trim().toUpperCase();
-      const isPersonaFisica = /^[0-9XYZ]/.test(vat) && vat.length === 9;
-      const cnae = (cData.cnae || '').trim();
-      const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
-      const isB2B = !isCore;
-
-      const formatField = (field: any): string => {
-        if (!field) return '';
-        if (typeof field === 'string') return field;
-        if (Array.isArray(field)) return field.map(formatField).join(', ');
-        if (typeof field === 'object') {
-          if (field.tipoVia && field.nombreVia) {
-            const parts = [
-              field.tipoVia,
-              field.nombreVia,
-              field.tipoNumeracion ? `${field.tipoNumeracion} ${field.numKm || field.numero || ''}`.trim() : (field.numKm || field.numero || ''),
-              field.adicional
-            ].filter(Boolean);
-            return parts.join(' ');
-          }
-          return field.address || field.name || field.value || field.street || JSON.stringify(field);
-        }
-        return String(field);
-      };
-
-      const extractAddrObj = (field: any) => {
-        if (!field) return {};
-        if (typeof field === 'string' && field.startsWith('{')) {
-          try { return JSON.parse(field); } catch(e){ return {}; }
-        }
-        if (typeof field === 'object' && !Array.isArray(field)) return field;
-        return {};
-      };
-
-      const dirTitObj = extractAddrObj(cData.direccion);
-      const dirPSObj = extractAddrObj(cData.direccionSuministro);
-      const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B, client, supplyPoint);
-
-      const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
-      
-      // Convertir a PDF usando DocuSign como conversor de alta fidelidad
-      const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
-      
-      const fileName = `Contrato_AED_${contract.contractCode}.pdf`;
-      const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
-
-      await prisma.contract.update({
-        where: { id: contract.id },
-        data: { pdfUrl: uploadedUrl }
-      });
-    } catch (pdfError: any) {
-      console.error("Error generando PDF para el contrato nativo:", pdfError);
-      return { error: 'Error crítico al generar PDF: ' + (pdfError.message || String(pdfError)) };
-    }
-
-    // 4. Vincular el Contrato al Lead y cambiar el estado del Lead a CONTRATADO
+    // Vincular el Contrato al Lead inmediatamente para evitar contratos huérfanos o duplicados si falla la previsualización PDF
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -467,22 +524,57 @@ export async function convertLeadToContractAction(leadId: string) {
       },
     });
 
+    // 6. Generar DOCX, convertir a PDF vía DocuSign y subir a R2 (salvo multipunto)
+    let pdfWarning: string | undefined;
+    if (!isMultipoint) {
+      try {
+        const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
+        const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
+        const { uploadFileToR2 } = await import('@/lib/r2');
+        
+        const isPersonaFisica = /^[0-9XYZ]/.test(cleanVat) && cleanVat.length === 9;
+        const cnae = (cData.cnae || '').trim();
+        const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
+        const isB2B = !isCore;
+
+        const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B, client, supplyPoint);
+        const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
+        const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
+        
+        const fileName = `Contrato_AED_${contract.contractCode}.pdf`;
+        const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+
+        await prisma.contract.update({
+          where: { id: contract.id },
+          data: { pdfUrl: uploadedUrl }
+        });
+      } catch (pdfError: any) {
+        console.error("Error generando PDF para el contrato nativo:", pdfError);
+        pdfWarning = pdfError?.message || String(pdfError);
+      }
+    }
+
     revalidatePath('/leads');
     revalidatePath(`/leads/${leadId}`);
     revalidatePath('/contratos');
 
-    return { success: true, contractId: contract.id };
+    return { success: true, contractId: contract.id, ...(pdfWarning ? { pdfWarning } : {}) };
   } catch (error: any) {
     console.error("Error al convertir Lead a Contrato:", error);
     return { error: 'Ocurrió un error inesperado al procesar la conversión.' };
   }
 }
 
-export async function remakeContractAction(leadId: string) {
+export async function remakeContractAction(leadId: string): Promise<{
+  success?: boolean;
+  contractId?: string;
+  error?: string;
+  validationErrors?: string[];
+}> {
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { contract: { include: { client: true, supplyPoint: true } }, user: { include: { brand: true } } },
+      include: { contract: { include: { client: true, supplyPoint: true } }, documents: true, user: { include: { brand: true } } },
     });
 
     if (!lead) {
@@ -496,44 +588,55 @@ export async function remakeContractAction(leadId: string) {
     // --- VALIDACIONES DE NEGOCIO ---
     const validationErrors: string[] = [];
     const cData: any = lead.contractData || {};
+    const brandIdToUse = lead.user?.brandId || lead.contract.brandId || (await prisma.brand.findFirst())?.id || '';
 
     // 1. SIPS OK
-    if (!lead.sipsOk && lead.sipsMessages && lead.sipsMessages.length > 0 && lead.sipsMessages !== 'SIPS Refrescado Correctamente') {
+    if (
+      !lead.sipsOk &&
+      lead.sipsMessages &&
+      lead.sipsMessages.length > 0 &&
+      lead.sipsMessages !== 'SIPS Refrescado Correctamente' &&
+      lead.sipsMessages !== 'Validado correctamente contra SIPS'
+    ) {
       validationErrors.push(`Aviso de SIPS pendiente de revisión: ${lead.sipsMessages}`);
     }
 
     // 2. Error NIF apoderado/titular
-    const vat = lead.vatNumber || cData.nif;
+    const vat = (lead.vatNumber || cData.nif || '').trim().toUpperCase();
     if (!vat || !/^[A-Z0-9]{8,9}$/i.test(vat.replace(/[-\s]/g, ''))) {
       validationErrors.push("El NIF/CIF del titular está vacío o no tiene un formato válido.");
     }
 
-    // 2.5 Validación de Apoderado para Personas Jurídicas
-    const isJuridica = /^[A-W]/i.test(vat.replace(/[-\s]/g, '')) && !/^[XYZ]/i.test(vat.replace(/[-\s]/g, ''));
-    if (isJuridica) {
-      const apoderadoNombre = cData.contactoNombre || '';
-      const apoderadoApellidos = cData.contactoApellidos || '';
-      const apoderadoNif = cData.contactoNif;
+    // 2.5 Validación de Apoderado para Personas Jurídicas (Regla 75)
+    const cleanVat = vat.replace(/[-\s]/g, '');
+    const isJuridica = /^[A-W]/i.test(cleanVat) && !/^[XYZ]/i.test(cleanVat);
+    const apoderadoNombre = String(cData.contactoNombre || cData.representativeName || '').trim();
+    const apoderadoApellidos = String(cData.contactoApellidos || cData.representativeLastName || '').trim();
+    const apoderadoNif = String(cData.contactoNif || cData.representativeVat || '').trim().toUpperCase();
 
+    if (isJuridica) {
       if (!apoderadoNombre || !apoderadoApellidos || !apoderadoNif) {
         validationErrors.push("Para personas jurídicas (empresas o comunidades), es obligatorio rellenar los datos del Apoderado (Nombre, Apellidos y NIF).");
       }
     }
 
     // 3. Error CP Titular y Suministro
-    const cpTitular = cData.cp || cData.codigoPostal || cData.direccion?.cp;
-    if (cpTitular && !/^\d{5}$/.test(String(cpTitular).trim())) {
+    const cpTitular = normalizeSpanishPostalCodeOrNull(cData.cp || cData.codigoPostal || cData.direccion?.cp);
+    if (cpTitular && !/^\d{5}$/.test(cpTitular)) {
       validationErrors.push("El Código Postal del Titular debe tener 5 dígitos.");
     }
-    const cpSuministro = cData.sCp || cData.direccionSuministro?.cp || cData.direccion?.cp || cpTitular;
-    if (!cpSuministro || !/^\d{5}$/.test(String(cpSuministro).trim())) {
+    const cpSuministro = normalizeSpanishPostalCodeOrNull(
+      cData.sCp || cData.direccionSuministro?.cp || cData.direccionSuministro?.postalCode || cData.direccion?.cp || cpTitular
+    );
+    if (!cpSuministro || !/^\d{5}$/.test(cpSuministro)) {
       validationErrors.push("El Código Postal del Punto de Suministro debe tener 5 dígitos.");
     }
 
     // 4. Tarifa / Consumo (SIPS Jerarquía)
     let finalConsumptionMWh = lead.estimatedMWh || 0;
     const sRaw: any = lead.sipsRawData || {};
-    const sipsConsumoKWh = Number(sRaw.consumo || sRaw.Consumo || sRaw.annualConsumption || 0);
+    const sipsPs: any = sRaw?.data?.ps?.[0] || {};
+    const sipsConsumoKWh = Number(sRaw.consumo || sRaw.Consumo || sRaw.annualConsumption || sipsPs.ConsumoAnualkWh || 0);
     const sipsConsumoMWh = sipsConsumoKWh / 1000;
 
     if (sipsConsumoMWh > 0) {
@@ -552,7 +655,6 @@ export async function remakeContractAction(leadId: string) {
 
     // 5. Comparar CP y CNAE con SIPS (Universal: BD o sipsRawData)
     if (lead.cups) {
-      const brandIdToUse = lead.user?.brandId || (await prisma.brand.findFirst())?.id || '';
       const dbSupplyPoint = await prisma.supplyPoint.findFirst({
         where: {
           cups: { startsWith: lead.cups.substring(0, 20) },
@@ -572,32 +674,32 @@ export async function remakeContractAction(leadId: string) {
          sipsP = [dbSupplyPoint.sipsP1c, dbSupplyPoint.sipsP2c, dbSupplyPoint.sipsP3c, dbSupplyPoint.sipsP4c, dbSupplyPoint.sipsP5c, dbSupplyPoint.sipsP6c];
       }
 
-      // Fallback a lead.sipsRawData
-      const sRaw: any = lead.sipsRawData || {};
-      if (!sipsPostalCode && (sRaw.postalCode || sRaw.codigoPostal || sRaw.cp)) {
-         sipsPostalCode = String(sRaw.postalCode || sRaw.codigoPostal || sRaw.cp);
+      // Fallback a lead.sipsRawData y sipsPs
+      if (!sipsPostalCode && (sRaw.postalCode || sRaw.codigoPostal || sRaw.cp || sipsPs.CódigoPostalPS)) {
+         sipsPostalCode = String(sRaw.postalCode || sRaw.codigoPostal || sRaw.cp || sipsPs.CódigoPostalPS);
       }
-      if (!sipsCnae && sRaw.cnae) sipsCnae = String(sRaw.cnae);
-      if (!sipsTariff && (sRaw.tariff || sRaw.tarifa)) sipsTariff = String(sRaw.tariff || sRaw.tarifa);
+      if (!sipsCnae && (sRaw.cnae || sipsPs.CNAE)) sipsCnae = String(sRaw.cnae || sipsPs.CNAE);
+      if (!sipsTariff && (sRaw.tariff || sRaw.tarifa || sipsPs.TarifaATR)) sipsTariff = String(sRaw.tariff || sRaw.tarifa || sipsPs.TarifaATR);
       
-      for(let i=1; i<=6; i++) {
-         if (sipsP[i-1] === null) {
-            const rawP = sRaw[`p${i}`] || sRaw[`p${i}c`];
-            if (rawP !== undefined && rawP !== null) {
-                sipsP[i-1] = parseFloat(rawP);
+      for (let i = 1; i <= 6; i++) {
+         if (sipsP[i - 1] === null) {
+            const rawP = sRaw[`p${i}`] ?? sRaw[`p${i}c`] ?? sipsPs[`PotenciaContratadaP${i}kW`];
+            if (rawP !== undefined && rawP !== null && rawP !== '') {
+                sipsP[i - 1] = parseFloat(String(rawP).replace(',', '.'));
             }
          }
       }
 
+      sipsPostalCode = normalizeSpanishPostalCodeOrNull(sipsPostalCode);
       if (sipsPostalCode && cpSuministro && sipsPostalCode !== cpSuministro) {
         validationErrors.push(`El Código Postal introducido (${cpSuministro}) no coincide con el del SIPS (${sipsPostalCode}).`);
       }
-      if (sipsCnae && cData.cnae && sipsCnae !== cData.cnae) {
+      if (sipsCnae && cData.cnae && String(sipsCnae).trim() !== String(cData.cnae).trim()) {
         validationErrors.push(`El CNAE introducido (${cData.cnae}) no coincide con el del SIPS (${sipsCnae}).`);
       }
 
-      // 6. Validar Potencias y Tarifa si no hay cambios técnicos
-      const tramitacion = cData.tipoTramitacion || '';
+      // 6. Validar Potencias y Tarifa si no hay cambios técnicos (Regla 74)
+      const tramitacion = cData.tipoTramitacion || cData.tramitationType || '';
       const requiereVerificacionTecnica = [
         'Cambio comercializadora sin cambios',
         'Cambio comercializadora con cambios administrativos',
@@ -608,11 +710,12 @@ export async function remakeContractAction(leadId: string) {
         if (sipsTariff && lead.tariff && sipsTariff !== lead.tariff) {
           validationErrors.push(`La tarifa solicitada (${lead.tariff}) no coincide con la del SIPS (${sipsTariff}) para este tipo de tramitación.`);
         }
-        for (let i = 1; i <= 6; i++) {
-          const reqPStr = cData.potencias?.[`p${i}`] || cData[`p${i}c`] || cData[`p${i}`];
-          const reqP = parseFloat(reqPStr);
-          const sP = sipsP[i-1];
-          if (!isNaN(reqP) && sP !== null && sP !== undefined) {
+        const periodsToCheck = (lead.tariff || '2.0TD') === '2.0TD' ? [1, 2] : [1, 2, 3, 4, 5, 6];
+        for (const i of periodsToCheck) {
+          const reqPStr = cData.potencias?.[`p${i}`] ?? cData[`p${i}c`] ?? cData[`p${i}`];
+          const reqP = parseFloat(String(reqPStr ?? '').replace(',', '.'));
+          const sP = sipsP[i - 1];
+          if (!isNaN(reqP) && sP !== null && sP !== undefined && !isNaN(sP)) {
              if (Math.abs(reqP - sP) > 0.01) {
                 validationErrors.push(`La potencia P${i} solicitada (${reqP} kW) no coincide con la del SIPS (${sP} kW). Selecciona un trámite 'con cambios técnicos' si deseas alterarla.`);
              }
@@ -621,13 +724,15 @@ export async function remakeContractAction(leadId: string) {
       }
     }
 
-    // 7. Validar congruencia de Tarifa del Producto
+    // 7. Validar congruencia de Tarifa del Producto (Regla 73)
     if (lead.product) {
       let p = null;
       if (lead.product.startsWith('cm')) {
         p = await prisma.product.findUnique({ where: { id: lead.product } });
       } else {
-        p = await prisma.product.findFirst({ where: { name: lead.product.trim() } });
+        p =
+          (await prisma.product.findFirst({ where: { name: lead.product.trim(), brandId: brandIdToUse } })) ||
+          (await prisma.product.findFirst({ where: { name: lead.product.trim() } }));
       }
       
       if (p && p.tariff && lead.tariff && p.tariff !== lead.tariff) {
@@ -656,42 +761,95 @@ export async function remakeContractAction(leadId: string) {
        cData.duracionSVA = 1;
     }
 
+    const wantsPaperInvoice =
+      cData.envioFactura === 'Postal' ||
+      cData.envioFactura === 'Ambos' ||
+      cData.facturasPapel === 'SI' ||
+      cData.facturasPapel === 'Si';
+    const titularBillingAddr = getTitularAddress(cData) || null;
+    const titularCity = cData.direccion?.poblacion || cData.poblacion || null;
+    const titularProvince = cData.direccion?.provincia || cData.provincia || null;
+    const indivFirstName = !isJuridica ? String(cData.nombre || '').trim() || undefined : undefined;
+    const indivLastName1 = !isJuridica ? String(cData.primerApellido || '').trim() || undefined : undefined;
+    const indivLastName2 = !isJuridica ? String(cData.segundoApellido || '').trim() || undefined : undefined;
+    const repFullName = isJuridica ? `${apoderadoNombre} ${apoderadoApellidos}`.trim() || undefined : undefined;
+
     // Actualizar Cliente
     await prisma.client.update({
       where: { id: lead.contract.clientId },
       data: {
         businessName: lead.businessName,
-        firstName: cData.contactoNombre || '',
-        lastName: cData.contactoApellidos || '',
-        vatNumber: lead.vatNumber || `PENDING-${lead.id}`,
+        ...(indivFirstName ? { firstName: indivFirstName } : {}),
+        ...(indivLastName1 ? { lastName: indivLastName1 } : {}),
+        ...(indivLastName2 ? { lastName2: indivLastName2 } : {}),
+        ...(repFullName ? { representativeName: repFullName } : {}),
+        ...(isJuridica && apoderadoNif ? { representativeVat: apoderadoNif } : {}),
+        ...(isJuridica && apoderadoNombre ? { contactName: apoderadoNombre } : {}),
+        ...(isJuridica && apoderadoApellidos ? { contactLastName: apoderadoApellidos } : {}),
+        ...(isJuridica && apoderadoNif ? { contactVat: apoderadoNif } : {}),
+        ...(cData.cnae ? { cnae: String(cData.cnae) } : {}),
+        paperInvoice: wantsPaperInvoice,
+        ...(titularBillingAddr ? { billingAddress: titularBillingAddr } : {}),
+        ...(cpTitular ? { billingPostalCode: cpTitular } : {}),
+        ...(titularCity ? { billingCity: titularCity } : {}),
+        ...(titularProvince ? { billingProvince: titularProvince } : {}),
+        vatNumber: vat || `PENDING-${lead.id}`,
         contactEmail: contactEmail,
-        contactEmail2: contactEmail2,
-        contactEmail3: contactEmail3,
+        contactEmail2: contactEmail2 || undefined,
+        contactEmail3: contactEmail3 || undefined,
         contactPhone: lead.phone,
-        clientType: cData.tipoCliente || (lead.vatNumber && /^([0-9XYZ])/i.test(lead.vatNumber) ? 'Persona física' : 'Empresa'),
+        clientType: cData.tipoCliente || (isJuridica ? 'Empresa' : 'Persona física'),
         isMultipoint: isMultipoint,
       }
     });
 
+    const hasAutoconsumo =
+      cData.autoconsumo === 'SI' ||
+      cData.autoconsumo === 'Sí' ||
+      cData.autoconsumo === 'Si' ||
+      cData.autoconsumo === true;
+    const hasBolsilloSolar =
+      hasAutoconsumo &&
+      (cData.bolsilloSolar === 'SI' ||
+        cData.bolsilloSolar === 'Sí' ||
+        cData.bolsilloSolar === 'Si' ||
+        cData.bolsilloSolar === true);
+    const isTransferencia = String(cData.formaPago || '').toLowerCase().includes('transferencia');
+
     const { calculateSegment } = await import('@/lib/services/SegmentService');
     const newSegment = calculateSegment(
       lead.tariff || '2.0TD',
-      lead.contract.supplyPoint.annualConsumption,
-      lead.contract.supplyPoint.p1c,
-      lead.contract.supplyPoint.cnae
+      finalConsumptionMWh || lead.contract.supplyPoint.annualConsumption,
+      parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || lead.contract.supplyPoint.p1c,
+      cData.cnae || lead.contract.supplyPoint.cnae
     );
+
+    const supplyAddr = getSupplyAddress(cData) || titularBillingAddr || lead.contract.supplyPoint.address || 'Pendiente';
+    const supplyCity =
+      cData.direccionSuministro?.poblacion || cData.sPoblacion || cData.poblacion || lead.contract.supplyPoint.city || 'Pendiente';
+    const supplyCp = normalizeSpanishPostalCode(
+      cpSuministro || cData.sCp || cData.cp || lead.contract.supplyPoint.postalCode,
+      '00000'
+    );
+    const supplyProv =
+      cData.direccionSuministro?.provincia || cData.sProvincia || cData.provincia || lead.contract.supplyPoint.province || 'Pendiente';
 
     // Actualizar Punto de Suministro
     await prisma.supplyPoint.update({
       where: { id: lead.contract.supplyPointId },
       data: {
         segment: newSegment,
-        cups: lead.cups || `CUPS-PENDING-${lead.id}`,
-        address: typeof cData.direccion === 'string' ? cData.direccion : (cData.direccion?.address || cData.direccion?.direccion || 'Pendiente'),
-        city: cData.poblacion || 'Pendiente',
-        postalCode: cData.cp || '00000',
-        province: cData.provincia || 'Pendiente',
+        cups: (lead.cups || `CUPS-PENDING-${lead.id}`).trim().toUpperCase(),
+        address: supplyAddr,
+        city: supplyCity,
+        postalCode: supplyCp,
+        province: supplyProv,
         tariff: lead.tariff || '2.0TD',
+        cnae: cData.cnae ? String(cData.cnae) : lead.contract.supplyPoint.cnae,
+        annualConsumption: finalConsumptionMWh > 0 ? finalConsumptionMWh : lead.contract.supplyPoint.annualConsumption,
+        hasSelfConsumption: hasAutoconsumo,
+        iban: cData.iban || lead.contract.supplyPoint.iban,
+        paymentMethod: cData.formaPago || lead.contract.supplyPoint.paymentMethod,
       }
     });
 
@@ -701,32 +859,42 @@ export async function remakeContractAction(leadId: string) {
       product = await prisma.product.findUnique({ where: { id: lead.product } });
     } else {
       const pName = (lead.product || 'Producto Genérico').trim();
-      product = await prisma.product.findFirst({ where: { name: pName } });
+      product =
+        (await prisma.product.findFirst({ where: { name: pName, brandId: brandIdToUse } })) ||
+        (await prisma.product.findFirst({ where: { name: pName } }));
     }
 
-    if (!product) {
-      const brand = await prisma.brand.findFirst();
-      if (brand) {
-        product = await prisma.product.create({
-          data: {
-            name: (lead.product || 'Producto Genérico').trim(),
-            type: lead.productType || 'FIX',
-            brandId: brand.id,
-          }
-        });
-      }
+    if (!product && brandIdToUse) {
+      product = await prisma.product.create({
+        data: {
+          name: (lead.product || 'Producto Genérico').trim(),
+          type: lead.productType || 'FIX',
+          brandId: brandIdToUse,
+          tariff: lead.tariff || '2.0TD',
+        }
+      });
     }
 
     // Actualizar Contrato con nuevos snapshots inmutables y recalcular comisión
     const remakeSnap = extractContractMarginSnapshots(cData, product, lead.productType);
+    const tramName = cData.tipoTramitacion || cData.tramitationType || lead.contract.tramitationType || 'Cambio comercializadora sin cambios';
 
-    await prisma.contract.update({
+    const updatedContract = await prisma.contract.update({
       where: { id: lead.contract.id },
       data: {
         productId: product?.id || lead.contract.productId,
         status: isMultipoint ? 'ACEPTADO' : 'BORRADOR', // Vuelve a Borrador al rehacer salvo si es Multipunto
         updatedAt: new Date(),
         annualConsumption: lead.estimatedMWh || lead.contract.annualConsumption || lead.contract.supplyPoint.annualConsumption || null,
+        iban: cData.iban || lead.contract.iban || null,
+        transferencia: isTransferencia,
+        isMultipoint,
+        autoconsumo: hasAutoconsumo,
+        bolsilloSolar: hasBolsilloSolar,
+        internalComments: cData.comments || lead.contract.internalComments || null,
+        tramitationType: tramName,
+        tipo: getTramitationCodes(tramName).tipo,
+        tipoC2: getTramitationCodes(tramName).tipoC2,
         p1c: parseFloat(cData.potencias?.p1 || cData.p1c || cData.p1) || null,
         p2c: parseFloat(cData.potencias?.p2 || cData.p2c || cData.p2) || null,
         p3c: parseFloat(cData.potencias?.p3 || cData.p3c || cData.p3) || null,
@@ -754,9 +922,9 @@ export async function remakeContractAction(leadId: string) {
         ip5: remakeSnap.ip5,
         ip6: remakeSnap.ip6,
         productTypeSnapshot: remakeSnap.productTypeSnapshot,
-        pexc: parseFloat(cData.pexc) || product?.pexc || null,
-        feeExcedentes: parseFloat(cData.feeExcedentes) || product?.feeExcedentes || null,
-        cgBolsilloSolar: parseFloat(cData.cgBolsilloSolar) || product?.cgBolsilloSolar || null,
+        pexc: hasAutoconsumo ? (parseFloat(cData.pexc) || product?.pexc || null) : null,
+        feeExcedentes: hasAutoconsumo ? (parseFloat(cData.feeExcedentes) || product?.feeExcedentes || null) : null,
+        cgBolsilloSolar: hasBolsilloSolar ? (parseFloat(cData.cgBolsilloSolar) || product?.cgBolsilloSolar || null) : null,
         deviationCost: parseFloat(cData.deviationCost) || product?.deviationCost || null,
         pricingModel: product?.pricingModel || null,
         commissionType: product?.commissionType || null,
@@ -764,6 +932,17 @@ export async function remakeContractAction(leadId: string) {
         permanenceMonths: product?.permanenceMonths ?? null,
       },
     });
+
+    if (lead.documents && lead.documents.length > 0) {
+      await prisma.document.updateMany({
+        where: { leadId: lead.id },
+        data: {
+          contractId: lead.contract.id,
+          clientId: lead.contract.clientId,
+          supplyPointId: lead.contract.supplyPointId,
+        },
+      });
+    }
 
     await calculateAndSnapshotContractCommission(lead.contract.id).catch((err) =>
       console.warn('Auto-cálculo de comisión omitido en remakeContractAction:', err)
@@ -779,18 +958,16 @@ export async function remakeContractAction(leadId: string) {
 
     if (!isMultipoint) {
       try {
-        const { buildTemplateDataFromLead } = await import('@/lib/templateBuilder');
         const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
         const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
         const { uploadFileToR2 } = await import('@/lib/r2');
 
-        const vat = lead.vatNumber || '';
-        const isPersonaFisica = /^[0-9XYZ]/.test(vat) && vat.length === 9;
+        const isPersonaFisica = /^[0-9XYZ]/.test(cleanVat) && cleanVat.length === 9;
         const cnae = (cData.cnae || '').trim();
         const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
         const isB2B = !isCore;
 
-        const templateData = buildTemplateDataFromLead(lead, cData, product, lead.contract, isB2B, lead.contract?.client, lead.contract?.supplyPoint);
+        const templateData = buildTemplateDataFromLead(lead, cData, product, updatedContract, isB2B, lead.contract?.client, lead.contract?.supplyPoint);
         const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
         
         const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
@@ -807,6 +984,11 @@ export async function remakeContractAction(leadId: string) {
         return { error: 'Error crítico al regenerar PDF: ' + (pdfError.message || String(pdfError)) };
       }
     }
+
+    revalidatePath('/leads');
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath('/contratos');
+    revalidatePath(`/contratos/${lead.contract.id}`);
 
     return { success: true, contractId: lead.contract.id };
 

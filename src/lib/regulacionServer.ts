@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { hasAdminOrBackofficeRole, resolveActiveCompanyId } from '@/lib/companyContext';
 import { toMadridYmd } from '@/lib/ppaEngine';
+import { getSpanishPostalPrefix } from '@/lib/postalCode';
 
 export interface RegulatoryCompanyContext {
   userId: string;
@@ -441,12 +442,9 @@ export function resolveIneProvinceCode(
   provinceName?: string | null
 ): { code: string; name: string; isFallback: boolean } {
   for (const pc of [postalCode, sipsPostalCode]) {
-    const clean = (pc || '').trim();
-    if (/^\d{5}$/.test(clean)) {
-      const prefix = clean.slice(0, 2);
-      if (ESCILA_PROVINCES[prefix]) {
-        return { code: prefix, name: ESCILA_PROVINCES[prefix], isFallback: false };
-      }
+    const prefix = getSpanishPostalPrefix(pc);
+    if (prefix && ESCILA_PROVINCES[prefix]) {
+      return { code: prefix, name: ESCILA_PROVINCES[prefix], isFallback: false };
     }
   }
 

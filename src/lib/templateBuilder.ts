@@ -102,15 +102,33 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     mailtitular: formatField(lead.email) || '',
     tlftitular: formatField(lead.phone) || '',
     mvtitular: '',
-    nombrerep: formatField(cData.representanteLegal) || formatField(cData.contactoNombre ? `${cData.contactoNombre} ${cData.contactoApellidos || ''}` : '') || '',
-    nifrep: formatField(cData.dniRepresentante) || formatField(cData.contactoNif) || '',
+    nombrerep:
+      formatField(cData.representanteLegal) ||
+      formatField(cData.contactoNombre ? `${cData.contactoNombre} ${cData.contactoApellidos || ''}`.trim() : '') ||
+      formatField(cData.representativeName ? `${cData.representativeName} ${cData.representativeLastName || ''}`.trim() : '') ||
+      formatField(client?.representativeName) ||
+      '',
+    nifrep:
+      formatField(cData.dniRepresentante) ||
+      formatField(cData.contactoNif) ||
+      formatField(cData.representativeVat) ||
+      formatField(client?.representativeVat) ||
+      '',
     cups: formatField(lead.cups) || '',
     tarifa: formatField(lead.tariff) || formatField(cData.tarifa) || '',
     direccionPS: formatField(getSupplyAddress(cData)) || formatField(getTitularAddress(cData)) || formatField(sp.address) || '',
     cpPS: formatField(cData.sCp) || formatField(cData.direccionSuministro?.postalCode) || formatField(cData.cp) || dirPSObj.cp || dirTitObj.cp || formatField(sp.postalCode) || '',
     localidadPS: formatField(cData.sPoblacion) || formatField(cData.direccionSuministro?.city) || formatField(cData.poblacion) || dirPSObj.poblacion || dirTitObj.poblacion || formatField(sp.city) || '',
     provPS: formatField(cData.sProvincia) || formatField(cData.direccionSuministro?.province) || formatField(cData.provincia) || dirPSObj.provincia || dirTitObj.provincia || formatField(sp.province) || '',
-    ftraspapel: (cData.facturasPapel === 'Si' || cData.facturaPapel === 'Si') ? 'Correo Postal' : 'Email',
+    ftraspapel:
+      cData.facturasPapel === 'Si' ||
+      cData.facturaPapel === 'Si' ||
+      cData.facturasPapel === 'SI' ||
+      cData.facturaPapel === 'SI' ||
+      cData.envioFactura === 'Postal' ||
+      cData.envioFactura === 'Ambos'
+        ? 'Correo Postal'
+        : 'Email',
     iban: cData.iban || '',
     nombreprod: product?.name || '',
     tipoprod: product?.type || product?.pricingModel || '',
@@ -122,12 +140,19 @@ export function buildTemplateDataFromLead(lead: any, cData: any, product: any, c
     MESESPERMANENCIA: contract.permanenceMonths || '0',
     servicios: additionalServicesStr,
     consumoanual: lead.estimatedMWh ? (lead.estimatedMWh * 1000).toString() : (cData.consumoEstimado || cData.consumoAnual || '0'),
-    tramitacion: cData.tipoTramitacion || '',
-    modalidadauto: cData.autoconsumo === 'Si' ? 'Con excedentes' : 'Sin autoconsumo',
+    tramitacion: cData.tipoTramitacion || cData.tramitationType || '',
+    modalidadauto:
+      cData.autoconsumo === 'Si' ||
+      cData.autoconsumo === 'SI' ||
+      cData.autoconsumo === 'Sí' ||
+      cData.autoconsumo === true ||
+      contract?.autoconsumo === true
+        ? 'Con excedentes'
+        : 'Sin autoconsumo',
     pexc: contract.pexc || '0',
     feeexc: contract.feeExcedentes || '0',
-    asociarabolsillo: contract.cgBolsilloSolar ? 'Si' : 'No',
-    cbolsillosolar: contract.cgBolsilloSolar || '0',
+    asociarabolsillo: contract?.bolsilloSolar === true || (contract?.cgBolsilloSolar && Number(contract.cgBolsilloSolar) > 0) ? 'Si' : 'No',
+    cbolsillosolar: contract?.bolsilloSolar === true || (contract?.cgBolsilloSolar && Number(contract.cgBolsilloSolar) > 0) ? (contract.cgBolsilloSolar || '0') : '0',
     fechafirma: new Date().toLocaleDateString('es-ES'),
     numcontrato: contract.contractCode || contract.id || '',
   };

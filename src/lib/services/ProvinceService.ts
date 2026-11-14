@@ -1,3 +1,5 @@
+import { getSpanishPostalPrefix } from '@/lib/postalCode';
+
 export interface ProvinceGeo {
   name: string;
   lat: number;
@@ -63,13 +65,8 @@ export const PROVINCES_GEO: Record<string, ProvinceGeo> = {
  * Returns the province prefix (01 to 52) based on postal code.
  */
 export function getProvinceCode(postalCode: string | null): string {
-  if (!postalCode) return '28'; // Default to Madrid if unknown
-  const clean = postalCode.replace(/\D/g, '');
-  if (clean.length >= 4) {
-    const padded = clean.length === 4 ? `0${clean}` : clean.substring(0, 5);
-    const code = padded.substring(0, 2);
-    if (PROVINCES_GEO[code]) return code;
-  }
+  const prefix = getSpanishPostalPrefix(postalCode);
+  if (prefix && PROVINCES_GEO[prefix]) return prefix;
   return '28';
 }
 
@@ -145,15 +142,9 @@ export function normalizeProvinceName(
   rawProvince?: string | null,
   postalCode?: string | null
 ): string {
-  if (postalCode) {
-    const digits = postalCode.replace(/\D/g, '');
-    if (digits.length >= 4) {
-      const padded = digits.length === 4 ? `0${digits}` : digits.substring(0, 5);
-      const code = padded.substring(0, 2);
-      if (PROVINCES_GEO[code]) {
-        return PROVINCES_GEO[code].name;
-      }
-    }
+  const prefix = getSpanishPostalPrefix(postalCode);
+  if (prefix && PROVINCES_GEO[prefix]) {
+    return PROVINCES_GEO[prefix].name;
   }
 
   if (rawProvince) {

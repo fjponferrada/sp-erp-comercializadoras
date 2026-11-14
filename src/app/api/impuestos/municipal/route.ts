@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getActiveBrand } from '@/lib/permissions';
+import { pickSpanishPostalCode } from '@/lib/postalCode';
 import {
   canonicalProvince,
   getDateRangeMadridBounds,
@@ -275,11 +276,11 @@ export async function GET(request: NextRequest) {
           codigoFiscal: String(c.data['Codigo Fiscal'] || ''),
           invoiceType: inv.invoiceType || 'Normal',
           tariff: inv.supplyPoint?.tariff || String(c.data['Tarifa'] || ''),
-          postalCode:
-            String(c.data['CP PS'] || '') ||
-            inv.supplyPoint?.postalCode ||
-            inv.supplyPoint?.sipsPostalCode ||
-            '',
+          postalCode: pickSpanishPostalCode(
+            c.data['CP PS'],
+            inv.supplyPoint?.postalCode,
+            inv.supplyPoint?.sipsPostalCode
+          ),
           energiaConsumida: c.energiaMwh,
           importeIVA: c.baseIVA,
           baseImponibleFactura: c.baseImponibleFactura,
@@ -306,10 +307,11 @@ export async function GET(request: NextRequest) {
         const sp = inv.supplyPoint;
 
         const cp =
-          String(c.data['CP PS'] || '').trim() ||
-          sp?.postalCode?.trim() ||
-          sp?.sipsPostalCode?.trim() ||
-          'Desconocido';
+          pickSpanishPostalCode(
+            c.data['CP PS'],
+            sp?.postalCode,
+            sp?.sipsPostalCode
+          ) || 'Desconocido';
         const rawCityFromData =
           c.data['POBLACION PS'] || c.data['Poblacion PS'] || c.data['Población PS'] || null;
         const rawPoblacion = String(sp?.city || rawCityFromData || 'Desconocido').trim();

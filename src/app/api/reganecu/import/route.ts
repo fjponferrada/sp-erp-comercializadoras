@@ -30,6 +30,8 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
+    const skipRecalc = formData.get('skipRecalc') === 'true';
+    const extraMonthsRaw = formData.get('extraMonths') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No se subió ningún archivo' }, { status: 400 });
@@ -241,19 +243,34 @@ export async function POST(req: Request) {
       new Set(pendingUpserts.map(item => item.date.toISOString().slice(0, 7)))
     ).sort();
 
-    if (affectedMonths.length > 0) {
-      try {
-        await runCalculatePendingEnergy(undefined, companyId, { targetMonths: affectedMonths });
-      } catch (syncErr) {
-        console.error('Aviso: error recalculando energía pendiente tras importar REGANECU:', syncErr);
+    if (!skipRecalc) {
+      let extraMonths: string[] = [];
+      if (extraMonthsRaw) {
+        try {
+          const parsed = JSON.parse(extraMonthsRaw);
+          if (Array.isArray(parsed)) extraMonths = parsed.filter(m => typeof m === 'string');
+        } catch {
+          // Ignorar JSON malformado opcional
+        }
       }
+
+      const targetMonths = Array.from(new Set([...affectedMonths, ...extraMonths])).sort();
+      if (targetMonths.length > 0) {
+        try {
+          await runCalculatePendingEnergy(undefined, companyId, { targetMonths });
+        } catch (syncErr) {
+          console.error('Aviso: error recalculando energía pendiente tras importar REGANECU:', syncErr);
+        }
+      }
+
+      revalidatePath('/compras/importar-reganecu');
+      revalidatePath('/compras/reganecu');
+      revalidatePath('/gestion/energia-pendiente');
     }
 
-    revalidatePath('/compras/importar-reganecu');
-    revalidatePath('/compras/reganecu');
-    revalidatePath('/gestion/energia-pendiente');
-
     return NextResponse.json({
+      processedCount,
+      affectedMonths,
       message: `Importación exitosa. Se procesaron ${processedCount} archivos REGANECU (Horarios/Cuartohorarios).`,
     });
   } catch (error: any) {

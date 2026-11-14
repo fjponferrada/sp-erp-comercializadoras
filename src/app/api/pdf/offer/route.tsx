@@ -1,303 +1,425 @@
 import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
-import { Page, Text, View, Document, StyleSheet, renderToStream, Image } from '@react-pdf/renderer';
+import { Page, Text, View, Document, StyleSheet, renderToStream } from '@react-pdf/renderer';
 import { Resend } from 'resend';
+import { auth } from '@/auth';
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    padding: 36,
     backgroundColor: '#ffffff',
     fontFamily: 'Helvetica',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 40,
-    borderBottom: '2pt solid #E5E7EB',
-    paddingBottom: 20,
+    alignItems: 'flex-start',
+    marginBottom: 22,
+    borderBottom: '2pt solid #84CC16',
+    paddingBottom: 14,
   },
-  logo: {
-    width: 120,
+  brandBadge: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#3F6212',
+    backgroundColor: '#ECFCCB',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 4,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     color: '#111827',
     fontWeight: 'bold',
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#6B7280',
-    marginTop: 4,
+    marginTop: 3,
   },
   section: {
-    marginBottom: 30,
+    marginBottom: 18,
   },
   sectionTitle: {
-    fontSize: 14,
-    color: '#84CC16', // AED Lime
+    fontSize: 12,
+    color: '#4D7C0F',
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 8,
     borderBottom: '1pt solid #E5E7EB',
     paddingBottom: 4,
+    textTransform: 'uppercase',
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 5,
   },
   label: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: '#4B5563',
-    width: '40%',
+    width: '38%',
   },
   value: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: '#111827',
     fontWeight: 'bold',
-    width: '60%',
+    width: '62%',
     textAlign: 'right',
+  },
+  subHeading: {
+    fontSize: 9.5,
+    color: '#374151',
+    fontWeight: 'bold',
+    marginTop: 6,
+    marginBottom: 5,
   },
   priceGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 10,
-    backgroundColor: '#F3F4F6',
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    border: '1pt solid #E5E7EB',
+    padding: 10,
+    borderRadius: 6,
   },
   priceBox: {
     width: '33%',
-    marginBottom: 15,
+    marginBottom: 8,
   },
   priceLabel: {
-    fontSize: 9,
+    fontSize: 8.5,
     color: '#6B7280',
   },
   priceValue: {
-    fontSize: 14,
+    fontSize: 11.5,
     color: '#111827',
     fontWeight: 'bold',
+    marginTop: 1,
   },
-  footer: {
-    position: 'absolute',
-    bottom: 30,
-    left: 40,
-    right: 40,
-    fontSize: 8,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    borderTop: '1pt solid #E5E7EB',
-    paddingTop: 10,
+  savingsBox: {
+    backgroundColor: '#ECFCCB',
+    border: '1pt solid #BEF264',
+    padding: 12,
+    borderRadius: 6,
+    marginBottom: 18,
+  },
+  savingsTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#3F6212',
+    marginBottom: 6,
   },
   autoconsumoBox: {
     backgroundColor: '#FFFBEB',
     border: '1pt solid #FDE68A',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 15,
+    padding: 12,
+    borderRadius: 6,
+    marginTop: 10,
   },
   autoconsumoTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#D97706',
-    marginBottom: 10,
-  }
+    color: '#B45309',
+    marginBottom: 6,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 24,
+    left: 36,
+    right: 36,
+    fontSize: 8,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    borderTop: '1pt solid #E5E7EB',
+    paddingTop: 8,
+  },
 });
 
-const OfferDocument = ({ lead, prices, offerType }: { lead: any, prices: any, offerType: string }) => {
-  const isIndexed = !prices.p1 || Number(prices.p1) === 0 || prices.p1 === '0.000' || prices.p1 === '0';
+const OfferDocument = ({ lead, prices, offerType }: { lead: any; prices: any; offerType: string }) => {
+  const is20TD = (lead.tariff || '2.0TD') === '2.0TD';
+  const isIndexed =
+    prices.isIndexed === true ||
+    (!prices.p1 || Number(prices.p1) === 0 || prices.p1 === '0.000' || prices.p1 === '0');
+  const hasPowerPrices = Number(prices.p1p || 0) > 0 || Number(prices.p2p || 0) > 0;
+  const hasComparison = Boolean(lead.monthlyExpense || lead.savings || lead.comparative);
+
+  const powerSummary = is20TD
+    ? `P1: ${lead.p1c || '-'} kW | P2: ${lead.p2c || '-'} kW`
+    : `P1: ${lead.p1c || '-'} | P2: ${lead.p2c || '-'} | P3: ${lead.p3c || '-'} | P4: ${lead.p4c || '-'} | P5: ${lead.p5c || '-'} | P6: ${lead.p6c || '-'} kW`;
+
+  const energyPeriods = is20TD
+    ? [
+        { label: 'P1 (Punta)', val: prices.p1 },
+        { label: 'P2 (Llano)', val: prices.p2 },
+        { label: 'P3 (Valle)', val: prices.p3 },
+      ]
+    : [
+        { label: 'P1', val: prices.p1 },
+        { label: 'P2', val: prices.p2 },
+        { label: 'P3', val: prices.p3 },
+        { label: 'P4', val: prices.p4 },
+        { label: 'P5', val: prices.p5 },
+        { label: 'P6', val: prices.p6 },
+      ];
+
+  const powerPeriods = is20TD
+    ? [
+        { label: 'P1 Potencia', val: prices.p1p },
+        { label: 'P2 Potencia', val: prices.p2p },
+      ]
+    : [
+        { label: 'P1 Potencia', val: prices.p1p },
+        { label: 'P2 Potencia', val: prices.p2p },
+        { label: 'P3 Potencia', val: prices.p3p },
+        { label: 'P4 Potencia', val: prices.p4p },
+        { label: 'P5 Potencia', val: prices.p5p },
+        { label: 'P6 Potencia', val: prices.p6p },
+      ];
+
+  const brandName = lead.brandName || 'AED Energía';
+  const brandEmail = lead.brandEmail || 'clientes@aed-energia.com';
+  const brandPhone = lead.brandPhone || '900 525 826';
+  const brandAddress = lead.brandAddress || 'España';
 
   return (
-  <Document>
-    <Page size="A4" style={styles.page}>
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>
-            {offerType === 'autoconsumo' ? 'Oferta de Autoconsumo' : 'Oferta de Suministro'}
-          </Text>
-          <Text style={styles.subtitle}>Referencia: {lead.id ? lead.id.slice(0, 8).toUpperCase() : lead.cups}</Text>
-          <Text style={styles.subtitle}>Fecha: {new Date().toLocaleDateString('es-ES')}</Text>
-        </View>
-      </View>
-
-      {/* Client Data */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Datos del Cliente</Text>
-        <View style={styles.row}>
-          <Text style={styles.label}>Titular / Razón Social:</Text>
-          <Text style={styles.value}>{lead.businessName || '-'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>NIF / CIF:</Text>
-          <Text style={styles.value}>{lead.vatNumber || '-'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Dirección:</Text>
-          <Text style={styles.value}>{lead.address || '-'}</Text>
-        </View>
-      </View>
-
-      {/* Suministro Data */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Punto de Suministro</Text>
-        <View style={styles.row}>
-          <Text style={styles.label}>CUPS:</Text>
-          <Text style={styles.value}>{lead.cups || '-'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Tarifa de Acceso:</Text>
-          <Text style={styles.value}>{lead.tariff || '-'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Consumo Estimado:</Text>
-          <Text style={styles.value}>{lead.estimatedMWh ? `${Number(lead.estimatedMWh).toFixed(2)} MWh/año` : '-'}</Text>
-        </View>
-      </View>
-
-      {/* Precios */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Condiciones Económicas</Text>
-        
-        {isIndexed ? (
-          <View style={{ marginTop: 10, padding: 15, backgroundColor: '#F3F4F6', borderRadius: 8 }}>
-            <Text style={{ fontSize: 11, color: '#111827', lineHeight: 1.5 }}>
-              Término de energía facturado a precio de mercado (Tarifa Indexada) más un margen de comercialización (Fee) de {prices.fee || '0.00'}.
+    <Document>
+      <Page size="A4" style={styles.page}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>
+              {offerType === 'autoconsumo' ? 'Oferta Comercial de Autoconsumo' : 'Oferta de Suministro Eléctrico'}
+            </Text>
+            <Text style={styles.subtitle}>
+              Referencia: {lead.id ? lead.id.slice(0, 8).toUpperCase() : lead.cups || '-'} · Fecha:{' '}
+              {new Date().toLocaleDateString('es-ES')}
             </Text>
           </View>
-        ) : (
-          <>
-            <View style={styles.priceGrid}>
-              <View style={styles.priceBox}>
-                <Text style={styles.priceLabel}>P1 (Punta)</Text>
-                <Text style={styles.priceValue}>{prices.p1}</Text>
-              </View>
-              <View style={styles.priceBox}>
-                <Text style={styles.priceLabel}>P2 (Llano)</Text>
-                <Text style={styles.priceValue}>{prices.p2}</Text>
-              </View>
-              <View style={styles.priceBox}>
-                <Text style={styles.priceLabel}>P3 (Valle)</Text>
-                <Text style={styles.priceValue}>{prices.p3}</Text>
-              </View>
-              <View style={styles.priceBox}>
-                <Text style={styles.priceLabel}>P4</Text>
-                <Text style={styles.priceValue}>{prices.p4}</Text>
-              </View>
-              <View style={styles.priceBox}>
-                <Text style={styles.priceLabel}>P5</Text>
-                <Text style={styles.priceValue}>{prices.p5}</Text>
-              </View>
-              <View style={styles.priceBox}>
-                <Text style={styles.priceLabel}>P6</Text>
-                <Text style={styles.priceValue}>{prices.p6}</Text>
-              </View>
-            </View>
-            <View style={{ marginTop: 20, padding: 10, backgroundColor: '#ECFCCB', borderRadius: 6 }}>
-              <Text style={{ fontSize: 11, color: '#3F6212', fontWeight: 'bold' }}>
-                Margen Comercial (Fee): {prices.fee || '0.00'} €/mes
-              </Text>
-            </View>
-          </>
-        )}
+          <Text style={styles.brandBadge}>{brandName}</Text>
+        </View>
 
-        {offerType === 'autoconsumo' && (
-          <View style={styles.autoconsumoBox}>
-            <Text style={styles.autoconsumoTitle}>Condiciones de Autoconsumo (Paneles Solares)</Text>
-            <View style={styles.row}>
-              <Text style={styles.label}>Excedentes:</Text>
-              <Text style={styles.value}>Compensación Simplificada</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Fee Excedentes:</Text>
-              <Text style={styles.value}>{prices.feeExcedentes || '0.00'} €</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Bolsillo Solar (Batería Virtual):</Text>
-              <Text style={styles.value}>{prices.bolsilloSolar === 'true' || prices.bolsilloSolar === true ? 'INCLUIDO' : 'NO INCLUIDO'}</Text>
-            </View>
+        {/* Datos del Cliente y Suministro */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Datos del Titular y Punto de Suministro</Text>
+          <View style={styles.row}>
+            <Text style={styles.label}>Titular / Razón Social:</Text>
+            <Text style={styles.value}>{lead.businessName || '-'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>NIF / CIF:</Text>
+            <Text style={styles.value}>{lead.vatNumber || '-'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Dirección Suministro:</Text>
+            <Text style={styles.value}>{lead.address || '-'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>CUPS:</Text>
+            <Text style={styles.value}>{lead.cups || '-'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Tarifa ATR y Potencias:</Text>
+            <Text style={styles.value}>
+              {lead.tariff || '2.0TD'} ({powerSummary})
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Consumo Anual Estimado:</Text>
+            <Text style={styles.value}>
+              {lead.estimatedMWh
+                ? `${Number(lead.estimatedMWh).toFixed(3)} MWh/año (${Math.round(Number(lead.estimatedMWh) * 1000).toLocaleString('es-ES')} kWh)`
+                : '-'}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Producto Ofertado:</Text>
+            <Text style={styles.value}>
+              {lead.productName || lead.product || '-'} {lead.productType ? `(${lead.productType})` : ''}
+            </Text>
+          </View>
+        </View>
+
+        {/* Comparativa de Ahorro (opcional) */}
+        {hasComparison && (
+          <View style={styles.savingsBox}>
+            <Text style={styles.savingsTitle}>Resumen del Estudio Comparativo</Text>
+            {lead.monthlyExpense && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Gasto Mensual Actual:</Text>
+                <Text style={styles.value}>{lead.monthlyExpense} €/mes</Text>
+              </View>
+            )}
+            {lead.savings && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Ahorro Anual Estimado:</Text>
+                <Text style={{ ...styles.value, color: '#3F6212', fontSize: 11 }}>
+                  {Number(lead.savings).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €/año
+                </Text>
+              </View>
+            )}
+            {lead.comparative && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Detalle:</Text>
+                <Text style={styles.value}>{lead.comparative}</Text>
+              </View>
+            )}
           </View>
         )}
-      </View>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text>AED Energía - Atención al Cliente: clientes@aed-energia.com - Tel. 900 525 826</Text>
-        <Text>Av. Gran Capitán, 43, 14008, Córdoba, España</Text>
-      </View>
+        {/* Condiciones Económicas */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Condiciones Económicas Ofertadas (Sin Impuestos)</Text>
 
-    </Page>
-  </Document>
+          {isIndexed ? (
+            <View style={{ padding: 12, backgroundColor: '#F3F4F6', borderRadius: 6, marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, color: '#111827', lineHeight: 1.5 }}>
+                Modalidad Indexada Pass-Through: Término de energía facturado a coste horario de mercado mayorista más peajes y cargos regulados, con un margen de comercialización (Fee) de {prices.fee || '0.00'} €.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.subHeading}>Término de Energía (€/kWh)</Text>
+              <View style={styles.priceGrid}>
+                {energyPeriods.map((ep) => (
+                  <View key={ep.label} style={styles.priceBox}>
+                    <Text style={styles.priceLabel}>{ep.label}</Text>
+                    <Text style={styles.priceValue}>{ep.val && ep.val !== '0' ? `${ep.val} €/kWh` : '-'}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {hasPowerPrices && (
+            <>
+              <Text style={styles.subHeading}>Término de Potencia (€/kW/día)</Text>
+              <View style={styles.priceGrid}>
+                {powerPeriods.map((pp) => (
+                  <View key={pp.label} style={styles.priceBox}>
+                    <Text style={styles.priceLabel}>{pp.label}</Text>
+                    <Text style={styles.priceValue}>{pp.val && pp.val !== '0' ? `${pp.val} €/kW/día` : '-'}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {offerType === 'autoconsumo' && (
+            <View style={styles.autoconsumoBox}>
+              <Text style={styles.autoconsumoTitle}>Condiciones de Autoconsumo y Excedentes</Text>
+              <View style={styles.row}>
+                <Text style={styles.label}>Compensación de Excedentes:</Text>
+                <Text style={styles.value}>
+                  {prices.pexc && Number(prices.pexc) > 0 ? `${prices.pexc} €/kWh` : 'Precio de mercado / Simplificada'}
+                </Text>
+              </View>
+              {prices.feeExcedentes && Number(prices.feeExcedentes) > 0 && (
+                <View style={styles.row}>
+                  <Text style={styles.label}>Coste Gestión Excedentes:</Text>
+                  <Text style={styles.value}>{prices.feeExcedentes} €</Text>
+                </View>
+              )}
+              <View style={styles.row}>
+                <Text style={styles.label}>Bolsillo Solar (Batería Virtual):</Text>
+                <Text style={styles.value}>
+                  {prices.bolsilloSolar === 'true' || prices.bolsilloSolar === true
+                    ? `INCLUIDO${prices.cgBolsilloSolar ? ` (${prices.cgBolsilloSolar} €/día)` : ''}`
+                    : 'NO INCLUIDO'}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text>
+            {brandName} · Atención al Cliente: {brandEmail} · Tel. {brandPhone}
+          </Text>
+          {brandAddress ? <Text>{brandAddress}</Text> : null}
+          <Text style={{ marginTop: 2 }}>
+            Oferta informativa sujeta a validación técnica de ATR/SIPS. Impuesto Eléctrico, alquiler de contador e IVA/IGIC aplicables según normativa vigente.
+          </Text>
+        </View>
+      </Page>
+    </Document>
   );
 };
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { lead, prices, offerType = 'suministro', action } = body;
 
+    const brandName = lead?.brandName || 'AED Energía';
+    const brandCode = lead?.brandCode || 'AED';
+
     const stream = await renderToStream(<OfferDocument lead={lead} prices={prices} offerType={offerType} />);
-    
+
     if (action === 'send') {
       const chunks: Buffer[] = [];
       for await (const chunk of stream) {
         chunks.push(Buffer.from(chunk));
       }
       const pdfBuffer = Buffer.concat(chunks);
-      
+
       const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key');
       const emailTo = lead.email || lead.contactEmail;
-      
+
       if (!emailTo) {
         return NextResponse.json({ success: false, error: 'El cliente no tiene un email válido' }, { status: 400 });
       }
 
-      const isIndexed = !prices.p1 || Number(prices.p1) === 0 || prices.p1 === '0.000' || prices.p1 === '0';
-      const termEnergiaText = isIndexed 
-        ? `<p>El término de energía se facturará a <strong>precio de mercado (Indexado)</strong> más un pequeño margen de comercialización de ${prices.fee || '0.00'}.</p>`
-        : `<p>Se aplicarán precios fijos competitivos durante toda la duración del contrato. Puedes consultar el desglose exacto en el PDF adjunto.</p>`;
+      const isIndexed =
+        prices.isIndexed === true ||
+        (!prices.p1 || Number(prices.p1) === 0 || prices.p1 === '0.000' || prices.p1 === '0');
+      const termEnergiaText = isIndexed
+        ? `<p>El término de energía se facturará en modalidad <strong>Indexada Pass-Through</strong> con un margen de comercialización (Fee) de ${prices.fee || '0.00'} €.</p>`
+        : `<p>Se aplicarán precios fijos competitivos (${lead.productName || 'Tarifa Fija'}). Puedes consultar el desglose completo por periodos en el PDF adjunto.</p>`;
 
       await resend.emails.send({
-        from: 'AED Energía <noreply@aed-energia.com>',
+        from: `${brandName} <noreply@aed-energia.com>`,
         to: [emailTo],
-        subject: `Tu Oferta de ${offerType === 'autoconsumo' ? 'Autoconsumo' : 'Suministro'} - AED Energía`,
+        subject: `Tu Oferta de ${offerType === 'autoconsumo' ? 'Autoconsumo' : 'Suministro Eléctrico'} - ${brandName}`,
         html: `
           <div style="font-family: sans-serif; color: #333; line-height: 1.5; max-width: 600px; margin: 0 auto;">
             <h2>Hola ${lead.businessName || 'cliente'},</h2>
-            <p>Adjuntamos la oferta personalizada para tu punto de suministro con CUPS <strong>${lead.cups || ''}</strong>.</p>
+            <p>Adjuntamos la propuesta comercial personalizada para tu punto de suministro${lead.cups ? ` con CUPS <strong>${lead.cups}</strong>` : ''}.</p>
             ${termEnergiaText}
-            <p>Si tienes cualquier duda, contacta con nosotros.</p>
-            <p>Un saludo,<br><strong>El equipo de AED Energía</strong></p>
+            ${lead.savings ? `<p><strong>Ahorro anual estimado:</strong> ${Number(lead.savings).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €/año.</p>` : ''}
+            <p>Si deseas activar la oferta o tienes cualquier consulta, estamos a tu disposición.</p>
+            <p>Un saludo,<br><strong>El equipo de ${brandName}</strong></p>
           </div>
         `,
         attachments: [
           {
-            filename: `Oferta_${offerType.toUpperCase()}_AED_${lead.cups || lead.id}.pdf`,
+            filename: `Oferta_${offerType.toUpperCase()}_${brandCode}_${lead.cups || lead.id}.pdf`,
             content: pdfBuffer,
-          }
-        ]
+          },
+        ],
       });
 
       return NextResponse.json({ success: true });
     }
 
-    // Convert Node.js stream to Web stream
     const webStream = new ReadableStream({
       start(controller) {
         stream.on('data', (chunk) => controller.enqueue(chunk));
         stream.on('end', () => controller.close());
         stream.on('error', (err) => controller.error(err));
-      }
+      },
     });
 
     return new NextResponse(webStream, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="Oferta_${offerType.toUpperCase()}_AED_${lead.cups || lead.id}.pdf"`,
+        'Content-Disposition': `attachment; filename="Oferta_${offerType.toUpperCase()}_${brandCode}_${lead.cups || lead.id}.pdf"`,
       },
     });
-
   } catch (error) {
     console.error('Error generating PDF:', error);
     return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });

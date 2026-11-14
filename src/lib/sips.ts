@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { mapReadingCodeToIngebauLabel } from '@/lib/sipsCsvExporter';
+import { normalizeSpanishPostalCode } from '@/lib/postalCode';
 
 export interface IngebauSipsData {
   result?: string;
@@ -378,7 +379,7 @@ async function transformCloudSipsToIngebau(rawApiData: any, requestedCups: strin
     potenciaCGPW: wattsToKwString(rawPs.potenciacgpw, false),
     'Propietario EM': translateOwnershipCnmc(rawPs.codigopropiedadequipomedida),
     ConsumoAnualkWh: annualTotalKwh,
-    CódigoPostalPS: String(rawPs.codigopostalps ?? ''),
+    CódigoPostalPS: normalizeSpanishPostalCode(rawPs.codigopostalps),
     fechaEmisionBIE: String(rawPs.fechaemisionbie ?? ''),
     ConsumoAnualP1kWh: annualP1,
     ConsumoAnualP2kWh: annualP2,

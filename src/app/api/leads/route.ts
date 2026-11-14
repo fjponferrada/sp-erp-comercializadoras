@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
     };
 
     const result = await createLeadAction(formData, apiContext);
+    if (!result.success) {
+      return NextResponse.json(result, { status: 400 });
+    }
 
     return NextResponse.json(result);
 

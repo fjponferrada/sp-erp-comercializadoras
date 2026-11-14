@@ -23,7 +23,6 @@ import {
   AlertCircle,
   Settings,
   Building2,
-  Sun,
   Tag,
   LogOut,
   FileWarning,
@@ -157,13 +156,6 @@ const baseNavGroups = [
     items: [
       { href: '/impuestos/electrico', icon: Receipt, label: 'Impuesto Eléctrico' },
       { href: '/impuestos/municipal', icon: Building2, label: 'Tasa Municipal' },
-    ],
-  },
-  {
-    label: 'Autoconsumo',
-    roles: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'],
-    items: [
-      { href: '/autoconsumo', icon: Sun, label: 'Autoconsumo' },
     ],
   },
   {

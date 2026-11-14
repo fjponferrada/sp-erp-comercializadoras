@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { pickSpanishPostalCode } from '@/lib/postalCode';
 import { auth } from '@/auth';
 import { uploadFileToR2 } from '@/lib/r2';
 import { generateInvoiceXml } from '@/lib/templates/invoiceXmlTemplate';
@@ -213,7 +214,7 @@ export async function POST(req: Request) {
             'Importe SVA': Number(iData.svaCost || 0),
             'Tipo Factura': isInvAbono ? 'Abono' : (invoice.invoiceType || 'Normal'),
             'Tarifa': sp?.tariff || invoice.contract?.product?.tariff || '',
-            'CP PS': sp?.postalCode || sp?.sipsPostalCode || '',
+            'CP PS': pickSpanishPostalCode(sp?.postalCode, sp?.sipsPostalCode),
             'POBLACION PS': sp?.city || '',
             'PROVINCIA PS': sp?.province || '',
           };

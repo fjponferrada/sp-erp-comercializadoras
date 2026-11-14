@@ -43,3 +43,5 @@ dump.sql
 debug-invoices.json
 /logs/*.lock
 /logs/crons/*.lock
+
+.vercel

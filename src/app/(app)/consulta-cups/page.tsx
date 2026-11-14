@@ -17,6 +17,7 @@ import {
   Activity,
   Gauge,
   FileSpreadsheet,
+  FileText,
   UserPlus,
   CheckCircle2,
   XCircle,
@@ -721,17 +722,53 @@ function ConsultaCupsContent() {
                   <button
                     type="button"
                     onClick={() => {
-                      handleCopyCups();
-                      router.push('/leads');
+                      try {
+                        const rawStr = JSON.stringify(sipsPayload);
+                        sessionStorage.setItem(`sp_erp_sips_prefill_${ps.CUPS}`, rawStr);
+                        if (ps.CUPS.length >= 20) {
+                          sessionStorage.setItem(`sp_erp_sips_prefill_${ps.CUPS.slice(0, 20)}`, rawStr);
+                        }
+                      } catch {}
+                      router.push(`/leads?action=offer&cups=${encodeURIComponent(ps.CUPS)}`);
                     }}
                     style={{
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-strong)',
-                      color: 'var(--text-secondary)',
+                      background: 'rgba(249, 115, 22, 0.12)',
+                      border: '1px solid rgba(249, 115, 22, 0.45)',
+                      color: '#FB923C',
                       padding: '8px 12px',
                       borderRadius: '10px',
                       fontSize: '0.8rem',
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FileText size={15} />
+                    Crear Oferta
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const rawStr = JSON.stringify(sipsPayload);
+                        sessionStorage.setItem(`sp_erp_sips_prefill_${ps.CUPS}`, rawStr);
+                        if (ps.CUPS.length >= 20) {
+                          sessionStorage.setItem(`sp_erp_sips_prefill_${ps.CUPS.slice(0, 20)}`, rawStr);
+                        }
+                      } catch {}
+                      router.push(`/leads?action=contract&cups=${encodeURIComponent(ps.CUPS)}`);
+                    }}
+                    style={{
+                      background: 'var(--lime-glow)',
+                      border: '1px solid var(--lime)',
+                      color: 'var(--lime)',
+                      padding: '8px 12px',
+                      borderRadius: '10px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
@@ -739,7 +776,7 @@ function ConsultaCupsContent() {
                     }}
                   >
                     <UserPlus size={15} />
-                    Ir a Leads
+                    Alta Luz
                   </button>
                 </div>
               </div>

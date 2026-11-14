@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { getActiveBrand } from '@/lib/permissions';
 
 export async function POST(req: Request) {
   try {
@@ -18,6 +19,8 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    const activeBrandId = await getActiveBrand(user);
 
     const newProduct = await prisma.product.create({
       data: {
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
         p5e: data.p5e,
         p6e: data.p6e,
 
-        brandId: user.brandId
+        brandId: activeBrandId || user.brandId
       }
     });
 
@@ -98,9 +101,13 @@ export async function GET(req: Request) {
       if (!user) {
         return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
-      targetBrandId = user.brandId;
-      if (['CANAL', 'COMERCIAL'].includes(user.role) && user.channelId) {
-        allowedChannels = [user.channelId];
+      if (['CANAL', 'COMERCIAL'].includes(user.role)) {
+        targetBrandId = user.brandId;
+        if (user.channelId) {
+          allowedChannels = [user.channelId];
+        }
+      } else {
+        targetBrandId = (await getActiveBrand(user)) || user.brandId;
       }
     }
 
@@ -120,7 +127,13 @@ export async function GET(req: Request) {
       orderBy: { name: 'asc' }
     });
 
-    return NextResponse.json({ success: true, data: products });
+    // Regla confidencialidad GUIA_COMISIONES: ocultar márgenes mayoristas internos a roles externos
+    const hideInternalMargins = isApiKey || allowedChannels !== null;
+    const safeProducts = hideInternalMargins
+      ? products.map(({ marginFC, ip1, ip2, ip3, ip4, ip5, ip6, ...rest }) => rest)
+      : products;
+
+    return NextResponse.json({ success: true, data: safeProducts });
   } catch (error: any) {
     console.error(error);
     return NextResponse.json({ success: false, error: 'Error interno' }, { status: 500 });

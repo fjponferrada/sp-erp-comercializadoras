@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { fromZonedTime } from 'date-fns-tz';
+import { getSpanishPostalPrefix, pickSpanishPostalCode } from '@/lib/postalCode';
 
 export interface BillingPeriodBreakdown {
   period: string;
@@ -102,6 +103,7 @@ export interface BillingCalculationResult {
   // Margins
   energyMargin?: number;
   powerMargin?: number;
+  feeApplied?: number | null;
   f1Readings?: any;
   meterSerialNumber?: string;
   excedentesKwh?: number;
@@ -175,8 +177,23 @@ const INFORMATIONAL_AUTOCONSUMO_CODES = new Set([
   '81', '82',
 ]);
 
+const MADRID_SV_FMT = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Madrid',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function formatMadridLocal(dt: Date): string {
+  return MADRID_SV_FMT.format(dt);
+}
+
 export function getPeriodoREE(dt: Date, tariff: string, postalCode?: string): string {
-  const localStr = dt.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });
+  const localStr = formatMadridLocal(dt);
   const y = parseInt(localStr.substring(0, 4), 10);
   const m = parseInt(localStr.substring(5, 7), 10);
   const d = parseInt(localStr.substring(8, 10), 10);
@@ -188,8 +205,8 @@ export function getPeriodoREE(dt: Date, tariff: string, postalCode?: string): st
   const isWeekend = w === 0 || w === 6;
   const isHol = isWeekend || FIXED_NATIONAL_HOLIDAYS.has(mmdd);
 
-  const cp = (postalCode || '').trim();
-  const isCeutaMelilla = cp.startsWith('51') || cp.startsWith('52');
+  const cpPrefix = getSpanishPostalPrefix(postalCode);
+  const isCeutaMelilla = cpPrefix === '51' || cpPrefix === '52';
 
   if (tariff.includes('2.0TD')) {
     if (isHol || (h >= 0 && h < 8)) return 'P3';
@@ -209,7 +226,7 @@ export function getPeriodoREE(dt: Date, tariff: string, postalCode?: string): st
     ? (h >= 11 && h < 15) || (h >= 19 && h < 23)
     : (h >= 9 && h < 14) || (h >= 18 && h < 22);
 
-  if (cp.startsWith('35') || cp.startsWith('38')) {
+  if (cpPrefix === '35' || cpPrefix === '38') {
     // Temporadas Canarias (Circular 3/2020 Anexo I)
     const isPeakCanarias = (h >= 10 && h < 15) || (h >= 18 && h < 22);
     if ([7, 8, 9, 10].includes(m)) return isPeakCanarias ? 'P1' : 'P2';
@@ -406,7 +423,12 @@ export class InternalBillingEngine {
 
     const contract = f1.contract;
     const supplyPoint = f1.supplyPoint;
-    const postalCode = (supplyPoint.postalCode || supplyPoint.sipsPostalCode || '').trim();
+    const postalCode = pickSpanishPostalCode(
+      supplyPoint.postalCode,
+      supplyPoint.sipsPostalCode,
+      (contract.airtableData as any)?.['Código Postal Instalación'],
+      (contract.airtableData as any)?.['CP PS']
+    );
     const airTarifa = (contract.airtableData as any)?.Tarifa || (contract.airtableData as any)?.tarifa;
     const tariff = (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || contract.product?.tariff || supplyPoint.tariff || '3.0TD';
 
@@ -495,10 +517,11 @@ export class InternalBillingEngine {
     }
 
     // --- DETERMINACIÓN DE RÉGIMEN INDIRECTO TERRITORIAL (IVA / IGIC / IPSI) ---
+    const cpPrefix = getSpanishPostalPrefix(postalCode);
     const provLower = (supplyPoint.province || '').toLowerCase();
-    const isCanarias = postalCode.startsWith('35') || postalCode.startsWith('38')
+    const isCanarias = cpPrefix === '35' || cpPrefix === '38'
       || provLower.includes('palmas') || provLower.includes('tenerife');
-    const isCeutaMelilla = postalCode.startsWith('51') || postalCode.startsWith('52')
+    const isCeutaMelilla = cpPrefix === '51' || cpPrefix === '52'
       || provLower.includes('ceuta') || provLower.includes('melilla');
 
     const clientVat = (supplyPoint.client?.vatNumber || '').trim().toUpperCase();
@@ -818,27 +841,68 @@ export class InternalBillingEngine {
     }
 
     // --- FECHAS Y DÍAS DE FACTURACIÓN (Inmunes a desfase UTC 22:00Z / 23:00Z y a cambios de hora DST) ---
+    // startDate..endDate y billingDays gobiernan Potencia, Bono Social, SVA y cargos diarios (<DatosFacturaATR><Periodo>).
     const f1StartDate = f1.fechaInicio || new Date();
-    const f1StartIsoStr = f1StartDate.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+    const f1StartIsoStr = formatMadridLocal(f1StartDate).substring(0, 10);
     const startDate = fromZonedTime(`${f1StartIsoStr}T00:00:00`, 'Europe/Madrid');
 
     const f1EndDate = f1.fechaFin || new Date();
-    const f1EndIsoStr = f1EndDate.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+    const f1EndIsoStr = formatMadridLocal(f1EndDate).substring(0, 10);
     const endDate = fromZonedTime(`${f1EndIsoStr}T00:00:00`, 'Europe/Madrid');
 
     const f1XmlNumeroDias = Math.round(parseXmlNum(jsonData?.DatosGeneralesFacturaATR?.DatosFacturaATR?.Periodo?.NumeroDias));
     const calendarDiffDays = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
     const billingDays = Math.max(1, calendarDiffDays > 0 ? calendarDiffDays : (f1XmlNumeroDias || 1));
 
+    // Ventana efectiva de Energía Activa (<TerminoEnergiaActiva>): en Regularizadoras ('G') o Complementarias ('C')
+    // con múltiples subbloques, la energía activa puede abarcar meses previos al <Periodo> de cabecera o solo un subrango con consumo > 0.
+    const activeSubBlocksWithVol = f1SubBlocksActiva.filter(
+      b =>
+        Boolean(b.startIso && b.endExclusiveIso && b.endExclusiveIso > b.startIso) &&
+        Object.values(b.volumesMWh).some(v => v > 0)
+    );
+    const allSubBlocksDatedOrZero =
+      f1SubBlocksActiva.length > 0 &&
+      f1SubBlocksActiva.every(
+        b =>
+          Boolean(b.startIso && b.endExclusiveIso && b.endExclusiveIso > b.startIso) ||
+          Object.values(b.volumesMWh).every(v => v <= 0)
+      );
+
+    let energyStartIsoStr = f1StartIsoStr;
+    let energyEndIsoStr = f1EndIsoStr;
+    if (allSubBlocksDatedOrZero && activeSubBlocksWithVol.length > 0) {
+      energyStartIsoStr = activeSubBlocksWithVol.reduce(
+        (min, b) => (b.startIso! < min ? b.startIso! : min),
+        activeSubBlocksWithVol[0].startIso!
+      );
+      energyEndIsoStr = activeSubBlocksWithVol.reduce(
+        (max, b) => (b.endExclusiveIso! > max ? b.endExclusiveIso! : max),
+        activeSubBlocksWithVol[0].endExclusiveIso!
+      );
+    } else if (activeSubBlocksWithVol.length > 0) {
+      for (const b of activeSubBlocksWithVol) {
+        if (b.startIso && b.startIso < energyStartIsoStr) energyStartIsoStr = b.startIso;
+        if (b.endExclusiveIso && b.endExclusiveIso > energyEndIsoStr) energyEndIsoStr = b.endExclusiveIso;
+      }
+    }
+
+    const energyStartDate = fromZonedTime(`${energyStartIsoStr}T00:00:00`, 'Europe/Madrid');
+    const energyEndDate = fromZonedTime(`${energyEndIsoStr}T00:00:00`, 'Europe/Madrid');
+    const energyDiffDays = Math.round((energyEndDate.getTime() - energyStartDate.getTime()) / (1000 * 3600 * 24));
+    const expectedEnergyDays = Math.max(1, energyDiffDays > 0 ? energyDiffDays : billingDays);
+
     const baseCups = supplyPoint.cups.substring(0, 20);
-    const actualEndDate = new Date(endDate.getTime() - 1000);
+    const minQueryDate = energyStartDate < startDate ? energyStartDate : startDate;
+    const maxQueryDate = energyEndDate > endDate ? energyEndDate : endDate;
+    const actualMaxEndDate = new Date(maxQueryDate.getTime() - 1000);
 
     const loadCurves = await prisma.loadCurve.findMany({
       where: {
         cups: { startsWith: baseCups },
         date: {
-          gte: new Date(startDate.getTime() - 24 * 3600 * 1000),
-          lte: new Date(actualEndDate.getTime() + 24 * 3600 * 1000)
+          gte: new Date(minQueryDate.getTime() - 24 * 3600 * 1000),
+          lte: new Date(actualMaxEndDate.getTime() + 24 * 3600 * 1000)
         }
       },
       orderBy: { date: 'asc' }
@@ -847,87 +911,126 @@ export class InternalBillingEngine {
     const consumptionCurves = loadCurves.filter(c => c.type === 'CONSUMPTION');
     const surplusCurves = loadCurves.filter(c => c.type === 'SURPLUS');
 
-    const cchHourlyMWh: { date: Date; mwh: number; period: string; isQuarterHour: boolean }[] = [];
-    let totalCchMWh = 0;
-    const cchVolumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+    // Corrección automática del desfase horario (+2h CEST / +1h CET) en curvas legacy `FTP_*` ingeridas en host local
+    // antes del blindaje UTC de cchParser.ts (las curvas modernas llevan prefijo CNMC como `F5D_FTP_*` / `P5D_FTP_*`).
+    const getMadridOffsetMs = (utcDate: Date): number => {
+      const s = formatMadridLocal(utcDate);
+      const asUtcMs = Date.UTC(
+        parseInt(s.substring(0, 4), 10),
+        parseInt(s.substring(5, 7), 10) - 1,
+        parseInt(s.substring(8, 10), 10),
+        parseInt(s.substring(11, 13), 10),
+        parseInt(s.substring(14, 16), 10),
+        parseInt(s.substring(17, 19), 10)
+      );
+      return Math.round((asUtcMs - utcDate.getTime()) / 900000) * 900000;
+    };
 
-    for (const lc of consumptionCurves) {
-      const isQuarter = lc.readings.length === 96;
-      const dateIsoStr = lc.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+    const buildCurveQuarters = (
+      curves: typeof consumptionCurves,
+      unshiftLegacyFtp: boolean
+    ): {
+      items: { date: Date; mwh: number; period: string; isQuarterHour: boolean }[];
+      totalMWh: number;
+      volumesByPeriod: Record<string, number>;
+    } => {
+      const byTs = new Map<number, { date: Date; mwh: number; period: string; isQuarterHour: boolean; prio: number }>();
 
-      if (isQuarter) {
-        for (let q = 0; q < 96; q++) {
-          const localStr = `${dateIsoStr}T${String(Math.floor(q / 4)).padStart(2, '0')}:${String((q % 4) * 15).padStart(2, '0')}:00`;
-          const qDate = fromZonedTime(localStr, 'Europe/Madrid');
-          if (qDate < startDate || qDate >= endDate) continue;
+      for (const lc of curves) {
+        const isQuarter = lc.readings.length === 96;
+        // lc.date se persiste como YYYY-MM-DDT00:00:00.000Z representando la fecha calendario española
+        const dateIsoStr = lc.date.toISOString().substring(0, 10);
+        const isLegacyUnprefixedFtp = Boolean(lc.source && lc.source.startsWith('FTP_'));
+        const prio = lc.source === 'MIGRACION_PKL' ? 2 : 1;
 
-          const mwh = (lc.readings[q] || 0) / 1000.0;
-          const period = getPeriodoREE(qDate, tariff, postalCode);
-          cchHourlyMWh.push({ date: qDate, mwh, period, isQuarterHour: true });
-          totalCchMWh += mwh;
-          if (cchVolumesByPeriod[period] !== undefined) cchVolumesByPeriod[period] += mwh;
-        }
-      } else {
-        for (let h = 0; h < 24; h++) {
-          const mwhHour = (lc.readings[h] || 0) / 1000.0;
-          const mwhQuarter = mwhHour / 4.0;
-          for (let q = 0; q < 4; q++) {
-            const localStr = `${dateIsoStr}T${String(h).padStart(2, '0')}:${String(q * 15).padStart(2, '0')}:00`;
-            const hourDate = fromZonedTime(localStr, 'Europe/Madrid');
-            if (hourDate < startDate || hourDate >= endDate) continue;
+        if (isQuarter) {
+          for (let q = 0; q < 96; q++) {
+            const localStr = `${dateIsoStr}T${String(Math.floor(q / 4)).padStart(2, '0')}:${String((q % 4) * 15).padStart(2, '0')}:00`;
+            const rawDate = fromZonedTime(localStr, 'Europe/Madrid');
+            const qDate =
+              unshiftLegacyFtp && isLegacyUnprefixedFtp
+                ? new Date(rawDate.getTime() - getMadridOffsetMs(rawDate))
+                : rawDate;
+            if (qDate < energyStartDate || qDate >= energyEndDate) continue;
 
-            const period = getPeriodoREE(hourDate, tariff, postalCode);
-            cchHourlyMWh.push({ date: hourDate, mwh: mwhQuarter, period, isQuarterHour: true });
-            totalCchMWh += mwhQuarter;
-            if (cchVolumesByPeriod[period] !== undefined) cchVolumesByPeriod[period] += mwhQuarter;
+            const mwh = (lc.readings[q] || 0) / 1000.0;
+            const ts = qDate.getTime();
+            const prev = byTs.get(ts);
+            if (!prev || prio > prev.prio || (prio === prev.prio && prev.mwh === 0 && mwh > 0)) {
+              const period = getPeriodoREE(qDate, tariff, postalCode);
+              byTs.set(ts, { date: qDate, mwh, period, isQuarterHour: true, prio });
+            }
+          }
+        } else {
+          for (let h = 0; h < 24; h++) {
+            const mwhHour = (lc.readings[h] || 0) / 1000.0;
+            const mwhQuarter = mwhHour / 4.0;
+            for (let q = 0; q < 4; q++) {
+              const localStr = `${dateIsoStr}T${String(h).padStart(2, '0')}:${String(q * 15).padStart(2, '0')}:00`;
+              const rawDate = fromZonedTime(localStr, 'Europe/Madrid');
+              const hourDate =
+                unshiftLegacyFtp && isLegacyUnprefixedFtp
+                  ? new Date(rawDate.getTime() - getMadridOffsetMs(rawDate))
+                  : rawDate;
+              if (hourDate < energyStartDate || hourDate >= energyEndDate) continue;
+
+              const ts = hourDate.getTime();
+              const prev = byTs.get(ts);
+              if (!prev || prio > prev.prio || (prio === prev.prio && prev.mwh === 0 && mwhQuarter > 0)) {
+                const period = getPeriodoREE(hourDate, tariff, postalCode);
+                byTs.set(ts, { date: hourDate, mwh: mwhQuarter, period, isQuarterHour: true, prio });
+              }
+            }
           }
         }
       }
-    }
 
-    const cchSurplusHourlyMWh: { date: Date; mwh: number; period: string; isQuarterHour: boolean }[] = [];
-    let totalCchSurplusMWh = 0;
-    const cchSurplusVolumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+      const items = Array.from(byTs.values())
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+        .map(({ date, mwh, period, isQuarterHour }) => ({ date, mwh, period, isQuarterHour }));
+      let totalMWh = 0;
+      const volumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+      for (const it of items) {
+        totalMWh += it.mwh;
+        if (volumesByPeriod[it.period] !== undefined) volumesByPeriod[it.period] += it.mwh;
+      }
+      return { items, totalMWh, volumesByPeriod };
+    };
 
-    for (const lc of surplusCurves) {
-      const isQuarter = lc.readings.length === 96;
-      const dateIsoStr = lc.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+    const hasLegacyUnprefixedFtp = consumptionCurves.some(c => Boolean(c.source && c.source.startsWith('FTP_')));
+    let chosenConsumption = buildCurveQuarters(consumptionCurves, false);
+    let applyLegacyFtpUnshift = false;
 
-      if (isQuarter) {
-        for (let q = 0; q < 96; q++) {
-          const localStr = `${dateIsoStr}T${String(Math.floor(q / 4)).padStart(2, '0')}:${String((q % 4) * 15).padStart(2, '0')}:00`;
-          const qDate = fromZonedTime(localStr, 'Europe/Madrid');
-          if (qDate < startDate || qDate >= endDate) continue;
-
-          const mwh = (lc.readings[q] || 0) / 1000.0;
-          const period = getPeriodoREE(qDate, tariff, postalCode);
-          cchSurplusHourlyMWh.push({ date: qDate, mwh, period, isQuarterHour: true });
-          totalCchSurplusMWh += mwh;
-          if (cchSurplusVolumesByPeriod[period] !== undefined) cchSurplusVolumesByPeriod[period] += mwh;
-        }
-      } else {
-        for (let h = 0; h < 24; h++) {
-          const mwhHour = (lc.readings[h] || 0) / 1000.0;
-          const mwhQuarter = mwhHour / 4.0;
-          for (let q = 0; q < 4; q++) {
-            const localStr = `${dateIsoStr}T${String(h).padStart(2, '0')}:${String(q * 15).padStart(2, '0')}:00`;
-            const hourDate = fromZonedTime(localStr, 'Europe/Madrid');
-            if (hourDate < startDate || hourDate >= endDate) continue;
-
-            const period = getPeriodoREE(hourDate, tariff, postalCode);
-            cchSurplusHourlyMWh.push({ date: hourDate, mwh: mwhQuarter, period, isQuarterHour: true });
-            totalCchSurplusMWh += mwhQuarter;
-            if (cchSurplusVolumesByPeriod[period] !== undefined) cchSurplusVolumesByPeriod[period] += mwhQuarter;
-          }
-        }
+    if (hasLegacyUnprefixedFtp && totalF1MWh > 0) {
+      const unshiftedCandidate = buildCurveQuarters(consumptionCurves, true);
+      const calcL1PeriodErr = (vols: Record<string, number>) =>
+        ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'].reduce(
+          (acc, p) => acc + Math.abs((f1VolumesByPeriod[p] || 0) - (vols[p] || 0)),
+          0
+        );
+      const rawErr = calcL1PeriodErr(chosenConsumption.volumesByPeriod);
+      const unshiftedErr = calcL1PeriodErr(unshiftedCandidate.volumesByPeriod);
+      const minImprovementMWh = Math.min(0.0005, totalF1MWh * 0.05);
+      if (unshiftedErr < rawErr * 0.6 && rawErr - unshiftedErr > minImprovementMWh) {
+        chosenConsumption = unshiftedCandidate;
+        applyLegacyFtpUnshift = true;
       }
     }
+
+    const cchHourlyMWh = chosenConsumption.items;
+    let totalCchMWh = chosenConsumption.totalMWh;
+    const cchVolumesByPeriod = chosenConsumption.volumesByPeriod;
+
+    const chosenSurplus = buildCurveQuarters(surplusCurves, applyLegacyFtpUnshift);
+    const cchSurplusHourlyMWh = chosenSurplus.items;
+    let totalCchSurplusMWh = chosenSurplus.totalMWh;
+    const cchSurplusVolumesByPeriod = chosenSurplus.volumesByPeriod;
 
     // --- EVALUACIÓN DE DESCUADRE CCH vs F1 ---
     const originalCchMWh = totalCchMWh;
     const allowedEnergyMargin = 0.001;
-    const foundDays = new Set(cchHourlyMWh.map(c => c.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10))).size;
-    const expectedDays = billingDays;
+    const foundDays = new Set(cchHourlyMWh.map(c => formatMadridLocal(c.date).substring(0, 10))).size;
+    const expectedDays = totalF1MWh > 0 ? expectedEnergyDays : 0;
 
     let hasMismatch = false;
     let hasCriticalError = false;
@@ -1017,7 +1120,9 @@ export class InternalBillingEngine {
     // --- CARGA DE PERFILES REE (Para consumo y pSolar de excedentes) ---
     const startYear = parseInt(f1StartIsoStr.substring(0, 4), 10);
     const endYear = parseInt(f1EndIsoStr.substring(0, 4), 10);
-    const yearsToLoad = Array.from(new Set([startYear, endYear]));
+    const energyStartYear = parseInt(energyStartIsoStr.substring(0, 4), 10);
+    const energyEndYear = parseInt(energyEndIsoStr.substring(0, 4), 10);
+    const yearsToLoad = Array.from(new Set([startYear, endYear, energyStartYear, energyEndYear]));
 
     let reeProfiles = await prisma.reeProfile.findMany({
       where: { year: { in: yearsToLoad } }
@@ -1040,7 +1145,7 @@ export class InternalBillingEngine {
 
     const tipoPerfil = tariff.includes('2.0') ? 'p20td' : (tariff.includes('3.0TDVE') ? 'p30tdve' : 'p30td');
     const getCoef = (d: Date, isSurplus: boolean = false): number => {
-      const localStr = d.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });
+      const localStr = formatMadridLocal(d);
       const yr = parseInt(localStr.substring(0, 4), 10);
       const m = parseInt(localStr.substring(5, 7), 10);
       const dom = parseInt(localStr.substring(8, 10), 10);
@@ -1053,7 +1158,7 @@ export class InternalBillingEngine {
       return val !== null && val !== undefined ? val : 0.0001;
     };
 
-    // --- REPARACIÓN / PERFILADO DE CURVA DE CONSUMO (Reglas 172) ---
+    // --- REPARACIÓN / PERFILADO DE CURVA DE CONSUMO (Regla 172 + Saneado Anti-Picos) ---
     const repairWindowQuarters = (
       winStart: Date,
       winEnd: Date,
@@ -1064,7 +1169,38 @@ export class InternalBillingEngine {
       if (winTotalMWh <= 0) {
         return existingItems.map(item => ({ ...item, mwh: 0 }));
       }
-      if (existingItems.length === 0) {
+
+      // Saneado de curvas corruptas (ej. ficheros legacy LOCAL_SCAN con lecturas colapsadas en 00:00-01:59)
+      let sanitizedExisting = existingItems;
+      if (sanitizedExisting.length > 0) {
+        let totalExistingMWh = 0;
+        let earlyNightMWh = 0;
+        for (const item of sanitizedExisting) {
+          if (item.mwh > 0) {
+            totalExistingMWh += item.mwh;
+            const localHour = parseInt(formatMadridLocal(item.date).substring(11, 13), 10);
+            if (localHour === 0 || localHour === 1) {
+              earlyNightMWh += item.mwh;
+            }
+          }
+        }
+        const daytimeF1MWh = tariff.includes('2.0')
+          ? (targetVols.P1 || 0) + (targetVols.P2 || 0)
+          : (targetVols.P1 || 0) +
+            (targetVols.P2 || 0) +
+            (targetVols.P3 || 0) +
+            (targetVols.P4 || 0) +
+            (targetVols.P5 || 0);
+        if (
+          totalExistingMWh > 0 &&
+          earlyNightMWh / totalExistingMWh > 0.95 &&
+          daytimeF1MWh > winTotalMWh * 0.10
+        ) {
+          sanitizedExisting = [];
+        }
+      }
+
+      if (sanitizedExisting.length === 0) {
         const ms = winEnd.getTime() - winStart.getTime();
         const totalQuarters = Math.ceil(ms / (1000 * 60 * 15)) || 1;
         const tempQuarters: { date: Date; period: string; coef: number }[] = [];
@@ -1086,27 +1222,52 @@ export class InternalBillingEngine {
         });
       }
 
-      const workItems = existingItems.map(item => ({ ...item }));
-      const periodsMissingQuarters = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'].filter(
-        p => (targetVols[p] || 0) > 0 && !workItems.some(c => c.period === p)
-      );
-      if (periodsMissingQuarters.length > 0) {
-        const existingTimestamps = new Set(workItems.map(c => c.date.getTime()));
-        const totalQuarters = Math.ceil((winEnd.getTime() - winStart.getTime()) / (1000 * 60 * 15)) || 1;
-        for (let i = 0; i < totalQuarters; i++) {
-          const d = new Date(winStart.getTime() + i * 15 * 60 * 1000);
-          if (existingTimestamps.has(d.getTime())) continue;
-          const p = getPeriodoREE(d, tariff, postalCode);
-          if (periodsMissingQuarters.includes(p)) {
-            workItems.push({ date: d, mwh: 0, period: p, isQuarterHour: true });
-          }
+      // Construir malla cuartohoraria completa [winStart, winEnd) preservando lecturas reales existentes
+      const existingByTs = new Map<number, { date: Date; mwh: number; period: string; isQuarterHour: boolean }>();
+      const daysWithConsumption = new Set<string>();
+      for (const item of sanitizedExisting) {
+        const ts = item.date.getTime();
+        const prev = existingByTs.get(ts);
+        if (prev) {
+          existingByTs.set(ts, { ...prev, mwh: prev.mwh + item.mwh });
+        } else {
+          existingByTs.set(ts, { ...item });
         }
+        if (item.mwh > 0) {
+          daysWithConsumption.add(formatMadridLocal(item.date).substring(0, 10));
+        }
+      }
+
+      const totalQuarters = Math.ceil((winEnd.getTime() - winStart.getTime()) / (1000 * 60 * 15)) || 1;
+      const workItems: { date: Date; mwh: number; period: string; isQuarterHour: boolean }[] = [];
+      const visitedTs = new Set<number>();
+
+      for (let i = 0; i < totalQuarters; i++) {
+        const d = new Date(winStart.getTime() + i * 15 * 60 * 1000);
+        const ts = d.getTime();
+        visitedTs.add(ts);
+        const ex = existingByTs.get(ts);
+        if (ex) {
+          workItems.push(ex);
+        } else {
+          const p = getPeriodoREE(d, tariff, postalCode);
+          workItems.push({ date: d, mwh: 0, period: p, isQuarterHour: true });
+        }
+      }
+      for (const [ts, ex] of existingByTs.entries()) {
+        if (!visitedTs.has(ts) && ts >= winStart.getTime() && ts < winEnd.getTime()) {
+          workItems.push(ex);
+        }
+      }
+      if (workItems.length > totalQuarters) {
         workItems.sort((a, b) => a.date.getTime() - b.date.getTime());
       }
 
       const winCchVols: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
       const sumCoefByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
-      const quarterCoefs = new Array(workItems.length);
+      const unmeasuredSumCoefByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+      const quarterCoefs = new Array<number>(workItems.length);
+      const quarterIsUnmeasuredDay = new Array<boolean>(workItems.length);
 
       for (let i = 0; i < workItems.length; i++) {
         const c = workItems[i];
@@ -1114,6 +1275,12 @@ export class InternalBillingEngine {
         const coef = getCoef(c.date, false);
         quarterCoefs[i] = coef;
         sumCoefByPeriod[c.period] += coef;
+        const dayIso = formatMadridLocal(c.date).substring(0, 10);
+        const isUnmeasured = !daysWithConsumption.has(dayIso);
+        quarterIsUnmeasuredDay[i] = isUnmeasured;
+        if (isUnmeasured) {
+          unmeasuredSumCoefByPeriod[c.period] += coef;
+        }
       }
 
       for (let i = 0; i < workItems.length; i++) {
@@ -1122,13 +1289,24 @@ export class InternalBillingEngine {
         const f1Vol = targetVols[p] || 0;
         const cchVol = winCchVols[p] || 0;
 
-        if (f1Vol === 0) {
+        if (f1Vol <= 0) {
           c.mwh = 0;
-        } else if (cchVol > 0) {
+        } else if (cchVol >= f1Vol * 0.80) {
+          // Cobertura >= 80% (o superior al F1): escalado proporcional respetando la forma horaria real del cliente
           c.mwh = c.mwh * (f1Vol / cchVol);
         } else {
-          const sumCoef = sumCoefByPeriod[p];
-          c.mwh = sumCoef > 0 ? f1Vol * (quarterCoefs[i] / sumCoef) : 0;
+          // Déficit severo de curva (< 80%): preservar las horas medidas reales sin amplificar picos aislados
+          // y perfilar únicamente el déficit (f1Vol - cchVol) mediante coeficientes REE.
+          const deficit = f1Vol - cchVol;
+          const unmeasuredSum = unmeasuredSumCoefByPeriod[p];
+          const totalSum = sumCoefByPeriod[p];
+          if (unmeasuredSum > 0 && unmeasuredSum >= totalSum * 0.15) {
+            if (quarterIsUnmeasuredDay[i]) {
+              c.mwh = c.mwh + deficit * (quarterCoefs[i] / unmeasuredSum);
+            }
+          } else if (totalSum > 0) {
+            c.mwh = c.mwh + deficit * (quarterCoefs[i] / totalSum);
+          }
         }
       }
 
@@ -1137,18 +1315,36 @@ export class InternalBillingEngine {
 
     const hasValidMultiSubBlocks =
       f1SubBlocksActiva.length > 1 &&
-      f1SubBlocksActiva.every(b => Boolean(b.startIso && b.endExclusiveIso));
+      f1SubBlocksActiva.every(
+        b =>
+          Boolean(b.startIso && b.endExclusiveIso && b.endExclusiveIso > b.startIso) ||
+          Object.values(b.volumesMWh).every(v => v <= 0)
+      );
 
-    const needsConsumptionRepair = (hasMismatch && forceRepair) || (cchHourlyMWh.length === 0 && totalF1MWh > 0);
+    const hasMicroVolumeDrift =
+      !hasMismatch &&
+      totalF1MWh > 0 &&
+      (Math.abs(totalF1MWh - totalCchMWh) > 1e-6 ||
+        ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'].some(
+          p => Math.abs((f1VolumesByPeriod[p] || 0) - (cchVolumesByPeriod[p] || 0)) > 1e-6
+        ));
+
+    const needsConsumptionRepair =
+      (hasMismatch && forceRepair) ||
+      (cchHourlyMWh.length === 0 && totalF1MWh > 0) ||
+      hasMicroVolumeDrift;
+
     if (needsConsumptionRepair) {
       if (hasValidMultiSubBlocks) {
         const origItems = [...cchHourlyMWh];
         cchHourlyMWh.length = 0;
         for (const blk of f1SubBlocksActiva) {
+          if (!blk.startIso || !blk.endExclusiveIso) continue;
+          if (Object.values(blk.volumesMWh).every(v => v <= 0)) continue;
           let blkStart = fromZonedTime(`${blk.startIso}T00:00:00`, 'Europe/Madrid');
           let blkEnd = fromZonedTime(`${blk.endExclusiveIso}T00:00:00`, 'Europe/Madrid');
-          if (blkStart < startDate) blkStart = startDate;
-          if (blkEnd > endDate) blkEnd = endDate;
+          if (blkStart < energyStartDate) blkStart = energyStartDate;
+          if (blkEnd > energyEndDate) blkEnd = energyEndDate;
           if (blkEnd <= blkStart) continue;
           const subExisting = origItems.filter(q => q.date >= blkStart && q.date < blkEnd);
           const repairedSub = repairWindowQuarters(blkStart, blkEnd, blk.volumesMWh, subExisting);
@@ -1156,7 +1352,7 @@ export class InternalBillingEngine {
         }
         cchHourlyMWh.sort((a, b) => a.date.getTime() - b.date.getTime());
       } else {
-        const repairedAll = repairWindowQuarters(startDate, endDate, f1VolumesByPeriod, cchHourlyMWh);
+        const repairedAll = repairWindowQuarters(energyStartDate, energyEndDate, f1VolumesByPeriod, cchHourlyMWh);
         cchHourlyMWh.length = 0;
         for (const item of repairedAll) cchHourlyMWh.push(item);
       }
@@ -1169,13 +1365,13 @@ export class InternalBillingEngine {
     // --- REPARACIÓN / PERFILADO GLOBAL DE EXCEDENTES (Reglas 173 y 174) ---
     if ((hasSurplusMismatch && forceRepair) || (cchSurplusHourlyMWh.length === 0 && totalF1SurplusMWh > 0)) {
       if (cchSurplusHourlyMWh.length === 0) {
-        const ms = endDate.getTime() - startDate.getTime();
+        const ms = energyEndDate.getTime() - energyStartDate.getTime();
         const totalQuarters = Math.ceil(ms / (1000 * 60 * 15)) || 1;
         const tempQuarters: { date: Date; period: string; coef: number }[] = [];
         let totalSumCoef = 0;
 
         for (let i = 0; i < totalQuarters; i++) {
-          const d = new Date(startDate.getTime() + i * 15 * 60 * 1000);
+          const d = new Date(energyStartDate.getTime() + i * 15 * 60 * 1000);
           const p = getPeriodoREE(d, tariff, postalCode);
           const coef = getCoef(d, true);
           totalSumCoef += coef;
@@ -1198,10 +1394,10 @@ export class InternalBillingEngine {
     // --- PRECIOS HORARIOS DE MERCADO (SystemComponentPrice) ---
     const datesSet = new Set<string>();
     for (const c of cchHourlyMWh) {
-      datesSet.add(c.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10));
+      datesSet.add(formatMadridLocal(c.date).substring(0, 10));
     }
     for (const s of cchSurplusHourlyMWh) {
-      datesSet.add(s.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10));
+      datesSet.add(formatMadridLocal(s.date).substring(0, 10));
     }
     const datesToQueryStr = Array.from(datesSet);
 
@@ -1253,11 +1449,12 @@ export class InternalBillingEngine {
     }
 
     // --- COSTES REGULADOS BOE (Resolución por fecha exacta para cambios de año/BOE a mitad de factura) ---
+    const minRegIsoStr = energyStartIsoStr < f1StartIsoStr ? energyStartIsoStr : f1StartIsoStr;
     const regCosts = await prisma.regulatedCost.findMany({
       where: {
         OR: [{ tariff }, { tariff: 'TODAS' }],
-        validFrom: { lte: endDate },
-        validTo: { gte: new Date(`${f1StartIsoStr}T00:00:00.000Z`) }
+        validFrom: { lte: maxQueryDate },
+        validTo: { gte: new Date(`${minRegIsoStr}T00:00:00.000Z`) }
       },
       orderBy: { validFrom: 'asc' }
     });
@@ -1449,9 +1646,21 @@ export class InternalBillingEngine {
     }
 
     let feeValue = contract.fee;
+    const airFeeP = getAirVal('FEE_P') || getAirVal('FEE Index Personalizado');
+    const airProdFee = getAirVal('Fee Index (from PRODUCTOS)') || (contract.product?.fee ?? 0);
     if (feeValue === null || feeValue === undefined) {
-      const airFee = getAirVal('FEE_P') || getAirVal('FEE Index Personalizado') || getAirVal('FEE');
+      const airFee = airFeeP || getAirVal('FEE') || (contract.product?.fee ?? 0);
       feeValue = airFee || null;
+    } else if (
+      !isFixed &&
+      airFeeP > 0 &&
+      airProdFee > 0 &&
+      Math.abs(feeValue - airProdFee) < 0.001 &&
+      Math.abs(airFeeP - airProdFee) > 0.001 &&
+      prodName !== 'ERANOVUM BOE INDEX'
+    ) {
+      // Priorizar FEE_P personalizado de Airtable cuando en la migración contract.fee heredó el fee genérico de catálogo
+      feeValue = airFeeP;
     }
     if (!isFixed && (feeValue === undefined || feeValue === null)) {
       addIssue("Contrato Indexado sin Margen de Comercialización (FEE) configurado.", true);
@@ -1459,9 +1668,23 @@ export class InternalBillingEngine {
     }
     const safeFeeValue = feeValue ?? 0;
 
-    if (!isFixed && (contract.deviationCost === null || contract.deviationCost === undefined)) {
+    let dsvValue = contract.deviationCost;
+    if (dsvValue === null || dsvValue === undefined) {
+      const hasAirDsv =
+        airData &&
+        (airData['DSV_P'] !== undefined ||
+          airData['DSV'] !== undefined ||
+          airData['DSV Index (from PRODUCTOS)'] !== undefined);
+      if (hasAirDsv) {
+        dsvValue = getAirVal('DSV_P') || getAirVal('DSV') || getAirVal('DSV Index (from PRODUCTOS)');
+      } else if (contract.product?.deviationCost !== null && contract.product?.deviationCost !== undefined) {
+        dsvValue = contract.product.deviationCost;
+      }
+    }
+    if (!isFixed && (dsvValue === null || dsvValue === undefined)) {
       addIssue("Contrato Indexado sin coste de desvíos (DSV) configurado.", false);
     }
+    const safeDsvValue = dsvValue ?? 0;
 
     const periodsBreakdown: Record<string, BillingPeriodBreakdown> = {
       P1: { period: 'P1', cchConsumptionMWh: 0, f1ConsumptionMWh: f1VolumesByPeriod['P1'] || 0, energyCostEur: 0, regulatedCostEur: 0 },
@@ -1485,7 +1708,7 @@ export class InternalBillingEngine {
     const hourlyDetails: any[] = [];
 
     for (const hData of cchHourlyMWh) {
-      const localStr = hData.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });
+      const localStr = formatMadridLocal(hData.date);
       const localDateKey = localStr.substring(0, 10);
       const localHour = parseInt(localStr.substring(11, 13), 10);
       const localMinute = parseInt(localStr.substring(14, 16), 10);
@@ -1538,7 +1761,7 @@ export class InternalBillingEngine {
       const lossFactor = 1 + pctPerd;
 
       // Coste mayorista sombra (Regla 176): DSV contractual o 2 €/MWh de referencia, FEE = 0
-      const shadowDsv = contract.deviationCost ?? 2;
+      const shadowDsv = dsvValue ?? 2;
       const shadowBase = (omie + sumComps + pc + rom + ros + shadowDsv) * lossFactor;
       const shadowPh = (shadowBase + fneeCost) * (1 / 0.985);
       totalShadowIndexedCost += shadowPh * mwh;
@@ -1571,7 +1794,7 @@ export class InternalBillingEngine {
         ph = fixedPrice - refAtr + passThroughReg179;
         hCost = ph * mwh;
       } else {
-        const dsv = contract.deviationCost || 0;
+        const dsv = safeDsvValue;
         const base = (omie + sumComps + pc + rom + ros + dsv) * lossFactor;
         ph = (base + fneeCost + safeFeeValue) * (1 / 0.985);
         hCost = ph * mwh;
@@ -1587,7 +1810,7 @@ export class InternalBillingEngine {
           omie,
           sumComps,
           compVals,
-          dsv: contract.deviationCost || 0,
+          dsv: safeDsvValue,
           pc,
           rom,
           ros,
@@ -1799,6 +2022,38 @@ export class InternalBillingEngine {
       const p6p = contract.p6p || getAirVal('P6P') || getAirVal('P6 P') || p1p;
 
       const isYearlyPower = p1p > 2; // > 2 € indica €/kW/año; <= 2 € indica €/kW/día
+      const isExplicitBoePower =
+        String(airData?.['POTENCIA BOE'] || '').trim().toUpperCase() === 'SI';
+      const isBoeNamedProduct = !isFixed && /\bBOE\b/i.test(prodName);
+
+      const historicalBoeSumsByPeriod: Record<string, number[]> = {
+        P1: [], P2: [], P3: [], P4: [], P5: [], P6: []
+      };
+      if (isExplicitBoePower || isBoeNamedProduct) {
+        const allTariffPotenciaCosts = await prisma.regulatedCost.findMany({
+          where: {
+            tariff,
+            concept: { in: ['PEAJES_POTENCIA', 'Peajes_Potencia', 'CARGOS_POTENCIA', 'Cargos_Potencia'] }
+          }
+        });
+        const windowsMap = new Map<string, { peaje: any; cargo: any }>();
+        for (const rc of allTariffPotenciaCosts) {
+          const wKey = `${rc.validFrom.toISOString().substring(0, 10)}_${rc.validTo.toISOString().substring(0, 10)}`;
+          const entry = windowsMap.get(wKey) || { peaje: null, cargo: null };
+          if (rc.concept === 'PEAJES_POTENCIA' || rc.concept === 'Peajes_Potencia') entry.peaje = rc;
+          else entry.cargo = rc;
+          windowsMap.set(wKey, entry);
+        }
+        for (const entry of windowsMap.values()) {
+          if (!entry.peaje && !entry.cargo) continue;
+          for (const per of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']) {
+            const sum = getRegVal(entry.peaje, per) + getRegVal(entry.cargo, per);
+            if (sum > 0) historicalBoeSumsByPeriod[per].push(sum);
+          }
+        }
+      }
+
+      let missingPowerBoeAlerted = false;
 
       const processPower = (period: string, kw: number, contractPrice: number) => {
         if (!kw || !contractPrice) return;
@@ -1807,6 +2062,25 @@ export class InternalBillingEngine {
         const refAtrCargoYearly = getRegVal(refRegSet.cargosPotenciaBOE, period);
         const refAtrYearly = refAtrPeajeYearly + refAtrCargoYearly;
 
+        const histSums = historicalBoeSumsByPeriod[period] || [];
+        const matchesAnyYearBoe = isYearlyPower
+          ? histSums.some(boeSum => Math.abs(contractPrice - boeSum) <= 0.02)
+          : histSums.some(
+              boeSum =>
+                Math.abs(contractPrice - boeSum / 365.0) <= 0.0001 ||
+                Math.abs(contractPrice - boeSum / 366.0) <= 0.0001
+            );
+        const isPureBoePassThrough =
+          isExplicitBoePower || (isBoeNamedProduct && matchesAnyYearBoe);
+
+        if (!isPureBoePassThrough && !refRegSet.peajesPotenciaBOE && !missingPowerBoeAlerted) {
+          missingPowerBoeAlerted = true;
+          addIssue(
+            `Faltan peajes de potencia históricos para la fecha de firma o referencia (${refIsoDate}). Actualice la base de datos de Costes Regulados.`,
+            true
+          );
+        }
+
         let sumBilledUnrounded = 0;
         let sumPeajeUnrounded = 0;
         let sumCargoUnrounded = 0;
@@ -1814,7 +2088,7 @@ export class InternalBillingEngine {
 
         for (let d = 0; d < billingDays; d++) {
           const dayMid = new Date(startDate.getTime() + d * 86400000 + 12 * 3600000);
-          const dayIso = dayMid.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+          const dayIso = formatMadridLocal(dayMid).substring(0, 10);
           const yr = parseInt(dayIso.substring(0, 4), 10);
           const daysInYr = isLeapYear(yr) ? 366.0 : 365.0;
 
@@ -1828,7 +2102,9 @@ export class InternalBillingEngine {
           const dailyCurAtr = curAtrYearly / daysInYr;
 
           let dailyBilledPrice: number;
-          if (isYearlyPower) {
+          if (isPureBoePassThrough) {
+            dailyBilledPrice = dailyCurAtr;
+          } else if (isYearlyPower) {
             const yearlyMargin = contractPrice - refAtrYearly;
             const yearlyBilled = yearlyMargin + curAtrYearly;
             dailyBilledPrice = yearlyBilled / daysInYr;
@@ -2228,10 +2504,14 @@ export class InternalBillingEngine {
     }
     const modernServices = Array.from(mergedServicesMap.values());
 
+    const isOneOffOnboardingSva = (label?: string | null): boolean =>
+      /\b(alta\s+nueva|€\s*\/\s*alta|derechos\s+de\s+alta)\b/i.test(label || '');
+
     if (!skipDailyAndPowerCharges && modernServices.length > 0) {
       let unroundedSumSva = 0;
       for (const srv of modernServices) {
-        const ovDays = calcServiceOverlapDays(srv.durationMonths);
+        const effDuration = isOneOffOnboardingSva(srv.name) ? 1 : srv.durationMonths;
+        const ovDays = calcServiceOverlapDays(effDuration);
         if (ovDays <= 0) continue;
         let dailyRate = 0;
         if (srv.dailyPrice !== null && srv.dailyPrice !== undefined && Number(srv.dailyPrice) > 0) {
@@ -2259,12 +2539,17 @@ export class InternalBillingEngine {
       }
       svaConcept = contract.svaConcept || svaDetails.map(s => s.name).join(' + ');
     } else if (!skipDailyAndPowerCharges && contract.svaPrice && contract.svaDuration) {
-      const ovDays = calcServiceOverlapDays(contract.svaDuration);
+      const legacyLabel =
+        contract.svaConcept ||
+        (airData?.['CONCEPTO SVA'] ? String(airData['CONCEPTO SVA']) : '') ||
+        'Servicio Adicional (SVA)';
+      const effLegacyDur = isOneOffOnboardingSva(legacyLabel) ? 1 : contract.svaDuration;
+      const ovDays = calcServiceOverlapDays(effLegacyDur);
       if (ovDays > 0) {
-        const svaMonthlyPrice = contract.svaPrice / contract.svaDuration;
+        const svaMonthlyPrice = contract.svaPrice / effLegacyDur;
         const svaDailyPrice = (svaMonthlyPrice * 12.0) / 365.0;
         svaCost = round2(svaDailyPrice * ovDays);
-        svaConcept = contract.svaConcept || 'Servicio Adicional (SVA)';
+        svaConcept = legacyLabel;
         if (svaCost > 0) {
           svaDetails.push({
             name: svaConcept,
@@ -2485,6 +2770,7 @@ export class InternalBillingEngine {
       energyMarketDetails,
       energyMargin,
       powerMargin,
+      feeApplied: isFixed ? null : safeFeeValue,
       f1Readings,
       meterSerialNumber,
       hourlyDetails,

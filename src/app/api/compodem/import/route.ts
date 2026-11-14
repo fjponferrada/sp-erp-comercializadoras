@@ -16,6 +16,8 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
+    const skipRecalc = formData.get('skipRecalc') === 'true';
+    const extraMonthsRaw = formData.get('extraMonths') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No se ha adjuntado ningún fichero ZIP.' }, { status: 400 });
@@ -34,17 +36,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: result.message }, { status: 400 });
     }
 
-    if (result.affectedMonths && result.affectedMonths.length > 0) {
-      try {
-        await runCalculatePendingEnergy(undefined, undefined, { targetMonths: result.affectedMonths });
-      } catch (syncErr) {
-        console.error('Aviso: error recalculando energía pendiente tras importar COMPODEM:', syncErr);
+    if (!skipRecalc) {
+      let extraMonths: string[] = [];
+      if (extraMonthsRaw) {
+        try {
+          const parsed = JSON.parse(extraMonthsRaw);
+          if (Array.isArray(parsed)) extraMonths = parsed.filter(m => typeof m === 'string');
+        } catch {
+          // Ignorar JSON malformado opcional
+        }
       }
-    }
 
-    revalidatePath('/compras/importar-compodem');
-    revalidatePath('/compras/precios-componentes');
-    revalidatePath('/gestion/energia-pendiente');
+      const targetMonths = Array.from(
+        new Set([...(result.affectedMonths || []), ...extraMonths])
+      ).sort();
+
+      if (targetMonths.length > 0) {
+        try {
+          await runCalculatePendingEnergy(undefined, undefined, { targetMonths });
+        } catch (syncErr) {
+          console.error('Aviso: error recalculando energía pendiente tras importar COMPODEM:', syncErr);
+        }
+      }
+
+      revalidatePath('/compras/importar-compodem');
+      revalidatePath('/compras/precios-componentes');
+      revalidatePath('/gestion/energia-pendiente');
+    }
 
     return NextResponse.json(result);
   } catch (error: any) {

@@ -3,11 +3,17 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UploadCloud, CheckCircle2, AlertTriangle, FileText, Loader2 } from 'lucide-react';
+import { parseJsonResponseSafe, prepareFilteredZipBatches } from '@/lib/zipClientFilter';
+
+function isReganecuRelevantFile(lowerBaseName: string): boolean {
+  return lowerBaseName.includes('_reganecu_') || lowerBaseName.includes('_reganecuqh_');
+}
 
 export default function ReganecuImportClient() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [statusLabel, setStatusLabel] = useState<string>('Procesando...');
   const [uploadResult, setUploadResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -43,22 +49,55 @@ export default function ReganecuImportClient() {
     if (!file) return;
 
     setIsUploading(true);
+    setStatusLabel('Filtrando ficheros del ZIP...');
     setUploadResult(null);
-    const formData = new FormData();
-    formData.append('file', file);
 
     try {
-      const res = await fetch('/api/reganecu/import', {
-        method: 'POST',
-        body: formData,
-      });
+      const { matchedCount, batches } = await prepareFilteredZipBatches(file, isReganecuRelevantFile);
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al procesar el archivo');
+      if (matchedCount === 0 || batches.length === 0) {
+        throw new Error('No se encontraron ficheros válidos de REGANECU dentro del ZIP.');
       }
 
-      setUploadResult({ type: 'success', message: data.message });
+      let totalProcessedCount = 0;
+      const accumulatedMonths = new Set<string>();
+
+      for (let i = 0; i < batches.length; i++) {
+        const isLastBatch = i === batches.length - 1;
+        setStatusLabel(
+          batches.length > 1
+            ? `Importando lote ${i + 1} de ${batches.length}...`
+            : 'Importando en base de datos...'
+        );
+
+        const formData = new FormData();
+        formData.append('file', batches[i], `reganecu_batch_${i + 1}.zip`);
+        if (!isLastBatch) {
+          formData.append('skipRecalc', 'true');
+        } else if (accumulatedMonths.size > 0) {
+          formData.append('extraMonths', JSON.stringify(Array.from(accumulatedMonths)));
+        }
+
+        const res = await fetch('/api/reganecu/import', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await parseJsonResponseSafe(res);
+        if (!res.ok) {
+          throw new Error(data.error || `Error al procesar el lote ${i + 1} de ${batches.length}`);
+        }
+
+        totalProcessedCount += data.processedCount || 0;
+        if (Array.isArray(data.affectedMonths)) {
+          data.affectedMonths.forEach((m: string) => accumulatedMonths.add(m));
+        }
+      }
+
+      setUploadResult({
+        type: 'success',
+        message: `Importación exitosa. Se procesaron ${totalProcessedCount} archivos REGANECU (Horarios/Cuartohorarios).`,
+      });
       setFile(null);
       router.refresh();
     } catch (err: any) {
@@ -66,6 +105,7 @@ export default function ReganecuImportClient() {
       setUploadResult({ type: 'error', message: err.message });
     } finally {
       setIsUploading(false);
+      setStatusLabel('Procesando...');
     }
   };
 
@@ -139,7 +179,7 @@ export default function ReganecuImportClient() {
             {isUploading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Procesando...
+                {statusLabel}
               </>
             ) : (
               'Comenzar Importación'

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { cookies } from 'next/headers';
+import { getActiveBrand } from '@/lib/permissions';
 
 export async function GET(req: Request) {
   try {
@@ -10,17 +10,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email as string }
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: (session.user.email as string).trim(), mode: 'insensitive' } }
     });
     
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const cookieStore = await cookies();
-    const activeBrandId = cookieStore.get('active-brand')?.value;
-    const targetBrandId = (activeBrandId && activeBrandId !== 'todas') ? activeBrandId : user.brandId;
+    const targetBrandId = ['CANAL', 'COMERCIAL'].includes(user.role)
+      ? user.brandId
+      : ((await getActiveBrand(user)) || user.brandId);
 
     const services = await prisma.additionalService.findMany({
       where: {

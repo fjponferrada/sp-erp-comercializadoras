@@ -1,4 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz';
+import { getSpanishPostalPrefix, pickSpanishPostalCode } from './postalCode';
 
 export const MADRID_TZ = 'Europe/Madrid';
 export const STANDARD_IEE_RATE = 5.11269632;
@@ -222,13 +223,13 @@ export function validateDeclarantCie(cieRaw: string | null | undefined): { valid
  * Solo Navarra (31) y País Vasco (01, 20, 48) tributan en Haciendas Forales.
  */
 export function resolveTaxZone(supplyPoint: any, invoiceData: any): TaxZone {
-  const cp = String(
-    supplyPoint?.postalCode ||
-    supplyPoint?.sipsPostalCode ||
-    invoiceData?.['CP PS'] ||
-    invoiceData?.['Codigo Postal PS'] ||
-    ''
-  ).trim();
+  const cp = pickSpanishPostalCode(
+    supplyPoint?.postalCode,
+    supplyPoint?.sipsPostalCode,
+    invoiceData?.['CP PS'],
+    invoiceData?.['Codigo Postal PS']
+  );
+  const cpPrefix = getSpanishPostalPrefix(cp);
 
   const prov = String(
     supplyPoint?.province ||
@@ -241,16 +242,16 @@ export function resolveTaxZone(supplyPoint: any, invoiceData: any): TaxZone {
     .toLowerCase()
     .trim();
 
-  if (cp.startsWith('31') || prov.includes('navarra') || prov.includes('nafarroa')) {
+  if (cpPrefix === '31' || prov.includes('navarra') || prov.includes('nafarroa')) {
     return 'Navarra';
   }
-  if (cp.startsWith('01') || prov.includes('alava') || prov.includes('araba')) {
+  if (cpPrefix === '01' || prov.includes('alava') || prov.includes('araba')) {
     return 'Álava';
   }
-  if (cp.startsWith('20') || prov.includes('guipuzcoa') || prov.includes('gipuzkoa')) {
+  if (cpPrefix === '20' || prov.includes('guipuzcoa') || prov.includes('gipuzkoa')) {
     return 'Guipúzcoa';
   }
-  if (cp.startsWith('48') || prov.includes('vizcaya') || prov.includes('bizkaia')) {
+  if (cpPrefix === '48' || prov.includes('vizcaya') || prov.includes('bizkaia')) {
     return 'Vizcaya';
   }
   return 'España';

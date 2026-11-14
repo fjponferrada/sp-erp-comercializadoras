@@ -46,6 +46,11 @@ Permitir a cada comercializadora calcular, auditar y emitir sus propias facturas
 - Muestra de forma paginada todas las facturas internas confirmadas (tanto `EMITIDA` como `ABONO`) respetando el ámbito multi-marca del usuario.
 - Permite filtrar por búsqueda libre (`Nº Factura INT-26-... / AB-26-...`, Razón Social, CIF o CUPS), tipo de factura y rango de fechas de emisión, visualizar el consumo en `kWh`, abrir el PDF o el desglose horario Excel y exportar el listado filtrado a `.xlsx`.
 
+### Garantías de Precisión Matemática frente a Facturación Patrón (Ingebau)
+- **Ventana Independiente de Energía Activa vs. Potencia y Cargos Diarios:** El motor lee y perfila la curva `LoadCurve` en el rango efectivo de los subbloques `<TerminoEnergiaActiva>` con consumo positivo (`energyStartDate..energyEndDate`), conservando simultáneamente `billingDays` de `<DatosFacturaATR><Periodo>` para Potencia, Bono Social, SVA y Alquiler en facturas **Regularizadoras (`G`)** y **Complementarias (`C`)** multi-bloque (y omitiendo potencia y cargos fijos diarios en **Complementarias (`C`)** sin `<Potencia>` en el XML F1).
+- **Saneado de Curvas CCH, Realineación `FTP_*` Legacy y Perfilado REE Anti-Picos:** Detecta y corrige automáticamente desfases horarios (`+2h` CEST / `+1h` CET) en curvas históricas `FTP_*` sin prefijo CNMC, descarta curvas `LOCAL_SCAN` corruptas colapsadas en `00:00–01:59` cuando el F1 acredita consumo diurno, escala proporcionalmente cuando la cobertura `>= 80%` (alineando micro-descuadres `< 1 kWh` sin falsa alerta) y, ante déficits `< 80%`, preserva las horas medidas sin amplificar picos aislados y perfila únicamente el déficit `(f1Vol - cchVol)` con pesos REE sobre los días no medidos.
+- **Salvaguarda Potencia BOE (`2022–2026+`), Prioridad `FEE_P`/`DSV` y SVA de Pago Único:** Incluye la serie histórica BOE `2022–2023` completa (`RegulatedCost`), garantiza `M. Potencia = 0,00 €` en contratos indexados puros `*BOE*`, prioriza `FEE_P` y `DSV` pactados frente a fees genéricos de catálogo migrados (registrando `feeApplied` en `invoiceData`) y fuerza duración de `1` mes único en cargos SVA de contratación (`Alta Nueva`, `€/alta`, `Derechos de alta`).
+
 ---
 
 ## 3. Histórico y Ficha de Facturas - CRM Ventas (`/facturas` y `/facturas/[id]`)
@@ -82,7 +87,7 @@ Alimentar la base de datos del ERP con las remesas generadas en el software exte
    - Detecta automáticamente codificación **UTF-8** y **ANSI (Windows-1252)** para preservar tildes y caracteres especiales españoles (`Energía`, `Número`, `Gestión`), así como formatos numéricos con separador de miles y coma decimal (`1.948,56`).
    - Procesa en lotes de 50 filas detectando duplicados por `[invoiceNumber, companyId]`, rellenando las columnas nativas (`origin`, `paymentDate`, `taxAmount`, `margin`, etc.) y conservando el desglose íntegro en `invoiceData` (JSONB).
    - **Vinculación Inteligente de Contrato y F1:** Prioriza el código explícito `CONTRATO` del CSV; si no existe, cruza potencias contratadas (`P1C–P6C`) y vigencia temporal, y finalmente auto-enlaza cada recibo con su factura `F1Invoice` de distribuidora.
-   - **Alta limpia de Clientes nuevos:** Si el CIF no existe aún, infiere `Persona física` vs `Empresa`, concatena Nombre + Apellidos en `businessName` sin contaminar el email ni el teléfono del cliente con los datos de la comercializadora emisora o teléfonos `900` de averías.
+   - **Alta limpia de Clientes y Suministros:** Si el CIF no existe aún, infiere `Persona física` vs `Empresa`, concatena Nombre + Apellidos en `businessName` sin contaminar el email ni el teléfono del cliente con los datos de la comercializadora emisora o teléfonos `900` de averías, y normaliza automáticamente todos los códigos postales (`CP` / `CP PS`) a 5 dígitos españoles (`01001..52999`).
 
 2. **Adjuntar PDFs y XMLs en Nube (R2):**
    - Subida paralela controlada (lotes de 5 archivos simultáneos) insensible a mayúsculas (`.pdf`/`.PDF`, `.xml`/`.XML`).
@@ -91,7 +96,8 @@ Alimentar la base de datos del ERP con las remesas generadas en el software exte
 
 ---
 
-## 5. Reglas Críticas de Integridad en Base de Datos (CUPS + CIF)
+## 5. Reglas Críticas de Integridad en Base de Datos (CUPS + CIF + Código Postal 5 Dígitos)
 
 1. **Unicidad Compuesta por `[CUPS (20 caracteres) + Cliente (CIF)]`:** Un Punto de Suministro solo puede coexistir duplicado si pertenece a distinto titular (cambio de titularidad histórico). Tanto el helper global como el mapa en memoria del importador indexan por `${clientId}_${cups20}`.
 2. **Conservación de los 22 Caracteres y Comparación a 20:** Las comparaciones y búsquedas cruzan siempre por los primeros **20 caracteres** del CUPS, pero al dar de alta o enriquecer el suministro se conserva el código completo de **22 caracteres** (incluyendo dígitos de control).
+3. **Blindaje Universal de 4 Capas para Códigos Postales Españoles (`01001..52999`):** Para impedir que códigos postales de las provincias `01`..`09` (`Álava`..`Burgos`) procedentes de Excel, Airtable o CSV pierdan su cero inicial (`"5230"` → `"05230"` Ávila) y provoquen errores fiscales (`IGIC`/`IPSI` o zona foral), se aplican 4 barreras simultáneas: (a) triggers nativos PostgreSQL `BEFORE INSERT OR UPDATE` (`fn_normalize_spanish_cp_text` en `SupplyPoint`, `Client` y `SolarQuote`), (b) guardián global ORM `$extends` en [`src/lib/prisma.ts`](../src/lib/prisma.ts) (`attachPostalCodeGuard`), (c) normalización en todos los importadores/acciones de alta y (d) validación estricta de 5 dígitos mediante `getSpanishPostalPrefix` ([`src/lib/postalCode.ts`](../src/lib/postalCode.ts)).

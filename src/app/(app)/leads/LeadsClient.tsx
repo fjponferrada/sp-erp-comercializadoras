@@ -22,13 +22,11 @@ import {
   Download,
   Copy,
   RefreshCw,
-  Sun,
   Plus,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
 import NewLeadModal from './NewLeadModal';
-import NewSolarLeadModal from '@/components/NewSolarLeadModal';
 import { duplicateLeadAction, forceRefreshSipsAction, getPaginatedLeadsAction, getLeadStatsAction } from '@/app/actions/leadActions';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -104,7 +102,15 @@ const KANBAN_CARDS = [
 
 
 
-export default function LeadsClient({ initialChannels = [] }: { initialChannels?: string[] }) {
+export default function LeadsClient({
+  initialChannels = [],
+  initialAction,
+  initialCups,
+}: {
+  initialChannels?: string[];
+  initialAction?: string;
+  initialCups?: string;
+}) {
   const [leads, setLeads] = useState<LeadData[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -120,12 +126,11 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'opportunity' | 'contract'>('contract');
   const [leadToEdit, setLeadToEdit] = useState<any>(null);
+  const [prefillCups, setPrefillCups] = useState<string | null>(initialCups ? initialCups.trim().toUpperCase() : null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-  const [isNewSolarModalOpen, setIsNewSolarModalOpen] = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
   const userRole = (session?.user as any)?.role || 'user';
-  const showEstudioFV = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -152,7 +157,18 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
     return () => clearTimeout(debounceId);
   }, [loadData]);
 
-  const canEdit = userRole === 'SUPERADMIN' || userRole === 'BACKOFFICE';
+  const canEdit = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+
+  useEffect(() => {
+    if (!initialAction && !initialCups) return;
+    setLeadToEdit(null);
+    setModalMode(initialAction === 'offer' ? 'opportunity' : 'contract');
+    if (initialCups) {
+      setPrefillCups(initialCups.trim().toUpperCase());
+    }
+    setIsNewLeadModalOpen(true);
+    router.replace('/leads', { scroll: false });
+  }, [initialAction, initialCups, router]);
 
   const toggleExpand = (id: string) => {
     setExpandedCards(prev => {
@@ -190,7 +206,7 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
       }
     } catch (error) {
       console.error('Error refrescando SIPS:', error);
-      alert('Error al conectar con INGEBAU');
+      alert('Error al conectar con SIPS');
     }
   };
 
@@ -226,17 +242,28 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
         showSearch={false}
         customActions={
           <div className="flex gap-2">
-            {showEstudioFV && (
-              <button className="btn-secondary" onClick={() => setIsNewSolarModalOpen(true)} style={{ borderColor: '#FCD34D', color: '#FCD34D' }}>
-                <Sun size={14} strokeWidth={2.5} />
-                Estudio FV
-              </button>
-            )}
-            <button className="btn-secondary" onClick={() => { setModalMode('opportunity'); setIsNewLeadModalOpen(true); }} style={{ borderColor: '#F97316', color: '#F97316' }}>
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setLeadToEdit(null);
+                setPrefillCups(null);
+                setModalMode('opportunity');
+                setIsNewLeadModalOpen(true);
+              }}
+              style={{ borderColor: '#F97316', color: '#F97316' }}
+            >
               <FileText size={14} strokeWidth={2.5} />
               Crear Oferta
             </button>
-            <button className="btn-primary" onClick={() => { setModalMode('contract'); setIsNewLeadModalOpen(true); }}>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                setLeadToEdit(null);
+                setPrefillCups(null);
+                setModalMode('contract');
+                setIsNewLeadModalOpen(true);
+              }}
+            >
               <Plus size={14} strokeWidth={2.5} />
               Alta Luz
             </button>
@@ -246,20 +273,12 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
       
       <NewLeadModal 
         isOpen={isNewLeadModalOpen}
-        onClose={() => { setIsNewLeadModalOpen(false); setLeadToEdit(null); }} 
+        onClose={() => { setIsNewLeadModalOpen(false); setLeadToEdit(null); setPrefillCups(null); }} 
         mode={modalMode}
         leadToEdit={leadToEdit}
+        initialCups={prefillCups}
+        onSaved={() => loadData()}
       />
-
-      {isNewSolarModalOpen && (
-        <NewSolarLeadModal 
-          onClose={() => setIsNewSolarModalOpen(false)} 
-          onSuccess={(newId: string) => {
-            setIsNewSolarModalOpen(false);
-            router.push(`/leads/${newId}`);
-          }}
-        />
-      )}
 
       <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
@@ -529,15 +548,30 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
                           router.push(`/leads/${lead.id}`);
                         }}
                       >
-                        <td className="primary-cell" style={{ maxWidth: '200px' }}>
+                        <td className="primary-cell" style={{ maxWidth: '220px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {lead.titular}
                             </div>
-                            {lead.rawLead?.generateOffer && (
-                              <div>
-                                <FileText size={14} color="var(--orange)" />
-                              </div>
+                            {lead.rawLead?.generateOffer && !lead.contractId && (
+                              <span
+                                title="Oferta / Estudio Comercial"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '1px 6px',
+                                  borderRadius: '99px',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  background: 'rgba(249,115,22,0.15)',
+                                  color: '#FB923C',
+                                  border: '1px solid rgba(249,115,22,0.35)',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <FileText size={10} /> Oferta
+                              </span>
                             )}
                           </div>
                         </td>
@@ -598,12 +632,32 @@ export default function LeadsClient({ initialChannels = [] }: { initialChannels?
 
                         <td style={{ textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                            {!lead.contractId && lead.status !== 'CONTRATADO' && lead.rawLead?.generateOffer && (
+                              <button
+                                className="btn-ghost"
+                                style={{ padding: '5px 10px', fontSize: '0.72rem', gap: '4px', color: 'var(--lime)' }}
+                                title="Completar Oferta como Alta Luz"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLeadToEdit(lead.rawLead);
+                                  setModalMode('contract');
+                                  setIsNewLeadModalOpen(true);
+                                }}
+                              >
+                                <Zap size={13} />
+                              </button>
+                            )}
                             {canEdit && (
                               <button 
                                 className="btn-ghost" 
                                 style={{ padding: '5px 10px', fontSize: '0.72rem', gap: '4px', color: 'var(--orange)' }} 
-                                title="Editar Avanzado" 
-                                onClick={(e) => { e.stopPropagation(); setLeadToEdit(lead.rawLead); setModalMode(lead.type === 'FV' ? 'opportunity' : 'contract'); setIsNewLeadModalOpen(true); }}
+                                title="Editar Solicitud" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLeadToEdit(lead.rawLead);
+                                  setModalMode(lead.rawLead?.generateOffer && !lead.contractId ? 'opportunity' : 'contract');
+                                  setIsNewLeadModalOpen(true);
+                                }}
                               >
                                 <FilePen size={13} />
                               </button>

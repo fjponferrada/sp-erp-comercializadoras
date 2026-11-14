@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { normalizeSpanishPostalCodeOrNull, pickSpanishPostalCode } from '@/lib/postalCode';
 import type {
   BillingCalculationResult,
   ConceptoRepercutibleItem,
@@ -216,7 +217,7 @@ export function buildInternalInvoiceJsonData(
     isFixed: result.isFixed ?? false,
     isOtrasFacturas: result.isOtrasFacturas ?? false,
     billingDays: result.billingDays ?? 0,
-    feeApplied: contract?.fee ?? null,
+    feeApplied: result.feeApplied ?? contract?.fee ?? null,
     assumedConsumption: result.totalF1MWh,
     totalCchMWh: result.totalCchMWh,
     totalF1MWh: result.totalF1MWh,
@@ -347,7 +348,7 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
   // Dirección fiscal del cliente vs dirección física del suministro
   const supplyAddress = [
     supplyPoint?.address,
-    supplyPoint?.postalCode,
+    pickSpanishPostalCode(supplyPoint?.postalCode, supplyPoint?.sipsPostalCode) || null,
     supplyPoint?.city,
     supplyPoint?.province ? `(${supplyPoint.province})` : null,
   ]
@@ -356,7 +357,7 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
 
   const billingAddressParts = [
     client?.billingAddress,
-    client?.billingPostalCode,
+    normalizeSpanishPostalCodeOrNull(client?.billingPostalCode),
     client?.billingCity,
     client?.billingProvince ? `(${client.billingProvince})` : null,
   ]

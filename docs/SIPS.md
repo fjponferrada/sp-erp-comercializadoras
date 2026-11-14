@@ -71,7 +71,7 @@ Contiene una fila por cada CUPS nacional con sus características técnicas y co
 | 1 | `codigoempresadistribuidora` | Código REE distribuidora (`"0031"`, `"0022"`) | `CódigoDistribuidora` sin ceros a la izquierda (`"31"`) + `codigoDistribuidora` (`"0031"`). |
 | 2 | `cups` | CUPS completo de 22 caracteres | `CUPS` en mayúsculas. Se busca por los primeros 20 caracteres (`cups20`). |
 | 3 | `nombreempresadistribuidora` | Razón social de la distribuidora | `NombreDistribuidora` / `distribuidora`. |
-| 4 | `codigopostalps` | Código postal de 5 dígitos | `CódigoPostalPS` / `cp`. |
+| 4 | `codigopostalps` | Código postal de 5 dígitos | `CódigoPostalPS` / `cp` (saneado automáticamente a 5 dígitos españoles `01001..52999` mediante `normalizeSpanishPostalCodeOrNull` en [`src/lib/postalCode.ts`](../src/lib/postalCode.ts)). |
 | 5 | `municipiops` | Código INE municipio (5 dígitos, ej. `"14075"`) | Cruzado con tabla Prisma `Municipality` $\rightarrow$ `MunicipioPS` / `poblacion` (`"Zuheros"`). |
 | 6 | `codigoprovinciaps` | Código INE provincia (2 dígitos, ej. `"14"`) | Cruzado con tabla Prisma `Province` $\rightarrow$ `ProvinciaPS` / `provincia` (`"Córdoba"`). |
 | 7 | `fechaaltasuministro` | Fecha `YYYY-MM-DD` | `FechaAltaPS` (mostrada como `DD/MM/YYYY` en el visor). |
@@ -260,7 +260,7 @@ Ubicado en `src/app/(app)/consulta-cups/page.tsx` y accesible desde el menú lat
    - **`CSV Consumos (Cotizador)`**: Descarga `{CUPS}_consumos.csv`.
    - **`CSV Datos PS`**: Descarga `{CUPS}_ps.csv`.
    - **`Cotizar CUPS`** *(visible para `SUPERADMIN`, `COMPANYADMIN`, `BACKOFFICE`)*: Abre `/pricing?cups={CUPS}`, activando automáticamente la pestaña `Por CUPS` y cargando los consumos en el Cotizador en un solo clic.
-   - **`Copiar`** / **`Ir a Leads`**: Copia el CUPS al portapapeles y navega a `/leads` para dar de alta la oportunidad comercial.
+   - **`Crear Oferta`** y **`Alta Luz`** *(salto directo en 1 clic a `/leads`)*: Almacenan el payload SIPS ya consultado en `sessionStorage` (`sp_erp_sips_prefill_${CUPS}`) y abren automáticamente el asistente `NewLeadModal` en `/leads?action=offer&cups={CUPS}` o `/leads?action=contract&cups={CUPS}` con todos los datos técnicos precargados en **`0 ms`** sin repetir la petición de red.
 
 ---
 
@@ -298,9 +298,10 @@ Ningún módulo del ERP llama ya a Ingebau; todos consumen `getSipsData()` (`src
    - Busca simultáneamente si existen curvas horarias reales de telemedida (`LoadCurve`) en el ERP y consulta nuestro SIPS en tiempo real para obtener `TarifaATR` y los consumos `P1..P6` del último año (usando `SupplyPoint.sipsRawData` de PostgreSQL únicamente como respaldo offline si hubiera caída de red).
 2. **Cotizador Comercial — Modo `Cálculo Genérico` $\rightarrow$ `SIPS CSV` (`src/app/(app)/pricing/page.tsx`)**:
    - Procesa cualquier `{CUPS}_consumos.csv` exportado desde `/consulta-cups`, selecciona automáticamente la tarifa ATR detectada y reconstruye la curva horaria anual mediante perfiles REE.
-3. **Creación y Validación de Leads (`src/app/(app)/leads/NewLeadModal.tsx` y `src/app/actions/leadActions.ts`)**:
-   - Al escribir un CUPS en el modal de nuevo Lead, llama a `GET /api/sips?cups=...` para autocompletar tarifa, potencias `P1..P6`, CP, municipio, provincia y distribuidora.
-   - Al guardar el Lead (`createLeadAction`), valida los datos contra `getSipsData()` en segundo plano y persiste el JSON completo en `SupplyPoint.sipsRawData` y `Lead.sipsRawData`.
+3. **Creación y Validación de Leads (`src/app/(app)/leads/NewLeadModal.tsx`, `src/lib/spanishValidators.ts` y `src/app/actions/leadActions.ts`)**:
+   - **Auto-SIPS con Validación Módulo-529**: En el Paso 2 de `NewLeadModal`, `validateSpanishCups` verifica en tiempo real las dos letras de control CNMC (RD 1435/2002) sobre los 16 dígitos del CUPS y dispara automáticamente `GET /api/sips?cups=...` en cuanto se pega o completa un CUPS válido (o hidrata instantáneamente en `0 ms` desde `sessionStorage` si el agente viene desde `/consulta-cups`).
+   - **Autocompletado integral y avisos**: Rellena CUPS completo de 22 caracteres, `TarifaATR`, potencias `P1..P6`, consumo anual (`MWh` y `kWh`), `CNAE`, CP normalizado de 5 dígitos, municipio, provincia, distribuidora e indicador de autoconsumo, alertando visualmente si el punto figura como no contratable (`codigoPSContratable === '0'`). Además, el estimador de cuota mensual/anual y ahorro de los Pasos 3 y 4 pondera el consumo con el reparto real `ConsumoAnualP1kWh..ConsumoAnualP6kWh` devuelto por SIPS.
+   - **Respaldo y validación cruzada en servidor**: Al guardar un `Alta Luz` (`createLeadAction`), si no se había consultado SIPS en el cliente se ejecuta `getSipsData()` de forma síncrona antes de validar la congruencia técnica (Regla 74), o en segundo plano en ofertas rápidas, persistiendo el JSON completo en `Lead.sipsRawData` y (solo si el `SupplyPoint` es nuevo, Regla 72) en `SupplyPoint.sipsRawData` (con blindaje adicional de CP de 5 dígitos mediante `$extends` en [`src/lib/prisma.ts`](../src/lib/prisma.ts) y triggers PostgreSQL `fn_normalize_spanish_cp_text`).
 4. **Ficha de Contrato (`/contratos/[id]`) y Ficha de Punto de Suministro (`/puntos-suministro/[id]`)**:
    - El botón **"Actualizar Datos SIPS"** ejecuta `updateSupplyPointSipsAction` (`src/app/actions/supplyPointActions.ts`), refresca los datos desde nuestra API Cloud Run + BigQuery y actualiza `SupplyPoint.sipsRawData` en PostgreSQL.
 

@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
+import { normalizeSpanishPostalCode, normalizeSpanishPostalCodeOrNull } from '@/lib/postalCode';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { cookies } from 'next/headers';
@@ -328,6 +329,11 @@ export async function importInvoicesAction(invoicesData: any[]) {
           const rawClientPhone = String(row['Telefono Cliente'] || row['Teléfono Cliente'] || row['Movil'] || '').trim();
           const safeContactPhone = rawClientPhone && !rawClientPhone.startsWith('900') ? rawClientPhone : null;
 
+          const normalizedCpSoc = normalizeSpanishPostalCodeOrNull(row['CP SOC']);
+          const normalizedCpPs = normalizeSpanishPostalCodeOrNull(row['CP PS']);
+          if (normalizedCpSoc) row['CP SOC'] = normalizedCpSoc;
+          if (normalizedCpPs) row['CP PS'] = normalizedCpPs;
+
           client = await prisma.client.create({
             data: {
               vatNumber,
@@ -339,17 +345,16 @@ export async function importInvoicesAction(invoicesData: any[]) {
               contactEmail: safeContactEmail,
               contactPhone: safeContactPhone,
               billingAddress: String(row['DOMICILIO SOC'] || row['DOMICILIO PS'] || '').trim() || null,
-              billingPostalCode: row['CP SOC']
-                ? String(row['CP SOC']).trim()
-                : row['CP PS']
-                  ? String(row['CP PS']).trim()
-                  : null,
+              billingPostalCode: normalizedCpSoc || normalizedCpPs || null,
               billingCity: String(row['POBLACION SOC'] || row['Ciudad'] || row['POBLACION PS'] || '').trim() || null,
               billingProvince: String(row['PROVINCIA SOC'] || row['Provincia'] || row['PROVINCIA PS'] || '').trim() || null,
               brandId: activeBrandId,
             },
           });
           clientMap.set(vatNumber, client);
+        } else {
+          if (row['CP SOC']) row['CP SOC'] = normalizeSpanishPostalCode(row['CP SOC']);
+          if (row['CP PS']) row['CP PS'] = normalizeSpanishPostalCode(row['CP PS']);
         }
 
         // 2. Buscar o crear SupplyPoint preservando los 22 caracteres del CUPS y unicidad [CUPS20 + clientId]
@@ -360,7 +365,7 @@ export async function importInvoicesAction(invoicesData: any[]) {
           supplyPoint = await findOrUpdateSupplyPointByCups(prisma, fullCups, client.id, {
             address: String(row['DOMICILIO PS'] || '').trim(),
             city: String(row['POBLACION PS'] || row['Ciudad'] || '').trim(),
-            postalCode: row['CP PS'] ? String(row['CP PS']).trim() : '00000',
+            postalCode: normalizeSpanishPostalCode(row['CP PS'], '00000'),
             province: String(row['PROVINCIA PS'] || row['Provincia'] || '').trim(),
             tariff: String(row['Tarifa ATR'] || row['Tarifa'] || '2.0TD').trim(),
             distributorName: row['DISTRIBUIDORA'] ? String(row['DISTRIBUIDORA']).trim() : undefined,

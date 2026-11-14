@@ -1,29 +1,43 @@
-import { notFound } from 'next/navigation'
-import { redirect } from 'next/navigation'
-import LeadDetailClient from './LeadDetailClient'
-import { prisma } from '@/lib/prisma'
-import { auth } from '@/auth'
+import { notFound, redirect } from 'next/navigation';
+import LeadDetailClient from './LeadDetailClient';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
+import { getLeadVisibilityFilter } from '@/lib/permissions';
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+
   const resolvedParams = await params;
-  const lead = await prisma.lead.findUnique({
-    where: { id: resolvedParams.id },
+  const visFilter = await getLeadVisibilityFilter();
+
+  const lead = await prisma.lead.findFirst({
+    where: {
+      id: resolvedParams.id,
+      ...visFilter,
+    },
     include: {
       documents: true,
-      user: true,
+      user: {
+        include: {
+          brand: true,
+        },
+      },
       contract: {
         include: {
           client: true,
-          supplyPoint: true
-        }
-      }
-    }
-  })
+          supplyPoint: true,
+        },
+      },
+    },
+  });
 
   if (!lead) {
-    notFound()
+    notFound();
   }
 
   let productName = lead.product;
@@ -34,7 +48,13 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     if (lead.product.startsWith('cm')) {
       p = await prisma.product.findUnique({ where: { id: lead.product } });
     } else {
-      p = await prisma.product.findFirst({ where: { name: lead.product.trim() } });
+      p =
+        (await prisma.product.findFirst({
+          where: { name: lead.product.trim(), brandId: lead.user.brandId },
+        })) ||
+        (await prisma.product.findFirst({
+          where: { name: lead.product.trim() },
+        }));
     }
     if (p) {
       productName = p.name;
@@ -56,12 +76,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   // SupplyPoint fallback
   let dbSupplyPoint = lead.contract?.supplyPoint || null;
-  if (!dbSupplyPoint && lead.cups) {
+  if (!dbSupplyPoint && lead.cups && lead.cups.length >= 20) {
     dbSupplyPoint = await prisma.supplyPoint.findFirst({
       where: {
         cups: { startsWith: lead.cups.substring(0, 20) },
-        client: { brandId: lead.user.brandId }
-      }
+        client: { brandId: lead.user.brandId },
+      },
     });
   }
 
@@ -71,22 +91,22 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     dbClient = await prisma.client.findFirst({
       where: {
         vatNumber: lead.vatNumber,
-        brandId: lead.user.brandId
-      }
+        brandId: lead.user.brandId,
+      },
     });
   }
 
   const safeLead = {
     ...lead,
-    productName: productName,
-    productType: productType,
+    productName,
+    productType,
     dbProduct: fullProduct,
-    dbSupplyPoint: dbSupplyPoint,
-    dbClient: dbClient,
+    dbSupplyPoint,
+    dbClient,
     dbDistributor: distributorName,
     createdAt: lead.createdAt.toISOString(),
     updatedAt: lead.updatedAt.toISOString(),
-  }
+  };
 
-  return <LeadDetailClient initialLead={safeLead as any} />
+  return <LeadDetailClient initialLead={safeLead as any} />;
 }

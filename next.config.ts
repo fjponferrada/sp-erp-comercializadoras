@@ -10,6 +10,7 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   serverExternalPackages: ['pizzip', 'docusign-esign', 'ssh2', 'ssh2-sftp-client'],
   experimental: {
+    proxyClientMaxBodySize: '100mb',
     serverActions: {
       bodySizeLimit: '50mb',
     },
