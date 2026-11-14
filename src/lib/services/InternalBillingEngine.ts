@@ -110,6 +110,7 @@ export interface BillingCalculationResult {
   pexc?: number | null;
   isFixed?: boolean;
   isOtrasFacturas?: boolean;
+  effectiveContractId?: string;
 }
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -421,8 +422,96 @@ export class InternalBillingEngine {
       throw new Error("F1 must have contract and supply point");
     }
 
-    const contract = f1.contract;
+    let contract = f1.contract;
     const supplyPoint = f1.supplyPoint;
+    const jsonData = (f1.jsonData as any) || {};
+    const isOtrasFacturas = f1.tipoDocumento === 'OtrasFacturas' || Boolean(jsonData?.DatosGeneralesOtrasFacturas && !jsonData?.DatosGeneralesFacturaATR);
+    let isRenewalStraddleCycle = false;
+
+    // --- CLÁUSULA CONTRACTUAL DE RENOVACIÓN A MITAD DE CICLO F1 ---
+    // "Dado que los ciclos de facturación los fija la distribuidora, si un ciclo abarca días de ambos contratos,
+    // se aplicarán las condiciones del contrato anterior a todo ese ciclo."
+    if (!isOtrasFacturas && f1.fechaInicio && f1.fechaFin && supplyPoint.id) {
+      const extractMadridIsoDate = (rawVal: any): string | null => {
+        if (!rawVal) return null;
+        const v = Array.isArray(rawVal) ? rawVal[0] : rawVal;
+        if (!v) return null;
+        if (v instanceof Date) {
+          return isNaN(v.getTime()) ? null : formatMadridLocal(v).substring(0, 10);
+        }
+        const s = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+          const [dd, mm, yyyy] = s.split('/');
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : formatMadridLocal(d).substring(0, 10);
+      };
+
+      const getContractActIso = (c: any): string | null => {
+        const ad = typeof c.airtableData === 'string' ? JSON.parse(c.airtableData) : (c.airtableData || {});
+        return (
+          extractMadridIsoDate(c.activationDate) ||
+          extractMadridIsoDate(ad['ALTA COMERCIALIZADORA']) ||
+          extractMadridIsoDate(ad['FECHA ALTA'])
+        );
+      };
+
+      const f1StartIso = extractMadridIsoDate(f1.fechaInicio);
+      const f1EndIso = extractMadridIsoDate(f1.fechaFin);
+      const assignedActIso = getContractActIso(contract);
+
+      if (f1StartIso && f1EndIso && assignedActIso && f1StartIso < assignedActIso && f1EndIso > assignedActIso) {
+        const siblingContracts = await prisma.contract.findMany({
+          where: {
+            supplyPointId: supplyPoint.id,
+            id: { not: contract.id }
+          },
+          include: {
+            product: true,
+            AdditionalService: true,
+            brand: { include: { company: true } }
+          }
+        });
+
+        const invalidStatuses = new Set(['BORRADOR', 'DRAFT', 'TRAMITANDO', 'ANULADO', 'RECHAZADO', 'CANCELADO']);
+        const priorActiveCandidates = siblingContracts
+          .map(c => ({ c, actIso: getContractActIso(c) }))
+          .filter(({ c, actIso }) => {
+            if (!actIso) return false;
+            if (invalidStatuses.has((c.status || '').trim().toUpperCase())) return false;
+            if (actIso > f1StartIso || actIso >= assignedActIso) return false;
+
+            const ad = typeof c.airtableData === 'string' ? JSON.parse(c.airtableData) : (c.airtableData || {});
+            const realTermIso =
+              extractMadridIsoDate(c.terminationDate) ||
+              extractMadridIsoDate(ad['BAJA COMERCIALIZADORA']) ||
+              extractMadridIsoDate(ad['FECHA BAJA']) ||
+              extractMadridIsoDate(ad['Fecha Baja']);
+
+            if (realTermIso) {
+              return realTermIso >= f1StartIso;
+            }
+
+            const expectedIso =
+              extractMadridIsoDate(c.expectedEndDate) ||
+              extractMadridIsoDate(ad['Fecha Vencimiento Calculada']);
+            if (contract.previousContractId !== c.id && !c.isTacitRenewal && expectedIso && expectedIso < f1StartIso) {
+              return false;
+            }
+
+            return true;
+          })
+          .sort((a, b) => b.actIso!.localeCompare(a.actIso!));
+
+        if (priorActiveCandidates.length > 0) {
+          contract = priorActiveCandidates[0].c;
+          isRenewalStraddleCycle = true;
+        }
+      }
+    }
+
     const postalCode = pickSpanishPostalCode(
       supplyPoint.postalCode,
       supplyPoint.sipsPostalCode,
@@ -431,9 +520,6 @@ export class InternalBillingEngine {
     );
     const airTarifa = (contract.airtableData as any)?.Tarifa || (contract.airtableData as any)?.tarifa;
     const tariff = (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || contract.product?.tariff || supplyPoint.tariff || '3.0TD';
-
-    const jsonData = (f1.jsonData as any) || {};
-    const isOtrasFacturas = f1.tipoDocumento === 'OtrasFacturas' || Boolean(jsonData?.DatosGeneralesOtrasFacturas && !jsonData?.DatosGeneralesFacturaATR);
 
     let isAbono = false;
     let isAbonoAproximado = false;
@@ -835,7 +921,8 @@ export class InternalBillingEngine {
         f1Readings,
         meterSerialNumber,
         isFixed: true,
-        isOtrasFacturas: true
+        isOtrasFacturas: true,
+        effectiveContractId: contract.id
       };
       return isAbono ? invertBillingResult(otrasResult) : otrasResult;
     }
@@ -1408,7 +1495,7 @@ export class InternalBillingEngine {
       ? await prisma.systemComponentPrice.findMany({
           where: {
             date: { in: datesToQueryStr.map(d => new Date(`${d}T00:00:00Z`)) },
-            component: { in: ['OMIE', ...individualComps, 'K', perdComponentName] }
+            component: { in: ['OMIE', 'TOTAL_COMPODEM', ...individualComps, 'K', perdComponentName] }
           }
         })
       : [];
@@ -1416,6 +1503,9 @@ export class InternalBillingEngine {
     const omieMap = new Map<string, number>();
     const kMap = new Map<string, number>();
     const perdMap = new Map<string, number>();
+    const omieDatesCovered = new Set<string>();
+    const compodemDatesCovered = new Set<string>();
+    const kDatesCovered = new Set<string>();
     const compMaps: Record<string, Map<string, number>> = {};
     for (const c of individualComps) {
       compMaps[c] = new Map<string, number>();
@@ -1423,6 +1513,16 @@ export class InternalBillingEngine {
 
     for (const pd of priceData) {
       const dateKey = pd.date.toISOString().split('T')[0];
+      if (pd.values.length > 0) {
+        if (pd.component === 'OMIE') omieDatesCovered.add(dateKey);
+        else if (pd.component === 'TOTAL_COMPODEM' || individualComps.includes(pd.component)) {
+          compodemDatesCovered.add(dateKey);
+        } else if (pd.component === 'K') {
+          kDatesCovered.add(dateKey);
+        }
+      }
+      if (pd.component === 'TOTAL_COMPODEM') continue;
+
       const isQuarterly = pd.values.length >= 96;
       const numVals = isQuarterly ? 96 : 24;
 
@@ -1536,7 +1636,7 @@ export class InternalBillingEngine {
       for (let d = 0; d < billingDays; d++) {
         // Sumamos +12h sobre startDate para evitar cualquier salto por cambio de hora DST
         const dayMid = new Date(startDate.getTime() + d * 86400000 + 12 * 3600000);
-        const dayIso = dayMid.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+        const dayIso = formatMadridLocal(dayMid).substring(0, 10);
         let matchedRecord: any = null;
         for (const rec of allBonoSocialRecords) {
           const vf = rec.validFrom.toISOString().substring(0, 10);
@@ -1592,7 +1692,7 @@ export class InternalBillingEngine {
       }
     }
 
-    const refIsoDate = refDate.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+    const refIsoDate = formatMadridLocal(refDate).substring(0, 10);
     const refRegCosts = await prisma.regulatedCost.findMany({
       where: {
         OR: [{ tariff }, { tariff: 'TODAS' }],
@@ -1639,7 +1739,63 @@ export class InternalBillingEngine {
       hasMismatch = true;
       if (critical) hasCriticalError = true;
       originalMismatchReason = originalMismatchReason ? `${originalMismatchReason} | ${msg}` : msg;
+      mismatchReason = mismatchReason ? `${mismatchReason} | ${msg}` : msg;
     };
+
+    const formatMissingDatesSpan = (dates: string[]): string => {
+      const sorted = [...dates].sort();
+      if (sorted.length === 1) return sorted[0];
+      return `${sorted[0]} a ${sorted[sorted.length - 1]}`;
+    };
+
+    // Guardián crítico de integridad mayorista para contratos Indexados:
+    // impide valorar días con consumo real a 0 €/MWh cuando aún no se ha importado OMIE o COMPODEM/K en SystemComponentPrice.
+    const reportedMissingOmieSet = new Set<string>();
+    if (!isFixed && totalF1MWh > 0) {
+      const activeConsumptionDates = new Set<string>();
+      for (const hData of cchHourlyMWh) {
+        if (hData.mwh > 1e-9) {
+          activeConsumptionDates.add(formatMadridLocal(hData.date).substring(0, 10));
+        }
+      }
+
+      const missingOmieDates: string[] = [];
+      const missingCompodemDates: string[] = [];
+      const missingKDates: string[] = [];
+
+      for (const d of activeConsumptionDates) {
+        if (!omieDatesCovered.has(d)) {
+          missingOmieDates.push(d);
+          reportedMissingOmieSet.add(d);
+        }
+        if (!compodemDatesCovered.has(d)) {
+          missingCompodemDates.push(d);
+        }
+        // REE introdujo los ficheros cuartohorarios K (kestimqh/krealqh) en diciembre de 2024
+        if (d >= '2024-12-01' && !kDatesCovered.has(d)) {
+          missingKDates.push(d);
+        }
+      }
+
+      if (missingOmieDates.length > 0) {
+        addIssue(
+          `Faltan precios diarios OMIE en ${missingOmieDates.length} día(s) con consumo (${formatMissingDatesSpan(missingOmieDates)}). Importe OMIE antes de facturar.`,
+          true
+        );
+      }
+      if (missingCompodemDates.length > 0) {
+        addIssue(
+          `Faltan precios COMPODEM (SSAA REE) en ${missingCompodemDates.length} día(s) con consumo (${formatMissingDatesSpan(missingCompodemDates)}). Importe COMPODEM del periodo antes de facturar.`,
+          true
+        );
+      }
+      if (missingKDates.length > 0) {
+        addIssue(
+          `Falta la curva del Factor K de pérdidas (COMPODEM) en ${missingKDates.length} día(s) con consumo (${formatMissingDatesSpan(missingKDates)}). Importe kestimqh/krealqh antes de facturar.`,
+          true
+        );
+      }
+    }
 
     if (isFixed && (!refRegSet.peajesEnergiaBOE || !refRegSet.cargosEnergiaBOE)) {
       addIssue(`Faltan peajes históricos para la fecha de firma o referencia (${refIsoDate}). Actualice la base de datos de Costes Regulados.`, true);
@@ -2217,12 +2373,41 @@ export class InternalBillingEngine {
     }
     excesosPotencia = round2(excesosPotencia);
 
-    // --- EXCEDENTES DE AUTOCONSUMO ---
+    // --- EXCEDENTES DE AUTOCONSUMO (Cascada Contrato -> Personalización Airtable -> Producto / Catálogo) ---
     let excedentesAutoconsumo = 0;
     let surplusKwhForOutput = 0;
-    let pexc: number | null = contract.pexc !== undefined && contract.pexc !== null ? Number(contract.pexc) : null;
-    if ((pexc === null || pexc === 0) && getAirVal('PEXC') > 0) {
-      pexc = getAirVal('PEXC');
+    const isSolarContractOrProduct = Boolean(
+      contract.autoconsumo === true ||
+      contract.product?.hasSelfConsumption === true ||
+      (airData && ['SI', 'SÍ', 'TRUE', '1'].includes(String(airData['AUTOCONSUMO'] ?? airData['Autoconsumo'] ?? '').trim().toUpperCase())) ||
+      /\b(solar|autoconsumo)\b/i.test(contract.product?.name || '')
+    );
+
+    const parseOptionalNum = (val: any): number | null => {
+      if (val === undefined || val === null || val === '') return null;
+      const raw = Array.isArray(val) ? val[0] : val;
+      if (raw === undefined || raw === null || raw === '') return null;
+      const n = typeof raw === 'number' ? raw : parseFloat(String(raw).trim().replace(',', '.'));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const pexcCandidates = [
+      contract.pexc,
+      airData?.['PEXC_P'],
+      airData?.['PEXC'],
+      airData?.['PExc'],
+      airData?.['PRECIO PEXC'],
+      contract.product?.pexc,
+      airData?.['PExc (from PRODUCTOS)'],
+      airData?.['PEXC (from PRODUCTOS)'],
+    ];
+    let pexc: number | null = null;
+    for (const cand of pexcCandidates) {
+      const parsed = parseOptionalNum(cand);
+      if (parsed !== null && parsed > 0) {
+        pexc = parsed;
+        break;
+      }
     }
 
     if (jsonData['Importe Excedentes Autoconsumo']) {
@@ -2232,8 +2417,25 @@ export class InternalBillingEngine {
       surplusKwhForOutput = surplusKwh;
       const surplusMwh = surplusKwh / 1000.0;
 
-      const feeExcedentes: number | null =
-        contract.feeExcedentes !== undefined && contract.feeExcedentes !== null ? Number(contract.feeExcedentes) : null;
+      const feeExcCandidates = [
+        contract.feeExcedentes,
+        airData?.['FEE_EXC_P'],
+        airData?.['Fee Excedentes Personalizado'],
+        airData?.['FEE EXCEDENTES'],
+        airData?.['Fee Excedentes'],
+        airData?.['Fee Excedentes (from PRODUCTOS)'],
+        airData?.['FEE EXCEDENTES (from PRODUCTOS)'],
+        contract.product?.feeExcedentes,
+      ];
+      let feeExcedentes: number | null = null;
+      for (const cand of feeExcCandidates) {
+        const parsed = parseOptionalNum(cand);
+        // Evitar que un 0 por defecto en productos no-solares (hasSelfConsumption=false) active valoración OMIE - 0
+        if (parsed !== null && (parsed !== 0 || isSolarContractOrProduct)) {
+          feeExcedentes = parsed;
+          break;
+        }
+      }
 
       if (surplusMwh > 0) {
         if (pexc !== null && pexc > 0) {
@@ -2243,10 +2445,15 @@ export class InternalBillingEngine {
           excedentesAutoconsumo = surplusMwh * pexcMwh;
         } else if (feeExcedentes !== null) {
           let sumPago = 0;
+          const missingSurplusOmieDates = new Set<string>();
           const feeExcMwh = Math.abs(feeExcedentes) < 0.5 && feeExcedentes !== 0 ? feeExcedentes * 1000 : feeExcedentes;
           for (const hData of cchSurplusHourlyMWh) {
-            const localStr = hData.date.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });
-            const key = `${localStr.substring(0, 10)}_${parseInt(localStr.substring(11, 13), 10)}_${parseInt(localStr.substring(14, 16), 10)}`;
+            const localStr = formatMadridLocal(hData.date);
+            const sDateKey = localStr.substring(0, 10);
+            if (hData.mwh > 1e-9 && !omieDatesCovered.has(sDateKey) && !reportedMissingOmieSet.has(sDateKey)) {
+              missingSurplusOmieDates.add(sDateKey);
+            }
+            const key = `${sDateKey}_${parseInt(localStr.substring(11, 13), 10)}_${parseInt(localStr.substring(14, 16), 10)}`;
             const omie = omieMap.get(key) ?? 0;
             const precio = Math.max(0, omie - feeExcMwh);
             sumPago += hData.mwh * precio;
@@ -2258,6 +2465,12 @@ export class InternalBillingEngine {
                 hDetail.surplusPayout = hData.mwh * precio;
               }
             }
+          }
+          if (missingSurplusOmieDates.size > 0) {
+            addIssue(
+              `Faltan precios horarios OMIE para valorar excedentes solares en ${missingSurplusOmieDates.size} día(s) (${formatMissingDatesSpan(Array.from(missingSurplusOmieDates))}). Importe OMIE antes de facturar.`,
+              true
+            );
           }
           excedentesAutoconsumo = sumPago;
           pexc = surplusMwh > 0 ? sumPago / surplusMwh : 0;
@@ -2473,8 +2686,11 @@ export class InternalBillingEngine {
 
       const startIso = new Date(baseStart).toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
       const actualSvaStart = fromZonedTime(`${startIso}T00:00:00`, 'Europe/Madrid');
-      const endObj = new Date(actualSvaStart);
+      let endObj = new Date(actualSvaStart);
       endObj.setMonth(endObj.getMonth() + dur);
+      if (isRenewalStraddleCycle && dur > 1 && endObj > startDate && endObj < endDate) {
+        endObj = new Date(endDate.getTime());
+      }
 
       const overlapStartMs = Math.max(startDate.getTime(), actualSvaStart.getTime());
       const overlapEndMs = Math.min(endDate.getTime(), endObj.getTime());
@@ -2765,6 +2981,7 @@ export class InternalBillingEngine {
       totalAmount,
       isFixed,
       isOtrasFacturas: false,
+      effectiveContractId: contract.id,
       powerDetails,
       energyAtrDetails,
       energyMarketDetails,

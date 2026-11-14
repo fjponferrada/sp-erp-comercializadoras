@@ -5,27 +5,40 @@ import zlib from 'zlib';
 import { Readable } from 'stream';
 
 export const PRIORIDAD_MAP: Record<string, number> = {
+  F1QH: 105,
+  Q1: 105,
   F1: 100,
-  C1: 100,
-  Q1: 100,
   F1H: 100,
-  F1QH: 100,
+  RF5D: 95,
+  RF4D: 95,
   F5D: 90,
-  RF5D: 90,
-  A5D: 80,
-  B5D: 80,
+  F4D: 90,
+  F5: 90,
+  F4: 90,
   P5D: 40,
-  P1: 20,
+  P4D: 40,
+  P5: 40,
+  P4: 40,
+  P2D: 25,
+  P2: 25,
   P1D: 20,
-  P2: 20,
-  P2D: 20,
+  P1: 20,
   P0: 10,
 };
 
 const UMBRAL_MAX_ABSOLUTE = 50000.0; // Guard against corrupt meter spikes (> 50 MWh in a single hour/quarter)
 
-// Ordered longest-first so F1QH matches before F1, RF5D before F5D, P1D before P1, P2D before P2
-const CNMC_TYPE_REGEX = /(?:^|[_.\-\s])(F1QH|F1H|RF5D|F5D|A5D|B5D|P5D|P1D|P2D|F1|C1|Q1|P1|P2|P0)(?:[_.\-\s]|$)/gi;
+// Ordered longest-first so F1QH matches before F1, RF5D/RF4D before F5D/F4D, P1D before P1, P2D before P2, F5D/F4D before F5/F4, P5D/P4D before P5/P4
+const CNMC_CURVE_TYPE_REGEX = /(?:^|[_.\-\s])(F1QH|F1H|RF5D|RF4D|F5D|F4D|P5D|P4D|P1D|P2D|F1|Q1|F5|F4|P5|P4|P1|P2|P0)(?:[_.\-\s]|$)/gi;
+
+// Official CNMC/REE non-curve or auxiliary files that appear on distributor FTPs and MUST NOT be imported into LoadCurve(CONSUMPTION/SURPLUS):
+// - A5D (CCH_AUTOCONS: energía horaria autoconsumida EAUTOh, NO consumo de red ECh)
+// - B5D (CCH_GENNETABETA: generación neta * beta, NO excedente compensable EXCh)
+// - C1, C2, C3, S1, S2, S3, SALD (cierres/saldos por periodo tarifario)
+// - PMCLIE, CUPS45, CUPSDAT, INMECL, MAGCL, CIRCUITOESPERA (inventarios y agregaciones)
+const CNMC_NON_CURVE_REGEX = /(?:^|[_.\-\s])(CIRCUITOESPERA|CUPSDAT|PMCLIE|CUPS45|INMECL|MAGCL|SALD|A5D|B5D|C1|C2|C3|S1|S2|S3)(?:[_.\-\s]|$)/i;
+
+const IGNORED_METADATA_EXT_REGEX = /\.(sha1|sha256|md5|sig|asc|xml|json|pdf|log|html|htm|err)$/i;
 
 export interface ParseResult {
   success: number;
@@ -34,20 +47,30 @@ export interface ParseResult {
   affectedDates?: string[];
 }
 
+export function isNonCurveCnmcFile(filename: string): boolean {
+  if (!filename) return false;
+  const baseName = (filename.split(/[\\/]/).pop() || filename).trim();
+  return CNMC_NON_CURVE_REGEX.test(baseName);
+}
+
 /**
- * Extracts the canonical CNMC file type token (e.g. 'F5D', 'P2D', 'F1QH', 'P2', 'F1')
+ * Extracts the canonical CNMC curve file type token (e.g. 'F5D', 'P2D', 'F1QH', 'P2', 'F1')
  * from a filename or path, ignoring directory prefixes and distributor legal names
  * (such as "VIESGO DISTRIBUCIÓN ELECTRICA, S.L_P2_0027_...").
  */
 export function extractCnmcFileType(filename: string): string | null {
   if (!filename) return null;
-  const baseName = filename.split(/[\\/]/).pop() || filename;
-  CNMC_TYPE_REGEX.lastIndex = 0;
+  const baseName = (filename.split(/[\\/]/).pop() || filename).trim();
+  if (!baseName || IGNORED_METADATA_EXT_REGEX.test(baseName) || isNonCurveCnmcFile(baseName)) {
+    return null;
+  }
+
+  CNMC_CURVE_TYPE_REGEX.lastIndex = 0;
   let bestMatch: string | null = null;
   let bestPrio = -1;
 
   let match: RegExpExecArray | null;
-  while ((match = CNMC_TYPE_REGEX.exec(baseName)) !== null) {
+  while ((match = CNMC_CURVE_TYPE_REGEX.exec(baseName)) !== null) {
     const token = match[1].toUpperCase();
     const prio = PRIORIDAD_MAP[token] ?? 0;
     if (bestMatch === null || prio > bestPrio) {
@@ -56,7 +79,7 @@ export function extractCnmcFileType(filename: string): string | null {
     }
     // Advance only to the start of the trailing delimiter so adjacent tokens can also match
     if (match[0].length > match[1].length + 1) {
-      CNMC_TYPE_REGEX.lastIndex -= 1;
+      CNMC_CURVE_TYPE_REGEX.lastIndex -= 1;
     }
   }
   return bestMatch;
@@ -89,6 +112,8 @@ export function isRecognizedCchFilename(filename: string, allowGenericExtensions
   if (!filename) return false;
   const baseName = (filename.split(/[\\/]/).pop() || filename).trim();
   if (!baseName || baseName.startsWith('.') || filename.includes('__MACOSX')) return false;
+  if (IGNORED_METADATA_EXT_REGEX.test(baseName)) return false;
+  if (isNonCurveCnmcFile(baseName)) return false;
 
   const lower = baseName.toLowerCase();
   if (lower.endsWith('.zip')) return true;
@@ -106,6 +131,17 @@ export function isRecognizedCchFilename(filename: string, allowGenericExtensions
     );
   }
   return false;
+}
+
+function parseStrictNumber(raw?: string): { value: number; hasDecimal: boolean } | null {
+  if (raw === undefined || raw === null) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(',', '.');
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(normalized)) return null;
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) return null;
+  return { value, hasDecimal: normalized.includes('.') };
 }
 
 interface ParsedLocalTimestamp {
@@ -257,13 +293,13 @@ export async function processCchCsv(
   filename: string,
   source: string = 'UPLOAD'
 ): Promise<ParseResult> {
-  const fileType = extractCnmcFileType(filename);
-  const isProvisional = isFileProvisional(filename);
-
-  // C1 son cierres mensuales de contador (totales por periodo, sin curva horaria)
-  if (fileType === 'C1') {
+  // Descartar ficheros CNMC que NO son curvas de consumo/excedente de red (C1/C2/C3, S1/S2/S3, SALD, PMCLIE, CUPS45, INMECL, MAGCL, A5D=EAUTOh, B5D=EGENh*beta) y ficheros de checksum/metadatos
+  if (isNonCurveCnmcFile(filename) || IGNORED_METADATA_EXT_REGEX.test(filename)) {
     return { success: 0, skipped: 1, errors: 0 };
   }
+
+  const fileType = extractCnmcFileType(filename);
+  const isProvisional = isFileProvisional(filename);
 
   // Prefijar source con el tipo CNMC real para que la jerarquía de prioridades funcione en BD
   const cleanSource = source.trim() || 'UPLOAD';
@@ -290,7 +326,7 @@ export async function processCchCsv(
   }
 
   // Determinar familia de columnas CNMC (con fallback por estructura si el nombre de archivo fue renombrado)
-  let is5D = fileType ? fileType.endsWith('5D') : false;
+  let is5D = fileType ? ['F5D', 'RF5D', 'P5D', 'F5', 'P5', 'F4D', 'RF4D', 'P4D', 'F4', 'P4'].includes(fileType) : false;
   let isP1OrP2 = fileType ? ['P1', 'P1D', 'P2', 'P2D', 'P0'].includes(fileType) : false;
   let isF1Family = fileType ? ['F1', 'F1H', 'F1QH', 'Q1'].includes(fileType) : false;
 
@@ -300,8 +336,16 @@ export async function processCchCsv(
       if (parseRawTimestamp(sampleRow[1] || '') !== null) {
         is5D = true;
       } else if (parseRawTimestamp(sampleRow[2] || '') !== null) {
-        // F1 tiene >= 11 columnas (CUPS, Tipo, Fecha, Bandera, AE, AS, R1..R4, Metodo, Firmeza); P1/P2 suele tener 8-10 con CalidadAE en [5]
-        if (sampleRow.length >= 11) {
+        // En curvas CNMC F1/P1/P2 el campo B (col[1]) es Tipo de medida = '11' (incremental) y col[4] es numérico;
+        // en cierres C1/C2/S1 renombrados col[1] vale 20..29 y col[4] es otra fecha.
+        const sampleTipoMedida = sampleRow[1]?.trim() || '';
+        if ((sampleTipoMedida && sampleTipoMedida !== '11') || parseStrictNumber(sampleRow[4]) === null) {
+          return { success: 0, skipped: rows.length, errors: 0 };
+        }
+        // En F1 col[6] es R1 pero en P1/P2 col[5] es CalidadAE y col[7] es CalidadAS (>= 21 cols en P1/P2, 14 cols en F1)
+        if (sampleRow.length >= 18) {
+          isP1OrP2 = true;
+        } else if (sampleRow.length >= 11) {
           isF1Family = true;
         } else {
           isP1OrP2 = true;
@@ -341,7 +385,8 @@ export async function processCchCsv(
   }
   const shiftMinutes = isQuarterHourlyFile ? 15 : 60;
 
-  // Lookup de SupplyPoint usando los 20 primeros caracteres del CUPS (SupplyPoint.cups tiene 22 con sufijo 0F/1P)
+  // Solo necesitamos consultar SupplyPoint cuando el fichero es un CSV genérico sin tipo CNMC oficial
+  // (en CNMC v4.3 oficial: F5/F5D/RF5D/P5/P5D vienen 100% en Wh; F1/F1QH/Q1/P1/P1D/P2/P2D vienen 100% en kWh).
   const uniqueCups = Array.from(
     new Set(
       rows
@@ -351,7 +396,7 @@ export async function processCchCsv(
   );
 
   const segmentMap = new Map<string, string>();
-  if (!is5D && uniqueCups.length > 0) {
+  if (!is5D && !fileType && uniqueCups.length > 0) {
     const CHUNK = 1000;
     for (let i = 0; i < uniqueCups.length; i += CHUNK) {
       const slice = uniqueCups.slice(i, i + CHUNK);
@@ -376,6 +421,7 @@ export async function processCchCsv(
       type: 'CONSUMPTION' | 'SURPLUS';
       readings: number[];
       seenFlags: Map<number, Set<string>>;
+      hasDecimal: boolean;
     }
   >();
 
@@ -395,30 +441,30 @@ export async function processCchCsv(
       continue;
     }
 
-    const dateStr = row[idxDate]?.trim();
-    const bandera = (row[idxBandera]?.trim() || '0');
-    const consumoStr = row[idxConsumo]?.trim()?.replace(',', '.');
-    const surplusStr = idxSurplus >= 0 ? row[idxSurplus]?.trim()?.replace(',', '.') : undefined;
+    // En formatos CNMC no-5D (F1/F1QH/P1/P1D/P2/P2D), col[1] es Tipo de medida y vale siempre '11' (incremental)
+    if (!is5D && (isF1Family || isP1OrP2)) {
+      const tipoMedida = row[1]?.trim();
+      if (tipoMedida && tipoMedida !== '11') {
+        skipped++;
+        continue;
+      }
+    }
 
-    if (!dateStr || (!consumoStr && !surplusStr)) {
+    const dateStr = row[idxDate]?.trim();
+    const bandera = row[idxBandera]?.trim() || '0';
+    const parsedConsumo = parseStrictNumber(row[idxConsumo]);
+    const parsedSurplus = idxSurplus >= 0 ? parseStrictNumber(row[idxSurplus]) : null;
+
+    if (!dateStr || (parsedConsumo === null && parsedSurplus === null)) {
       skipped++;
       continue;
     }
 
-    let consumo = consumoStr ? parseFloat(consumoStr) : 0;
-    if (isNaN(consumo) || consumo < 0) {
-      consumo = 0;
-    }
+    const hasConsumoColumn = parsedConsumo !== null;
+    const consumo = parsedConsumo && parsedConsumo.value >= 0 ? parsedConsumo.value : 0;
 
-    let surplus = 0;
-    let hasSurplusColumn = false;
-    if (surplusStr !== undefined && surplusStr !== '') {
-      const parsedSurplus = parseFloat(surplusStr);
-      if (!isNaN(parsedSurplus) && parsedSurplus >= 0) {
-        hasSurplusColumn = true;
-        surplus = parsedSurplus;
-      }
-    }
+    const hasSurplusColumn = parsedSurplus !== null && parsedSurplus.value >= 0;
+    const surplus = hasSurplusColumn && parsedSurplus ? parsedSurplus.value : 0;
 
     const rawTs = parseRawTimestamp(dateStr);
     if (!rawTs) {
@@ -444,7 +490,7 @@ export async function processCchCsv(
     }
 
     // Consumo (CONSUMPTION)
-    if (consumoStr !== undefined && consumoStr !== '') {
+    if (hasConsumoColumn) {
       const mapKeyConsumo = `${cups}_${dayKey}_CONSUMPTION`;
       let entry = dailyData.get(mapKeyConsumo);
       if (!entry) {
@@ -454,12 +500,14 @@ export async function processCchCsv(
           type: 'CONSUMPTION',
           readings: new Array(96).fill(0),
           seenFlags: new Map(),
+          hasDecimal: false,
         };
         dailyData.set(mapKeyConsumo, entry);
       }
+      if (parsedConsumo?.hasDecimal) entry.hasDecimal = true;
       const flagsForSlot = entry.seenFlags.get(index) || new Set<string>();
       if (flagsForSlot.size > 0 && !flagsForSlot.has(bandera)) {
-        // Día de cambio horario de octubre (25h): misma hora local con bandera verano (1) e invierno (0) -> sumar ambas horas
+        // Día de cambio horario de octubre (25h / 100qh): misma hora local con bandera verano (1) e invierno (0) -> sumar ambas
         entry.readings[index] += consumo;
       } else {
         entry.readings[index] = consumo;
@@ -479,9 +527,11 @@ export async function processCchCsv(
           type: 'SURPLUS',
           readings: new Array(96).fill(0),
           seenFlags: new Map(),
+          hasDecimal: false,
         };
         dailyData.set(mapKeySurplus, entrySurplus);
       }
+      if (parsedSurplus?.hasDecimal) entrySurplus.hasDecimal = true;
       const flagsForSlot = entrySurplus.seenFlags.get(index) || new Set<string>();
       if (flagsForSlot.size > 0 && !flagsForSlot.has(bandera)) {
         entrySurplus.readings[index] += surplus;
@@ -508,8 +558,10 @@ export async function processCchCsv(
     let normalized = data.readings;
 
     if (is5D) {
+      // Según especificación CNMC v4.3, F5/F5D/RF5D/P5/P5D vienen siempre en Wh enteros
       normalized = normalized.map(v => v / 1000.0);
-    } else {
+    } else if (!fileType && !data.hasDecimal) {
+      // Solo para CSVs genéricos/renombrados sin prefijo CNMC oficial ni decimales: heurística Wh vs kWh
       const seg = (segmentMap.get(data.cups) || '').toUpperCase();
       const isHighPower =
         seg.includes('VIP') ||

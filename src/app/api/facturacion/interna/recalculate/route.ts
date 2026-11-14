@@ -61,13 +61,24 @@ export async function POST(req: Request) {
 
       try {
         const result = await InternalBillingEngine.calculate(f1.id, true);
+        const effectiveContract =
+          result.effectiveContractId && result.effectiveContractId !== contract.id
+            ? (await prisma.contract.findUnique({
+                where: { id: result.effectiveContractId },
+                include: { brand: true, client: { include: { brand: true } } },
+              })) || contract
+            : contract;
+        const effectiveCompanyId =
+          effectiveContract.brand?.companyId || effectiveContract.client?.brand?.companyId || companyId;
 
         const updated = await prisma.internalInvoice.update({
           where: { id: draft.id },
           data: {
             status: result.hasCriticalError ? 'REQUIERE_REPARACION' : 'BORRADOR',
             invoiceType: calculatedType,
-            companyId,
+            clientId: effectiveContract.clientId,
+            companyId: effectiveCompanyId,
+            contractId: effectiveContract.id,
             repairData: result.repairData,
             subtotal1: result.totalBase,
             taxPercentage: result.taxPercentage ?? 21,
@@ -77,7 +88,7 @@ export async function POST(req: Request) {
             margin: result.feeCost,
             billingStart: f1.fechaInicio || draft.billingStart,
             billingEnd: f1.fechaFin || draft.billingEnd,
-            invoiceData: buildInternalInvoiceJsonData(result, contract) as any,
+            invoiceData: buildInternalInvoiceJsonData(result, effectiveContract) as any,
           },
         });
         updatedDrafts.push(updated);

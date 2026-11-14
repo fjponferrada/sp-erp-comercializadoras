@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import {
   Calculator,
   CheckCircle,
@@ -104,9 +104,37 @@ export default function FacturacionClient({
 
   const validDrafts = drafts.filter((d) => (filterVisibility === 'HIDDEN' ? d.hidden : !d.hidden));
   const filteredPendingF1s = pendingF1s;
+  const visiblePendingIds = filteredPendingF1s.map((f) => f.id);
 
-  const toggleSelect = (id: string, setter: any, state: string[]) => {
-    setter(state.includes(id) ? state.filter((x) => x !== id) : [...state, id]);
+  const lastSelectedF1Ref = useRef<string | null>(null);
+  const lastSelectedDraftRef = useRef<string | null>(null);
+  const shiftKeyRef = useRef<boolean>(false);
+
+  const handleRangeSelect = (
+    id: string,
+    orderedIds: string[],
+    lastSelectedRef: React.MutableRefObject<string | null>,
+    setter: React.Dispatch<React.SetStateAction<string[]>>,
+    isShift: boolean
+  ) => {
+    setter((prev) => {
+      const shouldSelect = !prev.includes(id);
+      if (isShift && lastSelectedRef.current) {
+        const startIdx = orderedIds.indexOf(lastSelectedRef.current);
+        const endIdx = orderedIds.indexOf(id);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+          const rangeIds = orderedIds.slice(from, to + 1);
+          if (shouldSelect) {
+            return Array.from(new Set([...prev, ...rangeIds]));
+          }
+          const removeSet = new Set(rangeIds);
+          return prev.filter((x) => !removeSet.has(x));
+        }
+      }
+      return shouldSelect ? [...prev, id] : prev.filter((x) => x !== id);
+    });
+    lastSelectedRef.current = id;
   };
 
   const handleCalculate = async () => {
@@ -339,12 +367,27 @@ export default function FacturacionClient({
                     key={f1.id}
                     className="border-b border-[var(--border)] hover:bg-[var(--bg-elevated)]"
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 select-none">
                       <input
                         type="checkbox"
-                        className="rounded"
+                        className="rounded cursor-pointer"
+                        title="Clic para seleccionar · Mayús + Clic para seleccionar rango"
                         checked={selectedF1s.includes(f1.id)}
-                        onChange={() => toggleSelect(f1.id, setSelectedF1s, selectedF1s)}
+                        onClickCapture={(e) => {
+                          shiftKeyRef.current = e.shiftKey;
+                        }}
+                        onChange={(e) => {
+                          const isShift =
+                            shiftKeyRef.current || Boolean((e.nativeEvent as MouseEvent)?.shiftKey);
+                          shiftKeyRef.current = false;
+                          handleRangeSelect(
+                            f1.id,
+                            visiblePendingIds,
+                            lastSelectedF1Ref,
+                            setSelectedF1s,
+                            isShift
+                          );
+                        }}
                       />
                     </td>
                     <td className="px-4 py-3 font-mono">{f1.numeroFactura || 'S/N'}</td>
@@ -491,7 +534,7 @@ export default function FacturacionClient({
             </div>
           )}
 
-          {/* Primera pasada para anotar _tipo, _isDuplicateCycle y _hasParentA */}
+          {/* Primera pasada para anotar _tipo, _isDuplicateCycle, _hasParentA y orden visual global para Mayús+Clic */}
           {(() => {
             for (const d of validDrafts) {
               let tipo = 'N';
@@ -548,6 +591,81 @@ export default function FacturacionClient({
                 (d as any)._isOrphanDuplicateN = false;
               }
             }
+
+            const allOrderedDraftIds: string[] = [];
+            for (const secType of ['N', 'R', 'A', 'C', 'G']) {
+              const secDrafts = validDrafts.filter((d) => {
+                const tipo = (d as any)._tipo || 'N';
+                if (secType === 'R') {
+                  if (tipo === 'R') return true;
+                  if (tipo === 'S' || tipo === 'AR') {
+                    const hasParentR = validDrafts.some((vd) => {
+                      if ((vd as any)._tipo !== 'R') return false;
+                      const dGen = extractDatosGeneralesF1(vd.f1Invoice?.jsonData);
+                      const cOrig = dGen?.CodigoFacturaRectificadaAnulada;
+                      const cAbo = dGen?.CodigoFacturaAbono || (cOrig ? `AR-${cOrig}` : undefined);
+                      return cAbo === d.f1Invoice?.numeroFactura;
+                    });
+                    return !hasParentR;
+                  }
+                  return false;
+                }
+                if (secType === 'A') {
+                  if (tipo === 'A') return true;
+                  if (tipo === 'N' && ((d as any)._isDuplicateCycle || (d as any)._hasParentA)) {
+                    return !(d as any)._hasParentA;
+                  }
+                  return false;
+                }
+                if (secType === 'N') {
+                  return tipo === 'N' && !(d as any)._isDuplicateCycle && !(d as any)._hasParentA;
+                }
+                return tipo === secType;
+              });
+
+              for (const draft of secDrafts) {
+                const isOrphanAR = (draft as any)._tipo === 'AR' || (draft as any)._tipo === 'S';
+                const isOrphanDuplicateN = secType === 'A' && (draft as any)._tipo === 'N';
+                allOrderedDraftIds.push(draft.id);
+                if (!isOrphanAR && !isOrphanDuplicateN) {
+                  if (secType === 'R') {
+                    const datosGen = extractDatosGeneralesF1(draft.f1Invoice?.jsonData);
+                    const codOriginal = datosGen?.CodigoFacturaRectificadaAnulada;
+                    const codAbono =
+                      datosGen?.CodigoFacturaAbono ||
+                      (codOriginal ? `AR-${codOriginal}` : undefined);
+                    if (codAbono) {
+                      const arDraft = validDrafts.find(
+                        (d) =>
+                          ((d as any)._tipo === 'AR' || (d as any)._tipo === 'S') &&
+                          d.f1Invoice?.numeroFactura === String(codAbono)
+                      );
+                      if (arDraft) allOrderedDraftIds.push(arDraft.id);
+                    }
+                  } else if (secType === 'A') {
+                    const draftSpId = draft.supplyPointId || draft.contract?.supplyPointId;
+                    const nDraft = validDrafts.find((d) => {
+                      const dSpId = d.supplyPointId || d.contract?.supplyPointId;
+                      return (
+                        (d as any)._tipo === 'N' &&
+                        dSpId &&
+                        draftSpId &&
+                        dSpId === draftSpId &&
+                        d.billingStart &&
+                        d.billingEnd &&
+                        draft.billingStart &&
+                        draft.billingEnd &&
+                        new Date(d.billingStart).getTime() ===
+                          new Date(draft.billingStart).getTime() &&
+                        new Date(d.billingEnd).getTime() === new Date(draft.billingEnd).getTime()
+                      );
+                    });
+                    if (nDraft) allOrderedDraftIds.push(nDraft.id);
+                  }
+                }
+              }
+            }
+            (validDrafts as any)._allOrderedDraftIds = allOrderedDraftIds;
             return null;
           })()}
 
@@ -773,14 +891,31 @@ export default function FacturacionClient({
 
                           return (
                             <tr key={rowDraft.id} className={trClass}>
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3 select-none">
                                 <input
                                   type="checkbox"
-                                  className="rounded"
+                                  className="rounded cursor-pointer"
+                                  title="Clic para seleccionar · Mayús + Clic para seleccionar rango"
                                   checked={selectedDrafts.includes(rowDraft.id)}
-                                  onChange={() =>
-                                    toggleSelect(rowDraft.id, setSelectedDrafts, selectedDrafts)
-                                  }
+                                  onClickCapture={(e) => {
+                                    shiftKeyRef.current = e.shiftKey;
+                                  }}
+                                  onChange={(e) => {
+                                    const isShift =
+                                      shiftKeyRef.current ||
+                                      Boolean((e.nativeEvent as MouseEvent)?.shiftKey);
+                                    shiftKeyRef.current = false;
+                                    const orderedIds =
+                                      ((validDrafts as any)._allOrderedDraftIds as string[]) ||
+                                      validDrafts.map((d) => d.id);
+                                    handleRangeSelect(
+                                      rowDraft.id,
+                                      orderedIds,
+                                      lastSelectedDraftRef,
+                                      setSelectedDrafts,
+                                      isShift
+                                    );
+                                  }}
                                 />
                               </td>
                               <td className="px-4 py-3 font-semibold">

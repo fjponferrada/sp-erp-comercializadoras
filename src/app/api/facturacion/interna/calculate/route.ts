@@ -54,16 +54,25 @@ export async function POST(req: Request) {
       try {
         // Ejecuta el cálculo forzando el auto-ajuste de la CCH si fuera necesario
         const result = await InternalBillingEngine.calculate(f1.id, true);
+        const effectiveContract =
+          result.effectiveContractId && result.effectiveContractId !== contract.id
+            ? (await prisma.contract.findUnique({
+                where: { id: result.effectiveContractId },
+                include: { brand: true, client: { include: { brand: true } } },
+              })) || contract
+            : contract;
+        const effectiveCompanyId =
+          effectiveContract.brand?.companyId || effectiveContract.client?.brand?.companyId || companyId;
 
         const draft = await prisma.internalInvoice.create({
           data: {
             status: result.hasCriticalError ? 'REQUIERE_REPARACION' : 'BORRADOR',
             repairData: result.repairData,
             invoiceType: calculatedType,
-            clientId: contract.clientId,
-            companyId,
-            contractId: contract.id,
-            supplyPointId: contract.supplyPointId,
+            clientId: effectiveContract.clientId,
+            companyId: effectiveCompanyId,
+            contractId: effectiveContract.id,
+            supplyPointId: effectiveContract.supplyPointId,
             f1InvoiceId: f1.id,
             issueDate: new Date(),
             subtotal1: result.totalBase,
@@ -75,7 +84,7 @@ export async function POST(req: Request) {
             billingStart: f1.fechaInicio || new Date(),
             billingEnd: f1.fechaFin || new Date(),
             origin: 'INTERNAL_ENGINE',
-            invoiceData: buildInternalInvoiceJsonData(result, contract) as any,
+            invoiceData: buildInternalInvoiceJsonData(result, effectiveContract) as any,
           },
         });
         createdDrafts.push(draft);

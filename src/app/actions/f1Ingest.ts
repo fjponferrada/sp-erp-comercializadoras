@@ -163,6 +163,36 @@ async function ingestF1Core(file: File) {
       let supplyPointId = undefined;
       let contractId = undefined;
 
+      const shiftIsoDate = (dStr: string, shiftDays: number = 0): string | null => {
+        if (!dStr) return null;
+        const parts = dStr.split('-');
+        if (parts.length === 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
+          const d = parseInt(parts[2], 10) + shiftDays;
+          const overflowDate = new Date(Date.UTC(y, m - 1, d));
+          return overflowDate.toISOString().substring(0, 10);
+        }
+        return null;
+      };
+
+      const toMadridIso = (rawVal: any): string | null => {
+        if (!rawVal) return null;
+        const v = Array.isArray(rawVal) ? rawVal[0] : rawVal;
+        if (!v) return null;
+        if (v instanceof Date) {
+          return isNaN(v.getTime()) ? null : v.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+        }
+        const s = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+          const [dd, mm, yyyy] = s.split('/');
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+      };
+
       if (cups) {
         const baseCups = cups.substring(0, 20);
         const sps = await prisma.supplyPoint.findMany({ 
@@ -176,58 +206,68 @@ async function ingestF1Core(file: File) {
           // Usa el ID del primer SP como referencia principal
           supplyPointId = sps[0].id;
           
-          const getActDate = (c: any) => {
-            if (c.activationDate) return c.activationDate;
+          const getActIso = (c: any): string | null => {
+            if (c.activationDate) return toMadridIso(c.activationDate);
             if (c.airtableData) {
               const ad = c.airtableData as any;
-              const raw = ad['ALTA COMERCIALIZADORA'] || ad['FECHA INICIO'] || ad['Fecha firma contrato'];
-              if (raw) return new Date(raw);
+              const raw = ad['ALTA COMERCIALIZADORA'] || ad['FECHA ALTA'] || ad['FECHA INICIO'] || ad['Fecha firma contrato'];
+              if (raw) return toMadridIso(raw);
             }
             return null;
           };
 
-          const getTermDate = (c: any) => {
-            if (c.terminationDate) return c.terminationDate;
+          const getTermIso = (c: any): string | null => {
+            if (c.terminationDate) return toMadridIso(c.terminationDate);
             if (c.airtableData) {
               const ad = c.airtableData as any;
-              const raw = ad['BAJA COMERCIALIZADORA'] || ad['FECHA BAJA'];
-              if (raw) return new Date(raw);
+              const raw = ad['BAJA COMERCIALIZADORA'] || ad['FECHA BAJA'] || ad['Fecha Baja'];
+              if (raw) return toMadridIso(raw);
             }
             return null;
           };
+
+          const todayIso = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+          const cycleStartIso = shiftIsoDate(fechaIniStr, 1) || todayIso;
+          const cycleEndIso = shiftIsoDate(fechaFinStr, 1) || todayIso;
 
           const overlappingContracts = allContracts.filter(c => {
             const validStatuses = ['ACTIVO', 'EN_VIGOR', 'Activo', 'FINALIZADO', 'Finalizado'];
             if (!validStatuses.includes(c.status)) return false;
             
-            let actDate = getActDate(c);
-            let termDate = getTermDate(c);
+            const actIso = getActIso(c);
+            const termIso = getTermIso(c);
 
-            if (!actDate) return false;
+            if (!actIso) return false;
             
-            const fileFechaFin = fechaFinStr ? new Date(fechaFinStr) : new Date();
-            const fileFechaInicio = fechaIniStr ? new Date(fechaIniStr) : new Date();
-            
-            const startOverlap = actDate <= fileFechaFin;
-            const endOverlap = !termDate || termDate >= fileFechaInicio;
+            const startOverlap = cycleEndIso > cycleStartIso ? actIso < cycleEndIso : actIso <= cycleEndIso;
+            const endOverlap = !termIso || termIso >= cycleStartIso;
             
             return startOverlap && endOverlap;
           });
           
-          // En caso de solapamiento, priorizar el que esté activo. Si hay varios, el de activación más reciente.
+          // Cláusula ciclo distribuidora: si el ciclo abarca días de dos contratos (renovación a mitad de ciclo),
+          // priorizar el contrato vigente al inicio del ciclo (actIso <= cycleStartIso) frente al activado después.
           overlappingContracts.sort((a, b) => {
+            const aActIso = getActIso(a) || '0000-00-00';
+            const bActIso = getActIso(b) || '0000-00-00';
+
+            const aCoversStart = aActIso <= cycleStartIso ? 1 : 0;
+            const bCoversStart = bActIso <= cycleStartIso ? 1 : 0;
+            if (aCoversStart !== bCoversStart) return bCoversStart - aCoversStart;
+
+            if (aActIso !== bActIso) return bActIso.localeCompare(aActIso);
+
             const aActive = (a.status === 'ACTIVO' || a.status === 'EN_VIGOR' || a.status === 'Activo') ? 1 : 0;
             const bActive = (b.status === 'ACTIVO' || b.status === 'EN_VIGOR' || b.status === 'Activo') ? 1 : 0;
-            if (aActive !== bActive) return bActive - aActive;
-            
-            const aDate = getActDate(a) || new Date(0);
-            const bDate = getActDate(b) || new Date(0);
-            return bDate.getTime() - aDate.getTime();
+            return bActive - aActive;
           });
           const applicableContract = overlappingContracts[0];
           
           if (applicableContract) {
             contractId = applicableContract.id;
+            if (applicableContract.supplyPointId) {
+              supplyPointId = applicableContract.supplyPointId;
+            }
           } else {
             // Fallback: Buscar el contrato ACTIVO más reciente
             const activeFallback = allContracts.find(c => c.status === 'ACTIVO' || c.status === 'EN_VIGOR' || c.status === 'Activo');

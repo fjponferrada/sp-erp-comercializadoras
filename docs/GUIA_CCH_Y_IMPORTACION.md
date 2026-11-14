@@ -21,11 +21,15 @@ Las distribuidoras envían constantemente ficheros con diferentes niveles de mad
 La prioridad (de mayor a menor) es la siguiente:
 
 1. **Datos Históricos Auditados (`MIGRACION_PKL`)**: Prioridad `999`. Son los datos heredados del sistema antiguo. Son inmutables y nunca serán sobrescritos.
-2. **Facturación Definitiva (`F1`, `C1`, `Q1`, `F1H`, `F1QH`)**: Prioridad `100` (máxima regular). Es el dato certificado por el que se ha cobrado/pagado. (Los `C1` se ignoran en curvas al contener cierres totales sin perfil horario).
-3. **Curvas Definitivas (`F5D`, `RF5D`, `A5D`, `B5D`)**: Prioridad `90` (`F5D`/`RF5D`) y `80` (`A5D`/`B5D`). Ficheros mensuales cerrados por la distribuidora.
-4. **Curvas Provisionales Mensuales (`P5D`)**: Prioridad `40`. Ficheros que la distribuidora envía antes del cierre definitivo.
-5. **Curvas Diarias (`P1`, `P1D`, `P2`, `P2D`)**: Prioridad `20`. Envíos del día a día, sujetos a estimaciones y fallos de telemedida.
-6. **Curvas sin clasificar (`P0`)**: Prioridad `10`.
+2. **Facturación Definitiva Cuarto-Horaria (`F1QH`, `Q1`)**: Prioridad `105`. Curva firme en punto frontera con resolución de 96 cuartos de hora (prevalece sobre `F1` horario para no degradar la resolución cuarto-horaria cuando la distribuidora publica ambos ficheros el mismo día).
+3. **Facturación Definitiva Horaria (`F1`, `F1H`)**: Prioridad `100`. Dato horario firme certificado en punto frontera.
+4. **Curvas Definitivas Rectificadas Tipo 4/5 (`RF5D`, `RF4D`)**: Prioridad `95`. Modificación firme de curva `F5D`/`F4D` tras reclamación.
+5. **Curvas Definitivas de Facturación Tipo 4/5 (`F5D`, `F4D`, `F5`, `F4`)**: Prioridad `90`. Ficheros cerrados de facturación (`CCH_FACT`: `col[3]=ECh` consumo neto de red y `col[4]=EXCh` excedente neto compensable).
+6. **Curvas Brutas Validadas Tipo 4/5 (`P5D`, `P4D`, `P5`, `P4`)**: Prioridad `40`. Ficheros provisionales validados previos al cierre de facturación (incluidos los `P4D` horarios en Wh emitidos por Naturgy/UFD para suministros `3.0TD` de 15–50 kW).
+7. **Curvas Diarias Cuarto-Horarias (`P2D`, `P2`)**: Prioridad `25`. Envíos diarios en punto de medida con 96 cuartos de hora (prevalecen sobre `P1D`/`P1` de 24 horas).
+8. **Curvas Diarias Horarias (`P1D`, `P1`)**: Prioridad `20`. Envíos diarios horarios en punto de medida.
+9. **Curvas sin clasificar (`P0`)**: Prioridad `10`.
+10. **Ficheros CNMC excluidos automáticamente de `LoadCurve`**: Los cierres y saldos (`C1`, `C2`, `C3`, `S1`, `S2`, `S3`, `SALD`), inventarios/agregaciones (`PMCLIE`, `CUPS45`, `CUPSDAT`, `INMECL`, `MAGCL`, `CIRCUITOESPERA`), ficheros auxiliares de autoconsumo (`A5D` = `CCH_AUTOCONS` energía autoconsumida `EAUTOh`, y `B5D` = `CCH_GENNETABETA` generación neta `EGENh * β`, que NO son ni consumo de red ni excedente compensable) y sumas de verificación (`.sha1`, `.md5`, `.log`, `.xml`) se descartan de raíz tanto en FTP como en subida manual.
 
 **Regla de Oro**: Al guardar en `LoadCurve`, el sistema prefija `source` con el tipo CNMC detectado (ej. `F5D_FTP_EDISTRIBUCION...`, `P2_UPLOAD_ZIP`) y *JAMÁS* sobrescribe una curva existente si el fichero entrante tiene una prioridad menor que el dato ya almacenado o si intenta pisar un dato definitivo con uno provisional.
 
@@ -53,8 +57,9 @@ Para cada fila válida, el `cchParser.ts` lee estas magnitudes a la vez y genera
 
 ### B. Corrección de Unidades (Wh a kWh)
 La base de datos almacena estricta y únicamente en **kWh**:
-- **Familia `5D` (`F5D`, `RF5D`, `A5D`, `B5D`, `P5D`)**: Por estándar CNMC v4.3 vienen siempre en **Wh** enteros, por lo que todas las lecturas se dividen entre `1000`.
-- **Resto de ficheros (`F1`, `F1QH`, `P1`, `P1D`, `P2`, `P2D`)**: Por estándar vienen en **kWh** (con decimales), pero ante distribuidoras que remitan anomalías en Wh, el parser cruza los 20 primeros caracteres del CUPS contra `SupplyPoint` y evalúa el **pico máximo horario/cuarto-horario de la curva diaria completa** (`> 2000` en suministros VIP/`>50kW`/`6.XTD` o `> 300` en resto). Si supera el umbral, divide de forma uniforme los 24/96 periodos del día entre `1000` (evitando partir curvas nocturnas/diurnas o dividir por error consumos `3.0TD` legítimos en kWh).
+- **Familia `5D` / `4D` (`F5D`, `RF5D`, `F5`, `P5D`, `P5`, `F4D`, `RF4D`, `F4`, `P4D`, `P4`)**: Por estándar oficial CNMC v4.3 vienen siempre en **Wh** enteros (9 columnas sin campo `TipoMedida`), por lo que todas las lecturas se dividen entre `1000`.
+- **Ficheros CNMC oficiales Tipo 1–4 (`F1`, `F1H`, `F1QH`, `Q1`, `P1`, `P1D`, `P2`, `P2D`, `P0`)**: Por estándar CNMC v4.3 (verificado sobre las 6 distribuidoras reales) vienen estrictamente en **kWh** (`10*n.3*n` o `10*n` / `6*n` kWh), por lo que se conservan `1:1` sin dividir entre `1000` aunque se trate de grandes industrias `6.1TD`/`3.0TD` aún no dadas de alta en `SupplyPoint`.
+- **CSVs genéricos/renombrados sin prefijo CNMC ni decimales**: El parser cruza los 20 primeros caracteres del CUPS contra `SupplyPoint` y evalúa el **pico máximo horario/cuarto-horario de la curva diaria completa** (`> 2000` en suministros VIP/`>50kW`/`6.XTD` o `> 300` en resto) para convertir `Wh -> kWh` de forma uniforme sobre todo el día.
 
 ### C. Timestamps de Fin de Periodo (-15 min vs -60 min) y Zonas Horarias
 Las distribuidoras etiquetan cada registro en **Hora Local Española al final del intervalo medido**:
