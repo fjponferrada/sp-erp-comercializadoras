@@ -166,48 +166,64 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
 
     let successCount = 0;
     let errorCount = 0;
-    const newResults: { file: string; success: boolean; message: string; type: string }[] = [];
+    let doneCount = 0;
+    const newResults: { file: string; success: boolean; message: string; type: string }[] = new Array(flattenedFiles.length);
 
     const fileTypeStr = isF1 ? 'F1' : 'SCTD';
+    const BATCH_SIZE = 10;
 
-    for (let i = 0; i < flattenedFiles.length; i++) {
-      const file = flattenedFiles[i];
-      setCurrentFile(file.name);
+    for (let batchStart = 0; batchStart < flattenedFiles.length; batchStart += BATCH_SIZE) {
+      const batch = flattenedFiles.slice(batchStart, batchStart + BATCH_SIZE);
+      setCurrentFile(
+        batch.length === 1
+          ? batch[0].name
+          : `${batch[0].name} (+${batch.length - 1} en paralelo)`
+      );
 
-      const formData = new FormData();
-      formData.append('file', file);
+      await Promise.all(
+        batch.map(async (file, offset) => {
+          const idx = batchStart + offset;
+          const formData = new FormData();
+          formData.append('file', file);
 
-      let result;
-      if (isF1) {
-        result = await ingestF1XmlAction(formData);
-      } else {
-        result = await ingestSwitchingXmlAction(formData);
-      }
+          let result;
+          try {
+            if (isF1) {
+              result = await ingestF1XmlAction(formData);
+            } else {
+              result = await ingestSwitchingXmlAction(formData);
+            }
+          } catch (err: any) {
+            result = { success: false, error: err?.message || 'Error de red durante la subida' };
+          }
 
-      let message = '';
-      let isSuccess = false;
+          let message = '';
+          let isSuccess = false;
 
-      if (result.success) {
-        successCount++;
-        isSuccess = true;
-        if ('warning' in result && result.warning) {
-          message = `Aviso: Guardado pero requiere revisión`;
-        } else if (result.count && result.count > 1) {
-          message = `Ingestado correctamente (${result.count} registros procesados dentro del ZIP)`;
-        } else {
-          message = 'Ingestado correctamente';
-        }
-      } else {
-        errorCount++;
-        isSuccess = false;
-        message = 'error' in result ? result.error : 'Error desconocido';
-      }
+          if (result.success) {
+            successCount++;
+            isSuccess = true;
+            if ('warning' in result && result.warning) {
+              message = `Aviso: Guardado pero requiere revisión`;
+            } else if ('count' in result && result.count && result.count > 1) {
+              message = `Ingestado correctamente (${result.count} registros procesados dentro del ZIP)`;
+            } else {
+              message = 'Ingestado correctamente';
+            }
+          } else {
+            errorCount++;
+            isSuccess = false;
+            message = 'error' in result && result.error ? result.error : 'Error desconocido';
+          }
 
-      newResults.push({ file: file.name, success: isSuccess, message, type: fileTypeStr });
-      setResults([...newResults]);
+          newResults[idx] = { file: file.name, success: isSuccess, message, type: fileTypeStr };
+          doneCount++;
+          setProcessedFiles(doneCount);
+          setProgress(Math.round((doneCount / flattenedFiles.length) * 100));
+        })
+      );
 
-      setProcessedFiles(i + 1);
-      setProgress(Math.round(((i + 1) / flattenedFiles.length) * 100));
+      setResults(newResults.filter(Boolean));
     }
 
     if (!isF1 && successCount > 0) {
@@ -419,7 +435,10 @@ export default function ImportarSwitchingClient({ userRole }: ImportarSwitchingC
               <CheckCircle className="w-16 h-16 text-[var(--lime)] mx-auto mb-4" />
               <h2 className="text-3xl font-bold text-white mb-2">Importación Finalizada</h2>
               <p className="text-gray-400 text-lg mb-6">
-                Se han procesado {totalFiles} archivos correctamente.
+                Se han procesado {totalFiles} archivos ({results.filter(r => r.file !== 'Sistema de Barrido' && r.success).length} exitosos
+                {results.some(r => r.file !== 'Sistema de Barrido' && !r.success)
+                  ? `, ${results.filter(r => r.file !== 'Sistema de Barrido' && !r.success).length} con error`
+                  : ''}).
               </p>
               <div className="flex justify-center gap-4">
                 <button

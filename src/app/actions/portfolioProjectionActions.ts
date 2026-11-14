@@ -73,6 +73,7 @@ export async function get12MonthProjectionAction(
       LEFT JOIN "Client" cl ON c."clientId" = cl.id
       JOIN "Brand" b ON COALESCE(c."brandId", cl."brandId") = b.id
       WHERE c.status IN ('ACTIVO', 'Activo', 'ACTIVE', 'Active', 'EN_VIGOR')
+        AND COALESCE(c."suspendido", false) = false
         AND b."companyId" = ${activeCompanyId}
       ORDER BY c."activationDate" DESC NULLS LAST
     `) as Array<{ baseCups: string; tariff: string; annualConsumption: number }>;
@@ -81,7 +82,7 @@ export async function get12MonthProjectionAction(
       return { success: true, data: projection };
     }
 
-    // 3. Histórico de facturación M12 para suministros grandes (>= 40 MWh/año), descontando abonos (Reglas 81 y 243)
+    // 3. Histórico de facturación M12 para suministros grandes (>= 40 MWh/año), descontando abonos (Reglas 81, 170 y 243)
     const cutoffDate = subMonths(new Date(), 15);
     const historyM12 = (await prisma.$queryRaw`
       SELECT 
@@ -97,8 +98,8 @@ export async function get12MonthProjectionAction(
         SUM(
           CASE 
             WHEN i."invoiceType" ILIKE '%abono%' OR i."invoiceType" IN ('A', 'AR', 'S')
-              THEN -1 * GREATEST(1, (CAST(i."billingEnd" AS DATE) - CAST(i."billingStart" AS DATE)))
-            ELSE GREATEST(1, (CAST(i."billingEnd" AS DATE) - CAST(i."billingStart" AS DATE)))
+              THEN -1 * GREATEST(1, ((CAST(i."billingEnd" AS DATE) - CAST(i."billingStart" AS DATE)) + 1))
+            ELSE GREATEST(1, ((CAST(i."billingEnd" AS DATE) - CAST(i."billingStart" AS DATE)) + 1))
           END
         ) AS "days"
       FROM "Invoice" i

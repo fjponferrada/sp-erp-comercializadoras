@@ -178,7 +178,7 @@ const baseNavGroups = [
       { href: '/productos', icon: Package, label: 'Productos' },
       { href: '/servicios', icon: PackagePlus, label: 'Servicios Adic.' },
       { href: '/canales', icon: Share2, label: 'Canales' },
-      { href: '/comisiones-config', icon: Settings, label: 'Comisiones' },
+      { href: '/comisiones-config', icon: Settings, label: 'Comisiones', roles: ['SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/ajustes', icon: Settings, label: 'Ajustes Generales' },
       { href: '/ajustes/costes-regulados', icon: FileBarChart, label: 'Costes Regulados (BOE)' },
       { href: '/ajustes/perfiles-ree', icon: Calendar, label: 'Perfiles REE (CSV)' },

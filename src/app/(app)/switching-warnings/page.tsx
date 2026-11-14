@@ -13,8 +13,8 @@ export default async function SwitchingWarningsPage() {
     redirect('/');
   }
 
-  // Traemos todos los eventos (false) en vez de solo los warnings, con paginación de 50
-  const result = await getPaginatedSwitchingEventsAction(1, 50, '', false, '', 'fechaSolicitud');
+  // Traemos todos los eventos (false) en vez de solo los warnings, con paginación de 100 (Regla 3)
+  const result = await getPaginatedSwitchingEventsAction(1, 100, '', false, '', 'fechaSolicitud');
 
   const initialEvents = result.success ? result.events : [];
   const initialTotalCount = result.success ? result.totalCount : 0;

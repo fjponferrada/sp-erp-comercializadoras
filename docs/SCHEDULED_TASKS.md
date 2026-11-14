@@ -19,8 +19,8 @@ El sistema de Scraping para recuperar archivos F1 de las distribuidoras se divid
 ### 2. `SPEnergia_Cron_RestartWorker`
 - **Descripción**: Watchdog no destructivo del Worker. Verifica que el Worker siga vivo antes de cada ciclo de scraping sin interrumpir ejecuciones activas.
 - **Desencadenador (Trigger)**: Cada 6 horas (1 minuto antes del trigger de scraping: `04:59, 10:59, 16:59, 22:59` en horario de invierno UTC+1 / `05:59, 11:59, 17:59, 23:59` en horario de verano UTC+2).
-- **Acción (Action)**: Ejecuta PowerShell oculto que comprueba si el puerto `59999` está en estado `Listen` (`Get-NetTCPConnection -LocalPort 59999 -State Listen`). **Únicamente si el puerto no está escuchando**, lanza `wscript.exe C:\Scrapping\worker_hidden.vbs` e invoca `Start-ScheduledTask -TaskName "AED_Worker_Persistent"`.
-- **Importancia**: Garantiza alta disponibilidad del Worker sin matar procesos sanos ni colisionar con la política `IgnoreNew` del programador de tareas.
+- **Acción (Action)**: Ejecuta PowerShell oculto que comprueba si el puerto `59999` está en estado `Listen` (`Get-NetTCPConnection -LocalPort 59999 -State Listen`). **Únicamente si el puerto no está escuchando**, limpia posibles `undetected_chromedriver` huérfanos y lanza `wscript.exe C:\Scrapping\worker_hidden.vbs`.
+- **Importancia**: Garantiza alta disponibilidad del Worker sin matar navegadores de un scraping manual o programado que esté en curso.
 
 ### 3. `SPEnergia_Cron_TriggerScraping`
 - **Descripción**: Llama a la API del ERP (`/api/cron/trigger-scraping`) mediante el lanzador `scripts/trigger-cron.ps1` para encolar un nuevo trabajo `PENDING` en la tabla `ScrapingJob` (si no hay ya uno activo).
@@ -71,14 +71,14 @@ Las siguientes tareas se encargan de automatizar la facturación, los correos y 
 
 ---
 
-## Flujo de Trabajo Secuencial
+## Flujo de Trabajo Secuencial y Desacoplamiento Cloud (`vercel.json`)
 
-Todas las tareas se han escalonado para no colisionar ni sobrecargar la base de datos:
-1. **00:00** -> Se pone en cola el Scraping.
-2. **01:00** -> Renovaciones de contratos.
-3. **02:00** -> Actualización de portfolio.
-4. **03:00** -> Se baja y parsea todo el FTP.
-5. **04:00** -> Se consolidan los datos de Consumo.
-6. **05:00** -> Se entrena la previsión con la foto final de todos los consumos del día.
+Todas las tareas locales de Windows están escalonadas hora a hora cada 6 horas (`TriggerScraping` → `ActivateRenewals` → `UpdatePortfolio` → `FtpSync` → `AggregateHistory` → `TrainForecast`), mientras que los crons diarios de respaldo en Vercel (`vercel.json`) están desplazados al minuto `:30` (`01:30 .. 05:30 UTC`) para no colisionar nunca en el minuto `:00` con las tareas locales sobre PostgreSQL:
+1. **23:00 / 05:00 / 11:00 / 17:00 (Invierno UTC+1)** -> Se pone en cola el Scraping (`SPEnergia_Cron_TriggerScraping`).
+2. **00:00 / 06:00 / 12:00 / 18:00** -> Renovaciones de contratos (`SPEnergia_Cron_ActivateRenewals`).
+3. **01:00 / 07:00 / 13:00 / 19:00** -> Actualización de portfolio (`SPEnergia_Cron_UpdatePortfolio`).
+4. **02:00 / 08:00 / 14:00 / 20:00** -> Sincronización FTP/SFTP incremental con cursor estricto `<=` (`SPEnergia_Cron_FtpSync`).
+5. **03:00 / 09:00 / 15:00 / 21:00** -> Consolidación de curvas de consumo (`SPEnergia_Cron_AggregateHistory`).
+6. **04:00 / 10:00 / 16:00 / 22:00** -> Entrenamiento de previsión de demanda (`SPEnergia_Cron_TrainForecast`).
 
-*(Este bloque completo se repite cíclicamente cada 6 horas).*
+*(En horario de verano UTC+2 los triggers `PT6H` corren +1h manteniendo exactamente la misma separación secuencial de 1 hora entre tareas; `SPEnergia_Cron_SyncEsios` permanece en estado `Disabled`).*

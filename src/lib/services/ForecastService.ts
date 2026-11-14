@@ -183,18 +183,23 @@ export async function generateTomorrowForecast(
 
   console.log(`Generating forecast for ${targetDateStr} (companyId=${companyId || 'ALL'})...`);
 
-  // 1. Contratos activos aislados por comercializadora (con fallback a Client.brand cuando Contract.brandId es null)
+  // 1. Contratos activos aislados por comercializadora, excluyendo suspendidos por corte E2/impago (Regla 59)
   const activeContractsRaw = await prisma.contract.findMany({
     where: {
       status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active', 'EN_VIGOR'] },
-      ...(companyId
-        ? {
-            OR: [
-              { brand: { companyId } },
-              { brandId: null, client: { brand: { companyId } } },
-            ],
-          }
-        : {}),
+      AND: [
+        { OR: [{ suspendido: false }, { suspendido: null }] },
+        ...(companyId
+          ? [
+              {
+                OR: [
+                  { brand: { companyId } },
+                  { brandId: null, client: { brand: { companyId } } },
+                ],
+              },
+            ]
+          : []),
+      ],
     },
     include: {
       supplyPoint: true,
@@ -250,25 +255,38 @@ export async function generateTomorrowForecast(
     currentClients[key] = (currentClients[key] || 0) + 1;
   }
 
-  // 1A. Obtener coeficientes de Pérdidas (BOE vigente + Factor K con fallback resiliente)
+  // 1A. Obtener coeficientes de Pérdidas (BOE vigente + Factor K: último día equivalente COMPODEM con fallback a -364d)
   const regulatedCosts = await prisma.regulatedCost.findMany({
     where: { concept: 'PERDIDAS' },
     orderBy: { validFrom: 'desc' },
   });
 
-  const kExactDate = toUtcDateFromYmd(addUtcDaysYmd(targetDateStr, -364));
-  let kRecord = await prisma.systemComponentPrice.findFirst({
-    where: { component: 'K', date: kExactDate },
+  const recentK = await prisma.systemComponentPrice.findMany({
+    where: {
+      component: 'K',
+      date: {
+        gte: toUtcDateFromYmd(addUtcDaysYmd(targetDateStr, -35)),
+        lte: targetUtcDate,
+      },
+    },
+    orderBy: { date: 'desc' },
+    take: 35,
   });
 
+  let kRecord = recentK.find((r) => r.date.getUTCDay() === targetDow) || null;
   if (!kRecord) {
-    const recentK = await prisma.systemComponentPrice.findMany({
-      where: { component: 'K', date: { lte: targetUtcDate } },
-      orderBy: { date: 'desc' },
-      take: 14,
+    const kExactLastYear = toUtcDateFromYmd(addUtcDaysYmd(targetDateStr, -364));
+    kRecord = await prisma.systemComponentPrice.findFirst({
+      where: { component: 'K', date: kExactLastYear },
     });
+  }
+  if (!kRecord) {
     kRecord =
-      recentK.find((r) => r.date.getUTCDay() === targetDow) || recentK[0] || null;
+      recentK[0] ||
+      (await prisma.systemComponentPrice.findFirst({
+        where: { component: 'K', date: { lte: targetUtcDate } },
+        orderBy: { date: 'desc' },
+      }));
   }
 
   const kArray =
@@ -489,15 +507,208 @@ export async function generateTomorrowForecast(
     segmentBreakdown,
   };
 
-  await prisma.demandForecast.create({
-    data: {
-      targetDate: targetUtcDate,
-      forecastData: payload as any,
-      totalPredicted: totalPred,
-      vipOverride: null,
-      userId: options?.userId || null,
+  // Evitar duplicados en DemandForecast si se recalcula la misma fecha objetivo para la misma comercializadora
+  const existingSameTarget = await prisma.demandForecast.findMany({
+    where: { targetDate: targetUtcDate },
+    orderBy: { createdAt: 'desc' },
+  });
+  const matchingExisting = existingSameTarget.find((row) => {
+    const fd = row.forecastData as any;
+    if (fd && typeof fd === 'object' && !Array.isArray(fd) && 'companyId' in fd) {
+      return (fd.companyId || null) === (companyId || null);
+    }
+    return !companyId;
+  });
+
+  if (matchingExisting) {
+    await prisma.demandForecast.update({
+      where: { id: matchingExisting.id },
+      data: {
+        executionDate: new Date(),
+        forecastData: payload as any,
+        totalPredicted: totalPred,
+        userId: options?.userId || matchingExisting.userId || null,
+      },
+    });
+  } else {
+    await prisma.demandForecast.create({
+      data: {
+        targetDate: targetUtcDate,
+        forecastData: payload as any,
+        totalPredicted: totalPred,
+        vipOverride: null,
+        userId: options?.userId || null,
+      },
+    });
+  }
+
+  return payload;
+}
+
+/**
+ * Ejecuta una auditoría retrospectiva (Backtesting) sobre una fecha histórica con consumo real consolidado
+ * en AggregatedLoadCurve, comparando hora a hora la curva predicha por IA + SDA frente a la demanda real medida.
+ */
+export async function runHistoricalBacktest(
+  targetDateStr: string,
+  companyId?: string | null
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)) {
+    throw new Error('Formato de fecha inválido (debe ser YYYY-MM-DD)');
+  }
+
+  const targetUtc = toUtcDateFromYmd(targetDateStr);
+  const dow = targetUtc.getUTCDay();
+  const month0to11 = targetUtc.getUTCMonth();
+  const isWknd = dow === 0 || dow === 6 ? 1 : 0;
+
+  let actualRows = companyId
+    ? await prisma.aggregatedLoadCurve.findMany({
+        where: { date: targetUtc, companyId },
+      })
+    : [];
+
+  let usedGlobalPool = false;
+  if (actualRows.length === 0) {
+    actualRows = await prisma.aggregatedLoadCurve.findMany({
+      where: { date: targetUtc },
+    });
+    usedGlobalPool = Boolean(companyId && actualRows.length > 0);
+  }
+
+  if (actualRows.length === 0) {
+    throw new Error(
+      `No existen curvas históricas consolidadas para la fecha ${targetDateStr}. Selecciona un día dentro del rango histórico disponible.`
+    );
+  }
+
+  const cachedModel = await prisma.forecastModelCache.findFirst({
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!cachedModel?.modelData) {
+    throw new Error('El modelo de IA aún no ha sido entrenado.');
+  }
+
+  // @ts-ignore
+  const regression = DecisionTreeRegression.load(cachedModel.modelData);
+
+  // Días equivalentes anteriores (-7d, -14d, -21d) estrictamente previos para SDA de VIP/VE
+  const priorDates = [
+    toUtcDateFromYmd(addUtcDaysYmd(targetDateStr, -7)),
+    toUtcDateFromYmd(addUtcDaysYmd(targetDateStr, -14)),
+    toUtcDateFromYmd(addUtcDaysYmd(targetDateStr, -21)),
+  ];
+  const priorVipVeRows = await prisma.aggregatedLoadCurve.findMany({
+    where: {
+      date: { in: priorDates },
+      segment: { in: ['VIP', 'VE <15 MWh', 'VE >15 MWh'] },
+      ...(!usedGlobalPool && companyId ? { companyId } : {}),
     },
   });
 
-  return payload;
+  // Agrupar consumo medio por cliente en los 3 días previos equivalentes por (segment|province|tariff)
+  const sdaPerClientByKey = new Map<string, { sumPerClient: number[]; days: number }>();
+  const priorByDateKey = new Map<string, { cons: number[]; clients: number }>();
+  for (const r of priorVipVeRows) {
+    if (r.clientCount <= 0) continue;
+    const prov = normalizeProvinceName(r.province);
+    const dk = `${r.date.toISOString().slice(0, 10)}|${r.segment}|${prov}|${r.tariff}`;
+    const entry = priorByDateKey.get(dk) || { cons: new Array(24).fill(0), clients: 0 };
+    for (let h = 0; h < 24; h++) entry.cons[h] += r.totalConsumption[h] || 0;
+    entry.clients += r.clientCount;
+    priorByDateKey.set(dk, entry);
+  }
+  for (const [dk, entry] of priorByDateKey.entries()) {
+    if (entry.clients <= 0) continue;
+    const [, seg, prov, tar] = dk.split('|');
+    const k = `${seg}|${prov}|${tar}`;
+    const agg = sdaPerClientByKey.get(k) || { sumPerClient: new Array(24).fill(0), days: 0 };
+    for (let h = 0; h < 24; h++) {
+      agg.sumPerClient[h] += entry.cons[h] / entry.clients;
+    }
+    agg.days += 1;
+    sdaPerClientByKey.set(k, agg);
+  }
+
+  const realHourlyKwh = new Array(24).fill(0);
+  const predHourlyKwh = new Array(24).fill(0);
+  let totalClientRecords = 0;
+
+  for (const row of actualRows) {
+    if (row.clientCount <= 0) continue;
+    totalClientRecords += row.clientCount;
+
+    for (let h = 0; h < 24; h++) {
+      realHourlyKwh[h] += row.totalConsumption[h] || 0;
+    }
+
+    const prov = normalizeProvinceName(row.province);
+    if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(row.segment)) {
+      const sda = sdaPerClientByKey.get(`${row.segment}|${prov}|${row.tariff}`);
+      if (sda && sda.days > 0) {
+        for (let h = 0; h < 24; h++) {
+          predHourlyKwh[h] += (sda.sumPerClient[h] / sda.days) * row.clientCount;
+        }
+      } else {
+        for (let h = 0; h < 24; h++) {
+          predHourlyKwh[h] += row.totalConsumption[h] || 0;
+        }
+      }
+      continue;
+    }
+
+    const segmentId = SEGMENTS.indexOf(row.segment);
+    const provinceId = PROVINCE_NAMES.indexOf(prov);
+    if (segmentId < 0 || provinceId < 0) continue;
+
+    const X_test: number[][] = [];
+    for (let h = 0; h < 24; h++) {
+      const temp = row.temperature?.[h] ?? 20.0;
+      X_test.push([segmentId, provinceId, dow, month0to11, h, temp, isWknd]);
+    }
+    const Y_pred = regression.predict(X_test);
+    for (let h = 0; h < 24; h++) {
+      predHourlyKwh[h] += Math.max(0, Y_pred[h]) * row.clientCount;
+    }
+  }
+
+  let absErrSumMw = 0;
+  let apeSum = 0;
+  let apeHours = 0;
+
+  const hourlyComparison = Array.from({ length: 24 }, (_, h) => {
+    const realMw = realHourlyKwh[h] / 1000;
+    const predMw = predHourlyKwh[h] / 1000;
+    const absErr = Math.abs(predMw - realMw);
+    absErrSumMw += absErr;
+    if (realMw > 0.01) {
+      apeSum += absErr / realMw;
+      apeHours++;
+    }
+    return {
+      hora: `${String(h + 1).padStart(2, '0')}:00`,
+      realMw: Math.round(realMw * 1000) / 1000,
+      predMw: Math.round(predMw * 1000) / 1000,
+      diffMw: Math.round((predMw - realMw) * 1000) / 1000,
+    };
+  });
+
+  const totalRealMwh = realHourlyKwh.reduce((a, b) => a + b, 0) / 1000;
+  const totalPredMwh = predHourlyKwh.reduce((a, b) => a + b, 0) / 1000;
+  const maeMw = absErrSumMw / 24;
+  const mapePct = apeHours > 0 ? (apeSum / apeHours) * 100 : 0;
+  const dailyBiasPct =
+    totalRealMwh > 0 ? ((totalPredMwh - totalRealMwh) / totalRealMwh) * 100 : 0;
+
+  return {
+    targetDate: targetDateStr,
+    usedGlobalPool,
+    evaluatedSupplies: totalClientRecords,
+    totalRealMwh: Math.round(totalRealMwh * 100) / 100,
+    totalPredMwh: Math.round(totalPredMwh * 100) / 100,
+    maeMw: Math.round(maeMw * 1000) / 1000,
+    mapePct: Math.round(mapePct * 100) / 100,
+    dailyBiasPct: Math.round(dailyBiasPct * 100) / 100,
+    hourlyComparison,
+  };
 }

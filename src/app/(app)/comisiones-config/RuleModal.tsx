@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
 
 export default function RuleModal({ tierId, rule, onClose, onSaved, products = [], services = [] }: any) {
+  const isEditing = Boolean(rule?.id);
+  const isDuplicating = !isEditing && Boolean(rule);
+
   const [formData, setFormData] = useState({
     tierId: tierId,
     tariff: rule?.tariff || '',
@@ -17,11 +20,11 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
   const filteredProducts = products.filter((p: any) => {
     let match = true;
     if (formData.tariff && p.tariff && p.tariff !== formData.tariff) match = false;
-    
+
     if (formData.productType) {
       const rType = formData.productType;
       const pTypeStr = (p.type || '').toLowerCase();
-      
+
       if (rType === 'Fijo') {
         if (!pTypeStr.includes('fijo')) match = false;
       } else if (rType === 'Indexado' || rType === 'Index') {
@@ -34,20 +37,20 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
   });
 
   const handleProductToggle = (productId: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       productIds: prev.productIds.includes(productId)
         ? prev.productIds.filter((id: string) => id !== productId)
-        : [...prev.productIds, productId]
+        : [...prev.productIds, productId],
     }));
   };
 
   const handleServiceToggle = (serviceId: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       serviceIds: prev.serviceIds.includes(serviceId)
         ? prev.serviceIds.filter((id: string) => id !== serviceId)
-        : [...prev.serviceIds, serviceId]
+        : [...prev.serviceIds, serviceId],
     }));
   };
 
@@ -58,10 +61,17 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
     try {
       setSaving(true);
       setError('');
-      
-      const isNew = !rule?.id;
-      const url = isNew ? '/api/commission-rules' : `/api/commission-rules/${rule.id}`;
-      const method = isNew ? 'POST' : 'PUT';
+
+      if (
+        formData.powerMin !== '' &&
+        formData.powerMax !== '' &&
+        Number(formData.powerMin) >= Number(formData.powerMax)
+      ) {
+        throw new Error('La potencia mínima debe ser estrictamente menor que la potencia máxima.');
+      }
+
+      const url = isEditing ? `/api/commission-rules/${rule.id}` : '/api/commission-rules';
+      const method = isEditing ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method,
@@ -84,14 +94,19 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-bottom-4 zoom-in-95">
-        
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-bottom-4 zoom-in-95">
         <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-800/30">
           <div>
-            <h2 className="text-lg font-bold text-white">{rule ? 'Editar Regla' : 'Nueva Regla'}</h2>
+            <h2 className="text-lg font-bold text-white">
+              {isEditing ? 'Editar Regla' : isDuplicating ? 'Duplicar Regla' : 'Nueva Regla'}
+            </h2>
             <p className="text-xs text-slate-400 mt-1">Configura las condiciones bajo las cuales aplica esta comisión</p>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          >
             <X size={20} />
           </button>
         </div>
@@ -110,15 +125,19 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
               <select
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 value={formData.tariff}
-                onChange={e => {
+                onChange={(e) => {
                   setFormData({ ...formData, tariff: e.target.value, productIds: [] });
                 }}
               >
                 <option value="">Cualquiera</option>
                 <option value="2.0TD">2.0TD</option>
                 <option value="3.0TD">3.0TD</option>
+                <option value="3.0TDVE">3.0TDVE</option>
                 <option value="6.1TD">6.1TD</option>
+                <option value="6.1TDVE">6.1TDVE</option>
                 <option value="6.2TD">6.2TD</option>
+                <option value="6.3TD">6.3TD</option>
+                <option value="6.4TD">6.4TD</option>
               </select>
             </div>
             <div>
@@ -126,7 +145,7 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
               <select
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 value={formData.productType}
-                onChange={e => {
+                onChange={(e) => {
                   setFormData({ ...formData, productType: e.target.value, productIds: [] });
                 }}
               >
@@ -139,8 +158,12 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
                   <option value="Precio fijo único">Precio fijo único</option>
                   <option value="Precio fijo por periodo">Precio fijo por periodo</option>
                   <option value="Precio indexado Pass-Through">Precio indexado Pass-Through</option>
-                  <option value="Precio indexado Pass-Through Personalizado">Precio indexado Pass-Through Personalizado</option>
-                  <option value="Precio indexado Pass-Through Personalizado Exc Fijo">Precio indexado Pass-Through Personalizado Exc Fijo</option>
+                  <option value="Precio indexado Pass-Through Personalizado">
+                    Precio indexado Pass-Through Personalizado
+                  </option>
+                  <option value="Precio indexado Pass-Through Personalizado Exc Fijo">
+                    Precio indexado Pass-Through Personalizado Exc Fijo
+                  </option>
                 </optgroup>
               </select>
             </div>
@@ -148,20 +171,20 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-medium text-slate-400">
-                Productos Específicos (Opcional)
-              </label>
+              <label className="block text-xs font-medium text-slate-400">Productos Específicos (Opcional)</label>
               {filteredProducts.length > 0 ? (
                 <div className="flex items-center gap-2 text-[10px] font-medium">
-                  <button 
-                    onClick={() => setFormData(prev => ({ ...prev, productIds: filteredProducts.map((p: any) => p.id) }))} 
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, productIds: filteredProducts.map((p: any) => p.id) }))}
                     className="text-indigo-400 hover:text-indigo-300 transition-colors"
                   >
                     Seleccionar todos
                   </button>
                   <span className="text-slate-600">|</span>
-                  <button 
-                    onClick={() => setFormData(prev => ({ ...prev, productIds: [] }))} 
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, productIds: [] }))}
                     className="text-slate-400 hover:text-slate-300 transition-colors"
                   >
                     Desmarcar todos
@@ -173,17 +196,24 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
             </div>
             <div className="bg-slate-800 border border-slate-700 rounded-lg max-h-48 overflow-y-auto p-2">
               {filteredProducts.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-4">No hay productos que coincidan con la tarifa y tipo seleccionados.</p>
+                <p className="text-xs text-slate-500 text-center py-4">
+                  No hay productos que coincidan con la tarifa y tipo seleccionados.
+                </p>
               ) : (
                 filteredProducts.map((p: any) => (
-                  <label key={p.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-700/50 rounded cursor-pointer transition-colors">
+                  <label
+                    key={p.id}
+                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-700/50 rounded cursor-pointer transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={formData.productIds.includes(p.id)}
                       onChange={() => handleProductToggle(p.id)}
                       className="rounded border-slate-600 text-indigo-600 focus:ring-indigo-500 bg-slate-900"
                     />
-                    <span className="text-sm text-slate-300">{p.name} <span className="text-xs text-slate-500">({p.tariff || 'Sin tarifa'})</span></span>
+                    <span className="text-sm text-slate-300">
+                      {p.name} <span className="text-xs text-slate-500">({p.tariff || 'Sin tarifa'})</span>
+                    </span>
                   </label>
                 ))
               )}
@@ -191,16 +221,40 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5 flex items-center justify-between">
-              Servicios Adicionales (Opcional)
-              <span className="text-[10px] text-indigo-400">Selecciona si la regla es específica para un servicio</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-slate-400">Servicios Adicionales (Opcional)</label>
+              {services && services.length > 0 ? (
+                <div className="flex items-center gap-2 text-[10px] font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, serviceIds: services.map((s: any) => s.id) }))}
+                    className="text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    Seleccionar todos
+                  </button>
+                  <span className="text-slate-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, serviceIds: [] }))}
+                    className="text-slate-400 hover:text-slate-300 transition-colors"
+                  >
+                    Desmarcar todos
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[10px] text-indigo-400">Selecciona si la regla es específica para un servicio</span>
+              )}
+            </div>
             <div className="bg-slate-800 border border-slate-700 rounded-lg max-h-48 overflow-y-auto p-2">
               {services && services.length === 0 ? (
                 <p className="text-xs text-slate-500 text-center py-4">No hay servicios comisionables disponibles.</p>
               ) : (
-                services && services.map((s: any) => (
-                  <label key={s.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-700/50 rounded cursor-pointer transition-colors">
+                services &&
+                services.map((s: any) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-700/50 rounded cursor-pointer transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={formData.serviceIds.includes(s.id)}
@@ -218,27 +272,35 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
             <h4 className="text-xs font-semibold text-slate-300 mb-3">Tramos de Potencia Media (P1 y P2)</h4>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-medium text-slate-400 mb-1.5">Potencia Mínima (kW) - Opcional</label>
+                <label className="block text-[10px] font-medium text-slate-400 mb-1.5">
+                  Potencia Mínima &gt;= (kW) - Opcional
+                </label>
                 <input
-                  type="number" step="0.01"
+                  type="number"
+                  step="0.01"
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50"
                   value={formData.powerMin}
-                  onChange={e => setFormData({ ...formData, powerMin: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, powerMin: e.target.value })}
                   placeholder="Ej. 0"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-medium text-slate-400 mb-1.5">Potencia Máxima (kW) - Opcional</label>
+                <label className="block text-[10px] font-medium text-slate-400 mb-1.5">
+                  Potencia Máxima &lt; (kW) - Opcional
+                </label>
                 <input
-                  type="number" step="0.01"
+                  type="number"
+                  step="0.01"
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50"
                   value={formData.powerMax}
-                  onChange={e => setFormData({ ...formData, powerMax: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, powerMax: e.target.value })}
                   placeholder="Ej. 5"
                 />
               </div>
             </div>
-            <p className="text-[10px] text-slate-500 mt-2">La potencia media es calculada como (P1 + P2) / 2</p>
+            <p className="text-[10px] text-slate-500 mt-2">
+              Potencia media = (P1 + P2) / 2. El tramo incluye el mínimo (&gt;= Mín) y excluye el máximo (&lt; Máx).
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -247,7 +309,7 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
               <select
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 value={formData.commissionType}
-                onChange={e => setFormData({ ...formData, commissionType: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, commissionType: e.target.value })}
               >
                 <option value="PERCENTAGE">% sobre el margen</option>
                 <option value="FIXED">Euros fijos (€)</option>
@@ -256,11 +318,12 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1.5">Valor Numérico</label>
               <input
-                type="number" step="0.01"
+                type="number"
+                step="0.01"
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-bold focus:outline-none focus:border-indigo-500"
                 value={formData.value}
-                onChange={e => setFormData({ ...formData, value: e.target.value })}
-                placeholder={formData.commissionType === 'PERCENTAGE' ? "Ej. 65" : "Ej. 135"}
+                onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                placeholder={formData.commissionType === 'PERCENTAGE' ? 'Ej. 65' : 'Ej. 135'}
               />
             </div>
           </div>
@@ -268,6 +331,7 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
 
         <div className="p-5 border-t border-slate-800 bg-slate-800/30 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
             className="px-4 py-2 text-sm font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700"
@@ -275,6 +339,7 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
             Cancelar
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving || formData.value === ''}
             className="px-6 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"

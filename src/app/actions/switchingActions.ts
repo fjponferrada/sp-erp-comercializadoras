@@ -3,10 +3,12 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { resolveActiveCompanyId } from '@/lib/companyContext';
+import { processParsedSwitchingData, getOwnReeCodes } from './switchingIngest';
+import { parseSwitchingXml, decodeXmlBuffer } from '@/lib/switching/parser';
 
 export async function getPaginatedSwitchingEventsAction(
   page: number = 1,
-  limit: number = 50,
+  limit: number = 100,
   searchTerm: string = '',
   onlyWarnings: boolean = false,
   procesoBase: string = '',
@@ -19,8 +21,26 @@ export async function getPaginatedSwitchingEventsAction(
       return { success: false, error: 'No autorizado' };
     }
 
-    // Build the where clause
+    const activeCompanyId = await resolveActiveCompanyId(session);
+    const activeCompany = activeCompanyId
+      ? await prisma.company.findUnique({ where: { id: activeCompanyId }, select: { id: true, codigoRee: true } })
+      : null;
+
     const whereClause: any = {};
+    const andConditions: any[] = [];
+
+    if (activeCompany) {
+      const companyOr: any[] = [
+        { contract: { brand: { companyId: activeCompany.id } } },
+        { supplyPoint: { client: { brand: { companyId: activeCompany.id } } } },
+        // Keep unlinked warnings (e.g. CUPS_NO_ENCONTRADO) visible for backoffice triage
+        { AND: [{ contractId: null }, { supplyPointId: null }] },
+      ];
+      if (activeCompany.codigoRee) {
+        companyOr.push({ uniqueProcess: { startsWith: `${activeCompany.codigoRee}_` } });
+      }
+      andConditions.push({ OR: companyOr });
+    }
 
     if (onlyWarnings) {
       whereClause.warning = { not: null };
@@ -39,27 +59,37 @@ export async function getPaginatedSwitchingEventsAction(
       whereClause.procesoBase = { notIn: ['F1', 'R1', 'P0', 'Q1', 'W1'] };
     }
 
-    if (searchTerm) {
-      whereClause.OR = [
-        { uniqueProcess: { contains: searchTerm, mode: 'insensitive' } },
-        { codigoSolicitud: { contains: searchTerm, mode: 'insensitive' } },
-        { supplyPoint: { cups: { contains: searchTerm, mode: 'insensitive' } } },
-        { contract: { contractCode: { contains: searchTerm, mode: 'insensitive' } } },
-      ];
+    const trimmedSearch = searchTerm.trim();
+    if (trimmedSearch) {
+      andConditions.push({
+        OR: [
+          { uniqueProcess: { contains: trimmedSearch, mode: 'insensitive' } },
+          { codigoSolicitud: { contains: trimmedSearch, mode: 'insensitive' } },
+          { warning: { contains: trimmedSearch, mode: 'insensitive' } },
+          { supplyPoint: { cups: { contains: trimmedSearch, mode: 'insensitive' } } },
+          { contract: { contractCode: { contains: trimmedSearch, mode: 'insensitive' } } },
+        ],
+      });
     }
+
+    if (andConditions.length > 0) {
+      whereClause.AND = andConditions;
+    }
+
+    const validSortField = sortBy === 'fechaAviso' ? 'fechaAviso' : 'fechaSolicitud';
 
     const [events, totalCount] = await Promise.all([
       prisma.switchingEvent.findMany({
         where: whereClause,
         include: {
-          supplyPoint: { select: { cups: true } },
-          contract: { select: { contractCode: true } }
+          supplyPoint: { select: { cups: true, distributorReeCode: true } },
+          contract: { select: { contractCode: true } },
         },
-        orderBy: [{ [sortBy]: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ [validSortField]: 'desc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
-      prisma.switchingEvent.count({ where: whereClause })
+      prisma.switchingEvent.count({ where: whereClause }),
     ]);
 
     return { success: true, events, totalCount };
@@ -78,7 +108,7 @@ export async function resolveSwitchingWarningAction(id: string) {
 
     await prisma.switchingEvent.update({
       where: { id },
-      data: { isResolved: true }
+      data: { isResolved: true },
     });
 
     return { success: true };
@@ -97,7 +127,7 @@ export async function unresolveSwitchingWarningAction(id: string) {
 
     await prisma.switchingEvent.update({
       where: { id },
-      data: { isResolved: false }
+      data: { isResolved: false },
     });
 
     return { success: true };
@@ -107,13 +137,10 @@ export async function unresolveSwitchingWarningAction(id: string) {
   }
 }
 
-import { processParsedSwitchingData, getOwnReeCodes } from './switchingIngest';
-import { parseSwitchingXml, decodeXmlBuffer } from '@/lib/switching/parser';
-
 export async function retryUnresolvedSwitchingEventsInternal() {
   const unresolvedEvents = await prisma.switchingEvent.findMany({
     where: { isResolved: false, xmlUrl: { not: null } },
-    orderBy: { createdAt: 'asc' } // Procesar en orden de creación
+    orderBy: { createdAt: 'asc' },
   });
 
   if (unresolvedEvents.length === 0) {
@@ -123,25 +150,31 @@ export async function retryUnresolvedSwitchingEventsInternal() {
   const ownReeCodes = await getOwnReeCodes();
   let processedCount = 0;
   let resolvedCount = 0;
+  const CONCURRENCY = 10;
 
-  for (const event of unresolvedEvents) {
-    try {
-      const response = await fetch(event.xmlUrl!);
-      if (!response.ok) continue;
+  for (let i = 0; i < unresolvedEvents.length; i += CONCURRENCY) {
+    const batch = unresolvedEvents.slice(i, i + CONCURRENCY);
+    await Promise.all(
+      batch.map(async event => {
+        try {
+          const response = await fetch(event.xmlUrl!);
+          if (!response.ok) return;
 
-      const arrBuf = await response.arrayBuffer();
-      const xmlString = decodeXmlBuffer(arrBuf);
-      const parsedData = parseSwitchingXml(xmlString, ownReeCodes);
+          const arrBuf = await response.arrayBuffer();
+          const xmlString = decodeXmlBuffer(arrBuf);
+          const parsedData = parseSwitchingXml(xmlString, ownReeCodes);
 
-      const result = await processParsedSwitchingData(parsedData, event.xmlUrl!, event.id);
+          const result = await processParsedSwitchingData(parsedData, event.xmlUrl!, event.id);
 
-      processedCount++;
-      if (result.success && !result.warning) {
-        resolvedCount++;
-      }
-    } catch (e) {
-      console.error('Error retrying event:', event.id, e);
-    }
+          processedCount++;
+          if (result.success && !result.warning) {
+            resolvedCount++;
+          }
+        } catch (e) {
+          console.error('Error retrying event:', event.id, e);
+        }
+      })
+    );
   }
 
   return { success: true as const, processedCount, resolvedCount };
@@ -170,14 +203,14 @@ export async function getDistributorScrapingStatus() {
     const configs = await prisma.distributorCompanyConfig.findMany({
       where: { companyId, webScrapingActive: true },
       include: { distributor: { select: { name: true } } },
-      orderBy: { distributor: { name: 'asc' } }
+      orderBy: { distributor: { name: 'asc' } },
     });
     return configs.map(c => ({
       name: c.distributor.name,
-      webLastSyncAt: c.webLastSyncAt
+      webLastSyncAt: c.webLastSyncAt,
     }));
   } catch (error) {
-    console.error("Error fetching scraping status:", error);
+    console.error('Error fetching scraping status:', error);
     return [];
   }
 }

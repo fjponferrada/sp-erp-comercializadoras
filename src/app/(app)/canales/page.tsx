@@ -1,7 +1,7 @@
 import React from 'react';
 import { prisma } from '@/lib/prisma';
 import CanalesClient, { CanalData } from './CanalesClient';
-import { getChannelVisibilityFilter } from '@/lib/permissions';
+import { getActiveBrand, getChannelVisibilityFilter } from '@/lib/permissions';
 
 export default async function CanalesPage() {
   const visibilityFilter = await getChannelVisibilityFilter();
@@ -57,7 +57,11 @@ export default async function CanalesPage() {
     };
   });
 
-  const commissionTiers = await prisma.commissionTier.findMany({ orderBy: { name: 'asc' } });
+  const activeBrandId = await getActiveBrand();
+  const commissionTiers = await prisma.commissionTier.findMany({
+    where: activeBrandId ? { brandId: activeBrandId } : {},
+    orderBy: { name: 'asc' },
+  });
 
   return <CanalesClient initialCanales={canalesData} commissionTiers={commissionTiers} />;
 }
