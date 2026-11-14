@@ -6,6 +6,21 @@ import type {
   TaxBreakdownItem,
 } from '@/lib/services/InternalBillingEngine';
 
+/**
+ * Indica si el Motor de Facturación Interna opera como facturador oficial en producción
+ * (`ENABLE_INTERNAL_BILLING_PRODUCTION === 'true'`).
+ *
+ * Mientras esté en `false` (por defecto, Fase de Pruebas / Shadow Billing conviviendo con Ingebau):
+ * - Confirmar borradores en `/facturacion/interna` los confina 100% en `InternalInvoice` (`/facturas-internas`)
+ *   sin promocionarlos a la tabla maestra `Invoice` (`/facturas`, Modelo 560, Tasa Municipal, Portal Cliente).
+ * - Los módulos de negocio y regulatorios (Liquidación de Comisiones, Energía Pendiente, CNMC Coberturas,
+ *   MITECO DAFNE y ESCILA) ignoran `InternalInvoice` para que las pruebas nunca dupliquen ni alteren los
+ *   datos oficiales importados desde Ingebau.
+ */
+export function isInternalBillingProductionEnabled(): boolean {
+  return process.env.ENABLE_INTERNAL_BILLING_PRODUCTION === 'true';
+}
+
 export interface InvoiceTemplateData {
   invoiceNumber: string;
   invoiceType?: string;

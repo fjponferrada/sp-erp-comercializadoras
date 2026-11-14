@@ -6,6 +6,7 @@ import {
   getDaysInCalendarMonth,
 } from '@/lib/ppaEngine';
 import { mergeDailyReganecuRecords } from '@/lib/reganecuServer';
+import { isInternalBillingProductionEnabled } from '@/lib/services/internalInvoiceMapper';
 import {
   logRegulatoryGeneration,
   requireRegulatoryContext,
@@ -121,33 +122,35 @@ export async function GET(request: Request) {
           },
         },
       }),
-      prisma.internalInvoice.findMany({
-        where: {
-          OR: [
-            { companyId: ctx.companyId },
-            { companyId: null, client: { brand: { companyId: ctx.companyId } } },
-          ],
-          status: { in: ['EMITIDA', 'ABONO'] },
-          hidden: false,
-          billingEnd: { gte: startUtc, lte: endUtc },
-        },
-        select: {
-          id: true,
-          invoiceNumber: true,
-          f1InvoiceId: true,
-          status: true,
-          invoiceType: true,
-          totalAmount: true,
-          totalMWh: true,
-          supplyPoint: { select: { tariff: true } },
-          contract: {
-            select: {
-              pricingModel: true,
-              product: { select: { pricingModel: true, type: true, name: true } },
+      isInternalBillingProductionEnabled()
+        ? prisma.internalInvoice.findMany({
+            where: {
+              OR: [
+                { companyId: ctx.companyId },
+                { companyId: null, client: { brand: { companyId: ctx.companyId } } },
+              ],
+              status: { in: ['EMITIDA', 'ABONO'] },
+              hidden: false,
+              billingEnd: { gte: startUtc, lte: endUtc },
             },
-          },
-        },
-      }),
+            select: {
+              id: true,
+              invoiceNumber: true,
+              f1InvoiceId: true,
+              status: true,
+              invoiceType: true,
+              totalAmount: true,
+              totalMWh: true,
+              supplyPoint: { select: { tariff: true } },
+              contract: {
+                select: {
+                  pricingModel: true,
+                  product: { select: { pricingModel: true, type: true, name: true } },
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
     // 1. Calcular energía cubierta a partir de PPAs/Coberturas (en kWh BC)

@@ -6,7 +6,10 @@ import { generateInvoiceXml } from '@/lib/templates/invoiceXmlTemplate';
 import { InvoicePdfTemplate } from '@/components/pdf/InvoicePdfTemplate';
 import { renderToStream } from '@react-pdf/renderer';
 import React from 'react';
-import { buildInvoiceTemplateData } from '@/lib/services/internalInvoiceMapper';
+import {
+  buildInvoiceTemplateData,
+  isInternalBillingProductionEnabled,
+} from '@/lib/services/internalInvoiceMapper';
 
 function extractMaxSequence(rows: Array<{ invoiceNumber: string | null }>, prefix: string): number {
   let maxSeq = 0;
@@ -171,8 +174,10 @@ export async function POST(req: Request) {
           data: { pdfUrl, xmlUrl },
         });
 
-        // Fase 5 (Regla 171): Promocionar a la tabla oficial Invoice con semántica compatible con Modelo 560 y Tasa Municipal
-        if (invoice.invoiceNumber) {
+        // Fase 5 (Regla 171): SOLO promocionar a la tabla maestra `Invoice` cuando el motor interno
+        // esté habilitado en producción (`ENABLE_INTERNAL_BILLING_PRODUCTION === 'true'`).
+        // En Fase de Pruebas (conviviendo con Ingebau), todo queda 100% aislado en `InternalInvoice` (`/facturas-internas`).
+        if (isInternalBillingProductionEnabled() && invoice.invoiceNumber) {
           const iData = ((invoice.invoiceData as Record<string, any>) || {});
           const sp = invoice.supplyPoint || invoice.contract?.supplyPoint || invoice.f1Invoice?.supplyPoint;
           const isInvAbono = invoice.status === 'ABONO' || invoice.invoiceType === 'Abono' || invoice.totalAmount < 0;

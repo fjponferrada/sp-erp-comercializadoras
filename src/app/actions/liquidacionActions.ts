@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { getActiveBrand, getUserVisibilityFilter } from '@/lib/permissions';
+import { isInternalBillingProductionEnabled } from '@/lib/services/internalInvoiceMapper';
 import {
   calculateAndSnapshotContractCommission,
   computeChainDaysActive,
@@ -248,25 +249,27 @@ export async function getLiquidacionComisionesAction(
             invoiceType: true,
           },
         }),
-        prisma.internalInvoice.findMany({
-          where: {
-            contractId: { in: targetIds },
-            status: { in: ['EMITIDA', 'ABONO'] },
-            hidden: false,
-          },
-          select: {
-            id: true,
-            contractId: true,
-            invoiceNumber: true,
-            f1InvoiceId: true,
-            totalMWh: true,
-            totalAmount: true,
-            billingStart: true,
-            billingEnd: true,
-            invoiceType: true,
-            status: true,
-          },
-        }),
+        isInternalBillingProductionEnabled()
+          ? prisma.internalInvoice.findMany({
+              where: {
+                contractId: { in: targetIds },
+                status: { in: ['EMITIDA', 'ABONO'] },
+                hidden: false,
+              },
+              select: {
+                id: true,
+                contractId: true,
+                invoiceNumber: true,
+                f1InvoiceId: true,
+                totalMWh: true,
+                totalAmount: true,
+                billingStart: true,
+                billingEnd: true,
+                invoiceType: true,
+                status: true,
+              },
+            })
+          : Promise.resolve([]),
       ]);
 
       for (const inv of legacyInvs) {

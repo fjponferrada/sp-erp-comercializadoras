@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseMadridEndOfDay, parseMadridStartOfDay } from '@/lib/ppaEngine';
+import { isInternalBillingProductionEnabled } from '@/lib/services/internalInvoiceMapper';
 import {
   encodeIso88591Xml,
   escapeXmlEntities,
@@ -104,41 +105,43 @@ export async function GET(req: Request) {
           },
         },
       }),
-      prisma.internalInvoice.findMany({
-        where: {
-          OR: [
-            { companyId: ctx.companyId },
-            { companyId: null, client: { brand: { companyId: ctx.companyId } } },
-          ],
-          status: { in: ['EMITIDA', 'ABONO'] },
-          hidden: false,
-          billingEnd: { gte: startDate, lte: endDate },
-        },
-        include: {
-          supplyPoint: {
-            select: {
-              id: true,
-              cups: true,
-              postalCode: true,
-              sipsPostalCode: true,
-              province: true,
-              tariff: true,
-              sipsTariff: true,
-              cnae: true,
-              sipsCnae: true,
+      isInternalBillingProductionEnabled()
+        ? prisma.internalInvoice.findMany({
+            where: {
+              OR: [
+                { companyId: ctx.companyId },
+                { companyId: null, client: { brand: { companyId: ctx.companyId } } },
+              ],
+              status: { in: ['EMITIDA', 'ABONO'] },
+              hidden: false,
+              billingEnd: { gte: startDate, lte: endDate },
             },
-          },
-          client: {
-            select: {
-              id: true,
-              vatNumber: true,
-              cnae: true,
-              billingPostalCode: true,
-              billingProvince: true,
+            include: {
+              supplyPoint: {
+                select: {
+                  id: true,
+                  cups: true,
+                  postalCode: true,
+                  sipsPostalCode: true,
+                  province: true,
+                  tariff: true,
+                  sipsTariff: true,
+                  cnae: true,
+                  sipsCnae: true,
+                },
+              },
+              client: {
+                select: {
+                  id: true,
+                  vatNumber: true,
+                  cnae: true,
+                  billingPostalCode: true,
+                  billingProvince: true,
+                },
+              },
             },
-          },
-        },
-      }),
+          })
+        : Promise.resolve([]),
       prisma.contract.findMany({
         where: {
           OR: [

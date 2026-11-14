@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { prisma } from '../lib/prisma';
 import { fromZonedTime } from 'date-fns-tz';
 import { getPeriodoREE } from '../lib/services/InternalBillingEngine';
+import { isInternalBillingProductionEnabled } from '../lib/services/internalInvoiceMapper';
 import { SETTLEMENT_RANKS } from '../lib/reganecuShared';
 import { mergeDailyReganecuRecords } from '../lib/reganecuServer';
 import { AggregationService } from '../lib/services/AggregationService';
@@ -300,35 +301,39 @@ export async function runCalculatePendingEnergy(
             f1InvoiceId: true,
           },
         }),
-        prisma.internalInvoice.findMany({
-          where: {
-            status: { in: ['EMITIDA', 'ABONO'] },
-            hidden: false,
-            billingStart: { lte: monthEndUtc },
-            billingEnd: { gte: queryStartPadded },
-            OR: [
-              { companyId: company.id },
-              { companyId: null, client: { brand: { companyId: company.id } } },
-            ],
-          },
-          select: {
-            invoiceNumber: true,
-            invoiceType: true,
-            status: true,
-            billingStart: true,
-            billingEnd: true,
-            totalMWh: true,
-            totalAmount: true,
-            f1InvoiceId: true,
-          },
-        }),
+        isInternalBillingProductionEnabled()
+          ? prisma.internalInvoice.findMany({
+              where: {
+                status: { in: ['EMITIDA', 'ABONO'] },
+                hidden: false,
+                billingStart: { lte: monthEndUtc },
+                billingEnd: { gte: queryStartPadded },
+                OR: [
+                  { companyId: company.id },
+                  { companyId: null, client: { brand: { companyId: company.id } } },
+                ],
+              },
+              select: {
+                invoiceNumber: true,
+                invoiceType: true,
+                status: true,
+                billingStart: true,
+                billingEnd: true,
+                totalMWh: true,
+                totalAmount: true,
+                f1InvoiceId: true,
+              },
+            })
+          : Promise.resolve([]),
         prisma.f1Invoice.findMany({
           where: {
             tipoDocumento: 'FacturaATR',
             fechaInicio: { lte: monthEndUtc },
             fechaFin: { gte: queryStartPadded },
             invoices: { none: {} },
-            internalInvoices: { none: { status: { in: ['EMITIDA', 'ABONO'] }, hidden: false } },
+            ...(isInternalBillingProductionEnabled()
+              ? { internalInvoices: { none: { status: { in: ['EMITIDA', 'ABONO'] }, hidden: false } } }
+              : {}),
             supplyPoint: { client: { brand: { companyId: company.id } } },
           },
           select: {

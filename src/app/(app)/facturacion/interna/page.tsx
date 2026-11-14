@@ -72,7 +72,10 @@ export default async function FacturacionInternaPage({
           supplyPoint: true,
         },
       },
-      invoices: { select: { id: true, pdfUrl: true, totalAmount: true, invoiceType: true } },
+      invoices: {
+        where: { OR: [{ origin: null }, { origin: { not: 'INTERNAL_ENGINE' } }] },
+        select: { id: true, pdfUrl: true, totalAmount: true, invoiceType: true },
+      },
     },
     orderBy: {
       fechaEmision: 'desc',
@@ -98,7 +101,10 @@ export default async function FacturacionInternaPage({
       },
       f1Invoice: {
         include: {
-          invoices: { select: { id: true, pdfUrl: true, totalAmount: true, invoiceType: true } },
+          invoices: {
+        where: { OR: [{ origin: null }, { origin: { not: 'INTERNAL_ENGINE' } }] },
+        select: { id: true, pdfUrl: true, totalAmount: true, invoiceType: true },
+      },
         },
       },
     },

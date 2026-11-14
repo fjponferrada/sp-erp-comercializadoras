@@ -3,6 +3,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { prisma } from '@/lib/prisma';
 import { parseMadridEndOfDay, parseMadridStartOfDay } from '@/lib/ppaEngine';
 import { mergeDailyReganecuRecords } from '@/lib/reganecuServer';
+import { isInternalBillingProductionEnabled } from '@/lib/services/internalInvoiceMapper';
 import {
   logRegulatoryGeneration,
   requireRegulatoryContext,
@@ -800,27 +801,29 @@ export async function GET(req: Request) {
           supplyPoint: { select: { cups: true } },
         },
       }),
-      prisma.internalInvoice.findMany({
-        where: {
-          OR: [
-            { companyId: ctx.companyId },
-            { companyId: null, client: { brand: { companyId: ctx.companyId } } },
-          ],
-          status: { in: ['EMITIDA', 'ABONO'] },
-          hidden: false,
-          billingEnd: { gte: startDate, lte: endDate },
-        },
-        select: {
-          id: true,
-          invoiceNumber: true,
-          f1InvoiceId: true,
-          status: true,
-          invoiceType: true,
-          totalAmount: true,
-          totalMWh: true,
-          supplyPoint: { select: { cups: true } },
-        },
-      }),
+      isInternalBillingProductionEnabled()
+        ? prisma.internalInvoice.findMany({
+            where: {
+              OR: [
+                { companyId: ctx.companyId },
+                { companyId: null, client: { brand: { companyId: ctx.companyId } } },
+              ],
+              status: { in: ['EMITIDA', 'ABONO'] },
+              hidden: false,
+              billingEnd: { gte: startDate, lte: endDate },
+            },
+            select: {
+              id: true,
+              invoiceNumber: true,
+              f1InvoiceId: true,
+              status: true,
+              invoiceType: true,
+              totalAmount: true,
+              totalMWh: true,
+              supplyPoint: { select: { cups: true } },
+            },
+          })
+        : Promise.resolve([]),
       prisma.$queryRaw<Array<{ total_kwh: number | null; cups_count: bigint | number | null }>>`
         WITH active_contracts AS (
           SELECT
