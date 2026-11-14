@@ -1,228 +1,252 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { XMLBuilder } from 'fast-xml-parser';
-import { auth } from '@/auth';
-import { resolveActiveCompanyId } from '@/lib/companyContext';
+import { prisma } from '@/lib/prisma';
+import { parseMadridStartOfDay, toMadridYmd } from '@/lib/ppaEngine';
+import {
+  buildSwitchingCompanyWhere,
+  classifyActivationTipoRetraso,
+  classifyResponseTipoRetraso,
+  createDistributorCnmcMapper,
+  daysBetweenMadridDates,
+  extractMotivoRechazoCnmc,
+  isDateInMadridRange,
+  logRegulatoryGeneration,
+  mapTarifaAtrCnmc,
+  mapTipoPuntoCnmc,
+  requireRegulatoryContext,
+  resolveIneProvinceCode,
+} from '@/lib/regulacionServer';
 
-function extractMotivoRechazoCode(pasoRechazado: any): string {
-  const pickCode = (raw: any): string | null => {
-    if (!raw) return null;
-    if (typeof raw === 'string') {
-      const cleaned = raw.trim().toUpperCase();
-      return /^[A-Z0-9]{1,2}$/.test(cleaned) ? cleaned.padStart(2, '0') : null;
-    }
-    if (Array.isArray(raw)) {
-      for (const item of raw) {
-        const found = pickCode(item);
-        if (found) return found;
-      }
-      return null;
-    }
-    if (typeof raw === 'object') {
-      const direct =
-        raw.codigo ||
-        raw.CodigoMotivo ||
-        raw.CodigoMotivoRechazo ||
-        raw.Motivo ||
-        raw.MotivoRechazo ||
-        raw.Rechazo;
-      return pickCode(direct);
-    }
-    return null;
+type RetrasoCode = '00' | '05' | '15';
+const RETRASO_ORDER: RetrasoCode[] = ['00', '05', '15'];
+
+interface AvgCounter {
+  sumDays: number;
+  count: number;
+}
+
+interface ActivadasCounter {
+  sumDays: number;
+  count: number;
+  incidencias: number;
+}
+
+interface PdteActivacionCounter {
+  count: number;
+  incidencias: number;
+}
+
+interface SiCodageGroup {
+  Provincia: string;
+  Distribuidor: string;
+  Comer_entrante: string;
+  Comer_saliente: string;
+  TipoCambio: 'C3' | 'C4' | 'C6';
+  TipoPunto: '1' | '2' | '3' | '4' | '5';
+  TarifaATR: string;
+  TotalSolicitudesEnviadas: number;
+  SolicitudesAnuladas: number;
+  Reposiciones: number;
+  ClientesSalientes: number;
+  NumImpagados: number;
+  pendientesRespuesta: Record<RetrasoCode, number>;
+  aceptadas: Record<RetrasoCode, AvgCounter>;
+  rechazadas: Record<string, { retraso: RetrasoCode; motivo: string; sumDays: number; count: number }>;
+  pdteActivacion: Record<RetrasoCode, PdteActivacionCounter>;
+  activadas: Record<RetrasoCode, ActivadasCounter>;
+}
+
+function formatCnmcMeanTime(sumDays: number, count: number): string {
+  if (count <= 0) return '0.0';
+  const clamped = Math.min(999.99, Math.max(0, sumDays / count));
+  const rounded2 = Math.round(clamped * 100) / 100;
+  // Si el segundo decimal es 0, emitir 1 decimal (ej. "0.0", "1.4"); si no, hasta 2 decimales según Apdo. 10 Manual CNMC
+  if (Math.round(rounded2 * 100) % 10 === 0) {
+    return rounded2.toFixed(1);
+  }
+  return rounded2.toFixed(2);
+}
+
+function mapProcesoToTipoCambio(procesoBase: string): 'C3' | 'C4' | 'C6' {
+  if (procesoBase === 'A3') return 'C4';
+  if (procesoBase === 'E1') return 'C6';
+  // C1, C2 y E2 (reposiciones) se declaran bajo C3 según Apdo. 4.2 y 11.7 Manual CNMC
+  return 'C3';
+}
+
+function addMonthsToYm(year: number, month: number, deltaMonths: number): { y: number; m: number; ymd: string } {
+  const total = year * 12 + (month - 1) + deltaMonths;
+  const y = Math.floor(total / 12);
+  const m = (total % 12) + 1;
+  return {
+    y,
+    m,
+    ymd: `${y}-${String(m).padStart(2, '0')}-01`,
   };
+}
 
-  if (pasoRechazado?.motivosRechazo) {
-    try {
-      const parsed =
-        typeof pasoRechazado.motivosRechazo === 'string'
-          ? JSON.parse(pasoRechazado.motivosRechazo)
-          : pasoRechazado.motivosRechazo;
-      const code = pickCode(parsed);
-      if (code) return code;
-    } catch {
-      // Ignore parse error and fallback below
-    }
-  }
-
-  if (pasoRechazado?.observaciones && typeof pasoRechazado.observaciones === 'string') {
-    // Check formatted "[29 - ...]" pattern first
-    const bracketMatch = pasoRechazado.observaciones.match(/\[([A-Z0-9]{1,2})\s*-/i);
-    if (bracketMatch?.[1]) {
-      return bracketMatch[1].toUpperCase().padStart(2, '0');
-    }
-    try {
-      const obsObj = JSON.parse(pasoRechazado.observaciones);
-      const code = pickCode(obsObj?.Motivo || obsObj?.MotivosRechazo?.Motivo || obsObj);
-      if (code) return code;
-    } catch {
-      // Non-JSON text
-    }
-  }
-
-  return '99';
+function getLastDayOfMonthYmd(year: number, month: number): string {
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 }
 
 export async function GET(request: Request) {
   try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const userRole = (session.user as any).role || 'CANAL';
-    if (['COMERCIAL', 'CANAL'].includes(userRole)) {
-      return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
-    }
+    const authRes = await requireRegulatoryContext();
+    if (!authRes.ok) return authRes.response;
+    const { ctx } = authRes;
 
     const { searchParams } = new URL(request.url);
-    const mes = searchParams.get('mes'); // e.g. "2026-04"
+    const mes = searchParams.get('mes'); // YYYY-MM
     const rawVersion = (searchParams.get('version') || '01').trim();
-    const version = /^\d{1,2}$/.test(rawVersion) ? rawVersion.padStart(2, '0') : '01';
+    const version = /^\d{1,2}$/.test(rawVersion) && Number(rawVersion) > 0
+      ? rawVersion.padStart(2, '0')
+      : '01';
+    const isPreview = searchParams.get('preview') === 'true';
+    const allowEmpty = searchParams.get('allowEmpty') === 'true';
 
-    if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
-      return NextResponse.json({ error: 'Falta o es inválido el parámetro mes (YYYY-MM)' }, { status: 400 });
+    if (!mes || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+      return NextResponse.json(
+        { error: 'Falta o es inválido el parámetro mes (formato requerido: YYYY-MM).' },
+        { status: 400 }
+      );
     }
 
     const [yearStr, monthStr] = mes.split('-');
     const year = parseInt(yearStr, 10);
     const month = parseInt(monthStr, 10);
 
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 1);
+    const startYmd = `${yearStr}-${monthStr}-01`;
+    const nextMonth = addMonthsToYm(year, month, 1);
+    const endYmd = nextMonth.ymd;
+    const monthLastDayYmd = getLastDayOfMonthYmd(year, month);
+    const lookback = addMonthsToYm(year, month, -14);
 
-    const activeCompanyId = await resolveActiveCompanyId(session);
-    const company = activeCompanyId
-      ? await prisma.company.findUnique({ where: { id: activeCompanyId } })
-      : await prisma.company.findFirst();
+    const lookbackStartDate = parseMadridStartOfDay(lookback.ymd);
+    const endExclusiveDate = parseMadridStartOfDay(endYmd);
+    // Margen de 90 días previos para candidatos a "pendiente" cuando no hay contrato en estado explícito EN_TRAMITACION
+    const pendingCutoffYmd = addMonthsToYm(year, month, -3).ymd;
 
-    if (!company) {
-      return NextResponse.json({ error: 'No se encontró información de la empresa comercializadora' }, { status: 500 });
-    }
-
-    const codigoAgente = company.ordenCnmc || 'R2-950';
-
-    // Fetch all Distributors for R1-xxx mapping
-    const distributorsList = await prisma.distributor.findMany();
-
-    const companyScopeOr: any[] = [
-      { contract: { brand: { companyId: company.id } } },
-      { supplyPoint: { client: { brand: { companyId: company.id } } } },
-    ];
-    if (company.codigoRee) {
-      companyScopeOr.push({ uniqueProcess: { startsWith: `${company.codigoRee}_` } });
-    }
-
-    // Fetch Switching Events for the month scoped to active company
-    const events = await prisma.switchingEvent.findMany({
-      where: {
-        fechaSolicitud: {
-          gte: startDate,
-          lt: endDate,
+    const [distributorsList, events] = await Promise.all([
+      prisma.distributor.findMany({
+        select: { reeCode: true, name: true, registroCnmc: true },
+      }),
+      prisma.switchingEvent.findMany({
+        where: {
+          AND: [
+            // Excluimos explícitamente T1 (T1_01 lo emite la Distribuidora al saliente por traspaso a COR; Apdo. 10 y FAQ pág. 44)
+            { procesoBase: { in: ['C1', 'C2', 'A3', 'E1', 'E2'] } },
+            buildSwitchingCompanyWhere(ctx.companyId, ctx.isSingleCompanyDeployment),
+            {
+              OR: [
+                { fechaSolicitud: { gte: lookbackStartDate, lt: endExclusiveDate } },
+                { fechaAR: { gte: lookbackStartDate, lt: endExclusiveDate } },
+                { fechaActivacionAlta: { gte: lookbackStartDate, lt: endExclusiveDate } },
+                { fechaActivacionBaja: { gte: lookbackStartDate, lt: endExclusiveDate } },
+                { fechaAviso: { gte: lookbackStartDate, lt: endExclusiveDate } },
+              ],
+            },
+          ],
         },
-        procesoBase: {
-          in: ['C1', 'C2', 'A3', 'T1', 'E1', 'E2'],
-        },
-        OR: companyScopeOr,
-      },
-      include: {
-        supplyPoint: {
-          select: {
-            postalCode: true,
-            distributorReeCode: true,
-            distributor: true,
-            tariff: true,
+        include: {
+          supplyPoint: {
+            select: {
+              cups: true,
+              postalCode: true,
+              sipsPostalCode: true,
+              province: true,
+              distributorReeCode: true,
+              distributor: true,
+              distributorName: true,
+              tariff: true,
+              sipsTariff: true,
+              p1c: true,
+              p2c: true,
+              p3c: true,
+              p4c: true,
+              p5c: true,
+              p6c: true,
+              sipsP1c: true,
+              sipsP2c: true,
+              sipsP3c: true,
+              sipsP4c: true,
+              sipsP5c: true,
+              sipsP6c: true,
+            },
+          },
+          contract: {
+            select: {
+              status: true,
+              activationDate: true,
+              terminationDate: true,
+              supplyPoint: {
+                select: {
+                  cups: true,
+                  postalCode: true,
+                  sipsPostalCode: true,
+                  province: true,
+                  distributorReeCode: true,
+                  distributor: true,
+                  distributorName: true,
+                  tariff: true,
+                  sipsTariff: true,
+                  p1c: true,
+                  p2c: true,
+                  p3c: true,
+                  p4c: true,
+                  p5c: true,
+                  p6c: true,
+                  sipsP1c: true,
+                  sipsP2c: true,
+                  sipsP3c: true,
+                  sipsP4c: true,
+                  sipsP5c: true,
+                  sipsP6c: true,
+                },
+              },
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
 
-    // Grouping structure for the output XML
-    // Key: Provincia|Distribuidor|Comer_entrante|Comer_saliente|TipoCambio|TipoPunto|TarifaATR
-    const groupedData: Record<string, any> = {};
+    const resolveDistributor = createDistributorCnmcMapper(distributorsList);
 
-    const mapDistribuidor = (sp: any) => {
-      const ree = sp?.distributorReeCode?.trim();
-      if (ree) {
-        const byRee = distributorsList.find(dist => dist.reeCode === ree);
-        if (byRee?.registroCnmc) return byRee.registroCnmc;
-        if (ree === '0021') return 'R1-001';
-        if (ree === '0031' || ree === '0288' || ree === '0029') return 'R1-002';
-        if (ree === '0022' || ree === '0390') return 'R1-299';
-        if (ree === '0026') return 'R1-053';
-        if (ree === '0027') return 'R1-008';
-      }
-
-      const d = sp?.distributor?.toUpperCase() || '';
-      if (d) {
-        const matchedDistributor = distributorsList.find(
-          dist => d.includes(dist.name.toUpperCase()) || dist.name.toUpperCase().includes(d)
-        );
-        if (matchedDistributor?.registroCnmc) {
-          return matchedDistributor.registroCnmc;
-        }
-        if (matchedDistributor?.reeCode) {
-          return matchedDistributor.reeCode;
-        }
-
-        if (d.includes('IBERDROLA') || d.includes('I-DE')) return 'R1-001';
-        if (d.includes('EDISTRIBUCION') || d.includes('ENDESA')) return 'R1-002';
-        if (d.includes('UFD') || d.includes('UNION FENOSA')) return 'R1-299';
-        if (d.includes('E-REDES') || d.includes('CANTABRICO')) return 'R1-053';
-        if (d.includes('VIESGO')) return 'R1-008';
-      }
-
-      if (ree) return ree;
-      return 'R1-299';
-    };
-
-    const mapTariff = (tariff: string) => {
-      if (!tariff) return 'E1';
-      if (tariff.includes('2.0')) return 'E1';
-      if (tariff.includes('3.0')) return 'E2';
-      if (tariff.includes('6.1')) return 'E3';
-      if (tariff.includes('6.2')) return 'E4';
-      if (tariff.includes('6.3')) return 'E5';
-      if (tariff.includes('6.4')) return 'E6';
-      return 'E1';
-    };
-
-    const mapProceso = (procesoBase: string) => {
-      if (procesoBase === 'C1' || procesoBase === 'C2' || procesoBase === 'E2') return 'C3';
-      if (procesoBase === 'A3') return 'C4';
-      if (procesoBase === 'T1') return 'C5';
-      if (procesoBase === 'E1') return 'C6';
-      return 'C3';
-    };
-
-    // Group events by `codigoSolicitud` since one request can have multiple steps (pasos)
-    const solicitudes: Record<string, any[]> = {};
+    // Agrupar todos los pasos por expediente (codigoSolicitud)
+    const solicitudesMap = new Map<string, typeof events>();
     for (const ev of events) {
-      if (ev.codigoSolicitud) {
-        if (!solicitudes[ev.codigoSolicitud]) solicitudes[ev.codigoSolicitud] = [];
-        solicitudes[ev.codigoSolicitud].push(ev);
+      if (!ev.codigoSolicitud) continue;
+      const list = solicitudesMap.get(ev.codigoSolicitud);
+      if (list) {
+        list.push(ev);
+      } else {
+        solicitudesMap.set(ev.codigoSolicitud, [ev]);
       }
     }
 
-    // Process each 'solicitud' as a single entity
-    for (const [, pasos] of Object.entries(solicitudes)) {
-      // Si no hay paso 01, significa que el trámite no lo iniciamos nosotros
-      const pasoInicial = pasos.find(p => p.paso === '01');
-      if (!pasoInicial) continue;
+    const groupedData: Record<string, SiCodageGroup> = {};
+    const fallbackDistributorCups = new Set<string>();
+    const fallbackProvinceCups = new Set<string>();
 
-      const sp = pasoInicial.supplyPoint;
-      const provincia = sp?.postalCode ? sp.postalCode.substring(0, 2) + '000' : '28000';
-      const distribuidor = mapDistribuidor(sp);
-      const comerEntrante = codigoAgente;
+    const getOrCreateGroup = (sp: any, procesoBase: string): SiCodageGroup => {
+      const prov = resolveIneProvinceCode(sp?.postalCode, sp?.sipsPostalCode, sp?.province);
+      if (prov.isFallback && sp?.cups) fallbackProvinceCups.add(sp.cups);
+      const provinciaCnmc = `${prov.code}000`;
+
+      const dist = resolveDistributor(sp);
+      if (dist.isFallback && sp?.cups) fallbackDistributorCups.add(sp.cups);
+
+      const comerEntrante = ctx.codigoAgente;
       const comerSaliente = '0';
-      const tipoCambio = mapProceso(pasoInicial.procesoBase);
-      const tipoPunto = '5';
-      const tarifaAtr = mapTariff(sp?.tariff);
+      const tipoCambio = mapProcesoToTipoCambio(procesoBase);
+      const tipoPunto = mapTipoPuntoCnmc(sp);
+      const tarifaAtr = mapTarifaAtrCnmc(sp?.tariff || sp?.sipsTariff);
 
-      const key = `${provincia}|${distribuidor}|${comerEntrante}|${comerSaliente}|${tipoCambio}|${tipoPunto}|${tarifaAtr}`;
-
+      const key = `${provinciaCnmc}|${dist.code}|${comerEntrante}|${comerSaliente}|${tipoCambio}|${tipoPunto}|${tarifaAtr}`;
       if (!groupedData[key]) {
         groupedData[key] = {
-          Provincia: provincia,
-          Distribuidor: distribuidor,
+          Provincia: provinciaCnmc,
+          Distribuidor: dist.code,
           Comer_entrante: comerEntrante,
           Comer_saliente: comerSaliente,
           TipoCambio: tipoCambio,
@@ -233,77 +257,326 @@ export async function GET(request: Request) {
           Reposiciones: 0,
           ClientesSalientes: 0,
           NumImpagados: 0,
-          aceptadas: { sum: 0, count: 0 },
+          pendientesRespuesta: { '00': 0, '05': 0, '15': 0 },
+          aceptadas: {
+            '00': { sumDays: 0, count: 0 },
+            '05': { sumDays: 0, count: 0 },
+            '15': { sumDays: 0, count: 0 },
+          },
           rechazadas: {},
-          activadas: { sum: 0, count: 0, incidencias: 0 },
+          pdteActivacion: {
+            '00': { count: 0, incidencias: 0 },
+            '05': { count: 0, incidencias: 0 },
+            '15': { count: 0, incidencias: 0 },
+          },
+          activadas: {
+            '00': { sumDays: 0, count: 0, incidencias: 0 },
+            '05': { sumDays: 0, count: 0, incidencias: 0 },
+            '15': { sumDays: 0, count: 0, incidencias: 0 },
+          },
         };
       }
+      return groupedData[key];
+    };
 
-      const g = groupedData[key];
+    for (const [, rawPasos] of solicitudesMap.entries()) {
+      // Ordenar cronológicamente y acotar estrictamente al corte fin de mes (< endYmd) para fidelidad histórica
+      const pasosUpToEnd = rawPasos
+        .filter(p => {
+          const ts = p.fechaActivacionAlta || p.fechaActivacionBaja || p.fechaAR || p.fechaSolicitud || p.fechaAviso;
+          const ymd = toMadridYmd(ts);
+          return Boolean(ymd && ymd < endYmd);
+        })
+        .sort((a, b) => {
+          const ta = (a.fechaSolicitud || a.fechaAR || a.fechaAviso).getTime();
+          const tb = (b.fechaSolicitud || b.fechaAR || b.fechaAviso).getTime();
+          return ta - tb;
+        });
 
+      if (pasosUpToEnd.length === 0) continue;
+
+      // Solo procesamos expedientes iniciados por nuestra comercializadora (paso 01 existente antes del fin del mes)
+      const pasoInicial = pasosUpToEnd.find(p => p.paso === '01');
+      if (!pasoInicial) continue;
+
+      const reqSentDate = pasoInicial.fechaSolicitud || pasoInicial.fechaAviso;
+      const reqSentYmd = toMadridYmd(reqSentDate);
+      if (!reqSentYmd || reqSentYmd >= endYmd) continue;
+
+      const sp =
+        pasoInicial.supplyPoint ||
+        pasoInicial.contract?.supplyPoint ||
+        pasosUpToEnd.find(p => p.supplyPoint)?.supplyPoint ||
+        pasosUpToEnd.find(p => p.contract?.supplyPoint)?.contract?.supplyPoint;
+
+      const contractInfo = pasoInicial.contract || pasosUpToEnd.find(p => p.contract)?.contract;
+
+      // Caso especial E2: Reposiciones ejecutadas (Apdo. 4.2 y 11.7 Manual CNMC)
       if (pasoInicial.procesoBase === 'E2') {
-        g.Reposiciones++;
-      } else {
-        g.TotalSolicitudesEnviadas++;
+        const pasoEjecutadoE2 = pasosUpToEnd.find(
+          p => p.paso === '05' || p.paso === '06' || p.fechaActivacionAlta || p.fechaActivacionBaja
+        );
+        const fechaEjecE2 =
+          pasoEjecutadoE2?.fechaActivacionAlta ||
+          pasoEjecutadoE2?.fechaActivacionBaja ||
+          pasoEjecutadoE2?.fechaAR ||
+          pasoEjecutadoE2?.fechaSolicitud;
+
+        if (pasoEjecutadoE2 && isDateInMadridRange(fechaEjecE2, startYmd, endYmd)) {
+          const g = getOrCreateGroup(sp, 'E2');
+          g.Reposiciones++;
+        }
+        continue;
       }
 
-      if (pasoInicial.procesoBase !== 'E2') {
-        const isAnulada = pasos.some(p => p.isAnnulled);
-        if (isAnulada) {
-          g.SolicitudesAnuladas++;
-        }
+      // 1. Solicitudes enviadas en el mes
+      const sentInMonth = isDateInMadridRange(reqSentDate, startYmd, endYmd);
 
-        // Only Paso 02 is an acceptance in C1/C2/A3/T1/E1 (Paso 04 in C1/C2/A3/M1 is always MensajeRechazo)
-        const pasoAceptado = pasos.find(
-          p =>
-            p.paso === '02' &&
-            (p.estadoAR?.includes('ACEPTAD') || (!p.estadoAR?.includes('RECHAZ') && !p.tipoError))
+      // 2. Solicitudes anuladas (paso 09 en C1/C2, paso 07 en A3, o marca isAnnulled)
+      const annulConfirmationStep = pasosUpToEnd.find(p =>
+        pasoInicial.procesoBase === 'A3'
+          ? p.paso === '07' || (p.paso === '06' && p.estadoAR?.toUpperCase().includes('ACEPTAD'))
+          : p.paso === '09' || (p.paso === '08' && p.estadoAR?.toUpperCase().includes('ACEPTAD'))
+      );
+      const anyAnnulStep =
+        annulConfirmationStep ||
+        pasosUpToEnd.find(p =>
+          (pasoInicial.procesoBase === 'A3' ? p.paso === '06' : p.paso === '08') && p.isAnnulled
         );
-        if (pasoAceptado && pasoAceptado.fechaAR && pasoInicial.fechaSolicitud) {
-          const diffDays = Math.max(
-            0,
-            (pasoAceptado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)
-          );
-          g.aceptadas.sum += diffDays;
-          g.aceptadas.count++;
-        }
+      const isMarkedAnnulled = Boolean(anyAnnulStep || pasosUpToEnd.some(p => p.isAnnulled));
+      const annulDate = isMarkedAnnulled
+        ? anyAnnulStep?.fechaAR || anyAnnulStep?.fechaSolicitud || anyAnnulStep?.fechaAviso || reqSentDate
+        : null;
+      const annulledInMonth = Boolean(annulDate && isDateInMadridRange(annulDate, startYmd, endYmd));
 
-        const pasoRechazado = pasos.find(
-          p => (p.paso === '02' && p.estadoAR?.includes('RECHAZ')) || p.paso === '04'
-        );
-        if (pasoRechazado && pasoInicial.fechaSolicitud) {
-          const diffDays = pasoRechazado.fechaAR
-            ? Math.max(
-                0,
-                (pasoRechazado.fechaAR.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)
-              )
-            : 0;
+      // 3. Aceptación en paso 02 (sin bug de precedencia booleana; Ejemplo 4 Manual CNMC)
+      const pasoAceptado = pasosUpToEnd.find(
+        p =>
+          p.paso === '02' &&
+          (Boolean(p.estadoAR?.toUpperCase().includes('ACEPTAD')) ||
+            (!p.estadoAR?.toUpperCase().includes('RECHAZ') && !p.motivosRechazo))
+      );
+      const acceptDate = pasoAceptado
+        ? pasoAceptado.fechaAR || pasoAceptado.fechaSolicitud || pasoAceptado.fechaAviso
+        : null;
+      const acceptedInMonth = Boolean(pasoAceptado && isDateInMadridRange(acceptDate, startYmd, endYmd));
 
-          const motivo = extractMotivoRechazoCode(pasoRechazado);
-          if (!g.rechazadas[motivo]) g.rechazadas[motivo] = { sum: 0, count: 0 };
-          g.rechazadas[motivo].sum += diffDays;
-          g.rechazadas[motivo].count++;
-        }
+      // 4. Rechazo en paso 02 y/o rechazo posterior en campo paso 04 (Ejemplo 4 Manual CNMC permite ambos en un mismo expediente)
+      const pasoRechazo02 = pasosUpToEnd.find(
+        p => p.paso === '02' && Boolean(p.estadoAR?.toUpperCase().includes('RECHAZ'))
+      );
+      const pasoRechazo04 = pasosUpToEnd.find(p => p.paso === '04');
 
-        const pasoActivado = pasos.find(p => p.paso === '05' || p.fechaActivacionAlta);
-        if (pasoActivado && (pasoActivado.fechaActivacionAlta || pasoActivado.fechaAviso) && pasoInicial.fechaSolicitud) {
-          const fechaAct = pasoActivado.fechaActivacionAlta || pasoActivado.fechaAviso;
-          const diffDays = Math.max(
-            0,
-            (fechaAct.getTime() - pasoInicial.fechaSolicitud.getTime()) / (1000 * 3600 * 24)
-          );
-          g.activadas.sum += diffDays;
-          g.activadas.count++;
-          if (pasos.some(p => p.paso === '03')) {
-            g.activadas.incidencias++;
+      const rej02Date = pasoRechazo02
+        ? pasoRechazo02.fechaAR || pasoRechazo02.fechaSolicitud || pasoRechazo02.fechaAviso
+        : null;
+      const rej04Date = pasoRechazo04
+        ? pasoRechazo04.fechaAR || pasoRechazo04.fechaSolicitud || pasoRechazo04.fechaAviso
+        : null;
+
+      const rejected02InMonth = Boolean(pasoRechazo02 && isDateInMadridRange(rej02Date, startYmd, endYmd));
+      const rejected04InMonth = Boolean(pasoRechazo04 && isDateInMadridRange(rej04Date, startYmd, endYmd));
+      const hasAnyRejectionByEnd = Boolean(pasoRechazo02 || pasoRechazo04);
+
+      // 5. Activación efectiva en paso 05 (Apdo. 11.5 Manual CNMC)
+      const pasoActivado = !hasAnyRejectionByEnd && !isMarkedAnnulled
+        ? pasosUpToEnd.find(p => p.paso === '05' || Boolean(p.fechaActivacionAlta))
+        : undefined;
+      const actDate = pasoActivado
+        ? pasoActivado.fechaActivacionAlta || pasoActivado.fechaAR || pasoActivado.fechaSolicitud || pasoActivado.fechaAviso
+        : null;
+      const activatedInMonth = Boolean(pasoActivado && isDateInMadridRange(actDate, startYmd, endYmd));
+
+      // Incidencias comunicadas en paso 03 antes o durante el mes
+      const incidenciaSteps = pasosUpToEnd.filter(p => p.paso === '03');
+      const hadIncidencia = incidenciaSteps.length > 0;
+
+      // 6. Estado pendiente a cierre del mes (último día natural del mes)
+      let pendingRespRetraso: RetrasoCode | null = null;
+      let pendingActRetraso: RetrasoCode | null = null;
+
+      if (!isMarkedAnnulled && !hasAnyRejectionByEnd && !pasoActivado) {
+        const contractStatus = (contractInfo?.status || '').toUpperCase();
+        const contractAlreadyClosed =
+          ['CANCELADO', 'RECHAZADO', 'ANULADO', 'BAJA'].includes(contractStatus) ||
+          (contractStatus === 'ACTIVO' &&
+            contractInfo?.activationDate &&
+            (toMadridYmd(contractInfo.activationDate) || '9999-12-31') < endYmd);
+
+        const isRecentOrExplicitlyInFlight =
+          reqSentYmd >= pendingCutoffYmd ||
+          ['EN_TRAMITACION', 'PENDIENTE', 'ACEPTADO', 'ENVIADO', 'TRAMITACION'].includes(contractStatus);
+
+        if (!contractAlreadyClosed && isRecentOrExplicitlyInFlight) {
+          if (!pasoAceptado) {
+            const daysWaitingResp = daysBetweenMadridDates(reqSentDate, monthLastDayYmd);
+            pendingRespRetraso = classifyResponseTipoRetraso(daysWaitingResp);
+          } else {
+            const refPrevAct = pasoAceptado.fechaPrevActivacion || acceptDate || reqSentDate;
+            const prevYmd = toMadridYmd(refPrevAct) || monthLastDayYmd;
+            const overdueDays = prevYmd < monthLastDayYmd
+              ? daysBetweenMadridDates(refPrevAct, monthLastDayYmd)
+              : 0;
+            pendingActRetraso = classifyActivationTipoRetraso(overdueDays);
           }
+        }
+      }
+
+      const touchesMonth =
+        sentInMonth ||
+        annulledInMonth ||
+        acceptedInMonth ||
+        rejected02InMonth ||
+        rejected04InMonth ||
+        activatedInMonth ||
+        pendingRespRetraso !== null ||
+        pendingActRetraso !== null;
+
+      if (!touchesMonth) continue;
+
+      const g = getOrCreateGroup(sp, pasoInicial.procesoBase);
+
+      if (sentInMonth) {
+        g.TotalSolicitudesEnviadas++;
+      }
+      if (annulledInMonth) {
+        g.SolicitudesAnuladas++;
+      }
+      if (acceptedInMonth && acceptDate) {
+        const respDays = daysBetweenMadridDates(reqSentDate, acceptDate);
+        const retraso = classifyResponseTipoRetraso(respDays);
+        g.aceptadas[retraso].sumDays += respDays;
+        g.aceptadas[retraso].count++;
+      }
+      if (rejected02InMonth && pasoRechazo02 && rej02Date) {
+        const respDays = daysBetweenMadridDates(reqSentDate, rej02Date);
+        const retraso = classifyResponseTipoRetraso(respDays);
+        const motivo = extractMotivoRechazoCnmc(pasoRechazo02.motivosRechazo, pasoRechazo02.observaciones);
+        const rKey = `${retraso}|${motivo}`;
+        if (!g.rechazadas[rKey]) {
+          g.rechazadas[rKey] = { retraso, motivo, sumDays: 0, count: 0 };
+        }
+        g.rechazadas[rKey].sumDays += respDays;
+        g.rechazadas[rKey].count++;
+      }
+      if (rejected04InMonth && pasoRechazo04 && rej04Date) {
+        const totalRejDays = daysBetweenMadridDates(reqSentDate, rej04Date);
+        const retraso = pasoAceptado?.fechaPrevActivacion
+          ? classifyActivationTipoRetraso(daysBetweenMadridDates(pasoAceptado.fechaPrevActivacion, rej04Date))
+          : classifyResponseTipoRetraso(totalRejDays);
+        const motivo = extractMotivoRechazoCnmc(pasoRechazo04.motivosRechazo, pasoRechazo04.observaciones);
+        const rKey = `${retraso}|${motivo}`;
+        if (!g.rechazadas[rKey]) {
+          g.rechazadas[rKey] = { retraso, motivo, sumDays: 0, count: 0 };
+        }
+        g.rechazadas[rKey].sumDays += totalRejDays;
+        g.rechazadas[rKey].count++;
+      }
+      if (activatedInMonth && actDate) {
+        // Fórmula oficial Apdo. 11.5 Manual CNMC:
+        // TMActivacion = max(0, FechaActivacionEfectiva - FechaActivacionPrevista)
+        // Si hubo incidencia ajena (paso 03), referencia desde comunicación de la 1ª incidencia si es posterior.
+        let refExpectedDate = pasoAceptado?.fechaPrevActivacion || acceptDate || reqSentDate;
+        if (hadIncidencia) {
+          const firstInc = incidenciaSteps[0];
+          const incDate = firstInc.fechaSolicitud || firstInc.fechaAR || firstInc.fechaAviso;
+          if (incDate && (!pasoAceptado?.fechaPrevActivacion || incDate > pasoAceptado.fechaPrevActivacion)) {
+            refExpectedDate = incDate;
+          }
+        }
+        const operationalDelayDays = daysBetweenMadridDates(refExpectedDate, actDate);
+        const retraso = classifyActivationTipoRetraso(operationalDelayDays);
+        g.activadas[retraso].sumDays += operationalDelayDays;
+        g.activadas[retraso].count++;
+        if (hadIncidencia) {
+          g.activadas[retraso].incidencias++;
+        }
+      }
+      if (pendingRespRetraso) {
+        g.pendientesRespuesta[pendingRespRetraso]++;
+      }
+      if (pendingActRetraso) {
+        g.pdteActivacion[pendingActRetraso].count++;
+        if (hadIncidencia) {
+          g.pdteActivacion[pendingActRetraso].incidencias++;
         }
       }
     }
 
-    // Prepare XML Object
-    const datosSolicitudes = Object.values(groupedData).map(g => {
-      const node: any = {
+    // Construir nodos <DatosSolicitudes> respetando estrictamente xs:sequence de SolicitudesRealizadas_v1.0.xsd
+    let kpiEnviadas = 0;
+    let kpiAceptadas = 0;
+    let kpiRechazadas = 0;
+    let kpiActivadas = 0;
+    let kpiAnuladas = 0;
+    let kpiReposiciones = 0;
+    let kpiPendientes = 0;
+
+    const sortedGroups = Object.values(groupedData).sort((a, b) =>
+      `${a.Provincia}|${a.Distribuidor}|${a.TipoCambio}|${a.TipoPunto}|${a.TarifaATR}`.localeCompare(
+        `${b.Provincia}|${b.Distribuidor}|${b.TipoCambio}|${b.TipoPunto}|${b.TarifaATR}`
+      )
+    );
+
+    const datosSolicitudes: any[] = [];
+    const previewRows: any[] = [];
+
+    for (const g of sortedGroups) {
+      const detallePendResp = RETRASO_ORDER
+        .filter(r => g.pendientesRespuesta[r] > 0)
+        .map(r => ({
+          TipoRetraso: r,
+          NumSolicitudesPendientes: g.pendientesRespuesta[r],
+        }));
+
+      const detalleAceptadas = RETRASO_ORDER
+        .filter(r => g.aceptadas[r].count > 0)
+        .map(r => ({
+          TipoRetraso: r,
+          TMSolicitudesAceptadas: formatCnmcMeanTime(g.aceptadas[r].sumDays, g.aceptadas[r].count),
+          NumSolicitudesAceptadas: g.aceptadas[r].count,
+        }));
+
+      const detalleRechazadas = Object.values(g.rechazadas)
+        .filter(r => r.count > 0)
+        .sort((a, b) => `${a.retraso}|${a.motivo}`.localeCompare(`${b.retraso}|${b.motivo}`))
+        .map(r => ({
+          TipoRetraso: r.retraso,
+          TMSolicitudesRechazadas: formatCnmcMeanTime(r.sumDays, r.count),
+          MotivoRechazo: r.motivo.slice(0, 2),
+          NumSolicitudesRechazadas: r.count,
+        }));
+
+      const detallePdteAct = RETRASO_ORDER
+        .filter(r => g.pdteActivacion[r].count > 0)
+        .map(r => ({
+          TipoRetraso: r,
+          NumIncidencias: g.pdteActivacion[r].incidencias,
+          NumSolicitudesPdteActivacion: g.pdteActivacion[r].count,
+        }));
+
+      const detalleActivadas = RETRASO_ORDER
+        .filter(r => g.activadas[r].count > 0)
+        .map(r => ({
+          TipoRetraso: r,
+          TMActivacion: formatCnmcMeanTime(g.activadas[r].sumDays, g.activadas[r].count),
+          NumIncidencias: g.activadas[r].incidencias,
+          NumSolicitudesActivadas: g.activadas[r].count,
+        }));
+
+      const hasActivity =
+        g.TotalSolicitudesEnviadas > 0 ||
+        g.SolicitudesAnuladas > 0 ||
+        g.Reposiciones > 0 ||
+        detallePendResp.length > 0 ||
+        detalleAceptadas.length > 0 ||
+        detalleRechazadas.length > 0 ||
+        detallePdteAct.length > 0 ||
+        detalleActivadas.length > 0;
+
+      if (!hasActivity) continue;
+
+      const node: Record<string, any> = {
         Provincia: g.Provincia,
         Distribuidor: g.Distribuidor,
         Comer_entrante: g.Comer_entrante,
@@ -318,81 +591,163 @@ export async function GET(request: Request) {
         NumImpagados: g.NumImpagados,
       };
 
-      if (g.aceptadas.count > 0) {
-        node.DetalleAceptadas = {
-          TipoRetraso: '00',
-          TMSolicitudesAceptadas: (g.aceptadas.sum / g.aceptadas.count).toFixed(1),
-          NumSolicitudesAceptadas: g.aceptadas.count,
-        };
-      }
+      // Orden estricto XSD SolicitudesRealizadas_v1.0.xsd:
+      // 1º DetallePendientesRespuesta -> 2º DetalleAceptadas -> 3º DetalleRechazadas -> 4º DetallePdteActivacion -> 5º DetalleActivadas
+      if (detallePendResp.length > 0) node.DetallePendientesRespuesta = detallePendResp;
+      if (detalleAceptadas.length > 0) node.DetalleAceptadas = detalleAceptadas;
+      if (detalleRechazadas.length > 0) node.DetalleRechazadas = detalleRechazadas;
+      if (detallePdteAct.length > 0) node.DetallePdteActivacion = detallePdteAct;
+      if (detalleActivadas.length > 0) node.DetalleActivadas = detalleActivadas;
 
-      const rechazosList = [];
-      for (const [motivo, data] of Object.entries(g.rechazadas) as any) {
-        rechazosList.push({
-          TipoRetraso: '00',
-          TMSolicitudesRechazadas: (data.sum / data.count).toFixed(1),
-          MotivoRechazo: motivo.substring(0, 2),
-          NumSolicitudesRechazadas: data.count,
-        });
-      }
+      datosSolicitudes.push(node);
 
-      if (rechazosList.length > 0) {
-        node.DetalleRechazadas = rechazosList;
-      }
+      const groupAceptadas = detalleAceptadas.reduce((acc, x) => acc + x.NumSolicitudesAceptadas, 0);
+      const groupRechazadas = detalleRechazadas.reduce((acc, x) => acc + x.NumSolicitudesRechazadas, 0);
+      const groupActivadas = detalleActivadas.reduce((acc, x) => acc + x.NumSolicitudesActivadas, 0);
+      const groupPendResp = detallePendResp.reduce((acc, x) => acc + x.NumSolicitudesPendientes, 0);
+      const groupPdteAct = detallePdteAct.reduce((acc, x) => acc + x.NumSolicitudesPdteActivacion, 0);
 
-      if (g.activadas.count > 0) {
-        node.DetalleActivadas = {
-          TipoRetraso: '00',
-          TMActivacion: (g.activadas.sum / g.activadas.count).toFixed(1),
-          NumIncidencias: g.activadas.incidencias,
-          NumSolicitudesActivadas: g.activadas.count,
-        };
-      }
+      kpiEnviadas += g.TotalSolicitudesEnviadas;
+      kpiAnuladas += g.SolicitudesAnuladas;
+      kpiReposiciones += g.Reposiciones;
+      kpiAceptadas += groupAceptadas;
+      kpiRechazadas += groupRechazadas;
+      kpiActivadas += groupActivadas;
+      kpiPendientes += groupPendResp + groupPdteAct;
 
-      return node;
-    });
+      previewRows.push({
+        provincia: g.Provincia,
+        distribuidor: g.Distribuidor,
+        tipoCambio: g.TipoCambio,
+        tipoPunto: g.TipoPunto,
+        tarifaAtr: g.TarifaATR,
+        enviadas: g.TotalSolicitudesEnviadas,
+        anuladas: g.SolicitudesAnuladas,
+        reposiciones: g.Reposiciones,
+        aceptadas: groupAceptadas,
+        rechazadas: groupRechazadas,
+        activadas: groupActivadas,
+        pendientesRespuesta: groupPendResp,
+        pendientesActivacion: groupPdteAct,
+        motivosRechazo: detalleRechazadas.map(r => `${r.MotivoRechazo} (${r.NumSolicitudesRechazadas})`).join(', '),
+      });
+    }
 
-    const xmlObj = {
-      '?xml': {
-        '@_version': '1.0',
-        '@_encoding': 'UTF-8',
-      },
-      MensajeSolicitudesRealizadas: {
-        '@_xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-        '@_xsi:noNamespaceSchemaLocation': 'SolicitudesRealizadas_v1.0.xsd',
-        Cabecera: {
-          CodigoAgente: codigoAgente,
-          TipoMercado: 'E',
-          TipoAgente: 'C',
-          Periodo: `${yearStr}${monthStr}`,
+    const emptyMonth = datosSolicitudes.length === 0;
+    const warnings: string[] = [];
+
+    if (emptyMonth) {
+      warnings.push(
+        `Sin actividad ni solicitudes pendientes en ${mes}. Según el Apdo. 3.3 y FAQ (pág. 43) del Manual CNMC SCC v6.0, cuando no se ha gestionado ninguna solicitud en el periodo no debe subirse un XML con <SolicitudesRealizadas /> vacío, sino comunicar la ausencia de actividad por correo a cambiodecomercializador@cnmc.es indicando el código ${ctx.codigoAgente} y el periodo ${yearStr}${monthStr}.`
+      );
+    }
+    if (fallbackDistributorCups.size > 0) {
+      warnings.push(
+        `${fallbackDistributorCups.size} suministro(s) carecen de código distribuidora R1/REE identificable y se han asignado por defecto a R1-299.`
+      );
+    }
+    if (fallbackProvinceCups.size > 0) {
+      warnings.push(
+        `${fallbackProvinceCups.size} suministro(s) carecen de código postal válido de 5 dígitos; revise su provincia antes de presentar.`
+      );
+    }
+
+    const filename = `SI_${ctx.codigoAgente}_E_${yearStr}${monthStr}_${version}.xml`;
+    const summary = {
+      periodo: `${yearStr}${monthStr}`,
+      version,
+      grupos: datosSolicitudes.length,
+      enviadas: kpiEnviadas,
+      aceptadas: kpiAceptadas,
+      rechazadas: kpiRechazadas,
+      activadas: kpiActivadas,
+      anuladas: kpiAnuladas,
+      reposiciones: kpiReposiciones,
+      pendientes: kpiPendientes,
+      emptyMonth,
+    };
+
+    if (isPreview) {
+      return NextResponse.json({
+        company: {
+          name: ctx.company.name,
+          cif: ctx.company.cif,
+          codigoAgente: ctx.codigoAgente,
         },
-        SolicitudesRealizadas: {
-          DatosSolicitudes: datosSolicitudes,
+        mes,
+        version,
+        filename,
+        emptyMonth,
+        summary,
+        warnings,
+        rows: previewRows,
+      });
+    }
+
+    if (emptyMonth && !allowEmpty) {
+      return NextResponse.json(
+        {
+          error: `No existen solicitudes ni expedientes pendientes en ${mes} para ${ctx.company.name} (${ctx.codigoAgente}). Según el Apdo. 3.3 del Manual CNMC SCC v6.0, no debe entregarse un XML vacío en sede electrónica, sino notificar "Sin actividad" por email a cambiodecomercializador@cnmc.es.`,
+          emptyMonth: true,
+          cnmcEmail: 'cambiodecomercializador@cnmc.es',
         },
+        { status: 422 }
+      );
+    }
+
+    // En SolicitudesRealizadas_v1.0.xsd, <SolicitudesRealizadas> es minOccurs="0", pero si se incluye requiere al menos 1 <DatosSolicitudes>.
+    const mensajeBody: Record<string, any> = {
+      '@_xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+      '@_xsi:noNamespaceSchemaLocation': 'SolicitudesRealizadas_v1.0.xsd',
+      Cabecera: {
+        CodigoAgente: ctx.codigoAgente,
+        TipoMercado: 'E',
+        TipoAgente: 'C',
+        Periodo: `${yearStr}${monthStr}`,
       },
     };
+
+    if (datosSolicitudes.length > 0) {
+      mensajeBody.SolicitudesRealizadas = {
+        DatosSolicitudes: datosSolicitudes,
+      };
+    }
 
     const builder = new XMLBuilder({
       ignoreAttributes: false,
       format: true,
     });
 
-    let xmlData = builder.build(xmlObj);
-    if (!xmlData.includes('<?xml')) {
-      xmlData = `<?xml version="1.0" encoding="UTF-8"?>\n` + xmlData;
+    let xmlData = builder.build({
+      MensajeSolicitudesRealizadas: mensajeBody,
+    });
+    if (!xmlData.trimStart().startsWith('<?xml')) {
+      xmlData = `<?xml version="1.0" encoding="UTF-8"?>\n${xmlData}`;
     }
 
-    const filename = `SI_${codigoAgente}_E_${yearStr}${monthStr}_${version}.xml`;
+    await logRegulatoryGeneration({
+      companyId: ctx.companyId,
+      category: 'CNMC',
+      reportType: 'SI_CODAGE',
+      period: mes,
+      version,
+      filename,
+      generatedBy: ctx.userName,
+      summary,
+    });
 
     return new NextResponse(xmlData, {
       status: 200,
       headers: {
-        'Content-Type': 'application/xml',
+        'Content-Type': 'application/xml; charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
   } catch (error: any) {
-    console.error('Error generating SI CODAGE XML:', error);
-    return NextResponse.json({ error: 'Error interno del servidor al generar el XML' }, { status: 500 });
+    console.error('Error generating SI_CODAGE XML:', error);
+    return NextResponse.json(
+      { error: error.message || 'Error interno del servidor al generar SI_CODAGE' },
+      { status: 500 }
+    );
   }
 }

@@ -630,6 +630,16 @@ export async function runHistoricalBacktest(
     sdaPerClientByKey.set(k, agg);
   }
 
+  // Pérdidas reguladas BOE y Factor K real de esa fecha (o equivalente) para elevar ambas series a Barras de Central (BC)
+  const [boeLossesAll, exactKRec] = await Promise.all([
+    prisma.regulatedCost.findMany({ where: { concept: 'PERDIDAS' } }),
+    prisma.systemComponentPrice.findFirst({ where: { component: 'K', date: targetUtc } }),
+  ]);
+  const kArray: number[] = exactKRec?.values?.length ? exactKRec.values : new Array(24).fill(1.0);
+  const madridHourDates = Array.from({ length: 24 }, (_, h) =>
+    fromZonedTime(`${targetDateStr}T${String(h).padStart(2, '0')}:30:00`, 'Europe/Madrid')
+  );
+
   const realHourlyKwh = new Array(24).fill(0);
   const predHourlyKwh = new Array(24).fill(0);
   let totalClientRecords = 0;
@@ -638,20 +648,29 @@ export async function runHistoricalBacktest(
     if (row.clientCount <= 0) continue;
     totalClientRecords += row.clientCount;
 
+    const prov = normalizeProvinceName(row.province);
+    const postalPrefix = getProvinceCodeByName(prov);
+    const tariff = row.tariff || '2.0TD';
+    const boeRec = selectActiveLossRecord(boeLossesAll, tariff, targetUtc);
+    const lossMultipliers = Array.from(
+      { length: 24 },
+      (_, h) => 1 + computeHourlyLossPct(boeRec, madridHourDates, h, tariff, postalPrefix, kArray)
+    );
+
     for (let h = 0; h < 24; h++) {
-      realHourlyKwh[h] += row.totalConsumption[h] || 0;
+      realHourlyKwh[h] += (row.totalConsumption[h] || 0) * lossMultipliers[h];
     }
 
-    const prov = normalizeProvinceName(row.province);
     if (['VIP', 'VE <15 MWh', 'VE >15 MWh'].includes(row.segment)) {
       const sda = sdaPerClientByKey.get(`${row.segment}|${prov}|${row.tariff}`);
       if (sda && sda.days > 0) {
         for (let h = 0; h < 24; h++) {
-          predHourlyKwh[h] += (sda.sumPerClient[h] / sda.days) * row.clientCount;
+          predHourlyKwh[h] +=
+            (sda.sumPerClient[h] / sda.days) * row.clientCount * lossMultipliers[h];
         }
       } else {
         for (let h = 0; h < 24; h++) {
-          predHourlyKwh[h] += row.totalConsumption[h] || 0;
+          predHourlyKwh[h] += (row.totalConsumption[h] || 0) * lossMultipliers[h];
         }
       }
       continue;
@@ -668,7 +687,7 @@ export async function runHistoricalBacktest(
     }
     const Y_pred = regression.predict(X_test);
     for (let h = 0; h < 24; h++) {
-      predHourlyKwh[h] += Math.max(0, Y_pred[h]) * row.clientCount;
+      predHourlyKwh[h] += Math.max(0, Y_pred[h]) * row.clientCount * lossMultipliers[h];
     }
   }
 

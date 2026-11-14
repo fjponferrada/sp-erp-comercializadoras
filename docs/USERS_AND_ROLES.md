@@ -35,7 +35,7 @@ Todo registro `User` cuenta con el interruptor booleano **`isActive`** (`@defaul
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`SUPERADMIN`** | Global (todas las empresas y marcas) | Todas las marcas | **Global** (incluye ver/crear `SUPERADMIN`) | Lectura y escritura completa | Todos los módulos ERP |
 | **`COMPANYADMIN`** | Sus `companies` (todas sus marcas hijas) + `assignedBrands` | Sus marcas autorizadas | **Acotado a sus comercializadoras** (prohibido ver/crear `SUPERADMIN`) | Lectura y escritura en sus marcas | Todos los módulos ERP de sus marcas |
-| **`BACKOFFICE`** | Exclusivamente sus `assignedBrands` | Sus marcas autorizadas | Sin acceso | Lectura y escritura en su marca activa | Módulos operativos y Configuración (sin `/usuarios`) |
+| **`BACKOFFICE`** | Exclusivamente sus `assignedBrands` | Sus marcas autorizadas | Sin acceso | Lectura y escritura en su marca activa | Módulos operativos y Configuración (sin `/usuarios` ni `/comisiones-config`) |
 | **`CANAL`** | Su cartera + comerciales de su `channelId` en su marca | Marca de su canal / `assignedBrands` | Sin acceso | **Solo lectura** (catálogo habilitado a su canal, sin comisiones internas) | `CRM Ventas` (incl. `Productos`) |
 | **`COMERCIAL`** | Exclusivamente sus propios registros (`userId`) | Sus `assignedBrands` | Sin acceso | **Solo lectura** (catálogo publicado de su marca, sin comisiones internas) | `CRM Ventas` (incl. `Productos`) |
 | **`CLIENT`** | Sus contratos/facturas/CUPS por `brandId` + email | Fijo a su `user.brandId` | Sin acceso | Sin acceso | `Área de Cliente` |
@@ -59,8 +59,8 @@ Todo registro `User` cuenta con el interruptor booleano **`isActive`** (`@defaul
   - **Preservación en usuarios compartidos**: Si un usuario (ej. un comercial externo multicartera) pertenece simultáneamente a una marca del `COMPANYADMIN` y a otra comercializadora ajena, `usuarios/page.tsx` oculta las relaciones externas y `PUT /api/users/[id]` preserva intactas las empresas, marcas y canales externos fuera del alcance del `COMPANYADMIN`.
 
 ### 💼 BACKOFFICE (Responsable de Marca / Operaciones)
-- **Privilegios**: Tramitación de expedientes, contratación, switching CNMC, facturación interna/externa, impuestos, compras e importadores dentro de sus marcas asignadas.
-- **Gobierno por `assignedBrands`**: Su acceso depende estrictamente de tener al menos una marca en `assignedBrands` (Regla 27). No tiene acceso a `/usuarios`.
+- **Privilegios**: Tramitación de expedientes, contratación, switching CNMC, facturación interna/externa, impuestos, compras, liquidaciones e importadores dentro de sus marcas asignadas.
+- **Gobierno por `assignedBrands`**: Su acceso depende estrictamente de tener al menos una marca en `assignedBrands` (Regla 27). No tiene acceso a `/usuarios` ni a la configuración de parrillas de comisiones `/comisiones-config` (reservada exclusivamente a `SUPERADMIN` y `COMPANYADMIN`, Regla 248).
 
 ### 🤝 CANAL (Jefe de Canal / Distribuidor Externo)
 - **Privilegios**: Supervisión comercial de su red (`channelId`). Visualiza sus propias operaciones y todas las de los agentes adscritos a su mismo `channelId` dentro de la marca del canal (`Channel.brandId`, Regla 37).

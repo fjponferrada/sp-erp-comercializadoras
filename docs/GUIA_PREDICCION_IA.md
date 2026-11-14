@@ -6,7 +6,7 @@ Este documento detalla la arquitectura, reglas matemáticas y decisiones de dise
 
 ## 1. Arquitectura Híbrida del Motor (`SDA` + `IA`)
 
-El motor de predicción (`src/lib/services/ForecastService.ts`) divide la cartera activa (deduplicada por la raíz física de **20 caracteres del CUPS**) en dos algoritmos paralelos según el segmento del suministro:
+El motor de predicción (`src/lib/services/ForecastService.ts`) filtra los contratos activos de la comercializadora activa excluyendo suministros con corte temporal por impago o reposición (`suspendido = true`, Regla 59), deduplica la cartera por la raíz física de **20 caracteres del CUPS** (evitando duplicidades por modificaciones o sufijos ATR), calcula dinámicamente el segmento mediante `calculateSegment` cuando `SupplyPoint.segment` aún esté vacío (con protección defensiva `kWh -> MWh` en tarifas `2.0TD`, Regla 188) y divide la cartera en dos algoritmos paralelos:
 
 1. **SDA (*Similar Day Average*)**: Utilizado exclusivamente para los segmentos **`VIP`** (`> 100 MWh/año`) y **`VE` (Vehículo Eléctrico: `VE <15 MWh`, `VE >15 MWh`)**.
    - **Motivo**: Responden a procesos industriales o rutinas estables de recarga y no presentan correlación lineal fuerte con la temperatura exterior.
@@ -42,10 +42,10 @@ A diferencia de una media simple entre filas de distintas tarifas, el entrenamie
 * `avgY = sum(totalConsumption[h]) / sum(clientCount)` (kWh reales por cliente).
 * `avgTemp = sum(temperature[h] * clientCount) / sum(clientCount)`.
 
-### 3.2 Límites Serverless y Downsampling Determinista (Regla 205)
+### 3.2 Límites Serverless y Muestreo Sistemático PPS Determinista (Regla 205)
 Si el número de configuraciones únicas supera `10.000` muestras:
 1. Se ordena numéricamente toda la matriz `X` por sus 7 columnas para eliminar cualquier dependencia del orden de iteración de memoria o PostgreSQL.
-2. Se extraen exactamente `10.000` muestras equiespaciadas (`Math.floor(i * step)`), garantizando ejecución en pocos segundos y resultados **100% reproducibles**.
+2. Se extraen exactamente `10.000` muestras mediante **muestreo sistemático PPS (*Probability Proportional to Size*) 100% determinista** ponderado por `sumClients` (`targetW = (i + 0.5) * (totalWeight / 10000)`), asegurando que cada nodo hoja de `ml-cart` refleje el peso estadístico real de las provincias con mayor volumen de clientes sin sesgos por cubetas aisladas de 1 suministro y manteniendo una reproducibilidad del **100%**.
 3. El modelo serializado en `ForecastModelCache` conserva telemetría auditable (`_meta`: muestras, curvas elegibles, provincias entrenadas y `%` de clima real).
 
 ---
@@ -73,8 +73,45 @@ En el mercado mayorista ibérico (MIBEL / OMIE):
 
 ---
 
-## 6. Proyección a 12 Meses, Cartera Vacía y Pestaña «Auditoría de Datos»
+## 6. Proyección a 12 Meses, Sincronización por Bloques y «Auditoría de Datos» (con *Backtesting*)
 
-* **Proyección de Consumo a 12 Meses (`portfolioProjectionActions.ts`)**: Resuelve la comercializadora activa con `resolveActiveCompanyId`, soporta herencia de marca vía `Contract.brandId` o `Client.brandId`, deduplica por CUPS de 20 caracteres, prioriza `Contract.annualConsumption` frente a `SupplyPoint.annualConsumption` (con defensa `kWh -> MWh` en `2.0TD`) y aplica perfil real facturado `M12` (descontando abonos `'Abono'`, `'A'`, `'AR'`, `'S'`) en suministros `>= 40 MWh/año`.
+* **Proyección de Consumo a 12 Meses (`portfolioProjectionActions.ts`)**: Resuelve la comercializadora activa con `resolveActiveCompanyId`, soporta herencia de marca vía `Contract.brandId` o `Client.brandId`, excluye suministros suspendidos (`suspendido = true`), deduplica por CUPS de 20 caracteres, prioriza `Contract.annualConsumption` frente a `SupplyPoint.annualConsumption` (con defensa `kWh -> MWh` en `2.0TD`) y aplica perfil real facturado `M12` (con días inclusivos `+ 1` y descontando abonos `'Abono'`, `'A'`, `'AR'`, `'S'`) en suministros `>= 40 MWh/año`.
+* **Sincronización Profunda Progresiva (`365d` en bloques de `30d`)**: Para eliminar timeouts Serverless al regenerar un año completo de curvas y clima, `/api/cron/aggregate-history` soporta ventanas acotadas `?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`, y el botón **Sincronización Profunda** de `ComprasDashboard.tsx` itera secuencialmente en 12 bloques de ~30 días mostrando una barra de progreso en tiempo real (`0% → 100%`).
 * **Comportamiento ante `0` Contratos Activos**: Si la comercializadora no tiene suministros en estado `ACTIVO`, tanto la proyección de cartera actual a 12 meses como la compra diaria mañana muestran `0 MWh` acompañada de un aviso explicativo explícito, mientras el modelo IA permanece entrenado sobre el histórico de curvas y clima real.
-* **Pestaña «Auditoría de Datos»**: Muestra telemetría verificada en vivo desde PostgreSQL (contratos activos vs finalizados, cobertura de las `52` zonas climáticas en `WeatherHistory`, volumen y `%` de clima real en `AggregatedLoadCurve`, versión y nodos de `ForecastModelCache`, días de Factor `K` y desglose de PPAs Físicos vs Financieros, además del historial reciente de predicciones).
+* **Pestaña «Auditoría de Datos» y *Backtesting* Histórico**: Muestra telemetría verificada en vivo desde PostgreSQL (contratos activos vs finalizados, frescura de `LoadCurve` bruta, cobertura de las `52` zonas climáticas en `WeatherHistory`, volumen y `%` de clima real en `AggregatedLoadCurve`, versión y nodos de `ForecastModelCache`, días de Factor `K`, desglose de PPAs Físicos vs Financieros y **Radiografía de Cartera Activa por Segmento**), e incorpora un evaluador interactivo de **Backtesting Histórico (`POST /api/compras/backtest` → `runHistoricalBacktest`)** que compara hora a hora la predicción `IA + SDA` elevada a Barras de Central (`MW`) contra las curvas reales consolidadas, calculando **MAPE (`%`)**, **MAE (`MW`)** y **Sesgo Diario (`%`)**.
+
+---
+
+## 7. Formulación Matemática del *Backtesting* Histórico (`runHistoricalBacktest`)
+
+Para auditar objetivamente la precisión del motor sin sesgos de unidad, `runHistoricalBacktest(targetDateStr, companyId)` reconstruye la predicción horaria de cualquier día histórico consolidado (`AggregatedLoadCurve`) aplicando:
+1. **Elevación Homogénea a Barras de Central (`BC`)**: Tanto la demanda real medida (`realHourlyKwh`) como la predicha (`predHourlyKwh` combinando `DecisionTreeRegression` para HOGAR/PYME y `SDA` sobre los días `-7d`, `-14d` y `-21d` para VIP/VE) se multiplican hora a hora por `1 + Pérdida_BOE(tarifa, periodo_Madrid) × K_real(hora)`.
+2. **Indicadores Estándar de Precisión Mayorista**:
+   * **MAE (*Mean Absolute Error*, en `MW`)**:
+     $$\text{MAE}_{\text{MW}} = \frac{1}{24} \sum_{h=0}^{23} \left| P_{\text{pred,BC}}(h) - P_{\text{real,BC}}(h) \right|$$
+   * **MAPE (*Mean Absolute Percentage Error*, en `%`)**:
+     $$\text{MAPE}_{\%} = \frac{100}{N_h} \sum_{h:\, P_{\text{real,BC}}(h) > 0,01} \frac{\left| P_{\text{pred,BC}}(h) - P_{\text{real,BC}}(h) \right|}{P_{\text{real,BC}}(h)}$$
+   * **Sesgo Diario Neto (*Daily Bias*, en `%`)**:
+     $$\text{Sesgo}_{\%} = \frac{E_{\text{pred,BC}} - E_{\text{real,BC}}}{E_{\text{real,BC}}} \times 100$$
+3. **Referencia Empírica Verificada (`ForecastModelCache v561`, `100%` Clima Real)**:
+   * **Invierno (`21/01/2026`, `2.399` suministros, `79,47 MWh` BC)**: `MAPE = 9,65%`, `MAE = 0,332 MW`, `Sesgo = -5,99%`.
+   * **Verano (`15/07/2026`, `1.598` suministros, `59,26 MWh` BC)**: `MAPE = 12,96%`, `MAE = 0,317 MW`, `Sesgo = -11,97%`.
+
+---
+
+## 8. Mapa Completo de Archivos, Tablas y Endpoints
+
+| Componente / Ruta | Responsabilidad Técnica |
+| :--- | :--- |
+| `src/lib/services/ProvinceService.ts` | Catálogo oficial de las **52 provincias canónicas** (`PROVINCES_GEO`, `PROVINCE_NAMES`) y normalizador `normalizeProvinceName(rawProvince, postalCode)`. |
+| `src/lib/services/WeatherSyncService.ts` | Descarga histórica multiprovincia desde `archive-api.open-meteo.com` hacia `WeatherHistory` (gestión DST `23h`/`25h`) y reparación masiva SQL `repairHistoricalAggregates()`. |
+| `src/lib/services/SegmentService.ts` | Clasificación determinista en los 8 segmentos oficiales (`HOGAR`, `PYME`, `VE`, `VIP`) con blindaje defensivo `kWh -> MWh` en `2.0TD`. |
+| `src/lib/services/AggregationService.ts` | Consolidación diaria de `LoadCurve` (`CONSUMPTION` y `SURPLUS`) en `AggregatedLoadCurve` por `companyId`, `segment`, `province` canónica y `tariff`, sincronizando clima previo. |
+| `src/lib/services/ForecastService.ts` | Motor principal `generateTomorrowForecast` (`D+0..D+14`, pérdidas BOE × `K`, descuento exclusivo de PPAs `FISICO`, deduplicación `DemandForecast`) y evaluador `runHistoricalBacktest`. |
+| `src/app/actions/portfolioProjectionActions.ts` | Proyección estacional a 12 meses de la cartera viva (`get12MonthProjectionAction`) con aislamiento multi-tenant, perfil facturado `M12` (`>= 40 MWh`) e inversión de abonos. |
+| `GET /api/cron/aggregate-history` | Regeneración histórica completa (`?days=...`) o por bloques progresivos (`?startDate=...&endDate=...`), reparación opcional de clima y recálculo de energía pendiente (`runCalculatePendingEnergy`). |
+| `GET /api/cron/train-forecast` | Compresión ponderada por `clientCount`, muestreo sistemático determinista PPS (`10.000` nodos) y persistencia de `DecisionTreeRegression` + `_meta` en `ForecastModelCache`. |
+| `POST /api/compras/forecast` | Endpoint RBAC (`SUPERADMIN`, `COMPANYADMIN`, `BACKOFFICE`) para generar la oferta diaria OMIE de una fecha objetivo (`targetDate`). |
+| `POST /api/compras/backtest` | Endpoint RBAC que ejecuta `runHistoricalBacktest` para auditar `MAPE`, `MAE` y curva horaria Predicho vs Real en Barras de Central (`MW`). |
+| `GET/POST /api/cron/update-portfolio` | Orquestador de `PortfolioBaseCurve` (30.000 h) que separa estrictamente `ppaFisicoHoraMwh` (reduce compra física OMIE) de `ppaFinancieroHoraMwh` (liquida por diferencias `cfdOrMtmEur`). |
+| `src/app/(app)/compras/page.tsx` y `ComprasDashboard.tsx` | SSR de telemetría real en vivo, selector de fecha `D+0..D+14`, Sincronización Profunda en bloques de 30 días, vista cuarto-horaria por defecto `Q1–Q96` en **`MW`**, exportación CSV con BOM UTF-8 y panel interactivo de *Backtesting*. |

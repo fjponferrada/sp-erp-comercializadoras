@@ -8,6 +8,7 @@ Esta guía documenta en detalle la arquitectura, el flujo de cálculo, la fiscal
 
 | Archivo / Ruta | Responsabilidad Principal |
 | :--- | :--- |
+| [`src/app/actions/f1Ingest.ts`](../src/app/actions/f1Ingest.ts) | Motor de ingesta de XMLs/ZIPs `F1` (incluidas extensiones numéricas `.0/.1/.2`): decodificación automática `UTF-8`/`ISO-8859-1` (`decodeXmlBuffer`), *fallback* de CUPS en `<Cabecera><Codigo>`, subida diferida e idempotente a Cloudflare R2 (`ensureR2Uploaded` solo para facturas nuevas), vinculación cronológica de contrato (Regla 178) y generación de abonos sintéticos `AR`/`S` (Regla 202). |
 | [`src/lib/services/InternalBillingEngine.ts`](../src/lib/services/InternalBillingEngine.ts) | Núcleo matemático de facturación (`InternalBillingEngine.calculate`): cruce F1/CCH, perfilado REE, peajes/cargos diarios, mercado/fijo, reactiva/capacitiva, autoconsumo y Bolsillo Solar, SVA, IEE, IVA/IGIC/IPSI e inversión de abonos (`invertBillingResult`). |
 | [`src/lib/services/internalInvoiceMapper.ts`](../src/lib/services/internalInvoiceMapper.ts) | Capa unificada de tipificación CNMC (`deduceInvoiceType`), serialización de `invoiceData` (`buildInternalInvoiceJsonData`), formateo horario `Europe/Madrid` inclusivo y carga de metadatos corporativos/técnicos (`buildInvoiceTemplateData`). |
 | [`src/app/api/facturacion/interna/calculate/route.ts`](../src/app/api/facturacion/interna/calculate/route.ts) | Generación inicial de borradores (`InternalInvoice`) a partir de `F1Invoice` pendientes, con control anti-duplicados y asignación de `companyId`. |

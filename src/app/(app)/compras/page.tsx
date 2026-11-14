@@ -5,7 +5,19 @@ import { redirect } from 'next/navigation';
 import { hasAdminOrBackofficeRole, resolveActiveCompanyId } from '@/lib/companyContext';
 import { get12MonthProjectionAction } from '@/app/actions/portfolioProjectionActions';
 import { isPpaActiveOnMadridYmd } from '@/lib/ppaEngine';
+import { calculateSegment } from '@/lib/services/SegmentService';
 import { formatInTimeZone } from 'date-fns-tz';
+
+const CANONICAL_SEGMENTS = [
+  'HOGAR 0-5kW',
+  'HOGAR 5-10kW',
+  'HOGAR 10-15kW',
+  'PYME <50 MWh',
+  'PYME >50 MWh',
+  'VE <15 MWh',
+  'VE >15 MWh',
+  'VIP',
+] as const;
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +59,8 @@ export default async function ComprasPage() {
     aggBoundsGlobal,
     aggProvsGlobal,
     realWeatherCountRow,
+    loadCurveBounds,
+    loadCurveApproxRow,
     lastModelCache,
     kBounds,
     lossTariffs,
@@ -57,9 +71,28 @@ export default async function ComprasPage() {
     prisma.contract.findMany({
       where: {
         status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active', 'EN_VIGOR'] },
-        ...companyContractFilter,
+        AND: [
+          { OR: [{ suspendido: false }, { suspendido: null }] },
+          ...(companyId ? [companyContractFilter] : []),
+        ],
       },
-      select: { supplyPoint: { select: { cups: true } } },
+      orderBy: { activationDate: 'desc' },
+      select: {
+        annualConsumption: true,
+        product: { select: { tariff: true } },
+        supplyPoint: {
+          select: {
+            cups: true,
+            segment: true,
+            tariff: true,
+            annualConsumption: true,
+            p1c: true,
+            cnae: true,
+            postalCode: true,
+            province: true,
+          },
+        },
+      },
     }),
     prisma.contract.count({
       where: {
@@ -92,6 +125,15 @@ export default async function ComprasPage() {
       FROM "AggregatedLoadCurve"
       WHERE "temperature" IS DISTINCT FROM ARRAY[20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20]::double precision[]
     `,
+    prisma.loadCurve.aggregate({
+      _min: { date: true },
+      _max: { date: true },
+    }),
+    prisma.$queryRaw<Array<{ approx_rows: bigint }>>`
+      SELECT GREATEST(COALESCE(reltuples, 0), 0)::bigint AS approx_rows
+      FROM pg_class
+      WHERE relname = 'LoadCurve'
+    `,
     prisma.forecastModelCache.findFirst({
       orderBy: { createdAt: 'desc' },
       select: { version: true, updatedAt: true, modelData: true },
@@ -123,13 +165,45 @@ export default async function ComprasPage() {
     get12MonthProjectionAction(companyId),
   ]);
 
-  // Deduplicación por raíz de 20 caracteres del CUPS (Reglas 124 y 241)
+  // Deduplicación por raíz de 20 caracteres del CUPS y radiografía por segmento (Reglas 124, 188 y 241)
   const uniqueActiveCups = new Set<string>();
+  const segStatsMap: Record<
+    string,
+    { segment: string; clients: number; annualMwh: number; missingGeoCount: number; zeroConsCount: number }
+  > = {};
+  for (const seg of CANONICAL_SEGMENTS) {
+    segStatsMap[seg] = { segment: seg, clients: 0, annualMwh: 0, missingGeoCount: 0, zeroConsCount: 0 };
+  }
+
   for (const row of activeContractsRows) {
-    const c = row.supplyPoint?.cups;
-    if (c) uniqueActiveCups.add(c.length >= 20 ? c.substring(0, 20) : c);
+    const sp = row.supplyPoint;
+    if (!sp?.cups) continue;
+    const baseCups = sp.cups.length >= 20 ? sp.cups.substring(0, 20) : sp.cups;
+    if (uniqueActiveCups.has(baseCups)) continue;
+    uniqueActiveCups.add(baseCups);
+
+    const tariff = sp.tariff || row.product?.tariff || '2.0TD';
+    let rawCons = row.annualConsumption ?? sp.annualConsumption ?? 0;
+    let consMwh = rawCons > 0 ? rawCons : 0;
+    if (tariff.startsWith('2') && consMwh > 500) {
+      consMwh = consMwh / 1000;
+    }
+
+    const seg = sp.segment || calculateSegment(tariff, consMwh, sp.p1c, sp.cnae);
+    const bucket = segStatsMap[seg] || (segStatsMap[seg] = {
+      segment: seg,
+      clients: 0,
+      annualMwh: 0,
+      missingGeoCount: 0,
+      zeroConsCount: 0,
+    });
+    bucket.clients += 1;
+    bucket.annualMwh += consMwh;
+    if (!sp.postalCode && !sp.province) bucket.missingGeoCount += 1;
+    if (consMwh <= 0) bucket.zeroConsCount += 1;
   }
   const activeContracts = uniqueActiveCups.size;
+  const activePortfolioSegments = Object.values(segStatsMap);
 
   const activePhysicalPpas = companyPpas.filter(
     (p) => p.type === 'FISICO' && isPpaActiveOnMadridYmd(p, tomorrowMadridStr)
@@ -191,6 +265,10 @@ export default async function ComprasPage() {
   const auditStats = {
     activeContracts,
     historicalFinalizedCount,
+    activePortfolioSegments,
+    loadCurveApproxRows: Number(loadCurveApproxRow[0]?.approx_rows || 0),
+    loadCurveMinDate: loadCurveBounds._min.date?.toISOString().substring(0, 10) || null,
+    loadCurveMaxDate: loadCurveBounds._max.date?.toISOString().substring(0, 10) || null,
     weatherTotalRows: weatherBounds._count._all,
     weatherProvincesCount: weatherProvs.length,
     weatherMinDate: weatherBounds._min.date?.toISOString().substring(0, 10) || null,

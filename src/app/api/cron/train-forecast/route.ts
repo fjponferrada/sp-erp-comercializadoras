@@ -167,6 +167,7 @@ export async function GET(req: Request) {
 
     let X_global: number[][] = [];
     let Y_global: number[] = [];
+    const W_global: number[] = [];
 
     for (const [key, bucket] of groupedData.entries()) {
       if (bucket.sumClients <= 0) continue;
@@ -184,18 +185,16 @@ export async function GET(req: Request) {
         parseInt(isWkndStr, 10),
       ]);
       Y_global.push(avgY);
+      W_global.push(bucket.sumClients);
     }
 
     const totalUniqueBuckets = X_global.length;
 
-    // Downsampling 100% determinista (Regla 205)
+    // Muestreo sistemático PPS 100% determinista ponderado por volumen de clientes (sumClients) (Regla 205)
+    // Garantiza que cada nodo hoja de ml-cart pondere proporcionalmente al número real de clientes·hora
     const MAX_TRAINING_SAMPLES = 10000;
-    if (X_global.length > MAX_TRAINING_SAMPLES) {
-      console.log(
-        `Downsampling deterministically from ${X_global.length} to ${MAX_TRAINING_SAMPLES}...`
-      );
-
-      const combined = X_global.map((x, i) => ({ x, y: Y_global[i] }));
+    if (X_global.length > 0) {
+      const combined = X_global.map((x, i) => ({ x, y: Y_global[i], w: W_global[i] }));
       combined.sort((a, b) => {
         for (let j = 0; j < a.x.length; j++) {
           if (a.x[j] !== b.x[j]) return a.x[j] - b.x[j];
@@ -203,16 +202,31 @@ export async function GET(req: Request) {
         return 0;
       });
 
-      const step = combined.length / MAX_TRAINING_SAMPLES;
-      const sampledX: number[][] = [];
-      const sampledY: number[] = [];
-      for (let i = 0; i < MAX_TRAINING_SAMPLES; i++) {
-        const idx = Math.floor(i * step);
-        sampledX.push(combined[idx].x);
-        sampledY.push(combined[idx].y);
+      const totalWeight = combined.reduce((acc, item) => acc + item.w, 0);
+      const sampleTarget = Math.min(MAX_TRAINING_SAMPLES, Math.max(combined.length, 1000));
+      const finalCount = combined.length > MAX_TRAINING_SAMPLES ? MAX_TRAINING_SAMPLES : sampleTarget;
+
+      if (totalWeight > 0 && (combined.length > MAX_TRAINING_SAMPLES || totalWeight > combined.length)) {
+        console.log(
+          `Client-weighted systematic sampling from ${combined.length} buckets (${totalWeight} client-hours) to ${finalCount}...`
+        );
+        const weightStep = totalWeight / finalCount;
+        const sampledX: number[][] = [];
+        const sampledY: number[] = [];
+        let cumWeight = combined[0].w;
+        let ptr = 0;
+        for (let i = 0; i < finalCount; i++) {
+          const targetW = (i + 0.5) * weightStep;
+          while (ptr < combined.length - 1 && cumWeight < targetW) {
+            ptr++;
+            cumWeight += combined[ptr].w;
+          }
+          sampledX.push(combined[ptr].x);
+          sampledY.push(combined[ptr].y);
+        }
+        X_global = sampledX;
+        Y_global = sampledY;
       }
-      X_global = sampledX;
-      Y_global = sampledY;
     }
 
     if (X_global.length < 100) {

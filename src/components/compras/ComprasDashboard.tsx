@@ -66,6 +66,12 @@ function formatQuarterLabel(qIdx: number): string {
   return `Q${qIdx + 1} (${sh}:${sm}–${eh}:${em})`;
 }
 
+function shiftYmd(ymd: string, deltaDays: number): string {
+  const dt = new Date(`${ymd}T00:00:00.000Z`);
+  dt.setUTCDate(dt.getUTCDate() + deltaDays);
+  return dt.toISOString().substring(0, 10);
+}
+
 export default function ComprasDashboard({
   initialForecastResult,
   recentForecastHistory = [],
@@ -81,6 +87,8 @@ export default function ComprasDashboard({
   const [activeTab, setActiveTab] = useState<'auditoria' | 'prediccion'>('prediccion');
   const [loading, setLoading] = useState(false);
   const [deepSyncing, setDeepSyncing] = useState(false);
+  const [deepSyncProgress, setDeepSyncProgress] = useState(0);
+  const [deepSyncMessage, setDeepSyncMessage] = useState('');
   const [training, setTraining] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [lastTrainedAt, setLastTrainedAt] = useState<string | null>(lastTrainingDate || null);
@@ -89,6 +97,17 @@ export default function ComprasDashboard({
   );
   const [tableResolution, setTableResolution] = useState<'96q' | '24h'>('96q');
   const [forecastResult, setForecastResult] = useState<any>(initialForecastResult || null);
+
+  const defaultBacktestDate = (() => {
+    if (auditStats?.aggMaxDate && auditStats?.aggMinDate) {
+      const candidate = shiftYmd(auditStats.aggMaxDate, -14);
+      return candidate >= auditStats.aggMinDate ? candidate : auditStats.aggMaxDate;
+    }
+    return auditStats?.aggMaxDate || shiftYmd(todayDateStr || '2026-07-15', -30);
+  })();
+  const [backtestDate, setBacktestDate] = useState<string>(defaultBacktestDate);
+  const [backtesting, setBacktesting] = useState(false);
+  const [backtestResult, setBacktestResult] = useState<any>(null);
 
   const generateForecast = async () => {
     setLoading(true);
@@ -145,28 +164,82 @@ export default function ComprasDashboard({
   const runDeepSync = async () => {
     if (
       !confirm(
-        'Esto regenerará las curvas agregadas de los últimos 365 días y verificará el histórico meteorológico provincial. Puede tardar alrededor de un minuto. ¿Continuar?'
+        'Esto regenerará las curvas agregadas de los últimos 365 días en bloques progresivos de 30 días y verificará el histórico meteorológico provincial. ¿Continuar?'
       )
     ) {
       return;
     }
     setDeepSyncing(true);
+    setDeepSyncProgress(2);
+    setDeepSyncMessage('Preparando bloques de sincronización histórica...');
+
     try {
-      const res = await fetch('/api/cron/aggregate-history?days=365&repairWeather=1');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Error en sincronización profunda');
+      const anchorToday = todayDateStr || new Date().toISOString().substring(0, 10);
+      const start365 = shiftYmd(anchorToday, -364);
+      const chunks: Array<{ start: string; end: string }> = [];
+      let cursor = start365;
+      while (cursor <= anchorToday) {
+        const candidateEnd = shiftYmd(cursor, 29);
+        const end = candidateEnd > anchorToday ? anchorToday : candidateEnd;
+        chunks.push({ start: cursor, end });
+        cursor = shiftYmd(end, 1);
+      }
+
+      let totalRows = 0;
+      for (let idx = 0; idx < chunks.length; idx++) {
+        const { start, end } = chunks[idx];
+        const isLast = idx === chunks.length - 1;
+        setDeepSyncMessage(
+          `Bloque ${idx + 1}/${chunks.length}: consolidando CCH y clima (${formatYmdEs(start)} → ${formatYmdEs(end)})...`
+        );
+        const query = isLast
+          ? `startDate=${start}&endDate=${end}&repairWeather=1`
+          : `startDate=${start}&endDate=${end}&skipPending=1`;
+
+        const res = await fetch(`/api/cron/aggregate-history?${query}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || `Error en bloque ${idx + 1} (${start}..${end})`);
+        }
+        totalRows += data.rowsInserted ?? 0;
+        setDeepSyncProgress(Math.round(((idx + 1) / chunks.length) * 100));
+      }
+
+      setDeepSyncMessage('Sincronización profunda de 365 días completada.');
       router.refresh();
       alert(
-        `Sincronización profunda completada (${data.rowsInserted ?? 0} agrupaciones actualizadas).`
+        `Sincronización profunda completada con éxito (${totalRows.toLocaleString('es-ES')} agrupaciones actualizadas en ${chunks.length} bloques).`
       );
     } catch (e: any) {
       alert(
         'Aviso al sincronizar: ' +
-          (e?.message ||
-            'Es posible que el proceso excediera el tiempo de espera, pero continúa en segundo plano.')
+          (e?.message || 'Error inesperado durante la sincronización por bloques.')
       );
     } finally {
-      setDeepSyncing(false);
+      setTimeout(() => {
+        setDeepSyncing(false);
+        setDeepSyncProgress(0);
+        setDeepSyncMessage('');
+      }, 900);
+    }
+  };
+
+  const runBacktest = async () => {
+    if (!backtestDate) return;
+    setBacktesting(true);
+    try {
+      const res = await fetch('/api/compras/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetDate: backtestDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Error al ejecutar backtesting histórico');
+      setBacktestResult(data);
+    } catch (error: any) {
+      alert('Error en Backtesting: ' + (error?.message || error));
+    } finally {
+      setBacktesting(false);
     }
   };
 
@@ -601,7 +674,7 @@ export default function ComprasDashboard({
                         </tr>
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={{ padding: '12px 20px', fontWeight: 600 }}>
-                            3. Regla de Mercado OMIE vs PPAs
+                            3. Regla de Mercado OMIE vs PPAs y Potencia MW
                           </td>
                           <td style={{ padding: '12px 20px' }}>
                             <span
@@ -617,13 +690,442 @@ export default function ComprasDashboard({
                             </span>
                           </td>
                           <td style={{ padding: '12px 20px', color: 'var(--text-muted)' }}>
-                            Solo los PPAs <strong>FÍSICOS</strong> (bilaterales) reducen la compra física en
-                            OMIE. Los PPAs <strong>FINANCIEROS (CfD)</strong> quedan excluidos al 100% del
-                            volumen físico ofertado.
+                            Solo los PPAs <strong>FÍSICOS</strong> reducen la compra física en OMIE (los{' '}
+                            <strong>FINANCIEROS CfD</strong> no afectan al volumen). Ofertas Q1–Q96 en{' '}
+                            <strong>MW de potencia</strong> (nunca MWh).
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '12px 20px', fontWeight: 600 }}>
+                            4. Curvas Brutas CCH (LoadCurve)
+                          </td>
+                          <td style={{ padding: '12px 20px' }}>
+                            {auditStats?.loadCurveMaxDate ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  color: 'var(--success)',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <CheckCircle2 size={15} /> Disponible
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  color: '#F59E0B',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <AlertTriangle size={15} /> Sin curvas
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 20px', color: 'var(--text-muted)' }}>
+                            ~{(auditStats?.loadCurveApproxRows ?? 0).toLocaleString('es-ES')} días·CUPS
+                            registrados ({formatYmdEs(auditStats?.loadCurveMinDate)} →{' '}
+                            {formatYmdEs(auditStats?.loadCurveMaxDate)}).
                           </td>
                         </tr>
                       </tbody>
                     </table>
+                  </div>
+                </div>
+
+                {/* Radiografía de Cartera Activa por Segmento */}
+                <div
+                  style={{
+                    borderRadius: '12px',
+                    border: '1px solid var(--border)',
+                    overflow: 'hidden',
+                    background: 'var(--bg-elevated)',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '14px 20px',
+                      borderBottom: '1px solid var(--border)',
+                      background: 'var(--bg-base)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                      Radiografía de Cartera Activa por Segmento (IA vs SDA)
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {activeContracts === 0
+                        ? '0 suministros activos hoy — listo para clasificar nuevas altas automáticamente'
+                        : `${activeContracts.toLocaleString('es-ES')} suministros únicos (CUPS 20, excluidos suspendidos)`}
+                    </span>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                      <thead>
+                        <tr
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            color: 'var(--text-muted)',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <th style={{ padding: '10px 20px', fontWeight: 600 }}>Segmento</th>
+                          <th style={{ padding: '10px 20px', fontWeight: 600 }}>Motor Asignado</th>
+                          <th style={{ padding: '10px 20px', fontWeight: 600, textAlign: 'right' }}>
+                            Suministros Activos
+                          </th>
+                          <th style={{ padding: '10px 20px', fontWeight: 600, textAlign: 'right' }}>
+                            Consumo Anual (MWh)
+                          </th>
+                          <th style={{ padding: '10px 20px', fontWeight: 600 }}>Calidad de Datos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(auditStats?.activePortfolioSegments || []).map((segRow: any) => {
+                          const isSda = segRow.segment === 'VIP' || segRow.segment.startsWith('VE');
+                          const hasWarnings =
+                            (segRow.missingGeoCount || 0) > 0 || (segRow.zeroConsCount || 0) > 0;
+                          return (
+                            <tr
+                              key={segRow.segment}
+                              style={{ borderBottom: '1px solid var(--border)' }}
+                            >
+                              <td style={{ padding: '10px 20px', fontWeight: 600 }}>
+                                {segRow.segment}
+                              </td>
+                              <td style={{ padding: '10px 20px', color: 'var(--text-muted)' }}>
+                                {isSda ? 'SDA Individual (CUPS 20)' : 'Árbol IA Provincial'}
+                              </td>
+                              <td style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 600 }}>
+                                {(segRow.clients || 0).toLocaleString('es-ES')}
+                              </td>
+                              <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                                {(segRow.annualMwh || 0).toLocaleString('es-ES', {
+                                  minimumFractionDigits: 1,
+                                  maximumFractionDigits: 1,
+                                })}{' '}
+                                MWh
+                              </td>
+                              <td style={{ padding: '10px 20px' }}>
+                                {segRow.clients === 0 ? (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                    Sin suministros activos
+                                  </span>
+                                ) : hasWarnings ? (
+                                  <span style={{ color: '#F59E0B', fontSize: '0.78rem', fontWeight: 600 }}>
+                                    {segRow.missingGeoCount > 0
+                                      ? `${segRow.missingGeoCount} sin CP/Prov `
+                                      : ''}
+                                    {segRow.zeroConsCount > 0
+                                      ? `· ${segRow.zeroConsCount} con consumo 0`
+                                      : ''}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--success)', fontSize: '0.78rem', fontWeight: 600 }}>
+                                    100% geolocalizado y validado
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Auditoría de Precisión: Backtesting Histórico Predicho vs Real */}
+                <div
+                  style={{
+                    borderRadius: '12px',
+                    border: '1px solid var(--border)',
+                    overflow: 'hidden',
+                    background: 'var(--bg-elevated)',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '16px 20px',
+                      borderBottom: '1px solid var(--border)',
+                      background: 'var(--bg-base)',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                        Auditoría de Precisión (Backtesting Histórico IA + SDA vs Demanda Real)
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Evalúa cualquier fecha histórica consolidada comparando la predicción horaria en
+                        Barras de Central (MW) frente a las lecturas reales CCH elevadas a BC.
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
+                        }}
+                      >
+                        <Calendar size={15} style={{ color: 'var(--text-muted)' }} />
+                        <input
+                          type="date"
+                          value={backtestDate}
+                          min={auditStats?.aggMinDate || undefined}
+                          max={auditStats?.aggMaxDate || todayDateStr}
+                          onChange={(e) => setBacktestDate(e.target.value)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.84rem',
+                            fontWeight: 600,
+                            outline: 'none',
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={runBacktest}
+                        disabled={backtesting || !backtestDate}
+                        className="btn btn-primary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px' }}
+                      >
+                        {backtesting ? (
+                          <RefreshCw className="animate-spin" size={15} />
+                        ) : (
+                          <Activity size={15} />
+                        )}
+                        {backtesting ? 'Evaluando...' : 'Ejecutar Backtest'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: '20px' }}>
+                    {!backtestResult ? (
+                      <div
+                        style={{
+                          textAlign: 'center',
+                          padding: '20px 12px',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        Selecciona una fecha histórica con curvas consolidadas (rango disponible:{' '}
+                        <strong>{formatYmdEs(auditStats?.aggMinDate)}</strong> →{' '}
+                        <strong>{formatYmdEs(auditStats?.aggMaxDate)}</strong>) y pulsa{' '}
+                        <strong>Ejecutar Backtest</strong> para medir el error horario MAPE y MAE del
+                        modelo actual.
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div className="card-stat" style={{ padding: '14px 16px' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              MAPE Horario
+                            </span>
+                            <div
+                              style={{
+                                fontSize: '1.6rem',
+                                fontWeight: 800,
+                                color:
+                                  backtestResult.mapePct <= 10
+                                    ? 'var(--success)'
+                                    : backtestResult.mapePct <= 18
+                                      ? 'var(--primary)'
+                                      : '#F59E0B',
+                                marginTop: '6px',
+                              }}
+                            >
+                              {backtestResult.mapePct.toLocaleString('es-ES', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                              %
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Error porcentual absoluto medio
+                            </div>
+                          </div>
+
+                          <div className="card-stat" style={{ padding: '14px 16px' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              MAE Potencia Media
+                            </span>
+                            <div
+                              style={{
+                                fontSize: '1.6rem',
+                                fontWeight: 800,
+                                color: 'var(--text-primary)',
+                                marginTop: '6px',
+                              }}
+                            >
+                              {backtestResult.maeMw.toLocaleString('es-ES', {
+                                minimumFractionDigits: 3,
+                                maximumFractionDigits: 3,
+                              })}{' '}
+                              MW
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Desviación media por hora
+                            </div>
+                          </div>
+
+                          <div className="card-stat" style={{ padding: '14px 16px' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Sesgo Diario Neto
+                            </span>
+                            <div
+                              style={{
+                                fontSize: '1.6rem',
+                                fontWeight: 800,
+                                color:
+                                  Math.abs(backtestResult.dailyBiasPct) <= 8
+                                    ? 'var(--success)'
+                                    : '#F59E0B',
+                                marginTop: '6px',
+                              }}
+                            >
+                              {backtestResult.dailyBiasPct > 0 ? '+' : ''}
+                              {backtestResult.dailyBiasPct.toLocaleString('es-ES', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                              %
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Sobre/infra-predicción diaria
+                            </div>
+                          </div>
+
+                          <div className="card-stat" style={{ padding: '14px 16px' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Energía BC ({formatYmdEs(backtestResult.targetDate)})
+                            </span>
+                            <div
+                              style={{
+                                fontSize: '1.35rem',
+                                fontWeight: 800,
+                                color: 'var(--primary)',
+                                marginTop: '6px',
+                              }}
+                            >
+                              {backtestResult.totalPredMwh.toLocaleString('es-ES', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{' '}
+                              vs{' '}
+                              {backtestResult.totalRealMwh.toLocaleString('es-ES', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{' '}
+                              MWh
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Predicho vs Real ({backtestResult.evaluatedSupplies.toLocaleString('es-ES')}{' '}
+                              suministros)
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ width: '100%', height: '300px' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart
+                              data={backtestResult.hourlyComparison}
+                              margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                              <XAxis
+                                dataKey="hora"
+                                stroke="var(--text-muted)"
+                                tick={{ fontSize: 12 }}
+                              />
+                              <YAxis
+                                stroke="var(--text-muted)"
+                                tick={{ fontSize: 12 }}
+                                unit=" MW"
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: 'var(--bg-elevated)',
+                                  borderColor: 'var(--border)',
+                                  borderRadius: '8px',
+                                }}
+                                formatter={(val: any) => [
+                                  `${Number(val).toLocaleString('es-ES', {
+                                    minimumFractionDigits: 3,
+                                    maximumFractionDigits: 3,
+                                  })} MW`,
+                                ]}
+                              />
+                              <Legend />
+                              <Line
+                                type="monotone"
+                                dataKey="realMw"
+                                name="Demanda Real Consolidada BC (MW)"
+                                stroke="#10B981"
+                                strokeWidth={2.5}
+                                dot={false}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="predMw"
+                                name="Predicción IA + SDA BC (MW)"
+                                stroke="#F97316"
+                                strokeWidth={2.5}
+                                strokeDasharray="5 3"
+                                dot={false}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -909,11 +1411,13 @@ export default function ComprasDashboard({
                       onClick={runDeepSync}
                       disabled={training || loading || deepSyncing}
                       className="btn btn-outline"
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.8 }}
-                      title="Regenerar los últimos 365 días y verificar clima histórico Open-Meteo"
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.85 }}
+                      title="Regenerar los últimos 365 días en bloques de 30 días y verificar clima histórico Open-Meteo"
                     >
                       <RefreshCw className={deepSyncing ? 'animate-spin' : ''} size={16} />
-                      {deepSyncing ? 'Sincronizando 365d...' : 'Sincronización Profunda'}
+                      {deepSyncing
+                        ? `Sincronizando (${deepSyncProgress}%)...`
+                        : 'Sincronización Profunda'}
                     </button>
                   </div>
                 </div>
@@ -1144,6 +1648,51 @@ export default function ComprasDashboard({
                     >
                       Ponderando perfiles horarios provinciales por volumen de clientes.
                     </p>
+                  </div>
+                )}
+
+                {deepSyncing && (
+                  <div
+                    className="animate-fade-in-up"
+                    style={{
+                      padding: '20px',
+                      background: 'var(--bg-elevated)',
+                      borderRadius: '12px',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        marginBottom: '8px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span style={{ color: 'var(--text-primary)' }}>
+                        {deepSyncMessage || 'Sincronizando curvas agregadas y clima histórico...'}
+                      </span>
+                      <span style={{ color: 'var(--primary)' }}>{deepSyncProgress}%</span>
+                    </div>
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '8px',
+                        background: 'var(--gray-alpha-100)',
+                        borderRadius: '4px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${deepSyncProgress}%`,
+                          height: '100%',
+                          background: 'var(--primary)',
+                          transition: 'width 0.35s ease-out',
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
 

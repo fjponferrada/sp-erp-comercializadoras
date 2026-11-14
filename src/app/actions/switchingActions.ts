@@ -37,7 +37,7 @@ export async function getPaginatedSwitchingEventsAction(
         { AND: [{ contractId: null }, { supplyPointId: null }] },
       ];
       if (activeCompany.codigoRee) {
-        companyOr.push({ uniqueProcess: { startsWith: `${activeCompany.codigoRee}_` } });
+        companyOr.push({ uniqueProcess: { contains: `_${activeCompany.codigoRee}_` } });
       }
       andConditions.push({ OR: companyOr });
     }

@@ -1,94 +1,78 @@
 # Guía Técnica y de Negocio: Procesamiento de Switching en el ERP
 
-Este documento detalla la arquitectura técnica, las reglas de negocio y los flujos de trabajo implementados en el ERP para la gestión de los procesos de Switching (Cambios de Comercializador, Modificaciones de ATR, Bajas y Reclamaciones R1) según los estándares de la CNMC V3.0, con especial foco en las decisiones de diseño adoptadas en producción.
+Este documento detalla la arquitectura técnica, las reglas de negocio y los flujos de trabajo implementados en el ERP para la gestión integral de los procesos de Switching (Contratación `A3/C1/C2`, Modificaciones `M1/M2`, Bajas `B1/B2/T1`, Desistimientos `E1`, Reposiciones `E2`, Notificaciones `D1`, Expedientes de Inspección/Fraude `J1`, Reclamaciones `R1` y Reportes `CODAGE`) según los estándares oficiales de la **CNMC V3.0 (2024.05.16)**.
 
 ---
 
 ## 1. Módulos Principales del ERP
 
 ### 1.1 Emisión Masiva de Contratación (`/eventos-switching/generar`)
-Este módulo se encarga de empaquetar las solicitudes de inicio de procesos (ej. Paso 01 para Altas o Modificaciones, Paso 11 para Bajas) que la comercializadora debe enviar a las distribuidoras.
+Empaqueta las solicitudes de inicio Paso `01` (`A3`, `C1`, `C2`, `M1`, `B1`) que la comercializadora activa envía a las distribuidoras (`src/app/actions/switchingGenerarActions.ts` y `GenerarSwitchingClient.tsx`).
 
-- **Flujo Técnico:** La función `fetchPendingSwitchingContracts` busca contratos en estado `BORRADOR` o `ACEPTADO` que necesiten ser enviados. Al pulsar "Generar ZIP", se ejecuta `generateSwitchingXmls(ids)`.
-- **Tolerancia a fallos (Silent Fail):** Si de 50 contratos, 3 tienen datos incompletos (ej. falta tarifa o potencia), el proceso **no se detiene**. Genera el ZIP con los 47 correctos y devuelve una lista de `validationErrors` para los fallidos. El frontend muestra alertas amarillas específicas con el código del contrato y el motivo del fallo para que el operador los corrija individualmente.
+- **Seguridad y Aislamiento Multi-Comercializadora:** Exige sesión autenticada (`await auth()`) y filtra estrictamente por la comercializadora activa (`resolveActiveCompanyId`), resolviendo dinámicamente el `<CodigoREEEmpresaEmisora>` desde `Company.codigoRee`.
+- **Validación Estricta sin Datos Ficticios y Tolerancia por Lote:** Queda prohibido inyectar teléfonos (`600000000`), códigos postales (`28000`), municipios (`28079`), provincias (`28`) o CNAEs (`3514`) inventados. Si de 50 contratos seleccionados 3 carecen de algún dato obligatorio (CUPS válido, NIF/NIE/CIF/Pasaporte Tabla 6 `NI/NE/PS`, dirección normalizada, teléfono móvil/fijo válido, CNAE o potencias obligatorias de la tarifa), el generador empaqueta en el ZIP los 47 válidos y devuelve el detalle exacto en `errors` para que el operador subsane esos 3 contratos.
+- **Conformidad XSD CNMC V3.0:**
+  - **Tabla 17 (`TarifaATR`):** `2.0TD -> 018`, `3.0TD -> 019`, `6.1TD..6.4TD -> 020..023`, `3.0TDVE -> 024`, `6.1TDVE -> 025`, `6.2TDVE -> 026`.
+  - **Potencias y Autoconsumo:** Se preservan periodos con potencia `0` (`pVal !== null && pVal !== undefined`), se convierten `kW` a **vatios enteros** (`Math.round(p * 1000)`), y se incluye el nodo `<Autoconsumo>` tanto en `A3` y `C2` como en `M1` convirtiendo `<PotInstaladaGen>` a vatios enteros.
+  - **Documentación Técnica (`<RegistrosDocumento>`):** En `A3`, `C2` y `M1` se adjuntan automáticamente las URLs autenticadas del proxy `/api/cnmc/document` (Tabla 61: `01` CIE consumo, `10` CIE generación, `07` acreditación de titularidad).
+  - **Gestión de `nSolicitud` y Estado:** Los contratos en `ACEPTADO` reutilizan su `nSolicitud` de 12 dígitos si ya disponían de uno válido, mientras que los contratos en `RECHAZO_DISTRIBUIDORA` regeneran un nuevo `nSolicitud` para su reenvío. La simple descarga del XML mantiene el contrato en `ACEPTADO`; el paso a `TRAMITANDO` se produce al ingerir el XML real del Paso `01`.
 
-### 1.2 Importación, Codificación y Motor de Reglas (`/importar-switching` y `switchingIngest.ts`)
-El corazón del sistema. Recibe los archivos XML enviados o recibidos de las distribuidoras (por subida manual, sincronización FTP o auto-registro interno) y los procesa en `src/lib/switching/parser.ts` y `src/app/actions/switchingIngest.ts`.
+### 1.2 Importación, Parser XSD y Motor de Reglas (`/importar-switching`, `parser.ts` y `switchingIngest.ts`)
+Recibe los archivos XML enviados o recibidos de las distribuidoras (por subida manual en lotes paralelos, sincronización FTP o Web Scraping) y ejecuta las transiciones de negocio.
 
-- **Auto-detección de codificación (`decodeXmlBuffer`):** Antes de parsear cualquier XML, el sistema inspecciona la cabecera `<?xml ... encoding="ISO-8859-1"?>` y valida la decodificación UTF-8 frente a `windows-1252`, eliminando por completo caracteres corruptos (`\uFFFD`) en textos con tildes o `ñ`.
-- **Aislamiento por Proceso Base (`Regla 125`):** El sistema evalúa conjuntamente `procesoBase` (`C1`, `C2`, `M1`, `A3`, `B1`, `E1`, `E2`, `R1`, etc.) y `paso` (`01..11`). La lógica de `R1` está estrictamente encapsulada para no disparar jamás transiciones contractuales ni errores propios de `C1`/`M1`.
-- **Resolución de Suministro y Contrato:** Cruza los **20 primeros caracteres** del CUPS contra todos los clones `SupplyPoint` del contador físico (Regla 104 / Regla 124) y ejecuta las transiciones de estado correspondientes.
+- **Política de Tolerancia Cero a `new Date()` (Regla 249):** Ningún proceso ni paso (`T1_06`, `C1/C2_06`, `B1/B2/E1_05`, `E1_06`, `E1_11`, `A3/C1/C2/M1/M2/E2_05`, `E2_06`, `B1/E1_02`, `E2_15`) utiliza jamás `new Date()` como fallback silencioso. Si falta la fecha reglamentaria en el XML, se bloquea el cambio de fecha en el contrato y se levanta un **Warning** obligatorio (`isResolved = false`).
+- **Auto-detección de Codificación (`decodeXmlBuffer`), Cabecera `<Codigo>` y Extensiones Numéricas CNMC:** Inspecciona cabeceras `ISO-8859-1` / `Windows-1252` y valida UTF-8 fatal para preservar intactos acentos y `ñ`, extrae tanto `.xml` como extensiones numéricas secuenciales CNMC (`.0`, `.1`, `.2`) dentro de ZIPs, aplica *fallback* de CUPS sobre `<Cabecera><Codigo>` e ingiere expedientes de anomalía/fraude **`J1`** generando avisos `J1_EXPEDIENTE_<paso>` para Backoffice. En la subida automática del worker (`POST /api/cron/scraping-upload`), el enrutado `F1` vs `SCTD` inspecciona siempre la raíz/cabecera real del XML (`<MensajeFacturacion>` / `CodigoDeProceso = F1`, Reglas 57 y 261) y jamás el nombre del fichero.
+- **Conversión de Unidades y Tarifas en Recepción:** `parser.ts` lee `@_Periodo="1..6"` en `<Potencia>` dividiendo vatios entre `1000` (`extractPotenciasKw`) y traduce `<TarifaATR>` mediante `CNMC_TARIFA_TO_ERP` (`018 -> 2.0TD`, etc.), impidiendo sobrescribir `SupplyPoint` o clones `M2` con vatios o códigos numéricos CNMC.
+- **Matriz Direccional Exacta (`determineIsEnviado`):** Cruza `<CodigoREEEmpresaEmisora>` / `<CodigoREEEmpresaDestino>` con `Company.codigoRee` (`getOwnReeCodes`) y la matriz CNMC V3.0, clasificando sin errores tanto recibidos en pasos `01`/`03` (`Q1_01`, `D1_01`, `R1_03`, incidencias `A3/C2/M1_03`, `B2_01`, `T1_01`) como enviados en otros pasos (`A3/M1_06`, `C1/C2/E2/R1_08`, `D1_02`, `E2_15`, `R1_04`).
+- **Extracción Universal de Rechazos, Incidencias y Anulaciones (Regla 250):**
+  - Lee `<Rechazos><Rechazo><CodigoMotivo>` + `<Comentarios>` (Tabla 27), `<RechazosPeticion>` y `<RechazoReposicionReceptor>`.
+  - Distingue `MensajeAceptacionAnulacion` (`B1_04`, `E1_04`, `A3_07`, `M1_07`, `C1_09`, `C2_09`, `E2_09`) frente a `MensajeRechazo` (Paso `04` de `A3/C1/C2/M1`), anulando el trámite (`RECHAZADO` + `isAnnulled = true`) cuando se confirma la anulación.
+  - Registra las incidencias ATR de actuación en campo (`MensajeIncidenciasATRDistribuidor`, Paso `03` de `A3/C2/M1`) con `tipoError = 'INCIDENCIA_CAMPO'` y warning en bandeja.
+- **Selección por `version`, Sincronización `SupplyPoint` y Cascada de Bajas:**
+  - Selecciona siempre el contrato activo de versión más alta (`findHighestActiveContract`, `version: 'desc'`).
+  - Al activar cualquier contrato (`Paso 05`, auto-activación administrativa `M1_02`, `E1_06`, `E2_05`), `syncContractDataToSupplyPoint` vuelca atómicamente `iban`, `cnae`, `tariff` y potencias al `SupplyPoint` (Reglas 71 y 72).
+  - En `B1_05`, distingue el corte temporal por impago (`Motivo = '03'` -> `suspendido = true`) de la baja definitiva (`01`, `02`, `04` -> `FINALIZADO` + `bajaProcess = 'B1'`).
+  - En todas las bajas definitivas (`C1_06`, `C2_06`, `T1_06`, `B1_05`, `B2_05` y pérdida por reposición `E2_06`), `cancelSubsequentAndOrphanContracts` anula (`RECHAZADO`) cualquier borrador, modificación o renovación futura huérfana pendiente sobre el suministro.
 
-### 1.3 Bandeja de Incidencias Switching (`/switching-warnings`)
-Actúa como buzón de tareas pendientes para los operadores en procesos de contratación/modificación.
-- **Generación de Warnings:** Si el motor de ingestión detecta anomalías en procesos contractuales (ej. llega un paso 05 de Alta, pero el contrato no estaba `TRAMITANDO`, o llega un paso 06 de `C1/C2` esperando el paso 11), guarda el evento como no resuelto con su `tipoError` y `warning` correspondientes. *(Nota: En `R1`, los submotivos sin CUPS o de CUPS ajeno `007` no generan falsos warnings `CUPS_NO_ENCONTRADO`).*
-- **Auto-Resolución:** Si un error se produjo por desorden de llegada (ej. Paso 05 antes que Paso 02), el operador puede pulsar **"Re-procesar Warnings"** (`retryUnresolvedSwitchingEventsAction`), reinyectando los eventos pendientes y auto-resolviéndolos cuando los pre-requisitos ya se cumplen.
+### 1.3 Bandeja de Eventos Switching (`/switching-warnings`) e Importación Concurrente
+- **Paginación y Filtros (Regla 3 y Regla 252):** Paginación servidor de **100 registros** por defecto, aislamiento por comercializadora activa (manteniendo visibles warnings sin CUPS enlazado como `CUPS_NO_ENCONTRADO`), selector por `procesoBase` (`C1`, `C2`, `A3`, `M1`, `M2`, `B1`, `B2`, `T1`, `E1`, `E2`, `D1`) e icono rojo `<Info />` renderizado exclusivamente cuando existe `event.warning`.
+- **Respuesta Directa `D1_02`:** En notificaciones `D1_01`, la fila incorpora el botón **`D1_02`** que abre el modal de rechazo CNMC (`E1`, `F1` o `I1` según `RechazoD1.xsd`), descarga el XML oficial `MensajeRechazoD1` y marca el evento como resuelto.
+- **Concurrencia por Lotes (`BATCH_SIZE = 10`) y Barrido Post-Scraping:** Tanto la subida de ZIPs en `ImportarSwitchingClient.tsx` (que gestiona estados terminales `COMPLETED`, `PARTIAL`, `ERROR` y `FAILED` y alerta desincronizaciones `>12h`/`>36h`) como la ingesta ZIP en servidor y el barrido automático `retryUnresolvedSwitchingEventsInternal()` ejecutado al concluir cada ciclo del worker procesan en lotes paralelos de 10 XMLs.
 
 ---
 
-## 2. Lógica Específica del Proceso M1 (Modificaciones de ATR)
+## 2. Lógica Específica del Proceso M1 y M2 (Modificaciones de ATR)
 
-El proceso M1 es uno de los más complejos debido a sus múltiples variantes (Técnicas, Administrativas, Autoconsumo).
-
-### 2.1 UI y Generación de la Modificación (Botón "Modificar")
-Cuando se pulsa "Modificar" en el detalle de un contrato (`ContractDetailClient.tsx`), se abre un modal para introducir los nuevos datos (Subrogación, Cambio Técnico, Autoconsumo) y se llama a `createContractModificationAction`.
-- **Versionado:** El ERP **no sobrescribe** el contrato original. Crea un clon con la versión incrementada (`version + 1`), estado `BORRADOR` y `tipo = 'M1'`. El contrato anterior queda referenciado (`previousContractId`).
-- **Nuevos NIFs (Subrogaciones):** Si es un cambio de titular, el ERP busca o crea un nuevo cliente (`Client`), crea o reutiliza un Punto de Suministro con el mismo CUPS vinculado al nuevo titular (Regla 92), y traslada el `Lead` de ventas para no perder trazabilidad.
-- **Generación Documental:** Se inyectan las nuevas variables (`p1c`, `tarifa`, `nif`, etc.) en una plantilla Docx (`generateModificationDocxBuffer`), se envía a DocuSign para convertir a PDF y se sube a Cloudflare R2.
+### 2.1 Creación de Modificaciones (`contractModification.ts`)
+- **M1 Solicitada (`createContractModificationAction`):** Exige sesión autenticada (`await auth()`), calcula `nextVersion` desde el máximo real de versiones del expediente y clona el contrato en `BORRADOR` con `tipo = 'M1'` y `previousContractId`, gestionando nuevos titulares/clones `SupplyPoint` en subrogaciones (Regla 92) y convirtiendo la adenda Word a PDF vía DocuSign -> R2.
+- **M2 Unilateral desde Distribuidora (`createUnilateralModificationAction`):** Exige fecha real de activación en el XML (sin fallback a `new Date()`), clona el contrato activo con las nuevas potencias en `kW` y la tarifa traducida (`2.0TD`, `3.0TD`...), sincroniza `SupplyPoint` y finaliza la versión previa en `fechaActivacion - 1 día`.
 
 ### 2.2 Ingestión de Pasos M1 (`switchingIngest.ts`)
+- **Paso 01 (Solicitud):** Localiza el contrato pendiente (`BORRADOR`, `ACEPTADO` o `RECHAZO_DISTRIBUIDORA`), asigna `nSolicitud` y pasa a `TRAMITANDO`.
+- **Paso 02 (Aceptación / Rechazo):**
+  - Si es **Rechazo**, pasa a **`RECHAZO_DISTRIBUIDORA`** (permaneciendo visible en `/eventos-switching/generar` para corrección y reenvío) y prepende el motivo oficial Tabla 27 en `internalComments` y `distributorMsg` (Regla 183).
+  - Si es **Aceptación** y cumple las tres condiciones administrativas puras (`TipoModificacion = 'S'`, `TipoSolicitudAdministrativa !== 'T'` y sin autoconsumo), **auto-activa el contrato en Paso `02`** (`ACTIVO`), finaliza la versión anterior y sincroniza `iban`/`cnae` hacia `SupplyPoint`. En caso contrario (técnica `N`, mixta `A`, traspaso `T` o autoconsumo), permanece en `TRAMITANDO` hasta el Paso `05` (pudiendo recibir incidencias de campo en Paso `03`).
+- **Paso 05 (Activación Efectiva):** Activa la nueva versión con `<FechaActivacion>`, sincroniza datos técnicos y bancarios al `SupplyPoint` y finaliza el contrato activo previo el día anterior.
 
-#### Paso 01 (Solicitud)
-- Busca el contrato en `BORRADOR`, `ACEPTADO` o `Rechazo Distribuidora` (Regla 127).
-- Pasa el estado a `TRAMITANDO` y guarda el `nSolicitud` para trazar las respuestas.
-
-#### Paso 02 (Aceptación / Rechazo)
-Si la distribuidora responde con Rechazo, el estado pasa a `Rechazo Distribuidora` y se guarda el motivo prependiéndolo en `internalComments` (Regla 183).
-Si responde con Aceptación, el ERP aplica la **Regla de Auto-Activación en Paso 02** cuando se cumple TODO lo siguiente:
-1.  **Es Administrativa:** El Tipo de Modificación Contractual (Tabla 7) es `S`. *(Se excluyen Técnicas `N` y Mixtas `A`)*.
-2.  **No es Traspaso:** El Tipo de Solicitud Administrativa (Tabla 53) es distinto de `T`.
-3.  **No es Autoconsumo:** El flag de autoconsumo es falso.
-
-Si se cumplen, el contrato pasa directamente a estado **`ACTIVO`**, se finaliza el contrato anterior y no se espera al Paso 05. Si es Traspaso (`T`), Técnico (`N`), Mixto (`A`) o Autoconsumo, el contrato permanece en `TRAMITANDO` esperando el Paso 05.
-
-#### Paso 05 (Activación Efectiva)
-- El contrato pasa a `ACTIVO`.
-- **Regla de Rescisión M1/M2:** Se busca el contrato `ACTIVO` anterior para ese mismo CUPS y se cambia a `FINALIZADO` con fecha del día anterior a la nueva activación, evitando solapamientos.
-- Se actualizan los datos técnicos definitivos (Tarifa, Potencias, Autoconsumo) en `SupplyPoint` al confirmarse la activación.
-
-#### Rechazos en Cadena (Bajas Concurrentes)
-Si mientras un M1 está pendiente llega una baja definitiva para ese CUPS, el sistema cancela las versiones M1 y renovaciones huérfanas pendientes pasándolas a `RECHAZADO` con el motivo: *"Rechazado automático: CUPS causa baja antes de la activación de este contrato"*.
+### 2.3 Aclaración sobre Errata del Manual CNMC en M1 (Subrogación `S` vs Traspaso `T`)
+El texto de la pág. 9 y el flujograma de la pág. 11 del documento CNMC M1 V3.0 se contradicen sobre `S` vs `T`. Conforme al comportamiento real de las distribuidoras, el ERP sigue el **flujograma (Pág. 11)**: las **Subrogaciones (`S`)** se auto-activan en Paso `02`, mientras que los **Traspasos (`T`)** esperan lectura y activación en Paso `05`.
 
 ---
 
-## 3. Aclaración sobre Erratas de la CNMC en M1
+## 3. Lógica Específica del Proceso R1 (Reclamaciones CNMC V3.0)
 
-Durante el desarrollo se detectó una contradicción en el manual de la CNMC (V3.0 Mayo 2024) respecto a qué modificaciones administrativas requieren Paso 05:
-
-- **Contradicción (Pág. 9 vs Pág. 11):** El texto de la página 9 indica que las modificaciones administrativas se activan en el paso 02 *a excepción del cambio de titular por subrogación (S)*. Sin embargo, el flujograma de la página 11 indica que la excepción son los *cambios de titular por traspaso (T)*.
-- **Resolución Técnica Adoptada:** Tras analizar el comportamiento real de las distribuidoras, el ERP **hace caso al flujograma (Pág. 11)**. Las Subrogaciones (`S`) no cortan el ciclo de facturación y se auto-activan en el Paso 02. Los Traspasos (`T`) sí cortan el ciclo, requieren lectura real, y esperan al Paso 05.
+Las reclamaciones B2B hacia distribuidora operan aisladas bajo `procesoBase = 'R1'` sobre `SwitchingEvent` (separadas de `/incidencias`, Reglas 114, 125 y 237–240):
+- **Pasos soportados:** `01` (apertura con `XSD_ORDER` estricto, `<Comentarios>` omitido si vacío, `<Pais>ESPAÑA</Pais>`, adjuntos Tabla 61 en `/api/cnmc/document` y auto-registro ERP), `02` (`ACEPTADO` / `RECHAZADO` Tabla 27), `03` (`COM_01..04` Tabla 84, `FechaLimiteEnvio`, `Retipificacion`), `04` (`INFO_ENVIADA`), `05` (`RES_01..05` Tabla 80 e indemnización) y `08`/`09` (anulación con `CabeceraReclamacion`).
+- **Bandeja `/reclamaciones`:** Aislamiento multi-comercializadora (`resolveActiveCompanyId`), paginación a `100` filas, pestañas con contadores en vivo, cronología íntegra y exportación `.xlsx` sobre el total filtrado (`limit = 0`).
 
 ---
 
-## 4. Lógica Específica del Proceso R1 (Reclamaciones CNMC V3.0)
+## 4. Generadores Auxiliares (`B1`, `E2`, Anulaciones, `D1_02`) y Reportes Regulatorios `CODAGE`
 
-Las reclamaciones B2B hacia distribuidora se gestionan íntegramente sobre `SwitchingEvent` (`procesoBase = 'R1'`), separadas del sistema de tickets B2C (`/incidencias`, Regla 114).
-
-### 4.1 Ingesta Multi-Paso y Vinculación (`parser.ts` y `switchingIngest.ts`)
-- **Dirección de mensajes:** En `R1`, los pasos enviados por la comercializadora son `01`, `04` y `08` (se toma `Remitente`), y los recibidos de distribuidora son `02`, `03`, `05` y `09` (se toma `Destinatario`).
-- **Clave única con soporte iterativo (`buildSwitchingUniqueProcess`):** Soporta expedientes sin CUPS (`SINCUPS`) e incorpora el sufijo `#Sxx` cuando `SecuencialDeSolicitud !== '01'` en los pasos `03, 04, 08, 09`, permitiendo múltiples rondas de solicitud/envío de información adicional sin sobrescribir eventos previos.
-- **Vinculación a Contrato:** Aunque un `R1` no muta el estado del contrato, el ingestor busca todos los `SupplyPoint` que comparten la raíz de 20 caracteres del CUPS y vincula el evento tanto a `supplyPointId` como al `contractId` activo (o al más reciente si ya finalizó), garantizando su visibilidad en la pestaña **Reclamaciones** de `/contratos/[id]`.
-- **Semántica de estados por paso:**
-  - `Paso 01`: Guarda `<Comentarios>` en `observaciones`, `<FechaLimite>` en `fechaPrevActivacion` y `Tipo`/`Subtipo` normalizados (`02` / `009`, etc.).
-  - `Paso 02`: `ACEPTADO` (extrae `CodigoReclamacionDistribuidora`) o `RECHAZADO` (traduce `<Rechazos><Rechazo>` mediante Tabla 27 CNMC en `motivosRechazo` y `observaciones`).
-  - `Paso 03`: Clasifica `estadoAR = COM_01..COM_04` (Tabla 84), guarda `FechaLimiteEnvio`, actualiza `Tipo`/`Subtipo` si hay `<Retipificacion>` y detalla los documentos requeridos. Si el último Paso `03` es `COM_01` sin Paso `04` posterior ni cierre `05`, el expediente figura como **`Pte. Info (Paso 03)`**.
-  - `Paso 04`: Se registra como `estadoAR = 'INFO_ENVIADA'`.
-  - `Paso 05`: Clasifica `estadoAR = RES_01..RES_05` (Tabla 80), extrae `DetalleResultado`, `IndemnizacionAbonada` y concatena `Observaciones` + `Comentarios`.
-  - `Pasos 08 / 09`: Si Paso `09` es `ACEPTADO`, marca `isAnnulled = true` en todos los eventos del `codigoSolicitud` (**`Anulada`**).
-
-### 4.2 Generación XSD, Adjuntos y Detección de Duplicados (`/reclamaciones/generar`)
-- **Cumplimiento XSD (`reclamacionesActions.ts`):** Ordenación estricta de los 23 campos de `<VariableDetalleReclamacion>` (`XSD_ORDER`), `<CUPS>` completo de 22 caracteres, fechas en zona `Europe/Madrid`, `CodigoPeriodoDH` mantenido en `91..96` (Regla 189), soporte de submotivos sin `<CUPS>` (selector manual de distribuidora REE) o sin `<Cliente>` (`007`), subida de adjuntos a R2 (`cnmc/`) tipificados con Tabla 61 hacia `/api/cnmc/document` (`GET`/`POST`, `<= 255` chars) y auto-ingesta inmediata en `SwitchingEvent` (`ingestXmlStringInternal`).
-- **Cruce F1 + ERP en modo automático `006`:** `searchCupsWithBillingDelay` consolida todos los clones `SupplyPoint` de cada CUPS activo y compara el máximo entre `Invoice.billingEnd` y `F1Invoice.fechaFin` (`> 45 días`), alertando además si el suministro ya tiene una reclamación `R1` abierta (`getOpenR1ByBaseCups`).
-
-### 4.3 Seguimiento y Exportación (`/reclamaciones` y `/contratos/[id]`)
-- Pestañas por estado con contadores en vivo, paginación por defecto de **100 filas**, `diasAbierta` exclusivo para estados abiertos, modal de cronología íntegra sin truncar al pulsar cualquier fila y descarga `.xlsx` sobre el total filtrado (`limit = 0`) con los textos completos de los pasos `01, 02, 03, 04 y 05`, resultado CNMC e indemnización.
+- **Bajas (`bajasActions.tsx` — `B1_01`):** Cumple `TipoMensajeB101.xsd` (`<NombreDePila>`, `<SegundoApellido>` opcional, Tabla 6 `NI/NE/PS`, `<PrefijoPais>0034</PrefijoPais>`, `IndActivacion` `'A'`/`'F'` y bloqueo si falta nombre del titular).
+- **Reposiciones (`reposicionesActions.ts` — `E2_01` y `E2_15`):** Cumple `SolicitudReposicion.xsd`, `AceptacionReposicionReceptor.xsd` y `RechazoReposicionReceptor.xsd` (`<CodigoDelProceso>E2</CodigoDelProceso>`, `xmlns="http://localhost/elegibilidad"`, Tabla 6 y `TipoDeReposicion` `'01'` por defecto).
+- **Anulaciones y Rechazo D1 (`anulacionesActions.ts`):** Genera anulaciones XSD para `A3_06`, `M1_06`, `C1_08`, `C2_08`, `E2_08`, `B1_03`, `E1_03` y `R1_08`, además de `MensajeRechazoD1` (`D1_02`, motivos `E1`, `F1`, `I1`).
+- **Reportes Regulatorios CNMC y MITECO (`/regulacion/cnmc` y `/regulacion/miteco` — ver [`GUIA_REGULACION.md`](./GUIA_REGULACION.md) y Reglas 252–256):**
+  - **`SI_CODAGE` (`/api/cnmc/si-codage`):** Cumple íntegramente el *Manual de Archivos SCC v6.0* y `SolicitudesRealizadas_v1.0.xsd` (exclusión de `T1`, mapeo real `R1-xxx`, doble cómputo `Paso 02` aceptado + `Paso 04` rechazado en campo con fallback `fechaAR = fechaSolicitudDate`, `<TMActivacion>` desde `fechaPrevActivacion` / incidencia `03`, reconstrucción histórica de 14 meses `< endYmd`, desglose de tramos `<DetallePendientesRespuesta>` / `<DetallePdteActivacion>`, `<Reposiciones>` de `E2` ejecutadas en `05`/`06`, guardia para meses vacíos y sufijo correlativo `_01`..`_99`).
+  - **`TM_CODAGE` (`/api/cnmc/tm-codage`) y `Coberturas` (`/api/cnmc/coberturas`):** `TM_CODAGE` genera `.csv` (`;`, cabecera exacta `CANAL;ACTUACION_CAMPO;IND_ACTIVACION;NUM_ACTIVADAS;TIEMPO_MEDIO`, nombre `TM_<CODAGE>_E_<AAAAT>` sin `_01`) y libro `.xls` (pestaña `'Datos'`), filtrando por activación efectiva trimestral (`fechaActivacionAlta`) y calculando `TIEMPO_MEDIO` desde `Contract.signatureDate`. `Coberturas` genera `Coberturas_<CODAGE>_<AAAA>.csv` según la Circular `CIR/DE/007/25` (1 fila sin cabecera, 10 enteros en `kWh BC`).
+  - **Pre-validador y Trazabilidad (`/api/regulacion/submissions`):** Todos los reportes de CNMC y MITECO (`ESCILA` en `ISO-8859-1` y `DAFNE / FNEE` en `GWh` + PDF `DEC_RESP_FNEE`) incorporan previsualización previa (`?preview=true`) e histórico de entregas en `SyncJob` con custodia de justificantes PDF en Cloudflare R2 (`regulacion/`).
