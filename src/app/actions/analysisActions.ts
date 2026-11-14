@@ -29,15 +29,30 @@ export async function getEconomicAnalysis() {
           SELECT 
             to_char(COALESCE("billingEnd", "issueDate"), 'YYYY-MM') as month,
             SUM(
-              COALESCE(
-                CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA', ''), ',', '.') AS NUMERIC), 
-                CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA CORR', ''), ',', '.') AS NUMERIC), 
-                subtotal1, 
-                0
-              ) * CASE WHEN UPPER(COALESCE("invoiceType", '')) = 'ABONO' THEN -1 ELSE 1 END
+              CASE 
+                WHEN UPPER(COALESCE("invoiceType", '')) LIKE '%ABONO%' OR UPPER(COALESCE("invoiceType", '')) IN ('A', 'AR', 'S') THEN
+                  -ABS(COALESCE(
+                    CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA', ''), ',', '.') AS NUMERIC), 
+                    CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA CORR', ''), ',', '.') AS NUMERIC), 
+                    subtotal1, 
+                    0
+                  ))
+                ELSE
+                  COALESCE(
+                    CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA', ''), ',', '.') AS NUMERIC), 
+                    CAST(REPLACE(NULLIF("invoiceData"->>'Base Imponible IVA CORR', ''), ',', '.') AS NUMERIC), 
+                    subtotal1, 
+                    0
+                  )
+              END
             ) as total_eur,
             SUM(
-              COALESCE("totalMWh", 0) * CASE WHEN UPPER(COALESCE("invoiceType", '')) = 'ABONO' THEN -1 ELSE 1 END
+              CASE 
+                WHEN UPPER(COALESCE("invoiceType", '')) LIKE '%ABONO%' OR UPPER(COALESCE("invoiceType", '')) IN ('A', 'AR', 'S') THEN
+                  -ABS(COALESCE("totalMWh", 0))
+                ELSE
+                  COALESCE("totalMWh", 0)
+              END
             ) as total_mwh,
             SUM(COALESCE("margin", 0)) as margin
           FROM "Invoice"

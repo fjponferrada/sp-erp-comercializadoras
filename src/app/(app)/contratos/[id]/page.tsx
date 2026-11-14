@@ -55,18 +55,35 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   let versions: any[] = [];
   if (contract.contractCode) {
     versions = await prisma.contract.findMany({
-      where: { contractCode: contract.contractCode },
+      where: { contractCode: contract.contractCode, ...visibilityFilter },
       select: { id: true, version: true, status: true, createdAt: true },
       orderBy: { version: 'desc' }
     });
   }
 
+  // Regla 58 y Regla 124: Agrupar histórico completo del contador físico por los primeros 20 caracteres del CUPS
+  const rawCups = contract.supplyPoint?.cups || contract.Lead?.cups || '';
+  const cups20 = rawCups && !rawCups.startsWith('CUPS_MOCK') ? rawCups.substring(0, 20) : '';
+  let allSupplyPointIds: string[] = contract.supplyPointId ? [contract.supplyPointId] : [];
+  if (cups20.length >= 20) {
+    const matchingSps = await prisma.supplyPoint.findMany({
+      where: {
+        cups: { startsWith: cups20 },
+        ...(contract.brandId ? { brandId: contract.brandId } : {})
+      },
+      select: { id: true }
+    });
+    if (matchingSps.length > 0) {
+      allSupplyPointIds = Array.from(new Set([...allSupplyPointIds, ...matchingSps.map(sp => sp.id)]));
+    }
+  }
+
   // Fetch Switching Events for this CUPS, excluding irrelevant ones
   let switchingEvents: any[] = [];
-  if (contract.supplyPointId) {
+  if (allSupplyPointIds.length > 0) {
     switchingEvents = await prisma.switchingEvent.findMany({
       where: {
-        supplyPointId: contract.supplyPointId,
+        supplyPointId: { in: allSupplyPointIds },
         procesoBase: { notIn: ['F1', 'R1', 'P0', 'Q1', 'W1', 'T1'] }
       },
       orderBy: { fechaAviso: 'desc' }
@@ -80,12 +97,12 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     claims = claimsResult.data;
   }
 
-  // Fetch F1 Invoices for this contract dynamically by dates
+  // Fetch F1 Invoices for this contract dynamically by dates (Regla 56 y Regla 178)
   let f1Invoices: any[] = [];
-  if (contract.supplyPointId && contract.activationDate) {
+  if (allSupplyPointIds.length > 0 && contract.activationDate) {
     f1Invoices = await prisma.f1Invoice.findMany({
       where: {
-        supplyPointId: contract.supplyPointId,
+        supplyPointId: { in: allSupplyPointIds },
         fechaFin: { gte: contract.activationDate },
         ...(contract.terminationDate ? { fechaInicio: { lte: contract.terminationDate } } : {})
       },
@@ -93,11 +110,11 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     });
   }
 
-  // Fetch Historical Invoices for this CUPS across all contracts with permissions
+  // Fetch Historical Invoices for this CUPS across all contracts with permissions (Regla 93 y Regla 124)
   let historicalInvoices: any[] = [];
-  if (contract.supplyPointId) {
+  if (allSupplyPointIds.length > 0) {
     const role = sessionUser?.role || 'CLIENT';
-    let invoicesWhere: any = { supplyPointId: contract.supplyPointId };
+    let invoicesWhere: any = { supplyPointId: { in: allSupplyPointIds } };
 
     if (role === 'SUPERADMIN') {
       // No extra filters, can see all history for the CUPS
@@ -123,6 +140,22 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     });
   }
 
+  // Regla 68: Resolución resiliente del producto si el contrato viene de histórico
+  let resolvedProduct = contract.product;
+  if (!resolvedProduct && contract.Lead?.product) {
+    const prodRef = String(contract.Lead.product).trim();
+    if (prodRef.startsWith('cm')) {
+      resolvedProduct = await prisma.product.findUnique({ where: { id: prodRef } });
+    } else if (prodRef) {
+      resolvedProduct = await prisma.product.findFirst({
+        where: {
+          name: prodRef,
+          ...(contract.brandId ? { brandId: contract.brandId } : {})
+        }
+      });
+    }
+  }
+
   let finalDistributorName = contract.supplyPoint?.distributorName;
   if (!finalDistributorName || /^\d{4}$/.test(contract.supplyPoint?.distributor || '')) {
      const cups = contract.supplyPoint?.cups || contract.Lead?.cups || '';
@@ -145,7 +178,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       distributorName: finalDistributorName || contract.supplyPoint?.distributorName,
     },
     user: contract.user,
-    product: contract.product,
+    product: resolvedProduct,
     invoices: contract.invoices,
     f1Invoices,
     switchingEvents,

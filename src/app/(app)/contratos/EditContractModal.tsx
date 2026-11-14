@@ -20,6 +20,10 @@ const ESTADOS = [
   'FINALIZADO',
   'RECHAZADO',
   'RECHAZO_DISTRIBUIDORA',
+  'Rechazo Distribuidora',
+  'RECHAZO_COMERCIALIZADORA',
+  'RECHAZO_RIESGOS',
+  'RECHAZADO_POR_CLIENTE',
   'VERIFICANDO_FIRMA',
   'BAJA',
   'RENOVACION'
@@ -94,8 +98,6 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
   const [formData, setFormData] = useState({
     status: contract.status || 'TRAMITANDO',
     internalComments: contract.internalComments || '',
-    tipo: contract.tipo || '',
-    tipoC2: contract.tipoC2 || '',
     tramitationType: contract.tramitationType || (Array.isArray(cData['Tramitación a realizar']) ? cData['Tramitación a realizar'][0] : cData['Tramitación a realizar']) || '',
     distributorMsg: contract.distributorMsg || '',
     
@@ -140,30 +142,21 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
     p5p: contract.p5p ?? lead.p5p ?? '', 
     p6p: contract.p6p ?? lead.p6p ?? '',
     
-    p1c: (contract.airtableData as any)?.p1c ?? contract.p1c ?? supplyPoint.p1c ?? lead.p1c ?? supplyPoint.p1p ?? '', 
-    p2c: (contract.airtableData as any)?.p2c ?? contract.p2c ?? supplyPoint.p2c ?? lead.p2c ?? supplyPoint.p2p ?? '', 
-    p3c: (contract.airtableData as any)?.p3c ?? contract.p3c ?? supplyPoint.p3c ?? lead.p3c ?? supplyPoint.p3p ?? '',
-    p4c: (contract.airtableData as any)?.p4c ?? contract.p4c ?? supplyPoint.p4c ?? lead.p4c ?? supplyPoint.p4p ?? '', 
-    p5c: (contract.airtableData as any)?.p5c ?? contract.p5c ?? supplyPoint.p5c ?? lead.p5c ?? supplyPoint.p5p ?? '', 
-    p6c: (contract.airtableData as any)?.p6c ?? contract.p6c ?? supplyPoint.p6c ?? lead.p6c ?? supplyPoint.p6p ?? '',
-    tariff: supplyPoint.tariff ?? lead.tariff ?? '',
+    p1c: contract.p1c ?? (contract.airtableData as any)?.p1c ?? supplyPoint.p1c ?? lead.p1c ?? supplyPoint.p1p ?? '', 
+    p2c: contract.p2c ?? (contract.airtableData as any)?.p2c ?? supplyPoint.p2c ?? lead.p2c ?? supplyPoint.p2p ?? '', 
+    p3c: contract.p3c ?? (contract.airtableData as any)?.p3c ?? supplyPoint.p3c ?? lead.p3c ?? supplyPoint.p3p ?? '',
+    p4c: contract.p4c ?? (contract.airtableData as any)?.p4c ?? supplyPoint.p4c ?? lead.p4c ?? supplyPoint.p4p ?? '', 
+    p5c: contract.p5c ?? (contract.airtableData as any)?.p5c ?? supplyPoint.p5c ?? lead.p5c ?? supplyPoint.p5p ?? '', 
+    p6c: contract.p6c ?? (contract.airtableData as any)?.p6c ?? supplyPoint.p6c ?? lead.p6c ?? supplyPoint.p6p ?? '',
+    tariff: (typeof (contract.airtableData as any)?.tarifa === 'string' ? (contract.airtableData as any)?.tarifa : undefined) ?? supplyPoint.tariff ?? lead.tariff ?? '',
 
     requestType: contract.requestType || '',
     isBajaM1: contract.requestType === 'M1',
-    // SupplyPoint data
-    distributor: supplyPoint.distributorName?.replace(/^\[.*?\]\s*/, '') || supplyPoint.distributor?.replace(/^\[.*?\]\s*/, '') || '',
-    annualConsumption: supplyPoint.annualConsumption || lead.estimatedMWh || '',
-    // Client data
-    vatNumber: client.vatNumber || lead.vatNumber || '',
-    contactEmail: client.contactEmail || lead.email || '',
-    invoiceEmail: client.invoiceEmail || lead.invoiceEmail || client.contactEmail || lead.email || '',
-    contactPhone: client.contactPhone || lead.phone || '',
-    iban: supplyPoint.iban || contract.iban || (client as any).iban || (lead as any).iban || '',
-    cnae: supplyPoint.cnae || (client as any).cnae || lead.cnae || '',
   });
 
   const availableTramitations = Object.keys(TIPO_TRAMITACION_MAPPING);
   const hasUnknownTramitation = formData.tramitationType && !availableTramitations.includes(formData.tramitationType);
+  const hasUnknownStatus = formData.status && !ESTADOS.includes(formData.status);
 
   if (!isOpen) return null;
 
@@ -312,7 +305,8 @@ export default function EditContractModal({ isOpen, onClose, contract, onSuccess
                       onChange={handleChange} 
                       className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:border-lime-500/50 transition-all outline-none"
                     >
-                      {ESTADOS.map(e => <option key={e} value={e}>{e.replace('_', ' ')}</option>)}
+                      {hasUnknownStatus && <option value={formData.status}>{formData.status}</option>}
+                      {ESTADOS.map(e => <option key={e} value={e}>{e.replace(/_/g, ' ')}</option>)}
                     </select>
                   </div>
                   <div>

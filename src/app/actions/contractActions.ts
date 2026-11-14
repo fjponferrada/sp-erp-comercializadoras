@@ -1322,7 +1322,28 @@ export async function updateContractFull(formData: FormData) {
       cDataObj['Código Tarifa'] = [tariff];
     }
 
-    // Contract data is a snapshot. We no longer update Client or SupplyPoint from here (Reglas 69, 73 y 75).
+    // Contract data is a snapshot. We no longer update Client or SupplyPoint on arbitrary edits (Reglas 69, 73 y 75).
+    // Regla 72: La sincronización hacia el CUPS se realiza de forma atómica y exclusiva cuando transiciona a ACTIVO.
+    if (existing.status !== 'ACTIVO' && isActivo && existing.supplyPointId) {
+      const spSync: any = {};
+      if (tariff) spSync.tariff = tariff;
+      if (iban || existing.iban) spSync.iban = iban || existing.iban;
+      if (p1c !== undefined) spSync.p1c = p1c;
+      if (p2c !== undefined) spSync.p2c = p2c;
+      if (p3c !== undefined) spSync.p3c = p3c;
+      if (p4c !== undefined) spSync.p4c = p4c;
+      if (p5c !== undefined) spSync.p5c = p5c;
+      if (p6c !== undefined) spSync.p6c = p6c;
+      if (Object.keys(spSync).length > 0) {
+        await prisma.supplyPoint.update({
+          where: { id: existing.supplyPointId },
+          data: spSync
+        });
+      }
+    }
+
+    const mappedTramitation = tramitationType ? getTramitationCodes(tramitationType) : { tipo: null, tipoC2: null };
+    const preserveSpecialTipo = ['R', 'E1'].includes(existing.tipo || '') && (!tramitationType || tramitationType === existing.tramitationType);
 
     // Update Contract
     await prisma.contract.update({
@@ -1343,8 +1364,8 @@ export async function updateContractFull(formData: FormData) {
         discountEndDate: discountEndDate ? new Date(discountEndDate) : null,
         svaStartDate: svaStartDate ? new Date(svaStartDate) : null,
         tramitationType: tramitationType || undefined,
-        tipo: tipo || (tramitationType ? getTramitationCodes(tramitationType).tipo : undefined),
-        tipoC2: tipoC2 || (tramitationType ? getTramitationCodes(tramitationType).tipoC2 : undefined),
+        tipo: preserveSpecialTipo ? existing.tipo : (tipo || mappedTramitation.tipo || undefined),
+        tipoC2: preserveSpecialTipo ? existing.tipoC2 : (tipoC2 || mappedTramitation.tipoC2 || undefined),
         distributorMsg: distributorMsg,
         svaConcept: svaConcept,
         duration: duration,
@@ -1361,6 +1382,7 @@ export async function updateContractFull(formData: FormData) {
     });
 
     revalidatePath('/contratos');
+    revalidatePath(`/contratos/${contractId}`);
     return { success: true };
   } catch (error: any) {
     console.error('Error in updateContractFull:', error);

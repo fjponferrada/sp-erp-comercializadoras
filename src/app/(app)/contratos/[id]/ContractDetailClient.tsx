@@ -14,6 +14,7 @@ import ConsumosTab from './ConsumosTab';
 import ModificationModal from './ModificationModal';
 import HistoricalChart from './HistoricalChart';
 import EditContractModal from '../EditContractModal';
+import ProductModal from '@/app/(app)/productos/ProductModal';
 
 export default function ContractDetailClient({ 
   initialContract, 
@@ -33,15 +34,12 @@ export default function ContractDetailClient({
   const [activeSubTab, setActiveSubTab] = useState('Resumen Histórico');
 
   // Modal states
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [showDatesModal, setShowDatesModal] = useState(false);
   const [showModModal, setShowModModal] = useState(false);
   const [isSendingSignature, setIsSendingSignature] = useState(false);
-  const [isRequestingMod, setIsRequestingMod] = useState(false);
-  const [isActivating, setIsActivating] = useState(false);
   const [isGeneratingXml, setIsGeneratingXml] = useState(false);
   const [isDeletingVersion, setIsDeletingVersion] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [showTacitRenewalModal, setShowTacitRenewalModal] = useState(false);
   const [isCommunicatingTacitRenewal, setIsCommunicatingTacitRenewal] = useState(false);
 
@@ -132,11 +130,6 @@ export default function ContractDetailClient({
     }
     return svaName === '-' ? 'Sin SVA' : svaName;
   };
-
-  const handleSendToSignature = async () => { /* ... */ };
-  const downloadContract = async () => { /* ... */ };
-  const handleSaveDates = async () => { /* ... */ };
-  const handleRequestMod = async () => { /* ... */ };
 
   const displayTariff = typeof (initialContract.airtableData as any)?.tarifa === 'string' 
     ? (initialContract.airtableData as any)?.tarifa 
@@ -402,6 +395,16 @@ export default function ContractDetailClient({
           }}
         />
       )}
+      {isProductModalOpen && initialContract.product && (
+        <ProductModal
+          product={initialContract.product}
+          onClose={() => setIsProductModalOpen(false)}
+          onSaved={() => {
+            setIsProductModalOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
         {/* TAB CONTENT */}
         {activeTab === 'Datos' && (
           <div className="flex flex-col md:flex-row gap-6 items-start min-w-0 w-full">
@@ -436,13 +439,31 @@ export default function ContractDetailClient({
                   <DataItem label="Tipo de Cliente" value={client.clientType || lead.clientType || 'Empresa'} />
                   {((client.clientType || lead.clientType || '').toLowerCase().includes('física') || (client.clientType || lead.clientType || '').toLowerCase().includes('fisica')) ? (
                     <>
-                      <DataItem label="Nombre" value={getNombreSolo()} />
+                      <DataItem label="Nombre" value={
+                        client?.id ? (
+                          <span className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50" onClick={() => router.push(`/clientes/${client.id}`)}>
+                            {getNombreSolo()}
+                          </span>
+                        ) : getNombreSolo()
+                      } />
                       <DataItem label="Apellidos" value={`${client.primerApellido || leadData.primerApellido || ''} ${client.segundoApellido || leadData.segundoApellido || ''}`.trim() || leadData.apellidosContacto || '-'} />
                     </>
                   ) : (
-                    <DataItem label="Razón Social" value={client.businessName || lead.businessName} />
+                    <DataItem label="Razón Social" value={
+                      client?.id ? (
+                        <span className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50" onClick={() => router.push(`/clientes/${client.id}`)}>
+                          {client.businessName || lead.businessName}
+                        </span>
+                      ) : (client.businessName || lead.businessName)
+                    } />
                   )}
-                  <DataItem label="NIF / CIF" value={client.vatNumber || lead.vatNumber} />
+                  <DataItem label="NIF / CIF" value={
+                    client?.id ? (
+                      <span className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50" onClick={() => router.push(`/clientes/${client.id}`)}>
+                        {client.vatNumber || lead.vatNumber}
+                      </span>
+                    ) : (client.vatNumber || lead.vatNumber)
+                  } />
                   <DataItem label="CNAE" value={supplyPoint?.cnae || '-'} />
                   
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Contacto Principal</h3></div>
@@ -473,7 +494,13 @@ export default function ContractDetailClient({
                 <>
                   <SectionCard title="Datos del Contrato" icon={FileText} delay={0}>
                     <DataItem label="ID Contrato" value={<span className="font-mono text-gray-300 tracking-wider">{initialContract.contractCode || initialContract.id}</span>} />
-                    <DataItem label="Producto" value={initialContract.product?.name || lead.product} />
+                    <DataItem label="Producto" value={
+                      initialContract.product ? (
+                        <span className="cursor-pointer text-indigo-400 hover:text-indigo-300 underline underline-offset-2 decoration-indigo-500/50" onClick={() => setIsProductModalOpen(true)}>
+                          {initialContract.product.name}
+                        </span>
+                      ) : (lead.product || '-')
+                    } />
                     <DataItem label="Tipo Tramitación" value={initialContract.tramitationType || 'Alta'} />
                     <DataItem label="Duración (Meses)" value={initialContract.duration || initialContract.product?.permanenceMonths || '12'} />
                     
@@ -496,7 +523,15 @@ export default function ContractDetailClient({
 
               {activeSubTab === 'Datos Técnicos CUPS' && (
                 <SectionCard title="Datos Técnicos del Punto de Suministro" icon={Zap} delay={0}>
-                  <DataItem highlight label="CUPS" value={<span className="font-mono tracking-widest">{supplyPoint.cups || lead.cups}</span>} />
+                  <DataItem highlight label="CUPS" value={
+                    supplyPoint?.id ? (
+                      <span className="font-mono tracking-widest cursor-pointer hover:underline underline-offset-2" onClick={() => router.push(`/puntos-suministro/${supplyPoint.id}`)}>
+                        {supplyPoint.cups || lead.cups}
+                      </span>
+                    ) : (
+                      <span className="font-mono tracking-widest">{supplyPoint.cups || lead.cups}</span>
+                    )
+                  } />
                   <DataItem label="Tarifa" value={<span className="font-mono font-bold text-gray-200">
                     {displayTariff}
                   </span>} />
@@ -514,14 +549,14 @@ export default function ContractDetailClient({
                   <DataItem label="Provincia" value={supplyPoint.province} />
 
                   <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4 mb-2"><h3 className="text-sm font-bold text-gray-400 uppercase">Potencias Contratadas (kW)</h3></div>
-                  <DataItem label="P1P" value={(initialContract.airtableData as any)?.p1c || initialContract.p1c || supplyPoint.p1c || lead.p1c || supplyPoint.p1p || '-'} />
-                  <DataItem label="P2P" value={(initialContract.airtableData as any)?.p2c || initialContract.p2c || supplyPoint.p2c || lead.p2c || supplyPoint.p2p || '-'} />
+                  <DataItem label="P1C" value={initialContract.p1c ?? (initialContract.airtableData as any)?.p1c ?? supplyPoint.p1c ?? lead.p1c ?? supplyPoint.p1p ?? '-'} />
+                  <DataItem label="P2C" value={initialContract.p2c ?? (initialContract.airtableData as any)?.p2c ?? supplyPoint.p2c ?? lead.p2c ?? supplyPoint.p2p ?? '-'} />
                   {displayTariff !== '2.0TD' && displayTariff !== '2.0 A' && (
                     <>
-                      <DataItem label="P3P" value={(initialContract.airtableData as any)?.p3c || initialContract.p3c || supplyPoint.p3c || lead.p3c || supplyPoint.p3p || '-'} />
-                      <DataItem label="P4P" value={(initialContract.airtableData as any)?.p4c || initialContract.p4c || supplyPoint.p4c || lead.p4c || supplyPoint.p4p || '-'} />
-                      <DataItem label="P5P" value={(initialContract.airtableData as any)?.p5c || initialContract.p5c || supplyPoint.p5c || lead.p5c || supplyPoint.p5p || '-'} />
-                      <DataItem label="P6P" value={(initialContract.airtableData as any)?.p6c || initialContract.p6c || supplyPoint.p6c || lead.p6c || supplyPoint.p6p || '-'} />
+                      <DataItem label="P3C" value={initialContract.p3c ?? (initialContract.airtableData as any)?.p3c ?? supplyPoint.p3c ?? lead.p3c ?? supplyPoint.p3p ?? '-'} />
+                      <DataItem label="P4C" value={initialContract.p4c ?? (initialContract.airtableData as any)?.p4c ?? supplyPoint.p4c ?? lead.p4c ?? supplyPoint.p4p ?? '-'} />
+                      <DataItem label="P5C" value={initialContract.p5c ?? (initialContract.airtableData as any)?.p5c ?? supplyPoint.p5c ?? lead.p5c ?? supplyPoint.p5p ?? '-'} />
+                      <DataItem label="P6C" value={initialContract.p6c ?? (initialContract.airtableData as any)?.p6c ?? supplyPoint.p6c ?? lead.p6c ?? supplyPoint.p6p ?? '-'} />
                     </>
                   )}
                 </SectionCard>
@@ -530,7 +565,13 @@ export default function ContractDetailClient({
               {activeSubTab === 'Datos Económicos Contrato' && (
                 <>
                   <SectionCard title="Información Comercial del Contrato" icon={FileText} delay={0}>
-                    <DataItem highlight label="Producto Contratado" value={initialContract.product?.name || lead.product} />
+                    <DataItem highlight label="Producto Contratado" value={
+                      initialContract.product ? (
+                        <span className="cursor-pointer hover:underline underline-offset-2" onClick={() => setIsProductModalOpen(true)}>
+                          {initialContract.product.name}
+                        </span>
+                      ) : (lead.product || '-')
+                    } />
                     <DataItem label="Tipo de Producto" value={initialContract.product?.type || '-'} />
                     <DataItem highlight label="Servicio de Valor Añadido (SVA)" value={getSvaName()} />
                   </SectionCard>

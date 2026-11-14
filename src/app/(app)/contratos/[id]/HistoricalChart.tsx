@@ -37,8 +37,9 @@ export default function HistoricalChart({ invoices }: HistoricalChartProps) {
         };
       }
 
-      // Check if it's an Abono to invert the sign
-      const isAbono = inv.invoiceType === 'Abono' || inv.invoiceType === 'ABONO';
+      // Check if it's an Abono to invert the sign (Reglas 85, 122 y 203)
+      const invTypeUpper = String(inv.invoiceType || '').toUpperCase().trim();
+      const isAbono = invTypeUpper.includes('ABONO') || ['A', 'AR', 'S'].includes(invTypeUpper);
       const mwh = isAbono ? -Math.abs(inv.totalMWh || 0) : (inv.totalMWh || 0);
       const amount = isAbono ? -Math.abs(inv.totalAmount || 0) : (inv.totalAmount || 0);
 
