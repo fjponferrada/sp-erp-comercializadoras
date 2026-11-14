@@ -420,9 +420,11 @@ export class InternalBillingEngine {
       || jsonData?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura
       || jsonData?.DatosGeneralesFactura;
 
+    const rawTipoFactura = datosGen?.TipoFactura;
+    const f1TipoFactura = String((Array.isArray(rawTipoFactura) ? rawTipoFactura[0] : rawTipoFactura) || 'N').trim().toUpperCase();
+
     if (datosGen && datosGen.TipoFactura) {
-      const tipoFact = datosGen.TipoFactura;
-      const t = (Array.isArray(tipoFact) ? tipoFact[0] : tipoFact) as string;
+      const t = f1TipoFactura;
       if (t === 'S' || t === 'AR' || t === 'A') {
         isAbono = true;
         f1Ref = (Array.isArray(datosGen.CodigoFacturaRectificadaAnulada) ? datosGen.CodigoFacturaRectificadaAnulada[0] : datosGen.CodigoFacturaRectificadaAnulada) || f1Ref;
@@ -505,10 +507,23 @@ export class InternalBillingEngine {
     const isPhysicalPerson = f1TipoPersona === 'F' || /^[0-9XYZKLM]/.test(clientVat);
 
     // --- EXTRACCIÓN DE VOLÚMENES Y LECTURAS DEL F1 ---
+    const shiftIsoDatePlusOneDay = (isoDate: string): string => {
+      const clean = isoDate.trim().substring(0, 10);
+      const [y, m, d] = clean.split('-').map(Number);
+      if (!y || !m || !d) return clean;
+      return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().substring(0, 10);
+    };
+
     const termActiva = getArray(jsonData?.EnergiaActiva?.TerminoEnergiaActiva);
 
     const f1VolumesByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
-    const f1SubBlocksActiva: { fechaDesde?: string; fechaHasta?: string; volumesMWh: Record<string, number> }[] = [];
+    const f1SubBlocksActiva: {
+      fechaDesde?: string;
+      fechaHasta?: string;
+      startIso?: string;
+      endExclusiveIso?: string;
+      volumesMWh: Record<string, number>;
+    }[] = [];
     let totalF1MWh = 0;
 
     const f1Readings: Record<string, any> = {};
@@ -535,9 +550,23 @@ export class InternalBillingEngine {
             f1Readings[pName].actCons += kwh;
           }
         }
+        // En CNMC (Regla 170), FechaDesde y FechaHasta del XML indican cierre de día de lectura:
+        // ej. FechaDesde="2025-12-31", FechaHasta="2026-05-07" => consumo real desde 2026-01-01 00:00 hasta 2026-05-08 00:00
+        const rawDesde = typeof t?.FechaDesde === 'string' && t.FechaDesde.length >= 10 ? t.FechaDesde.substring(0, 10) : undefined;
+        const rawHasta = typeof t?.FechaHasta === 'string' && t.FechaHasta.length >= 10 ? t.FechaHasta.substring(0, 10) : undefined;
+        let startIso: string | undefined = undefined;
+        let endExclusiveIso: string | undefined = undefined;
+        if (rawDesde && rawHasta) {
+          startIso = rawHasta > rawDesde ? shiftIsoDatePlusOneDay(rawDesde) : rawDesde;
+          endExclusiveIso = shiftIsoDatePlusOneDay(rawHasta);
+        } else if (rawDesde) {
+          startIso = shiftIsoDatePlusOneDay(rawDesde);
+        }
         f1SubBlocksActiva.push({
           fechaDesde: t?.FechaDesde,
           fechaHasta: t?.FechaHasta,
+          startIso,
+          endExclusiveIso,
           volumesMWh: blockVols
         });
       }
@@ -604,6 +633,23 @@ export class InternalBillingEngine {
         }
       }
     }
+
+    const f1ImportePotenciaXml = Math.abs(
+      parseXmlNum(
+        jsonData?.Potencia?.ImporteTotalTerminoPotencia ??
+        jsonData?.Potencia?.ImporteTotalPotencia ??
+        jsonData?.Potencias?.ImporteTotalTerminoPotencia
+      )
+    );
+    const sumF1AFacturarPower = Object.values(f1PotenciaAFacturarMax).reduce((acc, v) => acc + v, 0);
+    const sumF1ContratadaPowerInit = Object.values(f1PotenciaContratadaMax).reduce((acc, v) => acc + v, 0);
+    const hasF1PowerBilling =
+      termPotenciaList.length > 0 &&
+      (sumF1AFacturarPower > 0 || sumF1ContratadaPowerInit > 0 || f1ImportePotenciaXml > 0);
+    // En facturas Complementarias ('C') sin bloque <Potencia> (inspección/fraude o recuperación de energía omitida),
+    // la potencia contratada y los cargos fijos diarios (Bono Social, SVA, CG Bolsillo Solar) ya se facturaron
+    // en las facturas ordinarias mensuales ('N') que cubrieron ese rango de fechas.
+    const skipDailyAndPowerCharges = f1TipoFactura === 'C' && !hasF1PowerBilling;
 
     // Extraer lecturas reales y Número de Serie del Contador desde Medidas
     let meterSerialNumber = '';
@@ -1008,73 +1054,111 @@ export class InternalBillingEngine {
     };
 
     // --- REPARACIÓN / PERFILADO DE CURVA DE CONSUMO (Reglas 172) ---
-    const needsConsumptionRepair = (hasMismatch && forceRepair) || (cchHourlyMWh.length === 0 && totalF1MWh > 0);
-    if (needsConsumptionRepair) {
-      if (cchHourlyMWh.length === 0) {
-        const ms = endDate.getTime() - startDate.getTime();
+    const repairWindowQuarters = (
+      winStart: Date,
+      winEnd: Date,
+      targetVols: Record<string, number>,
+      existingItems: { date: Date; mwh: number; period: string; isQuarterHour: boolean }[]
+    ): { date: Date; mwh: number; period: string; isQuarterHour: boolean }[] => {
+      const winTotalMWh = Object.values(targetVols).reduce((a, b) => a + b, 0);
+      if (winTotalMWh <= 0) {
+        return existingItems.map(item => ({ ...item, mwh: 0 }));
+      }
+      if (existingItems.length === 0) {
+        const ms = winEnd.getTime() - winStart.getTime();
         const totalQuarters = Math.ceil(ms / (1000 * 60 * 15)) || 1;
         const tempQuarters: { date: Date; period: string; coef: number }[] = [];
         const sumCoefByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
 
         for (let i = 0; i < totalQuarters; i++) {
-          const d = new Date(startDate.getTime() + i * 15 * 60 * 1000);
+          const d = new Date(winStart.getTime() + i * 15 * 60 * 1000);
           const p = getPeriodoREE(d, tariff, postalCode);
           const coef = getCoef(d, false);
           sumCoefByPeriod[p] += coef;
           tempQuarters.push({ date: d, period: p, coef });
         }
 
-        for (const tq of tempQuarters) {
-          const targetMWhPeriod = f1VolumesByPeriod[tq.period] || 0;
+        return tempQuarters.map(tq => {
+          const targetMWhPeriod = targetVols[tq.period] || 0;
           const sumCoef = sumCoefByPeriod[tq.period];
           const mwh = sumCoef > 0 ? targetMWhPeriod * (tq.coef / sumCoef) : 0;
-          cchHourlyMWh.push({ date: tq.date, mwh, period: tq.period, isQuarterHour: true });
+          return { date: tq.date, mwh, period: tq.period, isQuarterHour: true };
+        });
+      }
+
+      const workItems = existingItems.map(item => ({ ...item }));
+      const periodsMissingQuarters = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'].filter(
+        p => (targetVols[p] || 0) > 0 && !workItems.some(c => c.period === p)
+      );
+      if (periodsMissingQuarters.length > 0) {
+        const existingTimestamps = new Set(workItems.map(c => c.date.getTime()));
+        const totalQuarters = Math.ceil((winEnd.getTime() - winStart.getTime()) / (1000 * 60 * 15)) || 1;
+        for (let i = 0; i < totalQuarters; i++) {
+          const d = new Date(winStart.getTime() + i * 15 * 60 * 1000);
+          if (existingTimestamps.has(d.getTime())) continue;
+          const p = getPeriodoREE(d, tariff, postalCode);
+          if (periodsMissingQuarters.includes(p)) {
+            workItems.push({ date: d, mwh: 0, period: p, isQuarterHour: true });
+          }
         }
+        workItems.sort((a, b) => a.date.getTime() - b.date.getTime());
+      }
+
+      const winCchVols: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+      const sumCoefByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
+      const quarterCoefs = new Array(workItems.length);
+
+      for (let i = 0; i < workItems.length; i++) {
+        const c = workItems[i];
+        winCchVols[c.period] = (winCchVols[c.period] || 0) + c.mwh;
+        const coef = getCoef(c.date, false);
+        quarterCoefs[i] = coef;
+        sumCoefByPeriod[c.period] += coef;
+      }
+
+      for (let i = 0; i < workItems.length; i++) {
+        const c = workItems[i];
+        const p = c.period;
+        const f1Vol = targetVols[p] || 0;
+        const cchVol = winCchVols[p] || 0;
+
+        if (f1Vol === 0) {
+          c.mwh = 0;
+        } else if (cchVol > 0) {
+          c.mwh = c.mwh * (f1Vol / cchVol);
+        } else {
+          const sumCoef = sumCoefByPeriod[p];
+          c.mwh = sumCoef > 0 ? f1Vol * (quarterCoefs[i] / sumCoef) : 0;
+        }
+      }
+
+      return workItems;
+    };
+
+    const hasValidMultiSubBlocks =
+      f1SubBlocksActiva.length > 1 &&
+      f1SubBlocksActiva.every(b => Boolean(b.startIso && b.endExclusiveIso));
+
+    const needsConsumptionRepair = (hasMismatch && forceRepair) || (cchHourlyMWh.length === 0 && totalF1MWh > 0);
+    if (needsConsumptionRepair) {
+      if (hasValidMultiSubBlocks) {
+        const origItems = [...cchHourlyMWh];
+        cchHourlyMWh.length = 0;
+        for (const blk of f1SubBlocksActiva) {
+          let blkStart = fromZonedTime(`${blk.startIso}T00:00:00`, 'Europe/Madrid');
+          let blkEnd = fromZonedTime(`${blk.endExclusiveIso}T00:00:00`, 'Europe/Madrid');
+          if (blkStart < startDate) blkStart = startDate;
+          if (blkEnd > endDate) blkEnd = endDate;
+          if (blkEnd <= blkStart) continue;
+          const subExisting = origItems.filter(q => q.date >= blkStart && q.date < blkEnd);
+          const repairedSub = repairWindowQuarters(blkStart, blkEnd, blk.volumesMWh, subExisting);
+          for (const item of repairedSub) cchHourlyMWh.push(item);
+        }
+        cchHourlyMWh.sort((a, b) => a.date.getTime() - b.date.getTime());
       } else {
-        // Si algún periodo con consumo en F1 no tiene NINGÚN cuarto de hora en la curva parcial (ej. faltan todos los fines de semana),
-        // completamos los cuartos de hora de ese periodo para que su consumo no se pierda.
-        const periodsMissingQuarters = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'].filter(
-          p => (f1VolumesByPeriod[p] || 0) > 0 && !cchHourlyMWh.some(c => c.period === p)
-        );
-        if (periodsMissingQuarters.length > 0) {
-          const existingTimestamps = new Set(cchHourlyMWh.map(c => c.date.getTime()));
-          const totalQuarters = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 15)) || 1;
-          for (let i = 0; i < totalQuarters; i++) {
-            const d = new Date(startDate.getTime() + i * 15 * 60 * 1000);
-            if (existingTimestamps.has(d.getTime())) continue;
-            const p = getPeriodoREE(d, tariff, postalCode);
-            if (periodsMissingQuarters.includes(p)) {
-              cchHourlyMWh.push({ date: d, mwh: 0, period: p, isQuarterHour: true });
-            }
-          }
-          cchHourlyMWh.sort((a, b) => a.date.getTime() - b.date.getTime());
-        }
-
-        const sumCoefByPeriod: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0, P5: 0, P6: 0 };
-        const quarterCoefs = new Array(cchHourlyMWh.length);
-
-        for (let i = 0; i < cchHourlyMWh.length; i++) {
-          const c = cchHourlyMWh[i];
-          const coef = getCoef(c.date, false);
-          quarterCoefs[i] = coef;
-          sumCoefByPeriod[c.period] += coef;
-        }
-
-        for (let i = 0; i < cchHourlyMWh.length; i++) {
-          const c = cchHourlyMWh[i];
-          const p = c.period;
-          const f1Vol = f1VolumesByPeriod[p] || 0;
-          const cchVol = cchVolumesByPeriod[p] || 0;
-
-          if (f1Vol === 0) {
-            c.mwh = 0;
-          } else if (cchVol > 0) {
-            c.mwh = c.mwh * (f1Vol / cchVol);
-          } else {
-            const sumCoef = sumCoefByPeriod[p];
-            c.mwh = sumCoef > 0 ? f1Vol * (quarterCoefs[i] / sumCoef) : 0;
-          }
-        }
+        const repairedAll = repairWindowQuarters(startDate, endDate, f1VolumesByPeriod, cchHourlyMWh);
+        cchHourlyMWh.length = 0;
+        for (const item of repairedAll) cchHourlyMWh.push(item);
       }
 
       totalCchMWh = totalF1MWh;
@@ -1251,27 +1335,29 @@ export class InternalBillingEngine {
 
     let bonoSocialUnrounded = 0;
     const bonoLabelsUsed = new Set<string>();
-    for (let d = 0; d < billingDays; d++) {
-      // Sumamos +12h sobre startDate para evitar cualquier salto por cambio de hora DST
-      const dayMid = new Date(startDate.getTime() + d * 86400000 + 12 * 3600000);
-      const dayIso = dayMid.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
-      let matchedRecord: any = null;
-      for (const rec of allBonoSocialRecords) {
-        const vf = rec.validFrom.toISOString().substring(0, 10);
-        const vt = rec.validTo ? rec.validTo.toISOString().substring(0, 10) : null;
-        if (dayIso >= vf && (!vt || dayIso <= vt)) {
-          matchedRecord = rec;
+    if (!skipDailyAndPowerCharges) {
+      for (let d = 0; d < billingDays; d++) {
+        // Sumamos +12h sobre startDate para evitar cualquier salto por cambio de hora DST
+        const dayMid = new Date(startDate.getTime() + d * 86400000 + 12 * 3600000);
+        const dayIso = dayMid.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+        let matchedRecord: any = null;
+        for (const rec of allBonoSocialRecords) {
+          const vf = rec.validFrom.toISOString().substring(0, 10);
+          const vt = rec.validTo ? rec.validTo.toISOString().substring(0, 10) : null;
+          if (dayIso >= vf && (!vt || dayIso <= vt)) {
+            matchedRecord = rec;
+          }
         }
+        if (!matchedRecord && allBonoSocialRecords.length > 0) {
+          matchedRecord = allBonoSocialRecords[allBonoSocialRecords.length - 1];
+        }
+        const rate = matchedRecord ? matchedRecord.amount : 0.01912122;
+        bonoSocialUnrounded += rate;
+        if (matchedRecord?.label) bonoLabelsUsed.add(matchedRecord.label);
       }
-      if (!matchedRecord && allBonoSocialRecords.length > 0) {
-        matchedRecord = allBonoSocialRecords[allBonoSocialRecords.length - 1];
-      }
-      const rate = matchedRecord ? matchedRecord.amount : 0.01912122;
-      bonoSocialUnrounded += rate;
-      if (matchedRecord?.label) bonoLabelsUsed.add(matchedRecord.label);
     }
-    const bonoSocial = round2(bonoSocialUnrounded);
-    const bonoSocialDailyRate = billingDays > 0 ? bonoSocialUnrounded / billingDays : 0;
+    const bonoSocial = skipDailyAndPowerCharges ? 0 : round2(bonoSocialUnrounded);
+    const bonoSocialDailyRate = !skipDailyAndPowerCharges && billingDays > 0 ? bonoSocialUnrounded / billingDays : 0;
     const bonoSocialLabel = bonoLabelsUsed.size > 0
       ? Array.from(bonoLabelsUsed).join(' / ')
       : 'Financiación del Bono Social (Orden TED/1487/2024)';
@@ -1469,12 +1555,20 @@ export class InternalBillingEngine {
         if (!fixedPrice) fixedPrice = 0;
 
         const refAtr = (getRegVal(refRegSet.peajesEnergiaBOE, p) + getRegVal(refRegSet.cargosEnergiaBOE, p)) * 1000;
-        const diffFnee = fneeCost - getRegVal(refRegSet.fneeCostArray, p) * 1000;
-        const diffPc = pc - getRegVal(refRegSet.pcBOE, p) * 1000;
-        const diffRom = rom - getRegVal(refRegSet.romBOE, p) * 1000;
-        const diffRos = ros - getRegVal(refRegSet.rosBOE, p) * 1000;
+        let refPerdBoe = refRegSet.perdidasBOE ? getRegVal(refRegSet.perdidasBOE, p) : 0;
+        if (refPerdBoe > 0.5) refPerdBoe /= 100.0;
+        let curPerdBoe = hourRegSet.perdidasBOE ? getRegVal(hourRegSet.perdidasBOE, p) : refPerdBoe;
+        if (curPerdBoe > 0.5) curPerdBoe /= 100.0;
 
-        ph = fixedPrice - refAtr + diffFnee + diffPc + diffRom + diffRos;
+        const refSys =
+          (getRegVal(refRegSet.pcBOE, p) + getRegVal(refRegSet.romBOE, p) + getRegVal(refRegSet.rosBOE, p)) *
+          1000 *
+          (1 + refPerdBoe);
+        const curSys = (pc + rom + ros) * (1 + curPerdBoe);
+        const diffFnee = fneeCost - getRegVal(refRegSet.fneeCostArray, p) * 1000;
+        const passThroughReg179 = ((curSys - refSys) + diffFnee) / 0.985;
+
+        ph = fixedPrice - refAtr + passThroughReg179;
         hCost = ph * mwh;
       } else {
         const dsv = contract.deviationCost || 0;
@@ -1521,7 +1615,7 @@ export class InternalBillingEngine {
 
       const blocksToBill = f1SubBlocksActiva.length > 0
         ? f1SubBlocksActiva
-        : [{ fechaDesde: f1StartIsoStr, fechaHasta: f1EndIsoStr, volumesMWh: f1VolumesByPeriod }];
+        : [{ fechaDesde: f1StartIsoStr, fechaHasta: f1EndIsoStr, startIso: f1StartIsoStr, endExclusiveIso: f1EndIsoStr, volumesMWh: f1VolumesByPeriod }];
 
       for (const p of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']) {
         const b = periodsBreakdown[p];
@@ -1547,6 +1641,9 @@ export class InternalBillingEngine {
         const refPc = getRegVal(refRegSet.pcBOE, p) * 1000;
         const refRom = getRegVal(refRegSet.romBOE, p) * 1000;
         const refRos = getRegVal(refRegSet.rosBOE, p) * 1000;
+        let refPerdBoe = refRegSet.perdidasBOE ? getRegVal(refRegSet.perdidasBOE, p) : 0;
+        if (refPerdBoe > 0.5) refPerdBoe /= 100.0;
+        const refSys = (refPc + refRom + refRos) * (1 + refPerdBoe);
 
         let pPeajeUnrounded = 0;
         let pCargoUnrounded = 0;
@@ -1556,19 +1653,26 @@ export class InternalBillingEngine {
         for (const blk of blocksToBill) {
           const blkMwh = blk.volumesMWh[p] || 0;
           if (blkMwh <= 0) continue;
-          const blkIso = (blk.fechaDesde && blk.fechaDesde.length >= 10) ? blk.fechaDesde.substring(0, 10) : f1StartIsoStr;
+          // Usamos blk.startIso (FechaDesde + 1 día según Regla 170) para que bloques CNMC como
+          // FechaDesde="2025-12-31" -> FechaHasta="2026-05-07" evalúen el BOE de 2026-01-01 y no 2025.
+          const blkIso = blk.startIso
+            || ((blk.fechaDesde && blk.fechaDesde.length >= 10) ? blk.fechaDesde.substring(0, 10) : f1StartIsoStr);
           const blkReg = getRegSetForIsoDate(blkIso);
 
           const curPeaje = getRegVal(blkReg.peajesEnergiaBOE, p) * 1000;
           const curCargo = getRegVal(blkReg.cargosEnergiaBOE, p) * 1000;
           const curAtr = curPeaje + curCargo;
 
+          let curPerdBoe = blkReg.perdidasBOE ? getRegVal(blkReg.perdidasBOE, p) : refPerdBoe;
+          if (curPerdBoe > 0.5) curPerdBoe /= 100.0;
+          const curPc = getRegVal(blkReg.pcBOE, p) * 1000;
+          const curRom = getRegVal(blkReg.romBOE, p) * 1000;
+          const curRos = getRegVal(blkReg.rosBOE, p) * 1000;
+          const curSys = (curPc + curRom + curRos) * (1 + curPerdBoe);
           const diffFnee = getRegVal(blkReg.fneeCostArray, p) * 1000 - refFnee;
-          const diffPc = getRegVal(blkReg.pcBOE, p) * 1000 - refPc;
-          const diffRom = getRegVal(blkReg.romBOE, p) * 1000 - refRom;
-          const diffRos = getRegVal(blkReg.rosBOE, p) * 1000 - refRos;
+          const passThroughReg179 = ((curSys - refSys) + diffFnee) / 0.985;
 
-          const marginPh = fixedPrice - refAtr + diffFnee + diffPc + diffRom + diffRos;
+          const marginPh = fixedPrice - refAtr + passThroughReg179;
           const totalUnitEurMwh = marginPh + curAtr;
 
           pPeajeUnrounded += curPeaje * blkMwh;
@@ -1579,10 +1683,10 @@ export class InternalBillingEngine {
 
         const kwh = b.f1ConsumptionMWh * 1000;
         const totalPeriodRounded = round2(pTotalBilledUnrounded);
-        const atrPeajeRounded = round2(pPeajeUnrounded);
-        const atrCargoRounded = round2(pCargoUnrounded);
         const atrTotalRounded = round2(pPeajeUnrounded + pCargoUnrounded);
-        // Garantiza que round2(ATR) + round2(Mercado) === round2(kWh * PrecioFijo) sin descuadres de 0.01 €
+        const atrPeajeRounded = round2(pPeajeUnrounded);
+        const atrCargoRounded = round2(atrTotalRounded - atrPeajeRounded);
+        // Garantiza que round2(ATR) + round2(Mercado) === round2(TotalPeriodo) y Peaje + Cargo === ATR sin descuadres de 0.01 €
         const marketTotalRounded = round2(totalPeriodRounded - atrTotalRounded);
 
         b.energyCostEur = marketTotalRounded;
@@ -1670,101 +1774,103 @@ export class InternalBillingEngine {
     const sumBilledPower = (p1c || 0) + (p2c || 0) + (p3c || 0) + (p4c || 0) + (p5c || 0) + (p6c || 0);
     const sumF1ContractedPower = Object.values(f1PotenciaContratadaMax).reduce((acc, v) => acc + v, 0);
 
-    if (sumF1ContractedPower > 0 && Math.abs(sumF1ContractedPower - sumBilledPower) > 0.1) {
-      addIssue(
-        `Descuadre de potencia: El F1 indica una suma de potencias contratadas de ${sumF1ContractedPower.toFixed(3)} kW, pero el contrato del ERP suma ${sumBilledPower.toFixed(3)} kW.`,
-        false
-      );
-    }
-
-    const baseP1p = contract.p1p || getAirVal('P1P') || getAirVal('P1 P');
-    if (!baseP1p) {
-      throw new Error("Contrato sin precio de Término de Potencia (P1P) configurado.");
-    }
-
-    const p1p = baseP1p;
-    const p2p = contract.p2p || getAirVal('P2P') || getAirVal('P2 P') || p1p;
-    const p3p = contract.p3p || getAirVal('P3P') || getAirVal('P3 P') || p1p;
-    const p4p = contract.p4p || getAirVal('P4P') || getAirVal('P4 P') || p1p;
-    const p5p = contract.p5p || getAirVal('P5P') || getAirVal('P5 P') || p1p;
-    const p6p = contract.p6p || getAirVal('P6P') || getAirVal('P6 P') || p1p;
-
-    const isYearlyPower = p1p > 2; // > 2 € indica €/kW/año; <= 2 € indica €/kW/día
-
     const powerDetails: any[] = [];
     let powerCost = 0;
     let boePowerCost = 0;
 
-    const processPower = (period: string, kw: number, contractPrice: number) => {
-      if (!kw || !contractPrice) return;
-
-      const refAtrPeajeYearly = getRegVal(refRegSet.peajesPotenciaBOE, period);
-      const refAtrCargoYearly = getRegVal(refRegSet.cargosPotenciaBOE, period);
-      const refAtrYearly = refAtrPeajeYearly + refAtrCargoYearly;
-
-      let sumBilledUnrounded = 0;
-      let sumPeajeUnrounded = 0;
-      let sumCargoUnrounded = 0;
-      let sumBoeUnrounded = 0;
-
-      for (let d = 0; d < billingDays; d++) {
-        const dayMid = new Date(startDate.getTime() + d * 86400000 + 12 * 3600000);
-        const dayIso = dayMid.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
-        const yr = parseInt(dayIso.substring(0, 4), 10);
-        const daysInYr = isLeapYear(yr) ? 366.0 : 365.0;
-
-        const dayReg = getRegSetForIsoDate(dayIso);
-        const curPeajeYearly = getRegVal(dayReg.peajesPotenciaBOE, period);
-        const curCargoYearly = getRegVal(dayReg.cargosPotenciaBOE, period);
-        const curAtrYearly = curPeajeYearly + curCargoYearly;
-
-        const dailyPeaje = curPeajeYearly / daysInYr;
-        const dailyCargo = curCargoYearly / daysInYr;
-        const dailyCurAtr = curAtrYearly / daysInYr;
-
-        let dailyBilledPrice: number;
-        if (isYearlyPower) {
-          const yearlyMargin = contractPrice - refAtrYearly;
-          const yearlyBilled = yearlyMargin + curAtrYearly;
-          dailyBilledPrice = yearlyBilled / daysInYr;
-        } else {
-          const refDailyAtr = refAtrYearly / 365.0;
-          const dailyMargin = contractPrice - refDailyAtr;
-          dailyBilledPrice = dailyMargin + dailyCurAtr;
-        }
-
-        sumBilledUnrounded += kw * dailyBilledPrice;
-        sumPeajeUnrounded += kw * dailyPeaje;
-        sumCargoUnrounded += kw * dailyCargo;
-        sumBoeUnrounded += kw * dailyCurAtr;
+    if (!skipDailyAndPowerCharges) {
+      if (sumF1ContractedPower > 0 && Math.abs(sumF1ContractedPower - sumBilledPower) > 0.1) {
+        addIssue(
+          `Descuadre de potencia: El F1 indica una suma de potencias contratadas de ${sumF1ContractedPower.toFixed(3)} kW, pero el contrato del ERP suma ${sumBilledPower.toFixed(3)} kW.`,
+          false
+        );
       }
 
-      const billedRounded = round2(sumBilledUnrounded);
-      const peajeRounded = round2(sumPeajeUnrounded);
-      const cargoRounded = round2(sumCargoUnrounded);
-      const effectiveDailyPrice = billingDays > 0 && kw > 0 ? sumBilledUnrounded / (kw * billingDays) : 0;
+      const baseP1p = contract.p1p || getAirVal('P1P') || getAirVal('P1 P');
+      if (!baseP1p) {
+        throw new Error("Contrato sin precio de Término de Potencia (P1P) configurado.");
+      }
 
-      powerCost = round2(powerCost + billedRounded);
-      boePowerCost = round2(boePowerCost + round2(sumBoeUnrounded));
+      const p1p = baseP1p;
+      const p2p = contract.p2p || getAirVal('P2P') || getAirVal('P2 P') || p1p;
+      const p3p = contract.p3p || getAirVal('P3P') || getAirVal('P3 P') || p1p;
+      const p4p = contract.p4p || getAirVal('P4P') || getAirVal('P4 P') || p1p;
+      const p5p = contract.p5p || getAirVal('P5P') || getAirVal('P5 P') || p1p;
+      const p6p = contract.p6p || getAirVal('P6P') || getAirVal('P6 P') || p1p;
 
-      powerDetails.push({
-        period,
-        kw,
-        days: billingDays,
-        price: effectiveDailyPrice, // Siempre normalizado en €/kW/día según AGENTS.md
-        yearlyPrice: isYearlyPower ? contractPrice : effectiveDailyPrice * 365,
-        total: billedRounded,
-        peajeEur: peajeRounded,
-        cargoEur: cargoRounded
-      });
-    };
+      const isYearlyPower = p1p > 2; // > 2 € indica €/kW/año; <= 2 € indica €/kW/día
 
-    processPower('P1', p1c, p1p);
-    processPower('P2', p2c, p2p);
-    processPower('P3', p3c, p3p);
-    processPower('P4', p4c, p4p);
-    processPower('P5', p5c, p5p);
-    processPower('P6', p6c, p6p);
+      const processPower = (period: string, kw: number, contractPrice: number) => {
+        if (!kw || !contractPrice) return;
+
+        const refAtrPeajeYearly = getRegVal(refRegSet.peajesPotenciaBOE, period);
+        const refAtrCargoYearly = getRegVal(refRegSet.cargosPotenciaBOE, period);
+        const refAtrYearly = refAtrPeajeYearly + refAtrCargoYearly;
+
+        let sumBilledUnrounded = 0;
+        let sumPeajeUnrounded = 0;
+        let sumCargoUnrounded = 0;
+        let sumBoeUnrounded = 0;
+
+        for (let d = 0; d < billingDays; d++) {
+          const dayMid = new Date(startDate.getTime() + d * 86400000 + 12 * 3600000);
+          const dayIso = dayMid.toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).substring(0, 10);
+          const yr = parseInt(dayIso.substring(0, 4), 10);
+          const daysInYr = isLeapYear(yr) ? 366.0 : 365.0;
+
+          const dayReg = getRegSetForIsoDate(dayIso);
+          const curPeajeYearly = getRegVal(dayReg.peajesPotenciaBOE, period);
+          const curCargoYearly = getRegVal(dayReg.cargosPotenciaBOE, period);
+          const curAtrYearly = curPeajeYearly + curCargoYearly;
+
+          const dailyPeaje = curPeajeYearly / daysInYr;
+          const dailyCargo = curCargoYearly / daysInYr;
+          const dailyCurAtr = curAtrYearly / daysInYr;
+
+          let dailyBilledPrice: number;
+          if (isYearlyPower) {
+            const yearlyMargin = contractPrice - refAtrYearly;
+            const yearlyBilled = yearlyMargin + curAtrYearly;
+            dailyBilledPrice = yearlyBilled / daysInYr;
+          } else {
+            const refDailyAtr = refAtrYearly / 365.0;
+            const dailyMargin = contractPrice - refDailyAtr;
+            dailyBilledPrice = dailyMargin + dailyCurAtr;
+          }
+
+          sumBilledUnrounded += kw * dailyBilledPrice;
+          sumPeajeUnrounded += kw * dailyPeaje;
+          sumCargoUnrounded += kw * dailyCargo;
+          sumBoeUnrounded += kw * dailyCurAtr;
+        }
+
+        const billedRounded = round2(sumBilledUnrounded);
+        const peajeRounded = round2(sumPeajeUnrounded);
+        const cargoRounded = round2(sumCargoUnrounded);
+        const effectiveDailyPrice = billingDays > 0 && kw > 0 ? sumBilledUnrounded / (kw * billingDays) : 0;
+
+        powerCost = round2(powerCost + billedRounded);
+        boePowerCost = round2(boePowerCost + round2(sumBoeUnrounded));
+
+        powerDetails.push({
+          period,
+          kw,
+          days: billingDays,
+          price: effectiveDailyPrice, // Siempre normalizado en €/kW/día según AGENTS.md
+          yearlyPrice: isYearlyPower ? contractPrice : effectiveDailyPrice * 365,
+          total: billedRounded,
+          peajeEur: peajeRounded,
+          cargoEur: cargoRounded
+        });
+      };
+
+      processPower('P1', p1c, p1p);
+      processPower('P2', p2c, p2p);
+      processPower('P3', p3c, p3p);
+      processPower('P4', p4c, p4p);
+      processPower('P5', p5c, p5p);
+      processPower('P6', p6c, p6p);
+    }
 
     // Repercusión de Penalización por ausencia de ICP o Recargo por duración inferior al año si la distribuidora lo cobra en el F1
     let penalizacionNoIcpCost = 0;
@@ -2012,7 +2118,7 @@ export class InternalBillingEngine {
     // Costes de Gestión Bolsillo Solar (Regla 207: SOLO si bolsilloSolar === true)
     let cgBolsilloSolarCost = 0;
     let cgBolsilloSolarDailyRate = 0;
-    if (hasBolsilloSolar && contract.cgBolsilloSolar && contract.cgBolsilloSolar > 0) {
+    if (!skipDailyAndPowerCharges && hasBolsilloSolar && contract.cgBolsilloSolar && contract.cgBolsilloSolar > 0) {
       const rawCg = Number(contract.cgBolsilloSolar);
       // Si rawCg > 0.5 se almacena como €/mes (ej. 3.90 €/mes -> * 12 / 365 €/día); si <= 0.5 es €/día
       cgBolsilloSolarDailyRate = rawCg > 0.5 ? (rawCg * 12.0) / 365.0 : rawCg;
@@ -2122,7 +2228,7 @@ export class InternalBillingEngine {
     }
     const modernServices = Array.from(mergedServicesMap.values());
 
-    if (modernServices.length > 0) {
+    if (!skipDailyAndPowerCharges && modernServices.length > 0) {
       let unroundedSumSva = 0;
       for (const srv of modernServices) {
         const ovDays = calcServiceOverlapDays(srv.durationMonths);
@@ -2152,7 +2258,7 @@ export class InternalBillingEngine {
         svaDetails[svaDetails.length - 1].total = round2(svaDetails[svaDetails.length - 1].total + (svaCost - sumLines));
       }
       svaConcept = contract.svaConcept || svaDetails.map(s => s.name).join(' + ');
-    } else if (contract.svaPrice && contract.svaDuration) {
+    } else if (!skipDailyAndPowerCharges && contract.svaPrice && contract.svaDuration) {
       const ovDays = calcServiceOverlapDays(contract.svaDuration);
       if (ovDays > 0) {
         const svaMonthlyPrice = contract.svaPrice / contract.svaDuration;
