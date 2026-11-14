@@ -2,7 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { parseSwitchingXml } from '@/lib/switching/parser';
+import { parseSwitchingXml, decodeXmlBuffer } from '@/lib/switching/parser';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import AdmZip from 'adm-zip';
@@ -80,13 +80,36 @@ async function handleFileOrZip(file: File, coreFn: (f: File) => Promise<any>) {
   }
 }
 
+function buildSwitchingUniqueProcess(parsedData: any): string {
+  const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
+  const cupsKey = parsedData.cups || 'SINCUPS';
+  const r1SeqSuffix = (
+    parsedData.procesoBase === 'R1' &&
+    ['03', '04', '08', '09'].includes(parsedData.paso || '') &&
+    parsedData.secuencialSolicitud &&
+    parsedData.secuencialSolicitud !== '01'
+  )
+    ? `_${parsedData.secuencialSolicitud}`
+    : '';
+  return `${parsedData.codigoSolicitud}_${codCom}${cupsKey}_${parsedData.proceso}_${parsedData.paso}${r1SeqSuffix}`;
+}
+
+export async function ingestXmlStringInternal(xmlContent: string, fileName: string) {
+  const buf = Buffer.from(xmlContent, 'utf-8');
+  const fakeFile = {
+    name: fileName,
+    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer,
+  } as unknown as File;
+  return await ingestCore(fakeFile);
+}
+
 async function ingestCore(file: File) {
   try {
 
     const originalName = file.name;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const xmlString = buffer.toString('utf-8');
+    const xmlString = decodeXmlBuffer(buffer);
 
     // 1. Parsear el XML
     const parsedData = parseSwitchingXml(xmlString);
@@ -95,26 +118,28 @@ async function ingestCore(file: File) {
       return { success: false, error: `El archivo ${originalName} es un fichero de facturación (F1). Por favor, súbelo desde el módulo de Facturación F1.` };
     }
 
-    if (!parsedData.cups || !parsedData.codigoSolicitud) {
+    if (!parsedData.codigoSolicitud || (!parsedData.cups && parsedData.procesoBase !== 'R1')) {
       return { success: false, error: `El archivo ${originalName} no parece un XML SCTD válido (Falta Cabecera/CUPS o Código de Solicitud).` };
     }
 
     // 2. Determinar si es Enviado o Recibido
-    // Generalmente 01 y 03 son enviados por la comercializadora. El resto (02, 04, 05, 06, 11) son recibidos.
-    const isEnviado = parsedData.paso === '01' || parsedData.paso === '03';
+    // En R1: enviados = 01, 04, 08; recibidos = 02, 03, 05, 09.
+    // Resto de procesos: enviados = 01, 03; recibidos = resto.
+    const isEnviado = parsedData.procesoBase === 'R1'
+      ? ['01', '04', '08'].includes(parsedData.paso || '')
+      : (parsedData.paso === '01' || parsedData.paso === '03');
     const folderType = isEnviado ? 'enviados' : 'recibidos';
 
     // 3. Generar el nombre de archivo estandarizado
-    // codigoSolicitud_version_cups_codigoComercializadora_proceso_paso.xml
-    // (A falta de versión y código de comercializadora explícitos, usamos valores por defecto o extraídos si existieran)
-    const standardizedName = `${parsedData.codigoSolicitud}_01_${parsedData.cups}_SP_${parsedData.proceso}_${parsedData.paso}.xml`;
+    const seqVer = parsedData.secuencialSolicitud || '01';
+    const cupsKey = parsedData.cups || 'SINCUPS';
+    const standardizedName = `${parsedData.codigoSolicitud}_${seqVer}_${cupsKey}_SP_${parsedData.proceso}_${parsedData.paso}.xml`;
     
     // Ruta en R2: switching/recibidos/C1/archivo.xml
     const r2Key = `switching/${folderType}/${parsedData.procesoBase}/${standardizedName}`;
 
     // 5. Check if already processed successfully to prevent duplicate warnings
-    const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
-    const uniqueProcess = `${parsedData.codigoSolicitud}_${codCom}${parsedData.cups}_${parsedData.proceso}_${parsedData.paso}`;
+    const uniqueProcess = buildSwitchingUniqueProcess(parsedData);
     const existingEvent = await prisma.switchingEvent.findFirst({ where: { uniqueProcess } });
     const existingEventId = existingEvent?.id || null;
 
@@ -157,12 +182,11 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   let warning: string | undefined = undefined;
 
   // Calcular uniqueProcess en este scope para usarlo al guardar el evento
-  const codCom = parsedData.codigoComercializadora ? `${parsedData.codigoComercializadora}_` : '';
-  const uniqueProcess = `${parsedData.codigoSolicitud}_${codCom}${parsedData.cups}_${parsedData.proceso}_${parsedData.paso}`;
+  const uniqueProcess = buildSwitchingUniqueProcess(parsedData);
 
   // Primero intentamos encontrar el contrato exacto por nSolicitud si viene en el XML
   let foundContractBySolicitud = null;
-  if (parsedData.codigoSolicitud) {
+  if (parsedData.codigoSolicitud && parsedData.procesoBase !== 'R1') {
     foundContractBySolicitud = await prisma.contract.findFirst({
       where: { nSolicitud: parsedData.codigoSolicitud },
       include: { supplyPoint: true }
@@ -203,7 +227,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     possibleSpIds.push(supplyPoint.id);
   }
 
-  if (!supplyPoint) {
+  if (!supplyPoint && cupsBase) {
     // Buscar si existe en Lead
     const leadMatch = await prisma.lead.findFirst({
       where: { cups: { startsWith: cupsBase } },
@@ -215,8 +239,18 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
   }
 
   if (!supplyPoint) {
-    tipoError = "CUPS_NO_ENCONTRADO";
-    warning = "No se ha encontrado este CUPS en la base de datos ni por número de solicitud.";
+    if (parsedData.procesoBase === 'R1') {
+      // En R1 el CUPS puede no existir (acometidas 018/019/030/031/076 o CUPS ajeno 007). No generar falso error Switching.
+      if (parsedData.paso === '09' && parsedData.estadoAR === 'ACEPTADO' && parsedData.codigoSolicitud) {
+        await prisma.switchingEvent.updateMany({
+          where: { procesoBase: 'R1', codigoSolicitud: parsedData.codigoSolicitud },
+          data: { isAnnulled: true }
+        });
+      }
+    } else {
+      tipoError = "CUPS_NO_ENCONTRADO";
+      warning = "No se ha encontrado este CUPS en la base de datos ni por número de solicitud.";
+    }
   } else {
     supplyPointId = supplyPoint.id;
 
@@ -688,8 +722,36 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         warning = "Se recibió Aceptación/Rechazo, pero no se encontró un contrato TRAMITANDO para este CUPS.";
       }
     } else if (procesoBase === 'R1') {
-      // Dejamos que caiga al fallback genérico o no asignamos nada especial,
-      // simplemente guardamos el evento en SwitchingEvent y NO creamos Ticket.
+      // Enlazar la reclamación R1 al contrato ACTIVO del CUPS (o en su defecto al más reciente),
+      // sin alterar el estado del contrato ni crear Tickets B2C (Regla 114 / Regla 190).
+      const matchedContract =
+        (await prisma.contract.findFirst({
+          where: {
+            supplyPointId: { in: possibleSpIds },
+            status: { in: ['ACTIVO', 'Activo', 'ACTIVE', 'Active'] },
+          },
+          include: { supplyPoint: true },
+          orderBy: { createdAt: 'desc' },
+        })) ||
+        (await prisma.contract.findFirst({
+          where: { supplyPointId: { in: possibleSpIds } },
+          include: { supplyPoint: true },
+          orderBy: { createdAt: 'desc' },
+        }));
+
+      if (matchedContract) {
+        supplyPoint = matchedContract.supplyPoint;
+        supplyPointId = matchedContract.supplyPointId;
+        contractId = matchedContract.id;
+      }
+
+      // Si es Aceptación de Anulación de Reclamación (Paso 09 ACEPTADO), marcar el proceso R1 como anulado
+      if (paso === '09' && parsedData.estadoAR === 'ACEPTADO' && parsedData.codigoSolicitud) {
+        await prisma.switchingEvent.updateMany({
+          where: { procesoBase: 'R1', codigoSolicitud: parsedData.codigoSolicitud },
+          data: { isAnnulled: true },
+        });
+      }
     } else if (paso === '01' && ['A3', 'C1', 'C2', 'M1', 'E2'].includes(procesoBase)) {
       // Buscar el contrato en estado ACEPTADO o Rechazo Distribuidora para este CUPS
       const acceptedContract = await prisma.contract.findFirst({
@@ -955,6 +1017,8 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
     }
   }
 
+  const isR1Annulled = parsedData.procesoBase === 'R1' && parsedData.paso === '09' && parsedData.estadoAR === 'ACEPTADO';
+
   // 6. Guardar SwitchingEvent
   if (existingEventId) {
     await prisma.switchingEvent.update({
@@ -966,6 +1030,10 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPoint: supplyPointId ? { connect: { id: supplyPointId } } : undefined,
         tipoError: tipoError || null,
         warning: warning || null,
+        estadoAR: parsedData.estadoAR ?? undefined,
+        tipoReclamacion: parsedData.tipoReclamacion || undefined,
+        subtipoReclamacion: parsedData.subtipoReclamacion || undefined,
+        isAnnulled: isR1Annulled ? true : undefined,
         fechaAR: parsedData.fechaAR,
         fechaPrevActivacion: parsedData.fechaPrevActivacion,
         fechaActivacionAlta: parsedData.fechaActivacionAlta,
@@ -987,6 +1055,7 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         procesoBase: parsedData.procesoBase,
         paso: parsedData.paso,
         estadoAR: parsedData.estadoAR,
+        isAnnulled: isR1Annulled,
         tipoReclamacion: parsedData.tipoReclamacion,
         subtipoReclamacion: parsedData.subtipoReclamacion,
         fechaAR: parsedData.fechaAR,
@@ -1010,6 +1079,8 @@ export async function processParsedSwitchingData(parsedData: any, xmlUrl: string
         supplyPointId: supplyPointId || undefined,
         tipoError: tipoError || null,
         warning: warning || null,
+        estadoAR: parsedData.estadoAR ?? undefined,
+        isAnnulled: isR1Annulled ? true : undefined,
         tipoReclamacion: parsedData.tipoReclamacion || undefined,
         subtipoReclamacion: parsedData.subtipoReclamacion || undefined,
         observaciones: parsedData.observaciones || parsedData.tipoDeReposicion,

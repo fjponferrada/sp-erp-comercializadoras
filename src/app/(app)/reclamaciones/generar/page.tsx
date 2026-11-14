@@ -4,7 +4,13 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import GenerarReclamacionClient from './GenerarReclamacionClient';
 
-export default async function GenerarReclamacionesPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function GenerarReclamacionesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await auth();
   const userRole = session?.user?.role || 'CANAL';
 
@@ -12,10 +18,13 @@ export default async function GenerarReclamacionesPage() {
     redirect('/');
   }
 
+  const resolvedSearchParams = await searchParams;
+  const initialCups = typeof resolvedSearchParams?.cups === 'string' ? resolvedSearchParams.cups.trim() : '';
+
   // Read the CNMC Dictionary server-side
   const dictionaryPath = path.join(process.cwd(), 'docs', 'cnmc_dictionary.json');
   let dictionary: Record<string, any> = {};
-  
+
   try {
     const fileContents = fs.readFileSync(dictionaryPath, 'utf8');
     dictionary = JSON.parse(fileContents);
@@ -32,9 +41,10 @@ export default async function GenerarReclamacionesPage() {
   );
 
   return (
-    <GenerarReclamacionClient 
+    <GenerarReclamacionClient
       motivos={motivosRaw}
       submotivos={submotivosRaw}
+      initialCups={initialCups}
     />
   );
 }

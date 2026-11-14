@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getFileStreamFromR2 } from '@/lib/r2';
 
+export async function GET(request: Request) {
+  return POST(request);
+}
+
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get('authorization');

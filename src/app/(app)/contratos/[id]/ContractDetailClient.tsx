@@ -15,6 +15,7 @@ import ModificationModal from './ModificationModal';
 import HistoricalChart from './HistoricalChart';
 import EditContractModal from '../EditContractModal';
 import ProductModal from '@/app/(app)/productos/ProductModal';
+import { getTipoR1Label, getSubtipoR1Label } from '@/app/(app)/reclamaciones/utils/cnmc_codes';
 
 export default function ContractDetailClient({ 
   initialContract, 
@@ -987,10 +988,23 @@ export default function ContractDetailClient({
 
         {activeTab === 'Reclamaciones' && (
           <div className="card p-6 animate-fade-in-up">
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--border)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-[var(--border)]">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <AlertTriangle className="text-gray-400" /> Reclamaciones (R1)
+                {initialContract.claims?.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] text-gray-300 font-normal">
+                    {initialContract.claims.length}
+                  </span>
+                )}
               </h2>
+              {!['COMERCIAL', 'CANAL'].includes(userRole) && (
+                <a
+                  href={`/reclamaciones/generar${initialContract.supplyPoint?.cups ? `?cups=${encodeURIComponent(initialContract.supplyPoint.cups)}` : ''}`}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--lime)] text-[var(--bg-base)] text-xs font-bold hover:bg-[#c9f07a] transition-colors flex items-center gap-1.5"
+                >
+                  <Send size={13} /> Nueva Reclamación R1
+                </a>
+              )}
             </div>
             
             {!initialContract.claims || initialContract.claims.length === 0 ? (
@@ -1004,7 +1018,7 @@ export default function ContractDetailClient({
                 <div className="flex flex-col gap-3">
                   {initialContract.claims.map((claim: any) => (
                     <div key={claim.codigoSolicitud} className="p-4 border border-[var(--border)] rounded-lg bg-[rgba(255,255,255,0.02)] flex flex-col gap-3 text-sm">
-                      <div className="flex justify-between items-start">
+                      <div className="flex justify-between items-start gap-2">
                         <div>
                           <div className="font-mono text-[var(--lime)] font-bold mb-1 flex items-center gap-2">
                             {claim.codigoSolicitud}
@@ -1014,11 +1028,24 @@ export default function ContractDetailClient({
                               </a>
                             )}
                           </div>
-                          <div className="text-xs text-gray-400">Cód. Dist: <span className="font-mono text-gray-300">{claim.codigoReclamacion || '-'}</span></div>
+                          <div className="text-xs text-gray-300 font-medium">{getTipoR1Label(claim.tipoReclamacion)}</div>
+                          <div className="text-xs text-gray-400">{getSubtipoR1Label(claim.subtipoReclamacion)}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">Cód. Dist: <span className="font-mono text-gray-300">{claim.codigoReclamacion || '-'}</span></div>
                         </div>
-                        <div className="bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-center">
-                          <div className="text-[10px] text-gray-500 uppercase">Días Abierta</div>
-                          <div className="font-bold text-white">{claim.diasAbierta !== null ? claim.diasAbierta : '-'}</div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                            claim.estadoIntegrado === 'Cerrada' ? 'bg-gray-800 text-gray-200 border-gray-600' :
+                            claim.estadoIntegrado === 'Rechazada' ? 'bg-red-900/30 text-red-400 border-red-800' :
+                            claim.estadoIntegrado === 'Pte. Info (Paso 03)' ? 'bg-amber-900/30 text-amber-300 border-amber-700' :
+                            claim.estadoIntegrado === 'Aceptada' ? 'bg-green-900/30 text-green-400 border-green-800' :
+                            claim.estadoIntegrado === 'Anulada' ? 'bg-gray-900 text-gray-500 border-gray-700' :
+                            'bg-blue-900/30 text-blue-400 border-blue-800'
+                          }`}>
+                            {claim.estadoIntegrado}
+                          </span>
+                          {claim.diasAbierta !== null && (
+                            <span className="text-[11px] text-gray-400">{claim.diasAbierta} días abierta</span>
+                          )}
                         </div>
                       </div>
                       
@@ -1041,21 +1068,38 @@ export default function ContractDetailClient({
                       </div>
 
                       <div className="flex flex-col gap-2 text-xs border-t border-[var(--border-strong)] pt-2">
+                        {(claim.paso03?.comentario || claim.paso03?.xmlUrl) && (
+                          <div>
+                            <div className="text-gray-500 mb-1">
+                              Paso 03 {claim.paso03?.fechaLimiteEnvio ? `(Límite: ${formatDateUTC(claim.paso03.fechaLimiteEnvio)})` : ''}
+                            </div>
+                            <div className="text-gray-300 flex items-start justify-between gap-2">
+                              <span className="italic whitespace-pre-wrap">{claim.paso03?.comentario || '-'}</span>
+                              {claim.paso03?.xmlUrl && (
+                                <a href={claim.paso03.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 03" className="text-gray-500 hover:text-[var(--lime)] shrink-0 mt-0.5">
+                                  <Download size={14} />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div>
-                          <div className="text-gray-500 mb-1">Paso 03 (Comentarios)</div>
-                          <div className="text-gray-300 flex items-start justify-between gap-2">
-                            <span className="italic">{claim.paso03?.comentario || '-'}</span>
-                            {claim.paso03?.xmlUrl && (
-                              <a href={claim.paso03.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 03" className="text-gray-500 hover:text-[var(--lime)] shrink-0 mt-0.5">
-                                <Download size={14} />
-                              </a>
+                          <div className="text-gray-500 mb-1 flex items-center gap-2">
+                            <span>Resolución</span>
+                            {claim.paso05?.resultadoDescripcion && (
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                claim.paso05.resultadoCodigo === '01' ? 'bg-green-900/40 text-green-300' :
+                                claim.paso05.resultadoCodigo === '02' ? 'bg-red-900/40 text-red-300' :
+                                'bg-gray-800 text-gray-300'
+                              }`}>
+                                {claim.paso05.resultadoDescripcion}
+                              </span>
                             )}
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-500 mb-1">Paso 05 (Resolución)</div>
                           <div className="text-gray-300 flex items-start justify-between gap-2">
-                            <span className="italic">{claim.paso05?.comentario || '-'}</span>
+                            <span className="italic whitespace-pre-wrap">
+                              {claim.paso05?.comentario || (claim.estadoIntegrado === 'Rechazada' ? claim.paso02?.comentario : null) || '-'}
+                            </span>
                             {claim.paso05?.xmlUrl && (
                               <a href={claim.paso05.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 05" className="text-gray-500 hover:text-[var(--lime)] shrink-0 mt-0.5">
                                 <Download size={14} />
@@ -1073,59 +1117,110 @@ export default function ContractDetailClient({
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-gray-800 text-left">
+                    <tr className="border-b border-gray-800 text-left text-xs uppercase">
                       <th className="py-3 px-4 font-semibold text-gray-400">CÓD. SOLICITUD</th>
-                      <th className="py-3 px-4 font-semibold text-gray-400">CÓD. DISTRIBUIDORA</th>
-                      <th className="py-3 px-4 font-semibold text-gray-400 text-center">DÍAS ABIERTA</th>
-                      <th className="py-3 px-4 font-semibold text-gray-400">PASO 01</th>
-                      <th className="py-3 px-4 font-semibold text-gray-400">PASO 02</th>
-                      <th className="py-3 px-4 font-semibold text-gray-400">COMENTARIOS PASO 03</th>
-                      <th className="py-3 px-4 font-semibold text-gray-400">RESOLUCIÓN PASO 05</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">TIPO / SUBTIPO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-center">ESTADO</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400 text-center">DÍAS</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PASO 01 / 02</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">PASO 03 / 04</th>
+                      <th className="py-3 px-4 font-semibold text-gray-400">RESOLUCIÓN / PASO 05</th>
                     </tr>
                   </thead>
                   <tbody>
                     {initialContract.claims.map((claim: any) => (
                       <tr key={claim.codigoSolicitud} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)] transition-colors text-sm">
-                        <td className="py-3 px-4 font-mono text-gray-400">
-                          <div className="flex items-center gap-2">
-                            {claim.codigoSolicitud}
-                            {claim.paso01?.xmlUrl && (
-                              <a href={claim.paso01.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 01" className="text-gray-500 hover:text-[var(--lime)]">
-                                <Download size={14} />
-                              </a>
+                        <td className="py-3 px-4 font-mono text-gray-300">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <span>{claim.codigoSolicitud}</span>
+                              {claim.paso01?.xmlUrl && (
+                                <a href={claim.paso01.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 01" className="text-gray-500 hover:text-[var(--lime)]">
+                                  <Download size={14} />
+                                </a>
+                              )}
+                            </div>
+                            {claim.codigoReclamacion && (
+                              <span className="text-[11px] text-gray-500">Dist: {claim.codigoReclamacion}</span>
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 font-mono text-gray-400">{claim.codigoReclamacion || '-'}</td>
-                        <td className="py-3 px-4 font-bold text-center">
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-0.5 max-w-[230px]">
+                            <span className="text-xs font-semibold text-gray-200 truncate" title={getTipoR1Label(claim.tipoReclamacion)}>
+                              {getTipoR1Label(claim.tipoReclamacion)}
+                            </span>
+                            <span className="text-xs text-gray-400 truncate" title={getSubtipoR1Label(claim.subtipoReclamacion)}>
+                              {getSubtipoR1Label(claim.subtipoReclamacion)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                              claim.estadoIntegrado === 'Cerrada' ? 'bg-gray-800 text-gray-200 border-gray-600' :
+                              claim.estadoIntegrado === 'Rechazada' ? 'bg-red-900/30 text-red-400 border-red-800' :
+                              claim.estadoIntegrado === 'Pte. Info (Paso 03)' ? 'bg-amber-900/30 text-amber-300 border-amber-700' :
+                              claim.estadoIntegrado === 'Aceptada' ? 'bg-green-900/30 text-green-400 border-green-800' :
+                              claim.estadoIntegrado === 'Anulada' ? 'bg-gray-900 text-gray-500 border-gray-700' :
+                              'bg-blue-900/30 text-blue-400 border-blue-800'
+                            }`}>
+                              {claim.estadoIntegrado}
+                            </span>
+                            {claim.paso05?.resultadoDescripcion && (
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                claim.paso05.resultadoCodigo === '01' ? 'bg-green-900/30 text-green-300' :
+                                claim.paso05.resultadoCodigo === '02' ? 'bg-red-900/30 text-red-300' :
+                                'bg-gray-800 text-gray-400'
+                              }`}>
+                                {claim.paso05.resultadoDescripcion}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-bold text-center text-gray-200">
                           {claim.diasAbierta !== null ? claim.diasAbierta : '-'}
                         </td>
-                        <td className="py-3 px-4 text-gray-400">
-                          {claim.paso01?.fecha ? formatDateUTC(claim.paso01.fecha) : '-'}
+                        <td className="py-3 px-4 text-xs text-gray-400">
+                          <div className="flex flex-col gap-1">
+                            <div>P01: {claim.paso01?.fecha ? formatDateUTC(claim.paso01.fecha) : '-'}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span>P02: {claim.paso02?.fecha ? formatDateUTC(claim.paso02.fecha) : '-'}</span>
+                              {claim.paso02?.xmlUrl && (
+                                <a href={claim.paso02.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 02" className="text-gray-500 hover:text-[var(--lime)]">
+                                  <Download size={13} />
+                                </a>
+                              )}
+                            </div>
+                          </div>
                         </td>
-                        <td className="py-3 px-4 text-gray-400">
-                          <div className="flex items-center gap-2">
-                            {claim.paso02?.fecha ? formatDateUTC(claim.paso02.fecha) : '-'}
-                            {claim.paso02?.xmlUrl && (
-                              <a href={claim.paso02.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 02" className="text-gray-500 hover:text-[var(--lime)]">
-                                <Download size={14} />
+                        <td className="py-3 px-4 text-gray-400 max-w-[240px]" title={claim.paso03?.comentario || ''}>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-xs">{claim.paso03?.comentario || '-'}</span>
+                              {claim.paso03?.xmlUrl && (
+                                <a href={claim.paso03.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 03" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
+                                  <Download size={13} />
+                                </a>
+                              )}
+                            </div>
+                            {claim.paso03?.fechaLimiteEnvio && claim.paso03.requiereRespuesta && (
+                              <span className="text-[11px] text-amber-400 font-medium">
+                                Límite: {formatDateUTC(claim.paso03.fechaLimiteEnvio)}
+                              </span>
+                            )}
+                            {claim.paso04?.xmlUrl && (
+                              <a href={claim.paso04.xmlUrl} target="_blank" rel="noreferrer" className="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
+                                <Download size={11} /> Respuesta P04 enviada
                               </a>
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-gray-400 max-w-xs truncate" title={claim.paso03?.comentario || ''}>
+                        <td className="py-3 px-4 text-gray-300 max-w-xs" title={claim.paso05?.comentario || claim.paso02?.comentario || ''}>
                           <div className="flex items-center gap-2">
-                            <span className="truncate">{claim.paso03?.comentario || '-'}</span>
-                            {claim.paso03?.xmlUrl && (
-                              <a href={claim.paso03.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 03" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
-                                <Download size={14} />
-                              </a>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-gray-400 max-w-xs truncate" title={claim.paso05?.comentario || ''}>
-                          <div className="flex items-center gap-2">
-                            <span className="truncate">{claim.paso05?.comentario || '-'}</span>
+                            <span className="truncate text-xs">
+                              {claim.paso05?.comentario || (claim.estadoIntegrado === 'Rechazada' ? claim.paso02?.comentario : null) || '-'}
+                            </span>
                             {claim.paso05?.xmlUrl && (
                               <a href={claim.paso05.xmlUrl} target="_blank" rel="noreferrer" title="Descargar XML Paso 05" className="text-gray-500 hover:text-[var(--lime)] shrink-0">
                                 <Download size={14} />

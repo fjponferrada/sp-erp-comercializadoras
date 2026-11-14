@@ -1,7 +1,25 @@
 import { XMLParser } from 'fast-xml-parser';
+import { MOTIVOS_RECHAZO_CNMC } from '@/app/(app)/reclamaciones/utils/cnmc_codes';
+
+/**
+ * Decodifica de forma segura un XML de CNMC/SCTD tanto si viene en UTF-8 como en ISO-8859-1 / Windows-1252.
+ */
+export function decodeXmlBuffer(buffer: Buffer | ArrayBuffer | Uint8Array): string {
+  const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const header = Buffer.from(u8.subarray(0, Math.min(250, u8.length))).toString('latin1');
+  if (/encoding\s*=\s*["']?(?:iso-8859-1|iso8859-1|latin1|windows-1252)["']?/i.test(header)) {
+    return new TextDecoder('windows-1252').decode(u8);
+  }
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(u8);
+  if (utf8.includes('\uFFFD')) {
+    return new TextDecoder('windows-1252').decode(u8);
+  }
+  return utf8;
+}
 
 export interface ParsedSwitchingData {
   codigoSolicitud?: string;
+  secuencialSolicitud?: string;
   nifCliente?: string;
   fechaSolicitud?: Date;
   proceso: string;
@@ -94,6 +112,8 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
   const cabecera = findKeyRecursively(root, 'Cabecera') || findKeyRecursively(root, 'CabeceraReclamacion') || findKeyRecursively(root, 'CabeceraQ1');
   
   const codigoSolicitud = cabecera?.CodigoDeSolicitud || cabecera?.CodigoSolicitud;
+  const secuencialRaw = cabecera?.SecuencialDeSolicitud || cabecera?.SecuencialSolicitud;
+  const secuencialSolicitud = secuencialRaw !== undefined && secuencialRaw !== null ? String(secuencialRaw).trim().padStart(2, '0') : undefined;
   const codigoPaso = cabecera?.CodigoDePaso || cabecera?.CodigoPaso;
   const codigoProceso = cabecera?.CodigoDelProceso || cabecera?.CodigoProceso;
   const cups = cabecera?.CUPS;
@@ -116,45 +136,237 @@ export function parseSwitchingXml(xmlString: string): ParsedSwitchingData {
   if (!procesoBase) procesoBase = 'DESC';
 
   // Extraer el Código REE de la Comercializadora
-  // Dependiendo del Paso, la comercializadora es el Remitente (enviados) o el Destinatario (recibidos)
+  // En R1: enviados = 01, 04, 08 (Remitente); recibidos = 02, 03, 05, 09 (Destinatario).
+  // En el resto de procesos Switching: enviados = 01, 03; recibidos = resto.
   const remitente = cabecera?.Remitente?.CodigoRE || cabecera?.Remitente || cabecera?.CodigoREEEmpresaEmisora;
   const destinatario = cabecera?.Destinatario?.CodigoRE || cabecera?.Destinatario || cabecera?.CodigoREEEmpresaDestino;
   let codigoComercializadora = undefined;
   
-  const isEnviado = paso === '01' || paso === '03';
+  const isEnviado = procesoBase === 'R1'
+    ? ['01', '04', '08'].includes(paso || '')
+    : (paso === '01' || paso === '03');
   if (isEnviado) {
-    codigoComercializadora = typeof remitente === 'string' ? remitente : String(remitente);
+    codigoComercializadora = remitente !== undefined && remitente !== null ? String(remitente) : undefined;
   } else {
-    codigoComercializadora = typeof destinatario === 'string' ? destinatario : String(destinatario);
+    codigoComercializadora = destinatario !== undefined && destinatario !== null ? String(destinatario) : undefined;
   }
   
-  const nifCliente = findKeyRecursively(root, 'NIF') || findKeyRecursively(root, 'CIF') || findKeyRecursively(root, 'Documento');
+  const nifCliente = findKeyRecursively(root, 'NIF') || findKeyRecursively(root, 'CIF') || findKeyRecursively(root, 'Identificador') || findKeyRecursively(root, 'Documento');
 
-  // R1 Specific fields
+  // R1 Specific fields (normalizados a 2 y 3 dígitos)
+  const normR1Tipo = (v: any): string | undefined => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const s = String(v).trim();
+    return /^\d+$/.test(s) ? s.padStart(2, '0') : s;
+  };
+  const normR1Subtipo = (v: any): string | undefined => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const s = String(v).trim();
+    if (/^\d{5,}$/.test(s)) return undefined;
+    return /^\d{1,3}$/.test(s) ? s.padStart(3, '0') : s;
+  };
+
   let tipoReclamacion = undefined;
   let subtipoReclamacion = undefined;
   if (procesoBase === 'R1') {
-    const datosSolicitud = findKeyRecursively(root, 'DatosSolicitud') || findKeyRecursively(root, 'DatosDeLaSolicitud');
-    tipoReclamacion = findKeyRecursively(datosSolicitud || root, 'Tipo');
-    subtipoReclamacion = findKeyRecursively(datosSolicitud || root, 'Subtipo');
+    const datosSolicitud = findKeyRecursively(root, 'DatosSolicitud') || findKeyRecursively(root, 'DatosDeLaSolicitud') || findKeyRecursively(root, 'DatosCierre') || findKeyRecursively(root, 'Retipificacion');
+    tipoReclamacion = normR1Tipo(datosSolicitud?.Tipo ?? findKeyRecursively(datosSolicitud || root, 'Tipo'));
+    subtipoReclamacion = normR1Subtipo(datosSolicitud?.Subtipo ?? findKeyRecursively(datosSolicitud || root, 'Subtipo'));
   }
 
   const result: ParsedSwitchingData = {
     codigoSolicitud: finalCodigoSolicitud ? String(finalCodigoSolicitud) : undefined,
+    secuencialSolicitud,
     fechaSolicitud: isNaN(fechaSolicitudDate?.getTime() as number) ? undefined : fechaSolicitudDate,
     proceso,
     procesoBase,
     paso,
-    cups: cups ? String(cups) : undefined,
+    cups: cups ? String(cups).trim().toUpperCase() : undefined,
     codigoComercializadora,
     codigoReclamacion: codigoReclamacion ? String(codigoReclamacion) : undefined,
     nifCliente: nifCliente ? String(nifCliente).toUpperCase().trim() : undefined,
-    tipoReclamacion: tipoReclamacion ? String(tipoReclamacion) : undefined,
-    subtipoReclamacion: subtipoReclamacion ? String(subtipoReclamacion) : undefined,
+    tipoReclamacion,
+    subtipoReclamacion,
   };
 
-  // 3. Lógica Específica por "Paso"
-  if (paso === '02') {
+  // 3. Lógica Específica por "Paso" (R1 aislado según Regla 125 para no interferir con C1/C2/M1/A3/B1/E1/E2)
+  if (procesoBase === 'R1') {
+    const extractR1Rechazos = (container: any) => {
+      const rechazosParent = findKeyRecursively(container, 'Rechazos') || findKeyRecursively(container, 'MotivosRechazo') || container;
+      const rawItems = rechazosParent?.Rechazo ?? rechazosParent?.MotivoRechazo;
+      if (!rawItems) return null;
+      const arr = Array.isArray(rawItems) ? rawItems : [rawItems];
+      return arr.map((item: any) => {
+        if (typeof item !== 'object' || item === null) {
+          const cod = String(item).trim().padStart(2, '0');
+          return { codigo: cod, descripcion: MOTIVOS_RECHAZO_CNMC[cod] || '', comentarios: '' };
+        }
+        const rawCod = item.CodigoMotivo ?? item.CodigoMotivoRechazo ?? '';
+        const cod = rawCod !== '' ? (/^\d+$/.test(String(rawCod).trim()) ? String(rawCod).trim().padStart(2, '0') : String(rawCod).trim()) : '';
+        const comentarios = item.Comentarios ? String(item.Comentarios).trim() : '';
+        const descripcion = cod ? (MOTIVOS_RECHAZO_CNMC[cod] || '') : '';
+        return { codigo: cod, descripcion, comentarios };
+      });
+    };
+
+    if (paso === '01') {
+      const datosSol = findKeyRecursively(root, 'DatosSolicitud');
+      if (datosSol?.FechaLimite) {
+        const fl = new Date(datosSol.FechaLimite);
+        if (!isNaN(fl.getTime())) result.fechaPrevActivacion = fl;
+      }
+      const solicitudNode = findKeyRecursively(root, 'SolicitudReclamacion') || root;
+      if (solicitudNode?.Comentarios) {
+        result.observaciones = String(solicitudNode.Comentarios).trim();
+      }
+    } else if (paso === '02' || paso === '09') {
+      const isRechazo = findKeyRecursively(root, 'Rechazos') || findKeyRecursively(root, 'Rechazo') || findKeyRecursively(root, 'MotivosRechazo');
+      if (isRechazo) {
+        result.estadoAR = 'RECHAZADO';
+        const fechaRechazo = findKeyRecursively(root, 'FechaRechazo') || findKeyRecursively(root, 'FechaAR');
+        if (fechaRechazo) {
+          const d = new Date(fechaRechazo);
+          if (!isNaN(d.getTime())) result.fechaAR = d;
+        }
+        const motivos = extractR1Rechazos(root);
+        if (motivos && motivos.length > 0) {
+          result.motivosRechazo = motivos;
+          const parts = motivos.map((m) => {
+            const label = m.codigo ? `[${m.codigo}${m.descripcion ? ` - ${m.descripcion}` : ''}]` : '';
+            return [label, m.comentarios].filter(Boolean).join(' ');
+          }).filter(Boolean);
+          if (parts.length > 0) result.observaciones = parts.join(' | ');
+        }
+      } else {
+        result.estadoAR = 'ACEPTADO';
+        const fechaAceptacion = findKeyRecursively(root, 'FechaAceptacion') || findKeyRecursively(root, 'FechaAR');
+        if (fechaAceptacion) {
+          const d = new Date(fechaAceptacion);
+          if (!isNaN(d.getTime())) result.fechaAR = d;
+        }
+        const comentarios = findKeyRecursively(root, 'Comentarios');
+        if (comentarios) result.observaciones = String(comentarios).trim();
+      }
+    } else if (paso === '03') {
+      // Paso 03: Información adicional / Estado intermedio / Retipificación enviado por Distribuidora
+      const infoNode = findKeyRecursively(root, 'InformacionAdicional') || root;
+      const datosInfo = findKeyRecursively(infoNode, 'DatosInformacion');
+      const tipoComRaw = datosInfo?.TipoComunicacion ?? findKeyRecursively(infoNode, 'TipoComunicacion');
+      const tipoComunicacion = tipoComRaw ? String(tipoComRaw).trim().padStart(2, '0') : undefined;
+      result.estadoAR = tipoComunicacion ? `COM_${tipoComunicacion}` : 'INFO_ADICIONAL';
+
+      const fechaLimRaw = findKeyRecursively(infoNode, 'FechaLimiteEnvio');
+      if (fechaLimRaw) {
+        const fl = new Date(fechaLimRaw);
+        if (!isNaN(fl.getTime())) result.fechaPrevActivacion = fl;
+      }
+
+      const retip = findKeyRecursively(infoNode, 'Retipificacion') || findKeyRecursively(infoNode, 'SolicitudInformacionAdicionalParaRetipificacion');
+      if (retip) {
+        const newTipo = normR1Tipo(retip.Tipo);
+        const newSubtipo = normR1Subtipo(retip.Subtipo);
+        if (newTipo) result.tipoReclamacion = newTipo;
+        if (newSubtipo) result.subtipoReclamacion = newSubtipo;
+      }
+
+      const descParts: string[] = [];
+      const descIntermedia = findKeyRecursively(infoNode, 'DescInformacionIntermedia');
+      if (descIntermedia) descParts.push(String(descIntermedia).trim());
+      const descRetip = findKeyRecursively(infoNode, 'DescRetipificacion');
+      if (descRetip && !descParts.includes(String(descRetip).trim())) descParts.push(String(descRetip).trim());
+
+      const solAdicParent = findKeyRecursively(infoNode, 'SolicitudesInformacionAdicional');
+      const peticiones: any[] = [];
+      if (solAdicParent?.SolicitudInformacionAdicional) {
+        const arr = Array.isArray(solAdicParent.SolicitudInformacionAdicional)
+          ? solAdicParent.SolicitudInformacionAdicional
+          : [solAdicParent.SolicitudInformacionAdicional];
+        for (const s of arr) {
+          const descPet = s?.DescPeticionInformacion ? String(s.DescPeticionInformacion).trim() : '';
+          peticiones.push({
+            tipoInformacion: s?.TipoInformacionAdicional ? String(s.TipoInformacionAdicional).trim().padStart(2, '0') : undefined,
+            descripcion: descPet || undefined,
+            fechaLimiteEnvio: s?.FechaLimiteEnvio ? String(s.FechaLimiteEnvio) : undefined,
+          });
+          if (descPet && !descParts.includes(descPet)) descParts.push(descPet);
+        }
+      }
+
+      if (infoNode?.Comentarios) {
+        const com = String(infoNode.Comentarios).trim();
+        if (com && !descParts.includes(com)) descParts.push(com);
+      }
+
+      if (descParts.length > 0) {
+        result.observaciones = descParts.join(' — ');
+      }
+      result.motivosRechazo = {
+        tipoComunicacion,
+        fechaLimiteEnvio: fechaLimRaw ? String(fechaLimRaw) : undefined,
+        peticiones: peticiones.length > 0 ? peticiones : undefined,
+      };
+    } else if (paso === '04') {
+      // Paso 04: Respuesta de Comercializadora con información adicional (NO es rechazo)
+      result.estadoAR = 'INFO_ENVIADA';
+      const datosEnvio = findKeyRecursively(root, 'DatosEnvioInformacion');
+      if (datosEnvio?.FechaInformacion) {
+        const fi = new Date(datosEnvio.FechaInformacion);
+        if (!isNaN(fi.getTime())) result.fechaAR = fi;
+      }
+      const envioNode = findKeyRecursively(root, 'EnvioInformacionReclamacion') || root;
+      if (envioNode?.Comentarios) {
+        result.observaciones = String(envioNode.Comentarios).trim();
+      }
+    } else if (paso === '05') {
+      // Paso 05: Cierre de Reclamación enviado por Distribuidora
+      const cierreNode = findKeyRecursively(root, 'CierreReclamacion') || root;
+      const datosCierre = findKeyRecursively(cierreNode, 'DatosCierre');
+      if (datosCierre) {
+        if (datosCierre.Fecha) {
+          const horaStr = datosCierre.Hora ? `T${String(datosCierre.Hora).trim()}` : '';
+          const dWithTime = horaStr ? new Date(`${datosCierre.Fecha}${horaStr}`) : new Date(datosCierre.Fecha);
+          const dFallback = new Date(datosCierre.Fecha);
+          result.fechaActivacionAlta = !isNaN(dWithTime.getTime()) ? dWithTime : (!isNaN(dFallback.getTime()) ? dFallback : undefined);
+        }
+        const cierreTipo = normR1Tipo(datosCierre.Tipo);
+        const cierreSubtipo = normR1Subtipo(datosCierre.Subtipo);
+        if (cierreTipo) result.tipoReclamacion = cierreTipo;
+        if (cierreSubtipo) result.subtipoReclamacion = cierreSubtipo;
+      }
+
+      const resultadoRaw = datosCierre?.ResultadoReclamacion ?? findKeyRecursively(cierreNode, 'ResultadoReclamacion');
+      const resultado = resultadoRaw ? String(resultadoRaw).trim().padStart(2, '0') : undefined;
+      result.estadoAR = resultado ? `RES_${resultado}` : 'CERRADA';
+
+      const detalleResultado = datosCierre?.DetalleResultado ? String(datosCierre.DetalleResultado).trim() : undefined;
+      const indemnizacion = datosCierre?.IndemnizacionAbonada !== undefined ? Number(datosCierre.IndemnizacionAbonada) : undefined;
+      const numExpFraude = datosCierre?.NumExpedienteAnomaliaFraude ? String(datosCierre.NumExpedienteAnomaliaFraude).trim() : undefined;
+      const fechaMov = datosCierre?.FechaMovimiento ? String(datosCierre.FechaMovimiento).trim() : undefined;
+
+      result.motivosRechazo = {
+        resultado,
+        detalleResultado,
+        indemnizacionAbonada: indemnizacion !== undefined && !isNaN(indemnizacion) ? indemnizacion : undefined,
+        numExpedienteAnomaliaFraude: numExpFraude,
+        fechaMovimiento: fechaMov,
+      };
+
+      const obsParts: string[] = [];
+      if (datosCierre?.Observaciones) {
+        const obs = String(datosCierre.Observaciones).trim();
+        if (obs) obsParts.push(obs);
+      }
+      if (cierreNode?.Comentarios) {
+        const com = String(cierreNode.Comentarios).trim();
+        if (com && !obsParts.includes(com)) obsParts.push(com);
+      }
+      if (obsParts.length > 0) {
+        result.observaciones = obsParts.join('\n');
+      }
+    } else if (paso === '08') {
+      result.estadoAR = 'ANULACION_SOLICITADA';
+    }
+  } else if (paso === '02') {
     // Puede ser Aceptación o Rechazo
     const isRechazo = findKeyRecursively(root, 'Rechazo') || findKeyRecursively(root, 'MotivosRechazo');
     if (isRechazo) {

@@ -90,9 +90,13 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     });
   }
 
-  // Fetch Claims (R1) for this contract
+  // Fetch Claims (R1) for this contract and all SupplyPoint clones of this CUPS (Regla 21 / Regla 190)
   let claims: any[] = [];
-  const claimsResult = await getClaimsAction(contract.id);
+  const claimsResult = await getClaimsAction(
+    { contractId: contract.id, supplyPointIds: allSupplyPointIds },
+    1,
+    0
+  );
   if (claimsResult.success) {
     claims = claimsResult.data;
   }
