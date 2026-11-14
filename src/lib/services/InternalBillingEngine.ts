@@ -1187,9 +1187,50 @@ export class InternalBillingEngine {
     }[] = [];
     let totalF1MWh = 0;
 
+    const mapCnmcProcedencia = (codeRaw: any): string => {
+      if (codeRaw === undefined || codeRaw === null || codeRaw === '') return '';
+      const code = String(Array.isArray(codeRaw) ? codeRaw[0] : codeRaw).trim();
+      switch (code) {
+        case '10':
+        case '01':
+          return 'Real';
+        case '20':
+          return 'Telegestión';
+        case '30':
+        case '31':
+          return 'Telemedida';
+        case '40':
+        case '60':
+          return 'Estimada';
+        case '50':
+          return 'Autolectura';
+        case '70':
+          return 'Sin lectura';
+        case '99':
+          return 'Rectificación';
+        default:
+          return '';
+      }
+    };
+
     const f1Readings: Record<string, any> = {};
     for (let i = 1; i <= 6; i++) {
-      f1Readings[`P${i}`] = { actIni: '-', actFin: '-', reactIni: '-', reactFin: '-', reactCons: 0, actCons: 0, max: 0 };
+      f1Readings[`P${i}`] = {
+        actIni: '-',
+        actFin: '-',
+        reactIni: '-',
+        reactFin: '-',
+        reactCons: 0,
+        actCons: 0,
+        billedActCons: 0,
+        max: 0,
+        fechaDesde: '',
+        fechaHasta: '',
+        procIni: '',
+        procFin: '',
+        procFinCode: '',
+        constMult: 1,
+      };
     }
 
     if (termActiva.length > 0) {
@@ -1209,6 +1250,7 @@ export class InternalBillingEngine {
           totalF1MWh += valorMWh;
           if (f1Readings[pName]) {
             f1Readings[pName].actCons += kwh;
+            f1Readings[pName].billedActCons += kwh;
           }
         }
         // En CNMC (Regla 170), FechaDesde y FechaHasta del XML indican cierre de día de lectura:
@@ -1336,13 +1378,28 @@ export class InternalBillingEngine {
           }
 
           if (pName && f1Readings[pName]) {
-            const lDesde = intg.LecturaDesde?.Lectura ?? intg.lecturaDesde?.lectura;
-            const lHasta = intg.LecturaHasta?.Lectura ?? intg.lecturaHasta?.lectura;
+            const lDesdeNode = intg.LecturaDesde ?? intg.lecturaDesde;
+            const lHastaNode = intg.LecturaHasta ?? intg.lecturaHasta;
+            const lDesde = lDesdeNode?.Lectura ?? lDesdeNode?.lectura;
+            const lHasta = lHastaNode?.Lectura ?? lHastaNode?.lectura;
             const consCalc = intg.ConsumoCalculado ?? intg.consumoCalculado;
+            const fDesde = lDesdeNode?.Fecha ?? lDesdeNode?.fecha;
+            const fHasta = lHastaNode?.Fecha ?? lHastaNode?.fecha;
+            const pIniRaw = lDesdeNode?.Procedencia ?? lDesdeNode?.procedencia;
+            const pFinRaw = lHastaNode?.Procedencia ?? lHastaNode?.procedencia;
+            const cMult = parseXmlNum(intg.ConstanteMultiplicadora ?? intg.constanteMultiplicadora);
 
             if (mag === 'AE' || mag === '1') {
               if (lDesde !== undefined) f1Readings[pName].actIni = lDesde.toString();
               if (lHasta !== undefined) f1Readings[pName].actFin = lHasta.toString();
+              if (fDesde) f1Readings[pName].fechaDesde = String(fDesde).trim().substring(0, 10);
+              if (fHasta) f1Readings[pName].fechaHasta = String(fHasta).trim().substring(0, 10);
+              if (pIniRaw !== undefined) f1Readings[pName].procIni = mapCnmcProcedencia(pIniRaw);
+              if (pFinRaw !== undefined) {
+                f1Readings[pName].procFin = mapCnmcProcedencia(pFinRaw);
+                f1Readings[pName].procFinCode = String(Array.isArray(pFinRaw) ? pFinRaw[0] : pFinRaw).trim();
+              }
+              if (cMult > 0) f1Readings[pName].constMult = cMult;
               // Solo sobrescribimos actCons si no venía agregado en múltiples bloques TerminoEnergiaActiva (ej. Tipo G)
               if (consCalc !== undefined && termActiva.length <= 1) {
                 let val = parseXmlNum(consCalc);
@@ -1352,6 +1409,10 @@ export class InternalBillingEngine {
             } else if (mag === 'R1' || mag === '2') {
               if (lDesde !== undefined) f1Readings[pName].reactIni = lDesde.toString();
               if (lHasta !== undefined) f1Readings[pName].reactFin = lHasta.toString();
+              if (pFinRaw !== undefined && !f1Readings[pName].procFinCode) {
+                f1Readings[pName].procFin = mapCnmcProcedencia(pFinRaw);
+                f1Readings[pName].procFinCode = String(Array.isArray(pFinRaw) ? pFinRaw[0] : pFinRaw).trim();
+              }
               if (consCalc !== undefined && termReactiva.length <= 1) {
                 let val = parseXmlNum(consCalc);
                 if (isAbono) val = Math.abs(val);
@@ -1369,6 +1430,28 @@ export class InternalBillingEngine {
     }
     if (meterSerialNumber) {
       f1Readings.NumeroSerie = meterSerialNumber;
+    }
+    const modoCtrlRaw = jsonData?.DatosGeneralesFacturaATR?.DatosFacturaATR?.ModoControlPotencia;
+    if (modoCtrlRaw !== undefined && modoCtrlRaw !== null) {
+      f1Readings.ModoControlPotencia = Number(modoCtrlRaw) || 0;
+    }
+    const infoConsNode = jsonData?.InformacionAlConsumidor || arrFacturasATR?.[0]?.InformacionAlConsumidor;
+    if (infoConsNode) {
+      const infoPeriods = getArray(infoConsNode.Periodo);
+      const maxAnualByPeriod: Record<string, number> = {};
+      for (let idx = 0; idx < infoPeriods.length && idx < 6; idx++) {
+        const ip = infoPeriods[idx];
+        const pKey = ip?.Periodo || `P${idx + 1}`;
+        const rawMax = parseXmlNum(ip?.PotenciaMaxDemandadaAnioMovil ?? ip?.PotenciaMaximaDemandadaAnioMovil);
+        if (rawMax > 0) {
+          maxAnualByPeriod[pKey] = parseCnmcPowerKw(rawMax);
+        }
+      }
+      const mediaCp = parseXmlNum(infoConsNode.ValorEnergiaMediaCP);
+      f1Readings.InfoConsumidor = {
+        maxAnualByPeriod,
+        valorEnergiaMediaCP: mediaCp > 0 ? mediaCp : null,
+      };
     }
 
     // --- EXTRACCIÓN DE CONCEPTOS REPERCUTIBLES E INTERESES (Tabla 103 & Tabla 114 CNMC) ---
@@ -3091,10 +3174,20 @@ export class InternalBillingEngine {
         reactiveDetails.push({ period: 'TOTAL', cost: reactiveEnergyCost, kvarh: 0, excessKvarh: 0 });
       }
     } else {
-      // Fallback Circular 3/2020 (Regla 177)
+      // Fallback Circular 3/2020 (Regla 177):
+      // SOLO aplica a ficheros F1 legacy/manuales (CSV/Excel) que carecen de estructura XML CNMC Facturacion.xsd
+      // (<DatosGeneralesFacturaATR>) y cuyas lecturas no son estimadas (Procedencia 40/60/70).
+      // En cualquier XML oficial Facturacion.xsd, la distribuidora ya evalúa y liquida <EnergiaReactiva> según la
+      // Circular 3/2020 (eximiendo reactiva en lecturas estimadas, incidencias de telegestión, etc.), por lo que
+      // jamás debemos inventar una penalización de reactiva que la distribuidora facturó a 0,00 €.
+      const isOfficialCnmcAtrXml = Boolean(
+        jsonData?.DatosGeneralesFacturaATR || jsonData?.DatosGeneralesOtrasFacturas
+      );
       let fallbackTriggered = false;
-      if (tariff && !tariff.includes('2.0TD')) {
+      if (!isOfficialCnmcAtrXml && tariff && !tariff.includes('2.0TD')) {
         for (const p of ['P1', 'P2', 'P3', 'P4', 'P5']) {
+          const procCode = String(f1Readings[p]?.procFinCode || '');
+          if (procCode === '40' || procCode === '60' || procCode === '70') continue;
           const actCons = f1Readings[p]?.actCons || 0;
           const reactCons = f1Readings[p]?.reactCons || 0;
           if (actCons > 0 && reactCons > actCons * 0.33) {
