@@ -141,7 +141,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
   }
 
   // Regla 68: Resolución resiliente del producto si el contrato viene de histórico
-  let resolvedProduct = contract.product;
+  let resolvedProduct: any = contract.product;
   if (!resolvedProduct && contract.Lead?.product) {
     const prodRef = String(contract.Lead.product).trim();
     if (prodRef.startsWith('cm')) {
