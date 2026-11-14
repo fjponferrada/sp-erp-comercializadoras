@@ -573,10 +573,12 @@ async function ingestF1Core(file: File) {
               if (clonedJson.DatosGeneralesFacturaATR?.DatosGeneralesFactura) {
                 clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.TipoFactura = 'AR';
                 clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+                clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFacturaRectificadaAnulada = strCodOriginal;
                 if (rDateStr) clonedJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.FechaFactura = rDateStr;
               } else if (clonedJson.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura) {
                 clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.TipoFactura = 'AR';
                 clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+                clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFacturaRectificadaAnulada = strCodOriginal;
                 if (rDateStr) clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.FechaFactura = rDateStr;
               }
               
@@ -604,6 +606,63 @@ async function ingestF1Core(file: File) {
                 }
               });
               procesadas++;
+            } else if (f.supplyPointId) {
+              // Fallback para ciclos antiguos previos a la ingesta de XML F1 cuya factura al cliente sí existe en prisma.invoice
+              const normTarget = strCodOriginal.replace(/^CF\s+/i, '').trim().toUpperCase();
+              const spLegacyInvoices = await prisma.invoice.findMany({
+                where: { supplyPointId: f.supplyPointId }
+              });
+              const matchedLegacy = spLegacyInvoices.find((inv) => {
+                if ((inv.invoiceType || '').trim().toLowerCase() === 'abono') return false;
+                const cfRaw = (inv.invoiceData as any)?.['Codigo Fiscal'];
+                const cfNorm = String(cfRaw || '').replace(/^CF\s+/i, '').trim().toUpperCase();
+                return cfNorm === normTarget;
+              });
+
+              if (matchedLegacy) {
+                const legData = ((matchedLegacy.invoiceData as any) || {}) as Record<string, any>;
+                const parseLegNum = (v: any): number => {
+                  if (v === undefined || v === null || typeof v === 'object') return 0;
+                  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                  return Number.isFinite(n) ? n : 0;
+                };
+                const baseF1 = Math.abs(parseLegNum(legData['BaseImponibleF1']));
+                const peajesF1 = Math.abs(parseLegNum(legData['TotalImportePeajes']));
+                const cargosF1 = Math.abs(parseLegNum(legData['TotalImporteCargos']));
+                const rDateStr = dGen.DatosGeneralesFactura?.FechaFactura;
+                const syntheticJson = JSON.parse(JSON.stringify(f.jsonData || {}));
+                if (syntheticJson.DatosGeneralesFacturaATR?.DatosGeneralesFactura) {
+                  syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.TipoFactura = 'AR';
+                  syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+                  syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFacturaRectificadaAnulada = strCodOriginal;
+                  if (rDateStr) syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.FechaFactura = rDateStr;
+                } else if (syntheticJson.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura) {
+                  syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.TipoFactura = 'AR';
+                  syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFiscalFactura = strCodAbono;
+                  syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFacturaRectificadaAnulada = strCodOriginal;
+                  if (rDateStr) syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.FechaFactura = rDateStr;
+                }
+
+                await prisma.f1Invoice.create({
+                  data: {
+                    numeroFactura: strCodAbono,
+                    tipoDocumento: f.tipoDocumento,
+                    fechaEmision: f.fechaEmision,
+                    fechaInicio: f.fechaInicio ?? matchedLegacy.billingStart,
+                    fechaFin: f.fechaFin ?? matchedLegacy.billingEnd,
+                    saldoFactura: -baseF1,
+                    baseImponible: -baseF1,
+                    totalPeajes: -peajesF1,
+                    totalCargos: -cargosF1,
+                    xmlUrl: f.xmlUrl,
+                    jsonData: syntheticJson,
+                    supplyPointId: f.supplyPointId,
+                    contractId: f.contractId ?? matchedLegacy.contractId,
+                    facturaRealizada: true,
+                  }
+                });
+                procesadas++;
+              }
             }
           }
         }

@@ -394,6 +394,392 @@ function invertBillingResult(source: BillingCalculationResult): BillingCalculati
   return clone;
 }
 
+function normalizeFiscalCode(val: any): string {
+  const raw = Array.isArray(val) ? val[0] : val;
+  if (raw === undefined || raw === null) return '';
+  return String(raw)
+    .replace(/^CF\s+/i, '')
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * Reconstruye un BillingCalculationResult exacto a partir de una factura histórica emitida en prisma.invoice
+ * (ej. Ingebau / TPL / Estimada previa al corte) para que los Abonos (AR / A / S) anulen 1:1 céntimo a céntimo
+ * la factura realmente cobrada al cliente sin depender de CCH ni generar falsos avisos de ABONO APROXIMADO.
+ */
+function buildBillingResultFromLegacyInvoice(
+  legacyInv: any,
+  contract: any,
+  isCanarias: boolean,
+  isCeutaMelilla: boolean
+): BillingCalculationResult {
+  const d = ((legacyInv?.invoiceData as any) || {}) as Record<string, any>;
+  const num = (v: any): number => {
+    if (v === undefined || v === null || v === '') return 0;
+    const raw = Array.isArray(v) ? v[0] : v;
+    if (raw === undefined || raw === null || typeof raw === 'object') return 0;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw).trim().replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  let billingDays = Math.round(num(d['Dias'] ?? d['Dias CORR']));
+  if (billingDays <= 0 && legacyInv?.billingStart && legacyInv?.billingEnd) {
+    const ms = new Date(legacyInv.billingEnd).getTime() - new Date(legacyInv.billingStart).getTime();
+    billingDays = Math.max(1, Math.round(ms / 86400000) + 1);
+  }
+  if (billingDays <= 0) billingDays = 30;
+
+  const periods: Record<string, BillingPeriodBreakdown> = {};
+  const powerDetails: any[] = [];
+  const energyAtrDetails: any[] = [];
+  const energyMarketDetails: any[] = [];
+  const reactiveDetails: any[] = [];
+  const f1Readings: Record<string, any> = {};
+
+  let sumPeriodKwh = 0;
+  let sumPmTotal = 0;
+  let sumAeTotal = 0;
+  let sumPeajeE = 0;
+  let sumCargoE = 0;
+  let sumReactiveEur = 0;
+
+  for (const p of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']) {
+    const kw = num(d[`Potencia a Facturar ${p}`] ?? d[`${p} Potencia Contratada`] ?? d[`${p}C`]);
+    const pmTotal = round2(num(d[`Importe PM ${p}`]));
+    const peajeP = round2(num(d[`Importe Ponderado Peajes Potencia ${p}`]));
+    const cargoP = round2(num(d[`Importe Ponderado Cargos Potencia ${p}`]));
+    sumPmTotal = round2(sumPmTotal + pmTotal);
+
+    if (kw > 0 || pmTotal !== 0) {
+      const dailyPrice = kw > 0 && billingDays > 0 ? pmTotal / (kw * billingDays) : num(d[`${p}P`]);
+      powerDetails.push({
+        period: p,
+        kw,
+        days: billingDays,
+        price: dailyPrice,
+        yearlyPrice: dailyPrice * 365,
+        total: pmTotal,
+        peajeEur: peajeP,
+        cargoEur: cargoP,
+      });
+    }
+
+    const kwh = num(d[`${p} Energia Activa Consumida`]);
+    const mwh = kwh / 1000.0;
+    const aeTotal = round2(num(d[`Importe AE ${p}`]));
+    const peajeE = round2(num(d[`Importe Ponderado Peajes Energia ${p}`]));
+    const cargoE = round2(num(d[`Importe Ponderado Cargos Energia ${p}`]));
+    const atrE = round2(num(d[`Importe Ponderado ATR Energia ${p}`]) || peajeE + cargoE);
+    const mktE = round2(aeTotal - atrE);
+
+    sumPeriodKwh += kwh;
+    sumAeTotal = round2(sumAeTotal + aeTotal);
+    sumPeajeE = round2(sumPeajeE + peajeE);
+    sumCargoE = round2(sumCargoE + cargoE);
+
+    periods[p] = {
+      period: p,
+      cchConsumptionMWh: mwh,
+      f1ConsumptionMWh: mwh,
+      energyCostEur: mktE,
+      regulatedCostEur: atrE,
+    };
+
+    if (kwh > 0 || aeTotal !== 0 || atrE !== 0) {
+      energyAtrDetails.push({
+        period: p,
+        kwh,
+        price: kwh > 0 ? atrE / kwh : 0,
+        total: atrE,
+        peajeEur: peajeE,
+        cargoEur: cargoE,
+      });
+      energyMarketDetails.push({
+        period: p,
+        kwh,
+        price: kwh > 0 ? mktE / kwh : 0,
+        total: mktE,
+        refAtr: 0,
+        currentAtr: mwh > 0 ? atrE / mwh : 0,
+      });
+    }
+
+    const rEur = round2(num(d[`Importe R1 ${p}`]));
+    const rKvarh = num(d[`${p} Energia Reactiva Consumida`]);
+    sumReactiveEur = round2(sumReactiveEur + rEur);
+    if (rEur !== 0) {
+      reactiveDetails.push({
+        period: p,
+        kvarh: rKvarh,
+        excessKvarh: rKvarh,
+        price: num(d[`${p} Precio Energia Reactiva`]),
+        cost: rEur,
+      });
+    }
+
+    f1Readings[p] = {
+      actIni: d[`Lectura Desde AE ${p}`] ?? '-',
+      actFin: d[`Lectura Hasta AE ${p}`] ?? '-',
+      reactIni: d[`Lectura Desde R1 ${p}`] ?? '-',
+      reactFin: d[`Lectura Hasta R1 ${p}`] ?? '-',
+      reactCons: rKvarh,
+      actCons: kwh,
+      max: num(d[`${p} Potencia Max Demanda`]),
+    };
+  }
+
+  const totalKwh =
+    num(d['Energía Total Consumida'] ?? d['Cantidad Energía Total Consumida CORR']) || sumPeriodKwh;
+  const totalMWh = totalKwh / 1000.0;
+
+  const powerCost = round2(num(d['Importe Potencia Factura']) || sumPmTotal);
+  const peajesDistribuidora = round2(
+    num(d['Importe Ponderado Peajes Energia'] ?? d['Importe Peajes AE']) || sumPeajeE
+  );
+  const cargosDistribuidora = round2(
+    num(d['Importe Ponderado Cargos Energia'] ?? d['Importe Cargo Energia Total']) || sumCargoE
+  );
+  const totalAtrE = round2(
+    num(d['Importe Energia ATR'] ?? d['Importe Total AE ATR']) ||
+      peajesDistribuidora + cargosDistribuidora
+  );
+  const totalEneFactura = round2(num(d['Importe Energia Factura']) || sumAeTotal);
+  const energyCost = round2(totalEneFactura - totalAtrE);
+
+  const excesosPotencia = round2(
+    num(d['Importe Total Excesos ATR'] ?? d['Importe Total Excesos ATR F1'])
+  );
+  const excedentesAutoconsumo = Math.abs(
+    round2(num(d['Importe Excedentes Autoconsumo Aplicado'] ?? d['Importe Excedentes Autoconsumo']))
+  );
+  const maxExcedentes = Math.abs(round2(num(d['Importe Aplicable Compensacion Excedentes'])));
+  const excedentesKwh = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'].reduce(
+    (acc, p) => acc + num(d[`Excedentes ${p} Autoconsumo`]),
+    0
+  );
+  const pexcRaw = num(d['PEX'] ?? d['PExcedentes']);
+  const pexc =
+    pexcRaw > 0
+      ? pexcRaw < 2
+        ? pexcRaw * 1000
+        : pexcRaw
+      : excedentesKwh > 0 && excedentesAutoconsumo > 0
+        ? (excedentesAutoconsumo / excedentesKwh) * 1000
+        : null;
+
+  const bonoSocial = round2(num(d['Importe Bono Social'] ?? d['Importe Bono Social CORR']));
+  const bonoSocialDailyRate = billingDays > 0 ? bonoSocial / billingDays : 0;
+  const alquilerEquipo = round2(num(d['Alquiler Equipo de Medida']));
+  const svaCost = round2(num(d['Total SVA']));
+  const svaConcept = d['Concepto SVA'] ? String(d['Concepto SVA']) : undefined;
+  const svaDays = Math.round(num(d['Días SVA'])) || billingDays;
+  const svaDetails: SvaDetailItem[] =
+    svaCost !== 0
+      ? [
+          {
+            name: svaConcept || 'Servicio de Valor Añadido',
+            days: svaDays,
+            dailyPrice: svaDays > 0 ? svaCost / svaDays : 0,
+            total: svaCost,
+          },
+        ]
+      : [];
+
+  const conceptosRepercutibles: ConceptoRepercutibleItem[] = [];
+  let conceptosRepercutiblesBase = 0;
+  for (let i = 1; i <= 4; i++) {
+    const imp = round2(num(d[`Importe Concepto Repercutible ${i}`]));
+    if (imp !== 0) {
+      const code = String(d[`Concepto Repercutible ${i} Numero`] ?? '').trim();
+      const desc =
+        String(d[`Concepto Repercutible ${i}`] ?? '').trim() ||
+        TABLA_103_CONCEPTOS[code] ||
+        `Concepto repercutible ${code || i}`;
+      const uds = num(d[`Uds Concept Repercutible ${i}`]) || 1;
+      const uPrice = num(d[`Precio Concepto Repercutible ${i}`]) || imp / uds;
+      conceptosRepercutibles.push({
+        code,
+        description: desc,
+        units: uds,
+        unitPrice: uPrice,
+        total: imp,
+        taxTypeCode: '1',
+      });
+      conceptosRepercutiblesBase = round2(conceptosRepercutiblesBase + imp);
+    }
+  }
+  if (conceptosRepercutibles.length === 0) {
+    const genericRep = round2(num(d['Concepto Repercutible']));
+    if (genericRep !== 0) {
+      conceptosRepercutibles.push({
+        code: '',
+        description: 'Conceptos repercutibles distribuidora',
+        units: 1,
+        unitPrice: genericRep,
+        total: genericRep,
+        taxTypeCode: '1',
+      });
+      conceptosRepercutiblesBase = genericRep;
+    }
+  }
+
+  const cgBolsilloSolarCost = round2(num(d['Costes de Gestion Bolsillo Solar']));
+  const cgBolsilloSolarDailyRate = billingDays > 0 ? cgBolsilloSolarCost / billingDays : 0;
+  const bolsilloSolarLlenado = Math.abs(round2(num(d['Carga Bolsillo Solar'])));
+  const bolsilloSolarUso = Math.abs(round2(num(d['Descuento Bolsillo Solar'])));
+  const bolsilloSolarSaldoInicial = Math.max(0, round2(num(d['Inicio Bolsillo Solar'])));
+  const bolsilloSolarSaldoFinal = Math.max(
+    0,
+    round2(num(d['Importe almacenado Bolsillo Solar']))
+  );
+  const hasBolsilloSolar =
+    String(d['BOLSILLO SOLAR'] || '').trim().toUpperCase() === 'SI' ||
+    cgBolsilloSolarCost !== 0 ||
+    bolsilloSolarLlenado !== 0 ||
+    bolsilloSolarUso !== 0;
+
+  const baseIEE = round2(num(d['Base 560'] ?? d['Subtotal 1'] ?? legacyInv?.subtotal1));
+  const ieeRate = num(d['Impuesto (%)']) || 5.11269632;
+  const taxElectric = round2(num(d['Importe Impuesto'] ?? d['Importe Impuesto CORR']));
+
+  const totalAmount = round2(num(legacyInv?.totalAmount ?? d['Total']));
+  const taxAmount = round2(num(d['Importe IVA']));
+  const totalBase = round2(
+    num(d['Base Imponible IVA'] ?? d['Base Imponible IVA CORR']) ||
+      totalAmount + bolsilloSolarUso - taxAmount
+  );
+  const totalSinDescuentoBolsillo = round2(
+    num(d['Total sin Descuento']) || totalAmount + bolsilloSolarUso
+  );
+
+  const taxType: 'IVA' | 'IGIC' | 'IPSI' = isCanarias ? 'IGIC' : isCeutaMelilla ? 'IPSI' : 'IVA';
+  const taxPercentage = num(d['IVA']) || (taxType === 'IVA' ? 21 : taxType === 'IGIC' ? 3 : 1);
+  const taxBreakdown: TaxBreakdownItem[] = [];
+
+  const bi5 = round2(num(d['Base Imponible 5']));
+  const iva5 = round2(num(d['Importe IVA 5']));
+  const bi10 = round2(num(d['Base Imponible 10']));
+  const iva10 = round2(num(d['Importe IVA 10']));
+  const bi21 = round2(num(d['Base Imponible 21']));
+  const iva21 = round2(num(d['Importe IVA 21']));
+  const sumSplitTax = round2(iva5 + iva10 + iva21);
+
+  if (taxType === 'IVA' && sumSplitTax > 0 && Math.abs(sumSplitTax - taxAmount) <= 0.03) {
+    if (bi5 !== 0 || iva5 !== 0) {
+      taxBreakdown.push({
+        taxType: 'IVA',
+        rate: 5,
+        base: bi5,
+        amount: iva5,
+        label: `5% IVA (BI ${bi5.toFixed(2)} €)`,
+      });
+    }
+    if (bi10 !== 0 || iva10 !== 0) {
+      taxBreakdown.push({
+        taxType: 'IVA',
+        rate: 10,
+        base: bi10,
+        amount: iva10,
+        label: `10% IVA (BI ${bi10.toFixed(2)} €)`,
+      });
+    }
+    if (bi21 !== 0 || iva21 !== 0) {
+      taxBreakdown.push({
+        taxType: 'IVA',
+        rate: 21,
+        base: bi21,
+        amount: iva21,
+        label: `21% IVA (BI ${bi21.toFixed(2)} €)`,
+      });
+    }
+  } else {
+    taxBreakdown.push({
+      taxType,
+      rate: taxPercentage,
+      base: totalBase,
+      amount: taxAmount,
+      label: `${taxPercentage}% ${taxType} (BI ${totalBase.toFixed(2)} €)`,
+    });
+  }
+
+  const energyMargin = round2(num(d['Margen Energia']));
+  const powerMargin = round2(num(d['Margen Potencia']));
+  const feeCost = round2(num(d['Margen Factura']) || energyMargin + powerMargin);
+  const fixedFlag = String(d['FIJO / INDEX'] || '').trim().toLowerCase();
+  const isFixed = fixedFlag
+    ? fixedFlag.includes('fijo')
+    : contract?.pricingModel !== 'INDEXED';
+
+  return {
+    hasMismatch: false,
+    hasCriticalError: false,
+    mismatchReason: undefined,
+    totalCchMWh: totalMWh,
+    totalF1MWh: totalMWh,
+    billingDays,
+    periods,
+    energyCost,
+    feeCost,
+    capacityCost: 0,
+    fneeCost: 0,
+    reactiveEnergyCost: sumReactiveEur,
+    powerCost,
+    peajesDistribuidora,
+    cargosDistribuidora,
+    alquilerEquipo,
+    bonoSocial,
+    bonoSocialDailyRate,
+    baseIEE,
+    ieeRate,
+    ieeReductionPct: 0,
+    taxElectric,
+    svaCost,
+    svaConcept,
+    svaDetails,
+    excesosPotencia,
+    capacitiveEnergyCost: 0,
+    penalizacionNoIcpCost: 0,
+    recargoInfAnioCost: 0,
+    interesesDemoraCost: 0,
+    conceptosRepercutibles,
+    conceptosRepercutiblesBase,
+    conceptosRepercutiblesExempt: 0,
+    excedentesAutoconsumo,
+    excedentesKwh,
+    pexc,
+    maxExcedentes,
+    hasBolsilloSolar,
+    cgBolsilloSolarCost,
+    cgBolsilloSolarDailyRate,
+    bolsilloSolarSaldoInicial,
+    bolsilloSolarLlenado,
+    bolsilloSolarUso,
+    bolsilloSolarSaldoFinal,
+    totalBase,
+    taxType,
+    taxPercentage,
+    taxAmount,
+    taxBreakdown,
+    totalSinDescuentoBolsillo,
+    totalAmount,
+    isFixed,
+    isOtrasFacturas: false,
+    effectiveContractId: legacyInv?.contractId || contract?.id,
+    powerDetails,
+    energyAtrDetails,
+    energyMarketDetails,
+    energyMargin,
+    powerMargin,
+    feeApplied: isFixed ? null : num(d['FEE']) || null,
+    f1Readings,
+    meterSerialNumber: d['Numero Serie'] ? String(d['Numero Serie']) : '',
+    hourlyDetails: [],
+    reactiveDetails,
+    repairData: null,
+  };
+}
+
 export class InternalBillingEngine {
 
   static async calculate(
@@ -521,6 +907,14 @@ export class InternalBillingEngine {
     const airTarifa = (contract.airtableData as any)?.Tarifa || (contract.airtableData as any)?.tarifa;
     const tariff = (Array.isArray(airTarifa) ? airTarifa[0] : airTarifa) || contract.product?.tariff || supplyPoint.tariff || '3.0TD';
 
+    // --- DETERMINACIÓN DE RÉGIMEN INDIRECTO TERRITORIAL (IVA / IGIC / IPSI) ---
+    const cpPrefix = getSpanishPostalPrefix(postalCode);
+    const provLower = (supplyPoint.province || '').toLowerCase();
+    const isCanarias = cpPrefix === '35' || cpPrefix === '38'
+      || provLower.includes('palmas') || provLower.includes('tenerife');
+    const isCeutaMelilla = cpPrefix === '51' || cpPrefix === '52'
+      || provLower.includes('ceuta') || provLower.includes('melilla');
+
     let isAbono = false;
     let isAbonoAproximado = false;
     let f1Ref = f1.numeroFactura;
@@ -535,80 +929,210 @@ export class InternalBillingEngine {
       const t = f1TipoFactura;
       if (t === 'S' || t === 'AR' || t === 'A') {
         isAbono = true;
-        f1Ref = (Array.isArray(datosGen.CodigoFacturaRectificadaAnulada) ? datosGen.CodigoFacturaRectificadaAnulada[0] : datosGen.CodigoFacturaRectificadaAnulada) || f1Ref;
-
-        // --- REVERSE ENGINEERING FOR AR / A / S INVOICES ---
-        let originalNCode: string | null = (Array.isArray(datosGen.CodigoFacturaRectificadaAnulada)
+        const explicitRectCodeRaw = Array.isArray(datosGen.CodigoFacturaRectificadaAnulada)
           ? datosGen.CodigoFacturaRectificadaAnulada[0]
-          : datosGen.CodigoFacturaRectificadaAnulada) || null;
+          : datosGen.CodigoFacturaRectificadaAnulada;
+        f1Ref = explicitRectCodeRaw || f1Ref;
 
-        if (!originalNCode && supplyPoint.id) {
-          const allR = await prisma.f1Invoice.findMany({
-            where: { supplyPointId: supplyPoint.id }
-          });
-          for (const r of allR) {
+        // --- REVERSE ENGINEERING FOR AR / A / S INVOICES (InternalInvoice + Legacy Invoice + Chained R1->R2) ---
+        const allSpF1s = supplyPoint.id
+          ? await prisma.f1Invoice.findMany({ where: { supplyPointId: supplyPoint.id } })
+          : [];
+
+        let initialTargetCode: string | null = null;
+
+        // Para AR/S priorizamos localizar el R padre cuyo CodigoFacturaAbono coincide con f1.numeroFactura
+        // (evita códigos heredados cuando un AR sintético se clonó desde un R1 intermedio)
+        if ((t === 'AR' || t === 'S') && allSpF1s.length > 0) {
+          for (const r of allSpF1s) {
             const rGen = (r.jsonData as any)?.DatosGeneralesFacturaATR?.DatosGeneralesFactura
               || (r.jsonData as any)?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura
               || (r.jsonData as any)?.DatosGeneralesFactura;
-            const rOriginalCode = rGen?.CodigoFacturaRectificadaAnulada;
-            const codAbono = rGen?.CodigoFacturaAbono || (rOriginalCode ? `AR-${rOriginalCode}` : undefined);
-            if (codAbono === f1.numeroFactura) {
-              originalNCode = rOriginalCode;
+            const rTipoRaw = rGen?.TipoFactura;
+            const rTipo = String((Array.isArray(rTipoRaw) ? rTipoRaw[0] : rTipoRaw) || '').trim().toUpperCase();
+            if (rTipo !== 'R') continue;
+            const rOrigRaw = rGen?.CodigoFacturaRectificadaAnulada;
+            const rOrig = Array.isArray(rOrigRaw) ? rOrigRaw[0] : rOrigRaw;
+            const codAbonoRaw = rGen?.CodigoFacturaAbono;
+            const codAbono = (Array.isArray(codAbonoRaw) ? codAbonoRaw[0] : codAbonoRaw)
+              || (rOrig ? `AR-${rOrig}` : undefined);
+            if (codAbono && String(codAbono) === f1.numeroFactura && rOrig) {
+              initialTargetCode = String(rOrig);
               break;
             }
           }
         }
 
-        if (originalNCode) {
-          const originalF1 = await prisma.f1Invoice.findFirst({
-            where: {
-              numeroFactura: String(originalNCode),
-              ...(supplyPoint.id ? { supplyPointId: supplyPoint.id } : {})
-            }
-          }) || await prisma.f1Invoice.findFirst({ where: { numeroFactura: String(originalNCode) } });
+        if (!initialTargetCode && explicitRectCodeRaw) {
+          initialTargetCode = String(explicitRectCodeRaw);
+        }
+        if (!initialTargetCode && f1.numeroFactura?.startsWith('AR-')) {
+          initialTargetCode = f1.numeroFactura.slice(3);
+        }
 
-          if (originalF1 && originalF1.id !== f1.id) {
-            if (returnHourlyDetails) {
-              // Para exportación Excel horaria, recalculamos la factura original con detalle horario e invertimos signos
-              try {
-                const origWithHourly = await InternalBillingEngine.calculate(originalF1.id, true, true);
-                return invertBillingResult(origWithHourly);
-              } catch {
-                // Fallback a invoiceData persistido si falla el recálculo
+        if (initialTargetCode) {
+          const emittedInternalInvs = supplyPoint.id
+            ? await prisma.internalInvoice.findMany({
+                where: { supplyPointId: supplyPoint.id, status: 'EMITIDA' },
+                include: { f1Invoice: true },
+                orderBy: { createdAt: 'desc' },
+              })
+            : [];
+
+          const legacySpInvs = supplyPoint.id
+            ? await prisma.invoice.findMany({
+                where: { supplyPointId: supplyPoint.id },
+                orderBy: { issueDate: 'desc' },
+              })
+            : [];
+
+          const isAlreadyCredited = (normCode: string, billedInvoiceNumber?: string | null): boolean => {
+            const normInvNum = (billedInvoiceNumber || '').trim().toUpperCase();
+            for (const ii of emittedInternalInvs) {
+              if (ii.f1InvoiceId === f1.id) continue;
+              if ((ii.invoiceType || '').trim().toLowerCase() !== 'abono') continue;
+              const iiGen = (ii.f1Invoice?.jsonData as any)?.DatosGeneralesFacturaATR?.DatosGeneralesFactura
+                || (ii.f1Invoice?.jsonData as any)?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura
+                || (ii.f1Invoice?.jsonData as any)?.DatosGeneralesFactura;
+              const iiRect = normalizeFiscalCode(iiGen?.CodigoFacturaRectificadaAnulada);
+              const iiNum = normalizeFiscalCode(ii.f1Invoice?.numeroFactura?.replace(/^AR-/i, ''));
+              if ((iiRect && iiRect === normCode) || (iiNum && iiNum === normCode)) {
+                return true;
               }
             }
+            for (const li of legacySpInvs) {
+              if ((li.invoiceType || '').trim().toLowerCase() !== 'abono') continue;
+              const ld = ((li.invoiceData as any) || {}) as Record<string, any>;
+              const cfNorm = normalizeFiscalCode(ld['Codigo Fiscal']);
+              const rectNorm = normalizeFiscalCode(
+                ld['Codigo Factura Rectificada Anulada'] ?? ld['Numero factura rectificada']
+              );
+              if (
+                (cfNorm && cfNorm === normCode) ||
+                (rectNorm && rectNorm === normCode) ||
+                (normInvNum && rectNorm === normInvNum)
+              ) {
+                return true;
+              }
+            }
+            return false;
+          };
 
-            const internalInvoice = await prisma.internalInvoice.findFirst({
-              where: { f1InvoiceId: originalF1.id },
-              orderBy: { createdAt: 'desc' }
-            });
-            if (internalInvoice && internalInvoice.invoiceData) {
-              const originalResult = JSON.parse(JSON.stringify(internalInvoice.invoiceData)) as BillingCalculationResult;
+          const visitedCodes = new Set<string>();
+          let currentCode: string | null = initialTargetCode;
+
+          while (currentCode && visitedCodes.size < 5) {
+            const normCode = normalizeFiscalCode(currentCode);
+            if (!normCode || visitedCodes.has(normCode)) break;
+            visitedCodes.add(normCode);
+
+            const targetF1: any =
+              allSpF1s.find(
+                (cand) => cand.id !== f1.id && normalizeFiscalCode(cand.numeroFactura) === normCode
+              ) ||
+              (await prisma.f1Invoice.findFirst({
+                where: { numeroFactura: currentCode, id: { not: f1.id } },
+              }));
+
+            // 1. Buscar primero en InternalInvoice (facturas confirmadas EMITIDA por nuestro motor)
+            let internalInvoice = targetF1
+              ? emittedInternalInvs.find(
+                  (ii) =>
+                    ii.f1InvoiceId === targetF1.id &&
+                    (ii.invoiceType || '').trim().toLowerCase() !== 'abono'
+                ) || null
+              : null;
+
+            if (!internalInvoice && targetF1 && !supplyPoint.id) {
+              internalInvoice = (await prisma.internalInvoice.findFirst({
+                where: { f1InvoiceId: targetF1.id, status: 'EMITIDA' },
+                include: { f1Invoice: true },
+                orderBy: { createdAt: 'desc' },
+              })) as any;
+            }
+
+            if (
+              internalInvoice &&
+              internalInvoice.invoiceData &&
+              !isAlreadyCredited(normCode, internalInvoice.invoiceNumber)
+            ) {
+              if (returnHourlyDetails && targetF1) {
+                try {
+                  const origWithHourly = await InternalBillingEngine.calculate(targetF1.id, true, true);
+                  return invertBillingResult(origWithHourly);
+                } catch {
+                  // Fallback a invoiceData persistido si falla el recálculo horario
+                }
+              }
+
+              const originalResult = JSON.parse(
+                JSON.stringify(internalInvoice.invoiceData)
+              ) as BillingCalculationResult;
+              originalResult.hasMismatch = false;
+              originalResult.hasCriticalError = false;
+              originalResult.mismatchReason = undefined;
+              originalResult.repairData = null;
               originalResult.totalBase = originalResult.totalBase ?? internalInvoice.subtotal1 ?? 0;
               originalResult.taxAmount = originalResult.taxAmount ?? internalInvoice.taxAmount ?? 0;
               originalResult.totalAmount = originalResult.totalAmount ?? internalInvoice.totalAmount ?? 0;
               originalResult.totalF1MWh = originalResult.totalF1MWh ?? internalInvoice.totalMWh ?? 0;
               originalResult.feeCost = originalResult.feeCost ?? internalInvoice.margin ?? 0;
               return invertBillingResult(originalResult);
-            } else {
-              isAbonoAproximado = true;
             }
-          } else {
-            isAbonoAproximado = true;
+
+            // 2. Fallback a prisma.invoice (facturas históricas emitidas en Ingebau / TPL / Estimada)
+            let legacyInvoice =
+              legacySpInvs.find((li) => {
+                if ((li.invoiceType || '').trim().toLowerCase() === 'abono') return false;
+                if (li.origin === 'INTERNAL_ENGINE') return false;
+                if (targetF1 && li.f1InvoiceId === targetF1.id) return true;
+                const cfNorm = normalizeFiscalCode((li.invoiceData as any)?.['Codigo Fiscal']);
+                return cfNorm === normCode;
+              }) || null;
+
+            if (!legacyInvoice && targetF1 && legacySpInvs.length === 0) {
+              legacyInvoice = await prisma.invoice.findFirst({
+                where: {
+                  f1InvoiceId: targetF1.id,
+                  NOT: { invoiceType: 'Abono' },
+                },
+                orderBy: { issueDate: 'desc' },
+              });
+            }
+
+            if (legacyInvoice && !isAlreadyCredited(normCode, legacyInvoice.invoiceNumber)) {
+              const legacyResult = buildBillingResultFromLegacyInvoice(
+                legacyInvoice,
+                contract,
+                isCanarias,
+                isCeutaMelilla
+              );
+              return invertBillingResult(legacyResult);
+            }
+
+            // 3. Si currentCode corresponde a una Rectificadora intermedia (R1) nunca facturada al cliente,
+            // seguimos la cadena hacia la factura previa (ej. N -> R1 no facturada -> R2)
+            if (targetF1) {
+              const tGen = (targetF1.jsonData as any)?.DatosGeneralesFacturaATR?.DatosGeneralesFactura
+                || (targetF1.jsonData as any)?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura
+                || (targetF1.jsonData as any)?.DatosGeneralesFactura;
+              const tTipoRaw = tGen?.TipoFactura;
+              const tTipo = String((Array.isArray(tTipoRaw) ? tTipoRaw[0] : tTipoRaw) || '').trim().toUpperCase();
+              const tNextRaw = tGen?.CodigoFacturaRectificadaAnulada;
+              const tNext = Array.isArray(tNextRaw) ? tNextRaw[0] : tNextRaw;
+              if (tTipo === 'R' && tNext) {
+                currentCode = String(tNext);
+                continue;
+              }
+            }
+
+            break;
           }
-        } else {
-          isAbonoAproximado = true;
         }
+
+        isAbonoAproximado = true;
       }
     }
-
-    // --- DETERMINACIÓN DE RÉGIMEN INDIRECTO TERRITORIAL (IVA / IGIC / IPSI) ---
-    const cpPrefix = getSpanishPostalPrefix(postalCode);
-    const provLower = (supplyPoint.province || '').toLowerCase();
-    const isCanarias = cpPrefix === '35' || cpPrefix === '38'
-      || provLower.includes('palmas') || provLower.includes('tenerife');
-    const isCeutaMelilla = cpPrefix === '51' || cpPrefix === '52'
-      || provLower.includes('ceuta') || provLower.includes('melilla');
 
     const clientVat = (supplyPoint.client?.vatNumber || '').trim().toUpperCase();
     const f1TipoPersona = jsonData?.DatosGeneralesFacturaATR?.Cliente?.TipoPersona

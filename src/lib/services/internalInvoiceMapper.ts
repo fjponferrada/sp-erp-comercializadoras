@@ -546,3 +546,113 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
     isOtrasFacturas: Boolean(idata.isOtrasFacturas),
   };
 }
+
+/**
+ * Para una factura F1 Rectificadora (R), localiza su F1 de Abono compañero (S o AR-...) y,
+ * si aún no existe en F1Invoice porque el ciclo original era previo a la ingesta XML pero sí
+ * existe la factura original al cliente en prisma.invoice, sintetiza automáticamente el F1 AR.
+ */
+export async function ensureCompanionAbonoF1(rF1: any): Promise<any | null> {
+  if (!rF1?.jsonData) return null;
+  const f1Node =
+    rF1.jsonData?.FacturaATR ||
+    rF1.jsonData?.OtrasFacturas ||
+    rF1.jsonData?.Facturas?.FacturaATR ||
+    rF1.jsonData?.Facturas?.OtrasFacturas ||
+    rF1.jsonData ||
+    {};
+  const dGen =
+    f1Node?.DatosGeneralesFacturaATR?.DatosGeneralesFactura ||
+    f1Node?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura ||
+    f1Node?.DatosGeneralesFactura;
+  if (!dGen) return null;
+
+  const tipoRaw = dGen.TipoFactura;
+  const tipo = String((Array.isArray(tipoRaw) ? tipoRaw[0] : tipoRaw) || '').trim().toUpperCase();
+  if (tipo !== 'R') return null;
+
+  const origRaw = dGen.CodigoFacturaRectificadaAnulada;
+  const codOriginal = origRaw ? String(Array.isArray(origRaw) ? origRaw[0] : origRaw).trim() : '';
+  const abonoRaw = dGen.CodigoFacturaAbono;
+  const codAbono = abonoRaw
+    ? String(Array.isArray(abonoRaw) ? abonoRaw[0] : abonoRaw).trim()
+    : codOriginal
+      ? `AR-${codOriginal}`
+      : '';
+
+  if (!codAbono) return null;
+
+  const existingAbono = await prisma.f1Invoice.findFirst({
+    where: {
+      numeroFactura: codAbono,
+      ...(rF1.supplyPointId ? { supplyPointId: rF1.supplyPointId } : {}),
+    },
+    include: { internalInvoices: { select: { id: true } } },
+  });
+  if (existingAbono) return existingAbono;
+
+  if (!codOriginal || !rF1.supplyPointId) return null;
+
+  const normTarget = codOriginal.replace(/^CF\s+/i, '').trim().toUpperCase();
+  const spLegacyInvoices = await prisma.invoice.findMany({
+    where: { supplyPointId: rF1.supplyPointId },
+  });
+  const matchedLegacy = spLegacyInvoices.find((inv) => {
+    if ((inv.invoiceType || '').trim().toLowerCase() === 'abono') return false;
+    const cfRaw = (inv.invoiceData as any)?.['Codigo Fiscal'];
+    const cfNorm = String(cfRaw || '').replace(/^CF\s+/i, '').trim().toUpperCase();
+    return cfNorm === normTarget;
+  });
+
+  if (!matchedLegacy) return null;
+
+  const legData = ((matchedLegacy.invoiceData as any) || {}) as Record<string, any>;
+  const parseLegNum = (v: any): number => {
+    if (v === undefined || v === null || typeof v === 'object') return 0;
+    const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const baseF1 = Math.abs(parseLegNum(legData['BaseImponibleF1']));
+  const peajesF1 = Math.abs(parseLegNum(legData['TotalImportePeajes']));
+  const cargosF1 = Math.abs(parseLegNum(legData['TotalImporteCargos']));
+  const rDateStr = dGen.FechaFactura;
+
+  const syntheticJson = JSON.parse(JSON.stringify(rF1.jsonData || {}));
+  if (syntheticJson?.DatosGeneralesFacturaATR?.DatosGeneralesFactura) {
+    syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.TipoFactura = 'AR';
+    syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFiscalFactura = codAbono;
+    syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.CodigoFacturaRectificadaAnulada =
+      codOriginal;
+    if (rDateStr) {
+      syntheticJson.DatosGeneralesFacturaATR.DatosGeneralesFactura.FechaFactura = rDateStr;
+    }
+  } else if (syntheticJson?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura) {
+    syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.TipoFactura = 'AR';
+    syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFiscalFactura = codAbono;
+    syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.CodigoFacturaRectificadaAnulada =
+      codOriginal;
+    if (rDateStr) {
+      syntheticJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.FechaFactura = rDateStr;
+    }
+  }
+
+  return prisma.f1Invoice.create({
+    data: {
+      numeroFactura: codAbono,
+      tipoDocumento: rF1.tipoDocumento,
+      fechaEmision: rF1.fechaEmision,
+      fechaInicio: rF1.fechaInicio ?? matchedLegacy.billingStart,
+      fechaFin: rF1.fechaFin ?? matchedLegacy.billingEnd,
+      saldoFactura: -baseF1,
+      baseImponible: -baseF1,
+      totalPeajes: -peajesF1,
+      totalCargos: -cargosF1,
+      xmlUrl: rF1.xmlUrl,
+      jsonData: syntheticJson,
+      supplyPointId: rF1.supplyPointId,
+      contractId: rF1.contractId ?? matchedLegacy.contractId,
+      facturaRealizada: true,
+    },
+    include: { internalInvoices: { select: { id: true } } },
+  });
+}

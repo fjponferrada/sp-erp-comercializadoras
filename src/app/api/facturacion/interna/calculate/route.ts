@@ -5,6 +5,7 @@ import { InternalBillingEngine } from '@/lib/services/InternalBillingEngine';
 import {
   buildInternalInvoiceJsonData,
   deduceInvoiceType,
+  ensureCompanionAbonoF1,
 } from '@/lib/services/internalInvoiceMapper';
 
 export async function POST(req: Request) {
@@ -88,6 +89,46 @@ export async function POST(req: Request) {
           },
         });
         createdDrafts.push(draft);
+
+        if (calculatedType === 'Rectificadora') {
+          const companionF1 = await ensureCompanionAbonoF1(f1);
+          if (
+            companionF1 &&
+            companionF1.id !== f1.id &&
+            !f1Ids.includes(companionF1.id) &&
+            (!companionF1.internalInvoices || companionF1.internalInvoices.length === 0)
+          ) {
+            try {
+              const abonoRes = await InternalBillingEngine.calculate(companionF1.id, true);
+              const abonoDraft = await prisma.internalInvoice.create({
+                data: {
+                  status: abonoRes.hasCriticalError ? 'REQUIERE_REPARACION' : 'BORRADOR',
+                  repairData: abonoRes.repairData,
+                  invoiceType: deduceInvoiceType(companionF1.jsonData),
+                  clientId: effectiveContract.clientId,
+                  companyId: effectiveCompanyId,
+                  contractId: effectiveContract.id,
+                  supplyPointId: effectiveContract.supplyPointId,
+                  f1InvoiceId: companionF1.id,
+                  issueDate: new Date(),
+                  subtotal1: abonoRes.totalBase,
+                  taxPercentage: abonoRes.taxPercentage ?? 21,
+                  taxAmount: abonoRes.taxAmount,
+                  totalAmount: abonoRes.totalAmount,
+                  totalMWh: abonoRes.totalF1MWh,
+                  margin: abonoRes.feeCost,
+                  billingStart: companionF1.fechaInicio || f1.fechaInicio || new Date(),
+                  billingEnd: companionF1.fechaFin || f1.fechaFin || new Date(),
+                  origin: 'INTERNAL_ENGINE',
+                  invoiceData: buildInternalInvoiceJsonData(abonoRes, effectiveContract) as any,
+                },
+              });
+              createdDrafts.push(abonoDraft);
+            } catch (compErr) {
+              console.error('Error auto-calculando Abono compañero', companionF1.id, compErr);
+            }
+          }
+        }
       } catch (err: any) {
         console.error('Error calculando F1', f1.id, err);
         const errorDraft = await prisma.internalInvoice.create({

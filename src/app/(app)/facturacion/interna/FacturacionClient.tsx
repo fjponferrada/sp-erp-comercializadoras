@@ -110,6 +110,26 @@ export default function FacturacionClient({
   const lastSelectedDraftRef = useRef<string | null>(null);
   const shiftKeyRef = useRef<boolean>(false);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.shiftKey) shiftKeyRef.current = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || !e.shiftKey) shiftKeyRef.current = false;
+    };
+    const onBlur = () => {
+      shiftKeyRef.current = false;
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
   const handleRangeSelect = (
     id: string,
     orderedIds: string[],
@@ -118,20 +138,35 @@ export default function FacturacionClient({
     isShift: boolean
   ) => {
     setter((prev) => {
-      const shouldSelect = !prev.includes(id);
-      if (isShift && lastSelectedRef.current) {
-        const startIdx = orderedIds.indexOf(lastSelectedRef.current);
+      let anchorId =
+        lastSelectedRef.current && orderedIds.includes(lastSelectedRef.current)
+          ? lastSelectedRef.current
+          : null;
+      if (!anchorId && isShift) {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i] !== id && orderedIds.includes(prev[i])) {
+            anchorId = prev[i];
+            break;
+          }
+        }
+      }
+
+      if (isShift && anchorId && anchorId !== id) {
+        const startIdx = orderedIds.indexOf(anchorId);
         const endIdx = orderedIds.indexOf(id);
         if (startIdx !== -1 && endIdx !== -1) {
           const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
           const rangeIds = orderedIds.slice(from, to + 1);
-          if (shouldSelect) {
+          const allInRangeSelected = rangeIds.every((x) => prev.includes(x));
+          if (!allInRangeSelected) {
             return Array.from(new Set([...prev, ...rangeIds]));
           }
           const removeSet = new Set(rangeIds);
           return prev.filter((x) => !removeSet.has(x));
         }
       }
+
+      const shouldSelect = !prev.includes(id);
       return shouldSelect ? [...prev, id] : prev.filter((x) => x !== id);
     });
     lastSelectedRef.current = id;
@@ -367,18 +402,42 @@ export default function FacturacionClient({
                     key={f1.id}
                     className="border-b border-[var(--border)] hover:bg-[var(--bg-elevated)]"
                   >
-                    <td className="px-4 py-3 select-none">
+                    <td
+                      className="px-4 py-3 select-none cursor-pointer"
+                      onPointerDown={(e) => {
+                        shiftKeyRef.current = e.shiftKey;
+                      }}
+                      onMouseDown={(e) => {
+                        shiftKeyRef.current = e.shiftKey;
+                        if (e.shiftKey) e.preventDefault();
+                      }}
+                      onClick={(e) => {
+                        const isShift = e.shiftKey || shiftKeyRef.current;
+                        shiftKeyRef.current = false;
+                        handleRangeSelect(
+                          f1.id,
+                          visiblePendingIds,
+                          lastSelectedF1Ref,
+                          setSelectedF1s,
+                          isShift
+                        );
+                      }}
+                    >
                       <input
                         type="checkbox"
+                        readOnly
                         className="rounded cursor-pointer"
                         title="Clic para seleccionar · Mayús + Clic para seleccionar rango"
                         checked={selectedF1s.includes(f1.id)}
-                        onClickCapture={(e) => {
+                        onPointerDown={(e) => {
                           shiftKeyRef.current = e.shiftKey;
                         }}
-                        onChange={(e) => {
-                          const isShift =
-                            shiftKeyRef.current || Boolean((e.nativeEvent as MouseEvent)?.shiftKey);
+                        onMouseDown={(e) => {
+                          shiftKeyRef.current = e.shiftKey;
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const isShift = e.shiftKey || shiftKeyRef.current;
                           shiftKeyRef.current = false;
                           handleRangeSelect(
                             f1.id,
@@ -891,19 +950,45 @@ export default function FacturacionClient({
 
                           return (
                             <tr key={rowDraft.id} className={trClass}>
-                              <td className="px-4 py-3 select-none">
+                              <td
+                                className="px-4 py-3 select-none cursor-pointer"
+                                onPointerDown={(e) => {
+                                  shiftKeyRef.current = e.shiftKey;
+                                }}
+                                onMouseDown={(e) => {
+                                  shiftKeyRef.current = e.shiftKey;
+                                  if (e.shiftKey) e.preventDefault();
+                                }}
+                                onClick={(e) => {
+                                  const isShift = e.shiftKey || shiftKeyRef.current;
+                                  shiftKeyRef.current = false;
+                                  const orderedIds =
+                                    ((validDrafts as any)._allOrderedDraftIds as string[]) ||
+                                    validDrafts.map((d) => d.id);
+                                  handleRangeSelect(
+                                    rowDraft.id,
+                                    orderedIds,
+                                    lastSelectedDraftRef,
+                                    setSelectedDrafts,
+                                    isShift
+                                  );
+                                }}
+                              >
                                 <input
                                   type="checkbox"
+                                  readOnly
                                   className="rounded cursor-pointer"
                                   title="Clic para seleccionar · Mayús + Clic para seleccionar rango"
                                   checked={selectedDrafts.includes(rowDraft.id)}
-                                  onClickCapture={(e) => {
+                                  onPointerDown={(e) => {
                                     shiftKeyRef.current = e.shiftKey;
                                   }}
-                                  onChange={(e) => {
-                                    const isShift =
-                                      shiftKeyRef.current ||
-                                      Boolean((e.nativeEvent as MouseEvent)?.shiftKey);
+                                  onMouseDown={(e) => {
+                                    shiftKeyRef.current = e.shiftKey;
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isShift = e.shiftKey || shiftKeyRef.current;
                                     shiftKeyRef.current = false;
                                     const orderedIds =
                                       ((validDrafts as any)._allOrderedDraftIds as string[]) ||
