@@ -1383,6 +1383,13 @@ async function finalizeEnvelopeAndContractT3(params: {
     });
   }
 
+  // Sincronizar estado Plan Amigo (PENDING_SIGNATURE -> PENDING_ACTIVATION + aviso email al Padrino)
+  import('@/lib/services/ReferralEngine')
+    .then(({ reconcileReferralsLifecycle }) =>
+      reconcileReferralsLifecycle({ contractId: envelope.contractId })
+    )
+    .catch((err) => console.warn('[PLAN AMIGO] Error sincronizando tras firma PAdES:', err));
+
   // Registrar documentos en el expediente documental del contrato/cliente/CUPS
   await prisma.document.createMany({
     data: [

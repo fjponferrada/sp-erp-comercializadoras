@@ -11,6 +11,7 @@ export interface BrandTheme {
   bgColor: string;      // Fondo base de toda la app
   surfaceColor: string; // Tarjetas, sidebar
   borderColor: string;  // Separadores y bordes
+  referralEnabled?: boolean;
 }
 
 // ── Derivar colores secundarios automáticamente ───────────────────────────

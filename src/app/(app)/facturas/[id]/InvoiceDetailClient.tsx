@@ -19,6 +19,7 @@ import {
   Calculator,
   BatteryCharging,
   ExternalLink,
+  Gift,
 } from 'lucide-react';
 
 // Diccionarios oficiales CNMC V3.0 (TiposSencillos.xsd)
@@ -309,6 +310,17 @@ export default function InvoiceDetailClient({
     Boolean(bsCarga) ||
     Boolean(bsDescuento) ||
     Boolean(bsSaldoFinal);
+
+  const paSaldoInicial = getRawNum('Inicio Plan Amigo', 'planAmigoSaldoInicial');
+  const paDescuentoRaw = getRawNum('Descuento Plan Amigo', 'planAmigoUso');
+  const paDescuento = paDescuentoRaw !== null ? Math.abs(paDescuentoRaw) : null;
+  const paSaldoFinal = getRawNum('Saldo Final Plan Amigo', 'planAmigoSaldoFinal');
+  const hasPlanAmigo =
+    String(rawData['PLAN AMIGO'] || '').trim().toUpperCase() === 'SI' ||
+    Boolean(rawData.hasPlanAmigo) ||
+    Boolean(paSaldoInicial) ||
+    Boolean(paDescuento) ||
+    Boolean(paSaldoFinal);
 
   // Impuestos y totales
   const cuotaImpuestoElectrico = signed(initialInvoice.taxAmount ?? getRawNum('Importe Impuesto CORR', 'Importe Impuesto'));
@@ -982,12 +994,32 @@ export default function InvoiceDetailClient({
                   label="Uso (Descuento Aplicado)"
                   value={
                     <span style={{ color: bsDescuento ? '#34d399' : undefined }}>
-                      {formatCurrency(bsDescuento ? -Math.abs(bsDescuento) : 0)}
+                      {formatCurrency(bsDescuento ? (isAbono ? Math.abs(bsDescuento) : -Math.abs(bsDescuento)) : 0)}
                     </span>
                   }
                 />
                 <DataItem highlight label="Saldo Final Almacenado" value={formatCurrency(bsSaldoFinal ?? 0)} />
                 <DataItem label="Costes Gestión Bolsillo" value={formatCurrency(bsCosteGestion ?? 0)} />
+              </div>
+            </div>
+          )}
+
+          {hasPlanAmigo && (
+            <div className="col-span-full mt-2 p-5 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+              <h4 className="text-emerald-400 font-bold mb-4 flex items-center gap-2">
+                <Gift size={16} /> Tu Monedero Plan Amigo en esta Factura
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <DataItem label="Saldo Anterior" value={formatCurrency(paSaldoInicial ?? 0)} />
+                <DataItem
+                  label={isAbono ? 'Saldo Restituido por Abono' : 'Descuento Plan Amigo Aplicado'}
+                  value={
+                    <span style={{ color: paDescuento ? '#34d399' : undefined }}>
+                      {formatCurrency(paDescuento ? (isAbono ? Math.abs(paDescuento) : -Math.abs(paDescuento)) : 0)}
+                    </span>
+                  }
+                />
+                <DataItem highlight label="Saldo Disponible Final" value={formatCurrency(paSaldoFinal ?? 0)} />
               </div>
             </div>
           )}
@@ -1084,6 +1116,38 @@ export default function InvoiceDetailClient({
               </>
             );
           })()}
+
+          {Boolean((bsDescuento && bsDescuento !== 0) || (paDescuento && paDescuento !== 0)) && (
+            <>
+              <div className="col-span-full border-t border-[var(--border)] my-1" />
+              {getRawNum('Total sin Descuento', 'totalSinDescuentoBolsillo') !== null && (
+                <DataItem
+                  label="Total antes de Monederos"
+                  value={formatCurrency(signed(Math.abs(getRawNum('Total sin Descuento', 'totalSinDescuentoBolsillo') || 0)))}
+                />
+              )}
+              {bsDescuento !== null && bsDescuento !== 0 && (
+                <DataItem
+                  label="Descuento Bolsillo Solar"
+                  value={
+                    <span style={{ color: '#34d399', fontWeight: 600 }}>
+                      {formatCurrency(isAbono ? Math.abs(bsDescuento) : -Math.abs(bsDescuento))}
+                    </span>
+                  }
+                />
+              )}
+              {paDescuento !== null && paDescuento !== 0 && (
+                <DataItem
+                  label="Descuento Plan Amigo"
+                  value={
+                    <span style={{ color: '#34d399', fontWeight: 600 }}>
+                      {formatCurrency(isAbono ? Math.abs(paDescuento) : -Math.abs(paDescuento))}
+                    </span>
+                  }
+                />
+              )}
+            </>
+          )}
 
           <div className="col-span-full mt-2">
             <DataItem

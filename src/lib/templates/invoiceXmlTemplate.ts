@@ -166,6 +166,9 @@ export function generateInvoiceXml(data: any): string {
       </DesgloseImpuestos>
       <ConceptosExentos>${Number(data.conceptosRepercutiblesExempt || 0).toFixed(2)}</ConceptosExentos>
       <DescuentoBolsilloSolar>${Number(data.bolsilloSolarUso || 0).toFixed(2)}</DescuentoBolsilloSolar>
+      <DescuentoPlanAmigo>${Number(data.planAmigoUso || 0).toFixed(2)}</DescuentoPlanAmigo>
+      <SaldoInicialPlanAmigo>${Number(data.planAmigoSaldoInicial || 0).toFixed(2)}</SaldoInicialPlanAmigo>
+      <SaldoFinalPlanAmigo>${Number(data.planAmigoSaldoFinal || 0).toFixed(2)}</SaldoFinalPlanAmigo>
       <TotalFactura>${Number(data.totalAmount || 0).toFixed(2)}</TotalFactura>
     </Importes>
   </DetalleFactura>

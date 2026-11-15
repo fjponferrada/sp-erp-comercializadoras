@@ -5,11 +5,13 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Topbar from '@/components/Topbar';
 import { useBrandTheme } from '@/context/BrandThemeContext';
-import { Save, Upload, Building2, Palette, Shield, Bell, Database, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { Save, Upload, Building2, Palette, Shield, Bell, Database, CheckCircle2, X, Loader2, Gift } from 'lucide-react';
 import { updateBrandThemeAction } from '@/app/actions/brandThemeActions';
+import PlanAmigoSettingsPanel from './PlanAmigoSettingsPanel';
 
 const ajustesSections = [
   { label: 'Marca & Identidad', icon: Palette, comingSoon: false },
+  { label: 'Plan Amigo', icon: Gift, comingSoon: false },
   { label: 'Seguridad', icon: Shield, comingSoon: true },
   { label: 'Notificaciones', icon: Bell, comingSoon: true },
   { label: 'Integraciones', icon: Database, comingSoon: true },
@@ -26,11 +28,17 @@ export interface InitialBrandSettings {
   borderColor: string;
 }
 
-export default function AjustesClient({ initialBrand }: { initialBrand: InitialBrandSettings | null }) {
+export default function AjustesClient({
+  initialBrand,
+  initialTab = 'Marca & Identidad',
+}: {
+  initialBrand: InitialBrandSettings | null;
+  initialTab?: string;
+}) {
   const brand = useBrandTheme();
   const { data: session, update } = useSession();
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState('Marca & Identidad');
+  const [activeSection, setActiveSection] = useState(initialTab);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -517,7 +525,11 @@ export default function AjustesClient({ initialBrand }: { initialBrand: InitialB
             </div>
           )}
 
-          {activeSection !== 'Marca & Identidad' && (
+          {activeSection === 'Plan Amigo' && (
+            <PlanAmigoSettingsPanel brandId={initialBrand?.id} brandName={brandName} />
+          )}
+
+          {activeSection !== 'Marca & Identidad' && activeSection !== 'Plan Amigo' && (
             <div className="card animate-fade-in-up" style={{ textAlign: 'center', padding: '60px 24px' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🚧</div>
               <h3 style={{ margin: '0 0 8px', color: 'var(--text-primary)' }}>{activeSection}</h3>

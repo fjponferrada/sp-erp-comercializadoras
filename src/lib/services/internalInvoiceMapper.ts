@@ -168,6 +168,12 @@ export interface InvoiceTemplateData {
   bolsilloSolarUso: number;
   bolsilloSolarSaldoFinal: number;
 
+  // Monedero promocional Plan Amigo (post-impuestos, idéntico a Bolsillo Solar)
+  hasPlanAmigo?: boolean;
+  planAmigoSaldoInicial?: number;
+  planAmigoUso?: number;
+  planAmigoSaldoFinal?: number;
+
   // SVA y lecturas enriquecidas
   svaCost: number;
   svaConcept?: string;
@@ -495,6 +501,12 @@ export function buildInternalInvoiceJsonData(
     bolsilloSolarLlenado: result.bolsilloSolarLlenado ?? 0,
     bolsilloSolarUso: result.bolsilloSolarUso ?? 0,
     bolsilloSolarSaldoFinal: result.bolsilloSolarSaldoFinal ?? 0,
+
+    // Monedero promocional Plan Amigo (post-impuestos)
+    hasPlanAmigo: result.hasPlanAmigo ?? false,
+    planAmigoSaldoInicial: result.planAmigoSaldoInicial ?? 0,
+    planAmigoUso: result.planAmigoUso ?? 0,
+    planAmigoSaldoFinal: result.planAmigoSaldoFinal ?? 0,
 
     // SVA
     svaCost: result.svaCost ?? 0,
@@ -1608,8 +1620,9 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
       qrParams.push(['impEner', impEnerVal.toFixed(2)]);
 
       const bsUso = Math.abs(Number(idata.bolsilloSolarUso ?? 0));
-      if (bsUso > 0) {
-        qrParams.push(['dto', bsUso.toFixed(2)]);
+      const paUso = Math.abs(Number(idata.planAmigoUso ?? 0));
+      if (bsUso + paUso > 0) {
+        qrParams.push(['dto', (bsUso + paUso).toFixed(2)]);
       }
 
       qrParams.push(['prP1', getPeriodYearlyPowerPrice('P1').toFixed(6)]);
@@ -1752,6 +1765,16 @@ export async function buildInvoiceTemplateData(invoice: any): Promise<InvoiceTem
     bolsilloSolarLlenado: Number(idata.bolsilloSolarLlenado ?? 0),
     bolsilloSolarUso: Number(idata.bolsilloSolarUso ?? 0),
     bolsilloSolarSaldoFinal: Number(idata.bolsilloSolarSaldoFinal ?? 0),
+
+    hasPlanAmigo: Boolean(
+      idata.hasPlanAmigo ||
+        Number(idata.planAmigoUso ?? 0) !== 0 ||
+        Number(idata.planAmigoSaldoInicial ?? 0) > 0 ||
+        Number(idata.planAmigoSaldoFinal ?? 0) > 0
+    ),
+    planAmigoSaldoInicial: Number(idata.planAmigoSaldoInicial ?? 0),
+    planAmigoUso: Number(idata.planAmigoUso ?? 0),
+    planAmigoSaldoFinal: Number(idata.planAmigoSaldoFinal ?? 0),
 
     // SVA y lecturas
     svaCost: Number(idata.svaCost ?? 0),
@@ -2684,6 +2707,26 @@ export function buildIngebauCanonicalFieldsSync(input: IngebauCanonicalBuildInpu
       : null,
     'Costes de Gestion Bolsillo Solar': cgBolsilloVal,
     'Costes de Gestión': cgBolsilloVal,
+
+    'PLAN AMIGO':
+      idata.hasPlanAmigo ||
+      Number(idata.planAmigoUso || 0) !== 0 ||
+      Number(idata.planAmigoSaldoInicial || 0) > 0 ||
+      Number(idata.planAmigoSaldoFinal || 0) > 0
+        ? 'SI'
+        : 'NO',
+    'Inicio Plan Amigo':
+      Number(idata.planAmigoSaldoInicial || 0) > 0
+        ? roundNum(Number(idata.planAmigoSaldoInicial || 0), 2)
+        : null,
+    'Descuento Plan Amigo':
+      Number(idata.planAmigoUso || 0) !== 0
+        ? roundNum(Math.abs(Number(idata.planAmigoUso || 0)), 2)
+        : null,
+    'Saldo Final Plan Amigo':
+      Number(idata.planAmigoSaldoFinal || 0) > 0
+        ? roundNum(Number(idata.planAmigoSaldoFinal || 0), 2)
+        : null,
 
     'Importe Bono Social': bonoSocialVal,
     'Alquiler Equipo de Medida': alquilerVal,

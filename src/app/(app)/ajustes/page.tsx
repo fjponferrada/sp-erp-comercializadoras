@@ -3,11 +3,18 @@ import { prisma } from '@/lib/prisma';
 import { getBrandAccessContext } from '@/lib/permissions';
 import AjustesClient from './AjustesClient';
 
-export default async function AjustesPage() {
+export default async function AjustesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
   const access = await getBrandAccessContext();
   if (!access || !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(access.role)) {
     redirect('/');
   }
+
+  const sp = searchParams ? await searchParams : undefined;
+  const initialTab = sp?.tab === 'Plan Amigo' ? 'Plan Amigo' : 'Marca & Identidad';
 
   const brand = access.activeBrandId
     ? await prisma.brand.findUnique({
@@ -25,5 +32,5 @@ export default async function AjustesPage() {
       })
     : null;
 
-  return <AjustesClient initialBrand={brand} />;
+  return <AjustesClient initialBrand={brand} initialTab={initialTab} />;
 }

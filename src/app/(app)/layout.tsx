@@ -43,6 +43,43 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     const allowedBrands = (session.user as any).allowedBrands || [];
     const brandData = allowedBrands.find((b: any) => b.id === activeBrandId) || allowedBrands[0];
+    const targetBrandIdForCfg = brandData?.id || activeBrandId;
+    const refCfg = targetBrandIdForCfg
+      ? await prisma.brandReferralConfig
+          .findUnique({
+            where: { brandId: targetBrandIdForCfg },
+            select: { isEnabled: true },
+          })
+          .catch(() => null)
+      : null;
+
+    let referralNavVisible = Boolean(refCfg?.isEnabled);
+    if (!referralNavVisible && (session.user as any).role === 'CLIENT' && targetBrandIdForCfg && session.user.email) {
+      const cleanEmail = session.user.email.trim();
+      const priorClientCount = await prisma.client
+        .count({
+          where: {
+            brandId: targetBrandIdForCfg,
+            OR: [
+              { contactEmail: { equals: cleanEmail, mode: 'insensitive' } },
+              { invoiceEmail: { equals: cleanEmail, mode: 'insensitive' } },
+              { contactEmail2: { equals: cleanEmail, mode: 'insensitive' } },
+              { contactEmail3: { equals: cleanEmail, mode: 'insensitive' } },
+              { representativeEmail: { equals: cleanEmail, mode: 'insensitive' } },
+            ],
+            AND: [
+              {
+                OR: [
+                  { referralWalletTxs: { some: { brandId: targetBrandIdForCfg } } },
+                  { referralsMade: { some: { brandId: targetBrandIdForCfg } } },
+                ],
+              },
+            ],
+          },
+        })
+        .catch(() => 0);
+      if (priorClientCount > 0) referralNavVisible = true;
+    }
     
     if (brandData) {
       activeBrand = {
@@ -52,6 +89,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         bgColor:      brandData.bgColor || session.user.bgColor,
         surfaceColor: brandData.surfaceColor || session.user.surfaceColor,
         borderColor:  brandData.borderColor || session.user.borderColor,
+        referralEnabled: referralNavVisible,
+      };
+    } else if (refCfg || referralNavVisible) {
+      activeBrand = {
+        ...activeBrand,
+        referralEnabled: referralNavVisible,
       };
     }
   }

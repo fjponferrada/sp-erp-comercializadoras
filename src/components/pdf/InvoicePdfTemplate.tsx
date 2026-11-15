@@ -908,6 +908,11 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
     bolsilloSolarUso = 0,
     bolsilloSolarSaldoFinal = 0,
 
+    hasPlanAmigo = false,
+    planAmigoSaldoInicial = 0,
+    planAmigoUso = 0,
+    planAmigoSaldoFinal = 0,
+
     f1Readings = null,
     svaCost = 0,
     svaConcept = '',
@@ -1116,6 +1121,13 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
       bolsilloSolarUso !== 0 ||
       bolsilloSolarSaldoInicial !== 0 ||
       bolsilloSolarSaldoFinal !== 0
+  );
+
+  const showPlanAmigo = Boolean(
+    hasPlanAmigo ||
+      planAmigoUso !== 0 ||
+      planAmigoSaldoInicial > 0 ||
+      planAmigoSaldoFinal > 0
   );
 
   const footerContactLine = [
@@ -1718,7 +1730,7 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
               )}
         </View>
 
-        {/* 7. Totales & 8. Tu Bolsillo Solar en esta Factura */}
+        {/* 7. Totales & 8. Tu Bolsillo Solar / Monedero Plan Amigo en esta Factura */}
         <View style={styles.totalsWrap} wrap={false}>
           <View style={styles.totalsLeft}>
             {showBolsilloSolar && (
@@ -1738,6 +1750,26 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
                     <Text style={styles.solarCell}>{fmtEs(bolsilloSolarLlenado, 2)} €</Text>
                     <Text style={styles.solarCell}>{fmtEs(bolsilloSolarUso, 2)} €</Text>
                     <Text style={styles.solarCellLast}>{fmtEs(bolsilloSolarSaldoFinal, 2)} €</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {showPlanAmigo && (
+              <View style={[styles.solarWrap, showBolsilloSolar ? { marginTop: 6 } : {}]}>
+                <View style={styles.solarTitle}>
+                  <Text style={styles.solarTitleText}>Tu Monedero Plan Amigo</Text>
+                </View>
+                <View style={styles.solarTable}>
+                  <View style={styles.solarHead}>
+                    <Text style={styles.solarHeadCell}>Saldo anterior</Text>
+                    <Text style={styles.solarHeadCell}>Aplicado</Text>
+                    <Text style={styles.solarHeadCellLast}>Disponible</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row' }}>
+                    <Text style={styles.solarCell}>{fmtEs(planAmigoSaldoInicial, 2)} €</Text>
+                    <Text style={styles.solarCell}>{fmtEs(Math.abs(planAmigoUso), 2)} €</Text>
+                    <Text style={styles.solarCellLast}>{fmtEs(planAmigoSaldoFinal, 2)} €</Text>
                   </View>
                 </View>
               </View>
@@ -1782,6 +1814,17 @@ export const InvoicePdfTemplate = ({ data }: { data: any }) => {
                 </Text>
                 <Text style={[styles.totalValGrey, { color: C.green }]}>
                   -{fmtEs(Math.abs(bolsilloSolarUso), 2)} €
+                </Text>
+              </View>
+            )}
+
+            {planAmigoUso !== 0 && (
+              <View style={styles.totalRow}>
+                <Text style={[styles.totalLabelGrey, { color: C.green }]}>
+                  Descuento Plan Amigo aplicado
+                </Text>
+                <Text style={[styles.totalValGrey, { color: C.green }]}>
+                  {isAbono ? '+' : '-'}{fmtEs(Math.abs(planAmigoUso), 2)} €
                 </Text>
               </View>
             )}

@@ -110,6 +110,9 @@ model Brand {
   User_BackofficeBrands User[]                    @relation("BackofficeBrands")
   templateVersions      ContractTemplateVersion[]
   signatureEnvelopes    SignatureEnvelope[]
+  referralConfig        BrandReferralConfig?
+  referrals             Referral[]
+  referralWalletTxs     ReferralWalletTransaction[]
 }
 
 model User {
@@ -186,7 +189,9 @@ model Client {
   fileRepresentativeId      String?
   airtableData              Json?
   lastName2                 String?
-  brand                     Brand             @relation(fields: [brandId], references: [id])
+  referralCode              String?
+  referralCodeActive        Boolean                     @default(true)
+  brand                     Brand                       @relation(fields: [brandId], references: [id])
   contracts                 Contract[]
   documents                 Document[]
   internalInvoices          InternalInvoice[]
@@ -195,8 +200,12 @@ model Client {
   solarQuotes               SolarQuote[]
   supplyPoints              SupplyPoint[]
   tickets                   Ticket[]
+  referralsMade             Referral[]                  @relation("ReferralsMade")
+  referralsReceived         Referral[]                  @relation("ReferralsReceived")
+  referralWalletTxs         ReferralWalletTransaction[]
 
   @@unique([vatNumber, brandId])
+  @@unique([referralCode, brandId])
 }
 
 model Lead {
@@ -234,6 +243,7 @@ model Lead {
   documents          Document[]
   contract           Contract?  @relation(fields: [contractId], references: [id])
   user               User       @relation(fields: [userId], references: [id])
+  referredBy         Referral?  @relation("ReferredLead")
 
   @@index([cups])
 }
@@ -551,9 +561,10 @@ model Contract {
   invoices                   Invoice[]
   Lead                       Lead?
   switchingEvents            SwitchingEvent[]
-  AdditionalService          AdditionalService[]      @relation("AdditionalServiceToContract")
-  templateVersion            ContractTemplateVersion? @relation(fields: [templateVersionId], references: [id])
+  AdditionalService          AdditionalService[]         @relation("AdditionalServiceToContract")
+  templateVersion            ContractTemplateVersion?    @relation(fields: [templateVersionId], references: [id])
   signatureEnvelopes         SignatureEnvelope[]
+  referredBy                 Referral?                   @relation("ReferredContract")
 
   @@unique([contractCode, version, brandId])
   @@index([supplyPointId])
@@ -561,7 +572,7 @@ model Contract {
 }
 
 model Invoice {
-  id                 String       @id @default(cuid())
+  id                 String                      @id @default(cuid())
   invoiceNumber      String
   invoiceType        String?
   clientId           String
@@ -582,17 +593,18 @@ model Invoice {
   pdfUrl             String?
   communicatedAt     DateTime?
   invoiceData        Json?
-  createdAt          DateTime     @default(now())
+  createdAt          DateTime                    @default(now())
   companyId          String?
   f1InvoiceId        String?
   xmlUrl             String?
-  client             Client       @relation(fields: [clientId], references: [id])
-  company            Company?     @relation(fields: [companyId], references: [id])
-  contract           Contract?    @relation(fields: [contractId], references: [id])
-  f1Invoice          F1Invoice?   @relation(fields: [f1InvoiceId], references: [id])
-  invoice            Invoice?     @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
-  otherInvoices      Invoice[]    @relation("InvoiceToInvoice")
-  supplyPoint        SupplyPoint? @relation(fields: [supplyPointId], references: [id])
+  client             Client                      @relation(fields: [clientId], references: [id])
+  company            Company?                    @relation(fields: [companyId], references: [id])
+  contract           Contract?                   @relation(fields: [contractId], references: [id])
+  f1Invoice          F1Invoice?                  @relation(fields: [f1InvoiceId], references: [id])
+  invoice            Invoice?                    @relation("InvoiceToInvoice", fields: [rectifiedInvoiceId], references: [id])
+  otherInvoices      Invoice[]                   @relation("InvoiceToInvoice")
+  supplyPoint        SupplyPoint?                @relation(fields: [supplyPointId], references: [id])
+  referralWalletTxs  ReferralWalletTransaction[]
 
   @@unique([invoiceNumber, companyId])
   @@index([supplyPointId])
@@ -1131,8 +1143,9 @@ model InternalInvoice {
   contract           Contract?             @relation(fields: [contractId], references: [id])
   f1Invoice          F1Invoice?            @relation(fields: [f1InvoiceId], references: [id])
   invoice            InternalInvoice?      @relation("InternalInvoiceToInternalInvoice", fields: [rectifiedInvoiceId], references: [id])
-  otherInvoices      InternalInvoice[]     @relation("InternalInvoiceToInternalInvoice")
-  supplyPoint        SupplyPoint?          @relation(fields: [supplyPointId], references: [id])
+  otherInvoices      InternalInvoice[]           @relation("InternalInvoiceToInternalInvoice")
+  supplyPoint        SupplyPoint?                @relation(fields: [supplyPointId], references: [id])
+  referralWalletTxs  ReferralWalletTransaction[]
 
   @@unique([invoiceNumber, companyId])
   @@index([f1InvoiceId])
@@ -1384,4 +1397,117 @@ model SignatureAuditEvent {
   createdAt     DateTime          @default(now())
 
   @@index([envelopeId, createdAt])
+}
+
+enum ReferralTriggerMilestone {
+  ON_ATR_ACTIVATION
+  ON_DAYS_ACTIVE
+  ON_FIRST_ISSUED_INVOICE
+}
+
+enum ReferralStatus {
+  PENDING_SIGNATURE
+  PENDING_ACTIVATION
+  REWARDED
+  CANCELLED
+}
+
+enum WalletTxType {
+  CREDIT_REFERRER
+  CREDIT_REFERRED
+  INVOICE_REDEMPTION
+  INVOICE_REVERSAL
+  EXPIRATION
+  MANUAL_ADJUSTMENT
+}
+
+model BrandReferralConfig {
+  id                     String                   @id @default(cuid())
+  brandId                String                   @unique
+  isEnabled              Boolean                  @default(false)
+  codePrefix             String                   @default("AMIGO-")
+  referrerRewardEur      Float                    @default(25.0)
+  referredRewardEur      Float                    @default(25.0)
+  referrerReward30tdEur  Float?
+  referredReward30tdEur  Float?
+  allowedTariffs         String[]                 @default(["2.0TD", "3.0TD"])
+  triggerMilestone       ReferralTriggerMilestone @default(ON_DAYS_ACTIVE)
+  minActiveDays          Int                      @default(15)
+  cooldownMonthsSameCups Int                      @default(12)
+  allowSelfReferral      Boolean                  @default(false)
+  blockSameIban          Boolean                  @default(true)
+  maxReferralsPerYear    Int?                     @default(12)
+  maxAnnualRewardEur     Float                    @default(300.0)
+  creditExpirationMonths Int?                     @default(24)
+  zeroChannelCommission  Boolean                  @default(true)
+  legalTermsUrl          String?
+  updatedByUserId        String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  brand                  Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+model Referral {
+  id                      String                      @id @default(cuid())
+  brandId                 String
+  referralCodeUsed        String
+  referrerClientId        String
+  referredClientId        String?
+  referredLeadId          String?                     @unique
+  referredContractId      String?                     @unique
+  referredCups            String
+
+  status                  ReferralStatus              @default(PENDING_SIGNATURE)
+  referrerRewardSnapshot  Float
+  referredRewardSnapshot  Float
+  triggerMilestoneSnap    ReferralTriggerMilestone
+  minActiveDaysSnap       Int                         @default(15)
+
+  qualifiedAt             DateTime?
+  rewardedAt              DateTime?
+  cancelledAt             DateTime?
+  cancelReason            String?
+  inviteSignedEmailSentAt DateTime?
+  rewardEmailSentAt       DateTime?
+
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+
+  brand                   Brand                       @relation(fields: [brandId], references: [id])
+  referrerClient          Client                      @relation("ReferralsMade", fields: [referrerClientId], references: [id])
+  referredClient          Client?                     @relation("ReferralsReceived", fields: [referredClientId], references: [id])
+  referredLead            Lead?                       @relation("ReferredLead", fields: [referredLeadId], references: [id])
+  referredContract        Contract?                   @relation("ReferredContract", fields: [referredContractId], references: [id])
+  walletTransactions      ReferralWalletTransaction[]
+
+  @@index([brandId, status])
+  @@index([referrerClientId])
+  @@index([referredCups, brandId])
+}
+
+model ReferralWalletTransaction {
+  id                String           @id @default(cuid())
+  brandId           String
+  clientId          String
+  referralId        String?
+  internalInvoiceId String?
+  invoiceId         String?
+  type              WalletTxType
+  amountEur         Float
+  balanceAfterEur   Float
+  expiredAmountEur  Float            @default(0)
+  expiresAt         DateTime?
+  notes             String?
+  createdByUserId   String?
+  createdAt         DateTime         @default(now())
+
+  brand             Brand            @relation(fields: [brandId], references: [id])
+  client            Client           @relation(fields: [clientId], references: [id])
+  referral          Referral?        @relation(fields: [referralId], references: [id])
+  internalInvoice   InternalInvoice? @relation(fields: [internalInvoiceId], references: [id])
+  invoice           Invoice?         @relation(fields: [invoiceId], references: [id])
+
+  @@index([clientId, brandId, createdAt])
+  @@index([internalInvoiceId])
 }

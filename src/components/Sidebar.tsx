@@ -38,7 +38,8 @@ import {
   Calendar,
   FileBarChart,
   Mail,
-  Search
+  Search,
+  Gift
 } from 'lucide-react';
 
 const baseNavGroups = [
@@ -65,6 +66,7 @@ const baseNavGroups = [
       { href: '/contratos', icon: FileText, label: 'Mis Contratos' },
       { href: '/facturas', icon: Receipt, label: 'Mis Facturas' },
       { href: '/puntos-suministro', icon: Zap, label: 'Mis Suministros' },
+      { href: '/plan-amigo', icon: Gift, label: 'Invita y Gana', requiresReferralEnabled: true },
       { href: '/clientes', icon: Building2, label: 'Mis Datos' },
       { href: '/incidencias', icon: AlertCircle, label: 'Mis Incidencias' },
     ],
@@ -76,6 +78,7 @@ const baseNavGroups = [
       { href: '/leads', icon: Users, label: 'Leads' },
       { href: '/contratos', icon: FileText, label: 'Contratos' },
       { href: '/clientes', icon: Building2, label: 'Clientes' },
+      { href: '/plan-amigo', icon: Gift, label: 'Plan Amigo', roles: ['BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/puntos-suministro', icon: Zap, label: 'Puntos de Suministro', roles: ['BACKOFFICE', 'SUPERADMIN', 'COMPANYADMIN'] },
       { href: '/facturas', icon: Receipt, label: 'Facturas' },
       { href: '/renovaciones', icon: RefreshCcw, label: 'Renovaciones' },
@@ -298,6 +301,7 @@ export default function Sidebar() {
                 <div style={{ padding: '4px 8px' }} className="animate-fade-in-up">
                   {group.items.map((item: any) => {
                     if (item.roles && !item.roles.includes(userRole)) return null;
+                    if (item.requiresReferralEnabled && !brand.referralEnabled) return null;
                     const Icon = item.icon;
                     let isActive = false;
                     if (['/compras', '/distribuidoras', '/ajustes'].includes(item.href)) {

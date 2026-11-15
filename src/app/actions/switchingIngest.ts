@@ -1558,5 +1558,12 @@ export async function processParsedSwitchingData(
     });
   }
 
+  if (contractId) {
+    const { reconcileReferralsLifecycle } = await import('@/lib/services/ReferralEngine');
+    await reconcileReferralsLifecycle({ contractId }).catch((err) =>
+      console.warn('[PLAN AMIGO] Error reconciliando tras evento switching:', err)
+    );
+  }
+
   return { success: true, warning };
 }

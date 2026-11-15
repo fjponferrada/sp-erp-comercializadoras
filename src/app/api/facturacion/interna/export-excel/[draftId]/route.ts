@@ -31,6 +31,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ draftId:
 
     // Re-ejecutamos al vuelo solicitando el detalle cuarto-horario con auto-ajuste (forceRepair = true)
     const result = await InternalBillingEngine.calculate(draft.f1InvoiceId, true, true);
+    const savedData = ((draft.invoiceData as Record<string, any>) || {});
+
+    // Si la factura ya está EMITIDA o es ABONO, preservar los descuentos post-impuestos y el total exactos de su emisión
+    // (ya que el saldo del monedero puede haberse consumido tras confirmar la factura)
+    const isFinalized = draft.status === 'EMITIDA' || draft.status === 'ABONO';
+    const effectiveBsUso = isFinalized
+      ? Number(savedData.bolsilloSolarUso ?? savedData['Descuento Bolsillo Solar'] ?? result.bolsilloSolarUso ?? 0)
+      : Number(result.bolsilloSolarUso ?? 0);
+    const effectivePaUso = isFinalized
+      ? Number(savedData.planAmigoUso ?? savedData['Descuento Plan Amigo'] ?? result.planAmigoUso ?? 0)
+      : Number(result.planAmigoUso ?? 0);
+    const effectiveTotalAmount = isFinalized
+      ? Number(draft.totalAmount ?? result.totalAmount ?? 0)
+      : Number(result.totalAmount ?? 0);
 
     const supplyPoint = draft.supplyPoint || draft.contract?.supplyPoint || draft.f1Invoice?.supplyPoint;
     const cups = supplyPoint?.cups || '';
@@ -60,7 +74,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ draftId:
       wsData.push(['Nota', 'Esta factura no contiene curva cuarto-horaria (OtrasFacturas o sin consumo horario).']);
       wsData.push(['Base Imponible (€)', result.totalBase.toFixed(2)]);
       wsData.push(['Impuestos (€)', result.taxAmount.toFixed(2)]);
-      wsData.push(['Total Factura (€)', result.totalAmount.toFixed(2)]);
+      if (effectiveBsUso !== 0) {
+        wsData.push(['Descuento Bolsillo Solar (€)', (-Math.abs(effectiveBsUso)).toFixed(2)]);
+      }
+      if (effectivePaUso !== 0) {
+        wsData.push(['Descuento Plan Amigo (€)', (-Math.abs(effectivePaUso)).toFixed(2)]);
+      }
+      wsData.push(['Total Factura (€)', effectiveTotalAmount.toFixed(2)]);
     } else {
       wsData.push([
         'Fecha',
@@ -175,6 +195,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ draftId:
       wsData.push(['Suma Coste Mercado / Energía (€)', totalMercado.toFixed(2)]);
       wsData.push(['Suma Excedentes (kWh)', totalSurplusKwh.toFixed(3)]);
       wsData.push(['Suma Pago Excedentes (€)', totalSurplusPayout.toFixed(2)]);
+      wsData.push(['Base Imponible Factura (€)', result.totalBase.toFixed(2)]);
+      wsData.push(['Impuestos Indirectos (€)', result.taxAmount.toFixed(2)]);
+      if (effectiveBsUso !== 0) {
+        wsData.push(['Descuento Bolsillo Solar (€)', (-Math.abs(effectiveBsUso)).toFixed(2)]);
+      }
+      if (effectivePaUso !== 0) {
+        wsData.push(['Descuento Plan Amigo (€)', (-Math.abs(effectivePaUso)).toFixed(2)]);
+      }
+      wsData.push(['Total Factura (€)', effectiveTotalAmount.toFixed(2)]);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);

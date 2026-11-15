@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Download, FileText, Activity, Zap, CreditCard, RefreshCw, AlertTriangle, Eye } from 'lucide-react';
+import { Download, FileText, Activity, Zap, CreditCard, RefreshCw, AlertTriangle, Eye, Gift } from 'lucide-react';
 import RenewContractModal from './RenewContractModal';
 import PenalizationModal from './PenalizationModal';
+import ClientReferralTab from './ClientReferralTab';
 import RequestPaymentButton from '@/components/facturas/RequestPaymentButton';
 import { formatDateUTC } from '@/lib/utils/date';
 
@@ -61,6 +62,18 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
         >
           Facturación <span className="bg-slate-800 text-slate-300 py-0.5 px-2 rounded-full text-xs">{invoices.length}</span>
         </button>
+        {(canManageInvoices || isClientRole) && (
+          <button
+            onClick={() => setActiveTab('planAmigo')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'planAmigo'
+                ? 'border-indigo-500 text-indigo-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+            }`}
+          >
+            <Gift size={15} /> Plan Amigo y Monedero
+          </button>
+        )}
       </div>
 
       {/* CONTENIDO TABS */}
@@ -444,6 +457,10 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
               )}
             </div>
           </div>
+        )}
+
+        {activeTab === 'planAmigo' && (
+          <ClientReferralTab clientId={client.id} />
         )}
 
       </div>

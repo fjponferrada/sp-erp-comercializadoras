@@ -94,6 +94,14 @@ export async function createLeadAction(
   success: boolean;
   leadId: string;
   contractId?: string;
+  errorCode?: string;
+  referral?: {
+    id: string;
+    code: string;
+    referredRewardEur: number;
+    referrerRewardEur: number;
+    status: string;
+  };
   message?: string;
   error?: string;
   contractValidationErrors?: string[];
@@ -233,6 +241,40 @@ export async function createLeadAction(
     const clientType = esJuridica ? 'JURIDICA' : 'FISICA';
     const technicalTariff = forceTariff || parsedSipsData?.tarifa || sipsPs.TarifaATR || '2.0TD';
 
+    const rawReferralCode =
+      ((formData.get('referralCode') as string) || String(contractData?.referralCode || '')).trim().toUpperCase();
+    let validatedReferral:
+      | Awaited<ReturnType<typeof import('@/lib/services/ReferralEngine').validateReferralEligibility>>
+      | null = null;
+
+    if (rawReferralCode && type === 'LUZ') {
+      if (isOffer) {
+        // Conservar el código en la oferta para validarlo y vincularlo al convertirla en contrato firme
+        contractData.referralCode = rawReferralCode;
+      } else {
+        const { validateReferralEligibility } = await import('@/lib/services/ReferralEngine');
+        const check = await validateReferralEligibility({
+          brandId: targetBrandId,
+          code: rawReferralCode,
+          tariff: technicalTariff,
+          cups,
+          vatNumber,
+          iban: contractData?.iban || null,
+        });
+        if (!check.valid) {
+          return {
+            success: false,
+            leadId: '',
+            errorCode: check.errorCode,
+            message: check.message || 'El código Plan Amigo no es aplicable a este suministro.',
+            error: check.message || 'El código Plan Amigo no es aplicable a este suministro.',
+          };
+        }
+        validatedReferral = check;
+        contractData.referralCode = check.normalizedCode;
+      }
+    }
+
     if (!isOffer && type === 'LUZ') {
       const validationMsg = await validateContractLeadRules({
         isJuridica: esJuridica,
@@ -250,7 +292,7 @@ export async function createLeadAction(
     const leadSource = user?.channel?.name || user?.defaultSource || 'Directo';
     const supplyStreet = buildStructuredStreet(contractData?.direccionSuministro) || userAddress;
 
-    const lead = await prisma.$transaction(async (tx) => {
+    const { createdLead: lead, createdReferral } = await prisma.$transaction(async (tx) => {
       const effectiveVat = vatNumber || `TEMP-${Date.now()}`;
       const client = await tx.client.upsert({
         where: { vatNumber_brandId: { vatNumber: effectiveVat, brandId: targetBrandId } },
@@ -345,6 +387,106 @@ export async function createLeadAction(
         },
       });
 
+      let referralRow = null;
+      if (
+        validatedReferral &&
+        validatedReferral.valid &&
+        validatedReferral.referrerClient &&
+        validatedReferral.config
+      ) {
+        const {
+          computeRewardsForTariff,
+          getMadridCalendarYearStartUtc,
+          getReferrerAnnualCommittedOrCreditedEur,
+          normalizeCups20,
+          resolveEffectiveMaxAnnualEur,
+          round2,
+        } = await import('@/lib/services/ReferralEngine');
+
+        // Bloqueo pesimista sobre la fila del Padrino para impedir condiciones de carrera S2S sobre el tope anual de 300,00 € y sobre el CUPS
+        await tx.$queryRawUnsafe(
+          `SELECT "id" FROM "Client" WHERE "id" = $1 FOR UPDATE`,
+          validatedReferral.referrerClient.id
+        );
+
+        const cups20 = normalizeCups20(cups);
+        if (cups20.length >= 20) {
+          const duplicateCupsRef = await tx.referral.findFirst({
+            where: {
+              brandId: targetBrandId,
+              referredCups: { startsWith: cups20 },
+              status: { in: ['PENDING_SIGNATURE', 'PENDING_ACTIVATION', 'REWARDED'] },
+            },
+            select: { id: true },
+          });
+          if (duplicateCupsRef) {
+            throw Object.assign(
+              new Error('Este punto de suministro (CUPS) ya tiene una solicitud o bonificación Plan Amigo registrada.'),
+              { referralErrorCode: 'CUPS_RECENTLY_ACTIVE' }
+            );
+          }
+        }
+
+        const yearStart = getMadridCalendarYearStartUtc();
+        if (
+          validatedReferral.config.maxReferralsPerYear !== null &&
+          validatedReferral.config.maxReferralsPerYear !== undefined
+        ) {
+          const countThisYear = await tx.referral.count({
+            where: {
+              brandId: targetBrandId,
+              referrerClientId: validatedReferral.referrerClient.id,
+              status: { in: ['PENDING_SIGNATURE', 'PENDING_ACTIVATION', 'REWARDED'] },
+              createdAt: { gte: yearStart },
+            },
+          });
+          if (countThisYear >= validatedReferral.config.maxReferralsPerYear) {
+            throw Object.assign(
+              new Error('Este código ya ha alcanzado el límite máximo anual de invitaciones permitidas en las bases legales.'),
+              { referralErrorCode: 'MAX_ANNUAL_LIMIT_REACHED' }
+            );
+          }
+        }
+
+        const effectiveMaxAnnualEur = resolveEffectiveMaxAnnualEur(
+          validatedReferral.config.maxAnnualRewardEur
+        );
+        const committedOrCreditedEur = await getReferrerAnnualCommittedOrCreditedEur(
+          tx,
+          targetBrandId,
+          validatedReferral.referrerClient.id,
+          yearStart
+        );
+        const remainingAnnualEur = round2(effectiveMaxAnnualEur - committedOrCreditedEur);
+        if (remainingAnnualEur <= 0) {
+          throw Object.assign(
+            new Error(
+              `Este código ya ha alcanzado el límite máximo anual de ${effectiveMaxAnnualEur.toFixed(2).replace('.', ',')} € en bonificaciones Plan Amigo.`
+            ),
+            { referralErrorCode: 'MAX_ANNUAL_LIMIT_REACHED' }
+          );
+        }
+
+        const tariffRewards = computeRewardsForTariff(validatedReferral.config, technicalTariff);
+        const finalReferrerSnapshot = round2(Math.min(tariffRewards.referrerRewardEur, remainingAnnualEur));
+
+        referralRow = await tx.referral.create({
+          data: {
+            brandId: targetBrandId,
+            referralCodeUsed: validatedReferral.normalizedCode || rawReferralCode,
+            referrerClientId: validatedReferral.referrerClient.id,
+            referredClientId: client.id,
+            referredLeadId: createdLead.id,
+            referredCups: cups || 'PENDIENTE',
+            status: 'PENDING_SIGNATURE',
+            referrerRewardSnapshot: finalReferrerSnapshot,
+            referredRewardSnapshot: tariffRewards.referredRewardEur,
+            triggerMilestoneSnap: validatedReferral.config.triggerMilestone,
+            minActiveDaysSnap: validatedReferral.config.minActiveDays,
+          },
+        });
+      }
+
       if (documents && documents.length > 0) {
         for (const doc of documents) {
           if (doc.url) {
@@ -373,8 +515,18 @@ export async function createLeadAction(
         }
       }
 
-      return createdLead;
+      return { createdLead, createdReferral: referralRow };
     });
+
+    const referralPayload = createdReferral
+      ? {
+          id: createdReferral.id,
+          code: createdReferral.referralCodeUsed,
+          referredRewardEur: createdReferral.referredRewardSnapshot,
+          referrerRewardEur: createdReferral.referrerRewardSnapshot,
+          status: createdReferral.status,
+        }
+      : undefined;
 
     // Si es una Oferta rápida y no traía SIPS precargado, enriquecemos SIPS en background sin bloquear la respuesta
     if (lead.id && cups && cups.length >= 20 && type === 'LUZ' && (!parsedSipsData || parsedSipsData.result === 'ERROR')) {
@@ -415,18 +567,26 @@ export async function createLeadAction(
         .catch(console.error);
     }
 
-    // Generación directa del Borrador de Contrato si se solicitó desde Alta Luz por un usuario autorizado
-    if (
-      autoGenerateContract &&
-      !isOffer &&
-      ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole)
-    ) {
+    const canAutoConvert =
+      ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole) ||
+      (Boolean(apiContext) &&
+        (!Array.isArray(user.allowedAutoTariffs) ||
+          user.allowedAutoTariffs.length === 0 ||
+          user.allowedAutoTariffs.includes(technicalTariff)));
+
+    // Generación directa del Borrador de Contrato si se solicitó desde Alta Luz por un usuario autorizado o API Web
+    if (autoGenerateContract && !isOffer && canAutoConvert) {
       const { convertLeadToContractAction } = await import('@/app/actions/contractActions');
       const convRes = await convertLeadToContractAction(lead.id);
       if (convRes.success && convRes.contractId) {
         revalidatePath('/leads');
         revalidatePath('/contratos');
-        return { success: true, leadId: lead.id, contractId: convRes.contractId };
+        return {
+          success: true,
+          leadId: lead.id,
+          contractId: convRes.contractId,
+          ...(referralPayload ? { referral: referralPayload } : {}),
+        };
       }
       const errs =
         convRes.validationErrors && convRes.validationErrors.length > 0
@@ -437,15 +597,26 @@ export async function createLeadAction(
         success: true,
         leadId: lead.id,
         contractValidationErrors: errs,
+        ...(referralPayload ? { referral: referralPayload } : {}),
       };
     }
 
     revalidatePath('/leads');
-    return { success: true, leadId: lead.id };
+    return {
+      success: true,
+      leadId: lead.id,
+      ...(referralPayload ? { referral: referralPayload } : {}),
+    };
   } catch (error: any) {
     console.error('Error en createLeadAction:', error);
     const msg = error?.message || 'Error inesperado al crear el Lead';
-    return { success: false, leadId: '', message: msg, error: msg };
+    return {
+      success: false,
+      leadId: '',
+      ...(error?.referralErrorCode ? { errorCode: error.referralErrorCode } : {}),
+      message: msg,
+      error: msg,
+    };
   }
 }
 

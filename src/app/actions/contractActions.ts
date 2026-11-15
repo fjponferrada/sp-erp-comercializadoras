@@ -508,6 +508,100 @@ export async function convertLeadToContractAction(leadId: string): Promise<{
       });
     }
 
+    // Si el Lead venía vinculado a una invitación Plan Amigo (o procedía de una Oferta con referralCode), enlazar/crear antes del motor de comisiones
+    try {
+      const linkedRefResult = await prisma.referral.updateMany({
+        where: { referredLeadId: lead.id },
+        data: {
+          referredContractId: contract.id,
+          referredClientId: client.id,
+          ...(supplyPoint.cups && !supplyPoint.cups.startsWith('CUPS-PENDING')
+            ? { referredCups: supplyPoint.cups }
+            : {}),
+        },
+      });
+
+      const deferredRefCode = String(cData?.referralCode || '').trim().toUpperCase();
+      if (linkedRefResult.count === 0 && deferredRefCode && (lead.type || 'LUZ') === 'LUZ' && brandIdToUse) {
+        const {
+          computeRewardsForTariff,
+          getMadridCalendarYearStartUtc,
+          getReferrerAnnualCommittedOrCreditedEur,
+          normalizeCups20,
+          resolveEffectiveMaxAnnualEur,
+          round2,
+          validateReferralEligibility,
+        } = await import('@/lib/services/ReferralEngine');
+
+        const deferredCheck = await validateReferralEligibility({
+          brandId: brandIdToUse,
+          code: deferredRefCode,
+          tariff: supplyPoint.tariff || lead.tariff || '2.0TD',
+          cups: supplyPoint.cups,
+          vatNumber: client.vatNumber,
+          iban: contract.iban || cData?.iban || null,
+        });
+
+        if (deferredCheck.valid && deferredCheck.referrerClient && deferredCheck.config) {
+          await prisma.$transaction(async (tx) => {
+            await tx.$queryRawUnsafe(
+              `SELECT "id" FROM "Client" WHERE "id" = $1 FOR UPDATE`,
+              deferredCheck.referrerClient!.id
+            );
+
+            const cups20 = normalizeCups20(supplyPoint.cups);
+            if (cups20.length >= 20) {
+              const dup = await tx.referral.findFirst({
+                where: {
+                  brandId: brandIdToUse,
+                  referredCups: { startsWith: cups20 },
+                  status: { in: ['PENDING_SIGNATURE', 'PENDING_ACTIVATION', 'REWARDED'] },
+                },
+                select: { id: true },
+              });
+              if (dup) return;
+            }
+
+            const yearStart = getMadridCalendarYearStartUtc();
+            const effectiveMaxAnnualEur = resolveEffectiveMaxAnnualEur(
+              deferredCheck.config!.maxAnnualRewardEur
+            );
+            const usedEur = await getReferrerAnnualCommittedOrCreditedEur(
+              tx,
+              brandIdToUse,
+              deferredCheck.referrerClient!.id,
+              yearStart
+            );
+            const remainingEur = round2(effectiveMaxAnnualEur - usedEur);
+            if (remainingEur <= 0) return;
+
+            const rewards = computeRewardsForTariff(
+              deferredCheck.config!,
+              supplyPoint.tariff || lead.tariff || '2.0TD'
+            );
+            await tx.referral.create({
+              data: {
+                brandId: brandIdToUse,
+                referralCodeUsed: deferredCheck.normalizedCode || deferredRefCode,
+                referrerClientId: deferredCheck.referrerClient!.id,
+                referredClientId: client.id,
+                referredLeadId: lead.id,
+                referredContractId: contract.id,
+                referredCups: supplyPoint.cups || 'PENDIENTE',
+                status: 'PENDING_SIGNATURE',
+                referrerRewardSnapshot: round2(Math.min(rewards.referrerRewardEur, remainingEur)),
+                referredRewardSnapshot: rewards.referredRewardEur,
+                triggerMilestoneSnap: deferredCheck.config!.triggerMilestone,
+                minActiveDaysSnap: deferredCheck.config!.minActiveDays,
+              },
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[PLAN AMIGO] Error vinculando contrato en Referral:', err);
+    }
+
     await calculateAndSnapshotContractCommission(contract.id).catch((err) =>
       console.warn('Auto-cálculo de comisión omitido en convertLeadToContractAction:', err)
     );

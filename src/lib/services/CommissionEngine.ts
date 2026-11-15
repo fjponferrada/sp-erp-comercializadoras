@@ -335,6 +335,29 @@ export async function calculateAndSnapshotContractCommission(
     return { success: false, error: 'Contrato no encontrado.' };
   }
 
+  // Plan Amigo: si la marca tiene zeroChannelCommission activo y el contrato proviene de invitación válida, comisión de canal = 0 €
+  const activeReferral = await prisma.referral.findFirst({
+    where: {
+      referredContractId: contractId,
+      status: { not: 'CANCELLED' },
+    },
+    include: {
+      brand: { select: { referralConfig: { select: { zeroChannelCommission: true } } } },
+    },
+  });
+  if (activeReferral && activeReferral.brand?.referralConfig?.zeroChannelCommission) {
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        commissionBase: 0,
+        commissionFinal: 0,
+        commissionRuleType: 'PLAN_AMIGO_ZERO',
+        commissionRuleValue: 0,
+      },
+    });
+    return { success: true, commissionFinal: 0 };
+  }
+
   if (options?.onlyIfEmpty && c.commissionFinal !== null && c.commissionFinal !== undefined && c.commissionFinal > 0) {
     return { success: true, commissionFinal: c.commissionFinal };
   }

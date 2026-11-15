@@ -88,6 +88,11 @@ export interface BillingCalculationResult {
   bolsilloSolarUso?: number;
   bolsilloSolarSaldoFinal?: number;
 
+  hasPlanAmigo?: boolean;
+  planAmigoSaldoInicial?: number;
+  planAmigoUso?: number;
+  planAmigoSaldoFinal?: number;
+
   hourlyDetails: any[];
   reactiveEnergyCost: number;
   reactiveDetails: any[];
@@ -322,6 +327,7 @@ function invertBillingResult(source: BillingCalculationResult): BillingCalculati
   clone.maxExcedentes = inv(clone.maxExcedentes);
   clone.bolsilloSolarLlenado = inv(clone.bolsilloSolarLlenado);
   clone.bolsilloSolarUso = inv(clone.bolsilloSolarUso);
+  clone.planAmigoUso = inv(clone.planAmigoUso);
   clone.totalF1MWh = inv(clone.totalF1MWh);
   clone.totalCchMWh = inv(clone.totalCchMWh);
 
@@ -639,6 +645,16 @@ function buildBillingResultFromLegacyInvoice(
     bolsilloSolarLlenado !== 0 ||
     bolsilloSolarUso !== 0;
 
+  const planAmigoUso = Math.abs(round2(num(d['Descuento Plan Amigo'] ?? d.planAmigoUso)));
+  const planAmigoSaldoInicial = Math.max(0, round2(num(d['Inicio Plan Amigo'] ?? d.planAmigoSaldoInicial)));
+  const planAmigoSaldoFinal = Math.max(0, round2(num(d['Saldo Final Plan Amigo'] ?? d.planAmigoSaldoFinal)));
+  const hasPlanAmigo =
+    String(d['PLAN AMIGO'] || '').trim().toUpperCase() === 'SI' ||
+    Boolean(d.hasPlanAmigo) ||
+    planAmigoUso !== 0 ||
+    planAmigoSaldoInicial !== 0 ||
+    planAmigoSaldoFinal !== 0;
+
   const baseIEE = round2(num(d['Base 560'] ?? d['Subtotal 1'] ?? legacyInv?.subtotal1));
   const ieeRate = num(d['Impuesto (%)']) || 5.11269632;
   const taxElectric = round2(num(d['Importe Impuesto'] ?? d['Importe Impuesto CORR']));
@@ -647,10 +663,10 @@ function buildBillingResultFromLegacyInvoice(
   const taxAmount = round2(num(d['Importe IVA']));
   const totalBase = round2(
     num(d['Base Imponible IVA'] ?? d['Base Imponible IVA CORR']) ||
-      totalAmount + bolsilloSolarUso - taxAmount
+      totalAmount + bolsilloSolarUso + planAmigoUso - taxAmount
   );
   const totalSinDescuentoBolsillo = round2(
-    num(d['Total sin Descuento']) || totalAmount + bolsilloSolarUso
+    num(d['Total sin Descuento']) || totalAmount + bolsilloSolarUso + planAmigoUso
   );
 
   const taxType: 'IVA' | 'IGIC' | 'IPSI' = isCanarias ? 'IGIC' : isCeutaMelilla ? 'IPSI' : 'IVA';
@@ -756,6 +772,10 @@ function buildBillingResultFromLegacyInvoice(
     bolsilloSolarLlenado,
     bolsilloSolarUso,
     bolsilloSolarSaldoFinal,
+    hasPlanAmigo,
+    planAmigoSaldoInicial,
+    planAmigoUso,
+    planAmigoSaldoFinal,
     totalBase,
     taxType,
     taxPercentage,
@@ -1084,6 +1104,27 @@ export class InternalBillingEngine {
               if (returnHourlyDetails && targetF1) {
                 try {
                   const origWithHourly = await InternalBillingEngine.calculate(targetF1.id, true, true);
+                  const savedData = (internalInvoice.invoiceData as Record<string, any>) || {};
+                  const savedBsUso = Math.abs(
+                    Number(savedData.bolsilloSolarUso ?? savedData['Descuento Bolsillo Solar'] ?? 0)
+                  );
+                  const savedPaUso = Math.abs(
+                    Number(savedData.planAmigoUso ?? savedData['Descuento Plan Amigo'] ?? 0)
+                  );
+                  origWithHourly.bolsilloSolarUso = savedBsUso;
+                  origWithHourly.planAmigoUso = savedPaUso;
+                  origWithHourly.hasPlanAmigo = Boolean(
+                    savedData.hasPlanAmigo || savedData['PLAN AMIGO'] === 'SI' || savedPaUso > 0
+                  );
+                  origWithHourly.planAmigoSaldoInicial = Number(
+                    savedData.planAmigoSaldoInicial ?? savedData['Inicio Plan Amigo'] ?? 0
+                  );
+                  origWithHourly.planAmigoSaldoFinal = Number(
+                    savedData.planAmigoSaldoFinal ?? savedData['Saldo Final Plan Amigo'] ?? 0
+                  );
+                  origWithHourly.totalAmount =
+                    internalInvoice.totalAmount ??
+                    round2((origWithHourly.totalSinDescuentoBolsillo || 0) - savedBsUso - savedPaUso);
                   return invertBillingResult(origWithHourly);
                 } catch {
                   // Fallback a invoiceData persistido si falla el recálculo horario
@@ -3569,7 +3610,77 @@ export class InternalBillingEngine {
       bolsilloSolarSaldoFinal = round2(Math.max(0, availableSolarWallet - bolsilloSolarUso));
     }
 
-    const totalAmount = round2(totalSinDescuentoBolsillo - bolsilloSolarUso);
+    const totalTrasBolsillo = round2(totalSinDescuentoBolsillo - bolsilloSolarUso);
+
+    // --- MONEDERO PROMOCIONAL PLAN AMIGO (Descuento post-impuestos idéntico a Bolsillo Solar) ---
+    let hasPlanAmigo = false;
+    let planAmigoSaldoInicial = 0;
+    let planAmigoUso = 0;
+    let planAmigoSaldoFinal = 0;
+
+    const targetClientIdForWallet = supplyPoint.clientId || contract.clientId;
+    const targetBrandIdForWallet = contract.brandId || supplyPoint.client?.brandId;
+
+    if (!isAbono && targetClientIdForWallet && targetBrandIdForWallet) {
+      const { getClientAvailableReferralBalance } = await import('@/lib/services/ReferralEngine');
+      planAmigoSaldoInicial = await getClientAvailableReferralBalance(
+        targetClientIdForWallet,
+        targetBrandIdForWallet
+      ).catch(() => 0);
+
+      // Si es una Rectificadora ('R') cuyo Abono compañero ('AR') aún no se ha confirmado en BD,
+      // sumamos al saldo previsible el descuento Plan Amigo que restituirá dicho Abono sobre la factura sustituida.
+      if (f1TipoFactura === 'R' && supplyPoint.id) {
+        const rawRectCode = Array.isArray(datosGen?.CodigoFacturaRectificadaAnulada)
+          ? datosGen.CodigoFacturaRectificadaAnulada[0]
+          : datosGen?.CodigoFacturaRectificadaAnulada;
+        const normRectCode = normalizeFiscalCode(rawRectCode);
+        if (normRectCode) {
+          const spEmitted = await prisma.internalInvoice.findMany({
+            where: { supplyPointId: supplyPoint.id, status: { in: ['EMITIDA', 'ABONO'] } },
+            include: { f1Invoice: { select: { numeroFactura: true, jsonData: true } } },
+            orderBy: { createdAt: 'desc' },
+          });
+          const alreadyCredited = spEmitted.some((ii) => {
+            if (ii.status !== 'ABONO' && (ii.invoiceType || '').toLowerCase() !== 'abono') return false;
+            const iiGen =
+              (ii.f1Invoice?.jsonData as any)?.DatosGeneralesFacturaATR?.DatosGeneralesFactura ||
+              (ii.f1Invoice?.jsonData as any)?.DatosGeneralesOtrasFacturas?.DatosGeneralesFactura ||
+              (ii.f1Invoice?.jsonData as any)?.DatosGeneralesFactura;
+            const c1 = normalizeFiscalCode(iiGen?.CodigoFacturaRectificadaAnulada);
+            const c2 = normalizeFiscalCode(ii.f1Invoice?.numeroFactura?.replace(/^AR-/i, ''));
+            return c1 === normRectCode || c2 === normRectCode;
+          });
+          if (!alreadyCredited) {
+            const origEmitted = spEmitted.find(
+              (ii) =>
+                ii.status === 'EMITIDA' &&
+                (ii.invoiceType || '').toLowerCase() !== 'abono' &&
+                normalizeFiscalCode(ii.f1Invoice?.numeroFactura) === normRectCode
+            );
+            if (origEmitted?.invoiceData) {
+              const od = origEmitted.invoiceData as Record<string, any>;
+              const restorablePa = Math.abs(
+                round2(Number(od.planAmigoUso ?? od['Descuento Plan Amigo'] ?? 0))
+              );
+              if (restorablePa > 0) {
+                planAmigoSaldoInicial = round2(planAmigoSaldoInicial + restorablePa);
+              }
+            }
+          }
+        }
+      }
+
+      if (planAmigoSaldoInicial > 0) {
+        hasPlanAmigo = true;
+        if (totalTrasBolsillo > 0) {
+          planAmigoUso = round2(Math.min(planAmigoSaldoInicial, totalTrasBolsillo));
+        }
+        planAmigoSaldoFinal = round2(Math.max(0, planAmigoSaldoInicial - planAmigoUso));
+      }
+    }
+
+    const totalAmount = round2(totalTrasBolsillo - planAmigoUso);
 
     const result: BillingCalculationResult = {
       hasMismatch,
@@ -3617,6 +3728,10 @@ export class InternalBillingEngine {
       bolsilloSolarLlenado,
       bolsilloSolarUso,
       bolsilloSolarSaldoFinal,
+      hasPlanAmigo,
+      planAmigoSaldoInicial,
+      planAmigoUso,
+      planAmigoSaldoFinal,
       totalBase,
       taxType,
       taxPercentage,
