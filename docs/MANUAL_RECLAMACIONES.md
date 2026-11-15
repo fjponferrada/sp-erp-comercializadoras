@@ -96,7 +96,7 @@ El esquema `ReclamacionPeticion.xsd` exige exactamente la siguiente secuencia (`
 
 ### 4.1. Modos de Generación (`/reclamaciones/generar` y `/eventos-switching/anulaciones`)
 1. **Individual (1 a 1):** Soporta precarga automática desde contrato (`?cups=...`), selector de facturas F1 deduplicado por CUPS de 20 dígitos, plantillas legales automáticas de comentarios (ej. `05` / `039`, Regla 196), subida de adjuntos Tabla 61 y alerta si el CUPS ya tiene una reclamación R1 abierta.
-2. **Masivo Manual (`009` — Lecturas Estimadas):** Validación por lote de CUPS pegados con indicador visual de reclamación abierta previa para evitar duplicidades.
+2. **Masivo Manual (`009` — Lecturas Estimadas):** Validación por lote de CUPS pegados con indicador visual de reclamación abierta previa para evitar duplicidades. En búsquedas de facturas estimadas (`reclamacionesActions.ts`), cuando una factura procede del Motor Interno (`origin === 'INTERNAL_ENGINE'`), el filtro de procedencia lee transparentemente `invoiceData['Procedencia Hasta']` (`Estimada`, `Telegestión`, `Telemedida`, Regla 276) para que convivan sin conflictos periodos de Ingebau y del Motor Interno.
 3. **Masivo Automático (`006` — Retraso de Facturación):** Cruza tanto `Invoice.billingEnd` (facturas ERP) como `F1Invoice.fechaFin` (peajes recibidos de distribuidora) sobre todos los clones `SupplyPoint` de cada CUPS activo (`> 45 días` sin facturación), mostrando igualmente si ya existe expediente R1 abierto.
 4. **Anulación de Reclamación (`R1` Paso `08` en `/eventos-switching/anulaciones`):** Permite emitir `<MensajeAnulacionSolicitudReclamacion>` con `<CabeceraReclamacion>` para desistir formalmente de reclamaciones abiertas antes de su cierre en Paso `05`.
 
@@ -106,4 +106,4 @@ El esquema `ReclamacionPeticion.xsd` exige exactamente la siguiente secuencia (`
 * **Exportación Excel Íntegra:** El botón `Descargar Excel` consulta con `limit = 0` la totalidad de expedientes que cumplen el filtro/búsqueda activos e incluye todas las columnas de pantalla más los textos exactos de los pasos `01`, `02`, `03`, `04` y `05`, resultado de cierre e indemnización.
 
 ---
-*Documento actualizado conforme a las Reglas de Negocio 114, 125, 189–193, 196–198, 237–240 y 249–252.*
+*Documento actualizado conforme a las Reglas de Negocio 114, 125, 189–193, 196–198, 237–240, 249–252 y 276.*

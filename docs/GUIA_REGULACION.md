@@ -69,6 +69,16 @@ Toda la implementación cumple estrictamente el **Manual de Archivos del Sistema
   - Cruza automáticamente los contratos `PpaContract` activos para `N+1` (volumen físico vs financiero y plazo `<= 1 año` vs `> 1 año`), la demanda anual `CAD` del último cierre `REGANECU` y la proporción de cartera a precio fijo vs indexado, permitiendo editar/verificar los campos `c2..c10` desde `CnmcClient.tsx` antes de exportar.
 - **`IVC_CODAGE`:** Informa con transparencia en la interfaz de que este reporte anual de ofertas y comercializadores vinculados debe cumplimentarse sobre la plantilla Excel oficial publicada cada ejercicio en la Sede Electrónica de la CNMC.
 
+### 3.4 Cumplimiento Regulatorio CNMC en Factura Eléctrica al Consumidor Final (Circular 2/2021, `BOE-A-2022-16989` y RD 88/2026)
+Además de los ficheros periódicos remitidos a la CNMC, el motor nativo de facturación cumple íntegramente las obligaciones regulatorias de información en factura supervisadas por la CNMC (Regla 275):
+- **Etiquetado Anual de la Electricidad por Comercializadora (`Company.etiquetaCnmc` — Circular 2/2021 de la CNMC):**
+  - Cada mes de abril, cuando la CNMC publica el informe anual de origen de la electricidad e impacto ambiental de cada comercializadora, el administrador actualiza los valores oficiales desde **`Configuración → Comercializadoras` (`/comercializadoras`)** (validados por [`src/lib/cnmcLabelConfig.ts`](../src/lib/cnmcLabelConfig.ts)): año del etiquetado, acreditación `100% Renovable GdO`, letra media nacional (`A–G`), desglose porcentual de las **7 tecnologías** (Comercializadora vs Mix Nacional con validación estricta de suma `100%`) e intensidades y letras `A–G` de emisiones de $\text{CO}_2$ (`g/kWh`) y residuos radiactivos de alta actividad en **`µg/kWh`** (nunca `mg/kWh`).
+  - [`InvoicePdfTemplate.tsx`](../src/components/pdf/InvoicePdfTemplate.tsx) dibuja de forma vectorial (`<Svg>`) el gráfico circular multisegmento y las escalas ambientales `A–G` específicos de la sociedad emisora, además de rotar en el margen izquierdo su inscripción registral (`Company.registroMercantil`) y código CNMC (`Company.ordenCnmc`).
+- **Código QR Oficial del Comparador de Ofertas CNMC (`Resolución CNMC 29/09/2022`, `BOE-A-2022-16989` Anexo I):**
+  - En todos los suministros `2.0TD` con potencia contratada `<= 15 kW`, se inserta un código QR vectorial de tamaño `>= 3 x 3 cm` (`88 x 88 pt`) acompañado del enlace clicable `https://comparador.cnmc.gob.es`, apuntando a `https://comparador.cnmc.gob.es/comparador/QRE?...` con `verde=1/0` sincronizado automáticamente con `Company.etiquetaCnmc.is100RenewableGdo`, parámetros condicionales según `tf` (`N` vs `R`/`A`) y omisión de `finPen` cuando la permanencia inicial ya ha vencido.
+- **Histórico de 14 Meses, Consumo Medio CP y Pérdidas de Transformación (`RD 88/2026` y `Art. 15 RD 1619/2012`):**
+  - Incluye gráfico vectorial de evolución de los últimos 14 meses, consumo medio del código postal (`ValorEnergiaMediaCP` de `<InformacionAlConsumidor>`), potencias máximas demandadas del último año, desglose de pérdidas de transformación cuando `ConsumoCalculado != TerminoEnergiaActiva` y nota fiscal completa de rectificación `(1)` sobre la factura sustituida.
+
 ---
 
 ## 4. REPORTES REGULATORIOS MITECO (`/regulacion/miteco`)

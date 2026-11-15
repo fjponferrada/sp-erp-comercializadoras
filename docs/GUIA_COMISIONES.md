@@ -124,7 +124,7 @@ Si una cadena contractual se activa en el mes `M`, pero causa baja **en o antes 
 #### B) Regularización ("True-Up") en Resto de Tarifas (`3.0TD`, `6.XTD`, etc.)
 En tarifas industriales/pyme comisionadas por margen, la baja anticipada (`daysActive < 365`) recalcula cuánto margen **real** dejó el suministro durante su vigencia efectiva:
 1. **Agregación de Facturación Real (`summarizeChainInvoicesForTrueUp`)**:
-   * Reúne tanto las facturas nativas del ERP (`InternalInvoice` con estado `EMITIDA` o `ABONO` y `hidden = false`, cuyo `totalMWh` ya está en MWh) como las facturas históricas importadas (`Invoice`, cuyo `totalMWh` está en kWh y se divide entre `1000`), excluyendo facturas de penalización (`PenaltyInvoice`).
+   * Reúne las facturas oficiales (`Invoice`, cuyo `totalMWh` está en kWh y se divide entre `1000`, excluyendo `PenaltyInvoice`) y, **únicamente cuando el Motor Interno está activo en producción (`isInternalBillingProductionEnabled()`, `ENABLE_INTERNAL_BILLING_PRODUCTION=true`)**, incorpora deduplicadas por número de factura las `InternalInvoice` (`EMITIDA` o `ABONO` con `hidden = false`, cuyo `totalMWh` ya está en MWh), evitando duplicar consumos mientras el motor opera en Fase de Pruebas junto a Ingebau (Reglas 171 y 276).
    * **Abonos y Rectificativas**: Detecta automáticamente facturas con estado `ABONO`, tipos `ABONO`/`RECTIFICAT`/`A`/`AR`/`S` o importes negativos, restando sus MWh y no sumando días adicionales.
    * **Fusión de Intervalos Solapados**: Une los rangos `[startDate, endDate]` de las facturas válidas para que facturas complementarias sobre un mismo periodo nunca dupliquen el denominador de días facturados (`totalInvoicedDays`).
 2. **Extrapolación a los Días Activos Reales**:
