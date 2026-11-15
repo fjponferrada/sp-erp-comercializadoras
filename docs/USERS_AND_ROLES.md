@@ -1,6 +1,6 @@
 # 👥 Guía Técnica y Funcional de Usuarios, Roles y Seguridad Multi-Marca
 
-Este documento constituye el manual de referencia sobre el modelo de autenticación, control de accesos basado en roles (RBAC), aislamiento multi-comercializadora/multi-marca y operativa de la sección **Usuarios y Accesos (`/usuarios`)** del ERP Comercializadoras, alineado con `docs/BUSINESS_RULES_UTF8.md` (Reglas 23–37, 225–228 y 279).
+Este documento constituye el manual de referencia sobre el modelo de autenticación, control de accesos basado en roles (RBAC), aislamiento multi-comercializadora/multi-marca y operativa de la sección **Usuarios y Accesos (`/usuarios`)** del ERP Comercializadoras, alineado con `docs/BUSINESS_RULES_UTF8.md` (Reglas 23–37, 225–228, 279 y 280).
 
 ---
 
@@ -22,6 +22,9 @@ Todo registro `User` cuenta con el interruptor booleano **`isActive`** (`@defaul
 4. **Intercepción en Layout sin Bucle con Edge Proxy (`src/app/(app)/layout.tsx` + `src/components/BlockedSessionScreen.tsx`)**:
    - El middleware Edge (`src/proxy.ts`) redirige automáticamente a `/` a cualquier navegador con cookie JWT válida que visite `/login` (y no puede consultar Prisma por ejecutarse en Edge Runtime).
    - Por ello, cuando `src/app/(app)/layout.tsx` detecta en BD que el usuario de la sesión activa tiene `isActive === false` (o carece de marcas autorizadas), **no redirige a `/login`**, sino que renderiza `<BlockedSessionScreen />`, cerrando limpiamente la sesión JWT mediante `signOut({ callbackUrl: '/login' })`.
+5. **Blindaje SSR y Confidencialidad de Márgenes en el Dashboard Principal (`/` — `src/lib/dashboardAccess.ts`, Regla 280)**:
+   - `src/app/(app)/page.tsx` ejecuta en servidor `resolveDashboardAccess()` (cacheado por request con `React.cache`), verificando en vivo el estado `isActive` y el rol real en base de datos.
+   - Si accede `CLIENT`, redirige en servidor a `/facturas`; si acceden `COMERCIAL` o `CANAL`, redirige en servidor a `/clientes`. Asimismo, las Server Actions `getDashboardMetricsAction()` y `getEconomicAnalysis()` deniegan cualquier invocación directa fuera de `SUPERADMIN` / `COMPANYADMIN` / `BACKOFFICE`, garantizando que los márgenes comerciales mayoristas jamás salgan del servidor hacia perfiles comerciales o clientes.
 
 ### 1.3 Protecciones contra Escalada y Auto-Bloqueo
 - **Superadmin Raíz Protegido**: La cuenta maestra `fjponferrada@sp-energia.com` (`ROOT_SUPERADMIN_EMAIL`) está blindada en UI y API contra desactivación (`isActive = false`), cambio de rol o modificación de correo electrónico (Reglas 23 y 225).
