@@ -187,11 +187,11 @@ export async function getUserVisibilityFilter() {
     return {
       client: {
         brandId: activeBrandId,
-        OR: [
-          { contracts: { some: { user: { channelId } } } },
-          { contracts: { some: { userId } } },
-        ],
       },
+      OR: [
+        { user: { channelId } },
+        { userId },
+      ],
     };
   }
 
@@ -208,8 +208,8 @@ export async function getUserVisibilityFilter() {
   return {
     client: {
       brandId: activeBrandId,
-      OR: [{ contracts: { some: { userId } } }],
     },
+    userId,
   };
 }
 

@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
+import { normalizeSpanishPostalCode } from '@/lib/postalCode';
 import { revalidatePath } from 'next/cache';
 import { generateModificationDocxBuffer } from '@/lib/docGenerator';
 
@@ -13,16 +14,40 @@ export async function createContractModificationAction(
 ) {
   try {
     const session = await auth();
-    if (!session?.user) {
+    if (!session?.user?.email) {
       return { error: 'No autorizado' };
     }
 
-    const oldContract = await prisma.contract.findUnique({
-      where: { id: oldContractId },
+    const dbUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { channel: true },
+    });
+    if (!dbUser || dbUser.isActive === false) {
+      return { error: 'Usuario no autorizado o inactivo.' };
+    }
+
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const oldContract = await prisma.contract.findFirst({
+      where: { id: oldContractId, ...visibilityFilter },
       include: { client: true, supplyPoint: true, brand: true, product: true }
     });
 
-    if (!oldContract) throw new Error("Contrato original no encontrado");
+    if (!oldContract) throw new Error("Contrato original no encontrado o sin permisos");
+
+    const isAdminOrBackoffice = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(dbUser.role);
+    if (!isAdminOrBackoffice) {
+      if (dbUser.role === 'CANAL' && oldContract.expectedEndDate) {
+        const maxDays = dbUser.channel?.maxRenewalDays ?? 45;
+        const diffDays = (new Date(oldContract.expectedEndDate).getTime() - Date.now()) / (1000 * 3600 * 24);
+        if (diffDays < 0 || diffDays > maxDays) {
+          return { error: 'Solo puedes solicitar modificaciones dentro del periodo de renovación autorizado.' };
+        }
+      } else {
+        return { error: 'No tienes permisos para solicitar modificaciones sobre este contrato.' };
+      }
+    }
 
     const brandIdToUse = oldContract.brandId;
     if (!brandIdToUse) throw new Error("El contrato no tiene una comercializadora (brandId) asociada.");
@@ -116,13 +141,14 @@ export async function createContractModificationAction(
       newClientId = newClient.id;
 
       // 2. Find or create SupplyPoint for the NEW client with SAME cups
+      const normalizedCp = normalizeSpanishPostalCode(formData.cp, oldContract.supplyPoint.postalCode || '00000');
       const spData = {
         address: `${formData.tipoVia} ${formData.calle} ${formData.numero} ${formData.adicional}`.trim(),
         streetType: formData.tipoVia,
         street: formData.calle,
         streetNumber: formData.numero,
         addressAddition: formData.adicional,
-        postalCode: formData.cp,
+        postalCode: normalizedCp,
         city: formData.poblacion,
         province: formData.provincia,
         iban: formData.iban,
@@ -176,10 +202,72 @@ export async function createContractModificationAction(
       newContractData.isAutoconsumoModification = true;
     }
 
-    const nextVersion = (oldContract.version ?? 0) + 1;
     const newCode = oldContract.contractCode;
+    const maxVersionRow = newCode
+      ? await prisma.contract.findFirst({
+          where: { contractCode: newCode, brandId: oldContract.brandId },
+          orderBy: { version: 'desc' },
+          select: { version: true },
+        })
+      : null;
+    const nextVersion = (maxVersionRow?.version ?? oldContract.version ?? 0) + 1;
 
-    // Create the new contract version
+    // Evitar colisión @unique en previousContractId si ya existe otra versión colgando de oldContract.id
+    const existingPrevLink = await prisma.contract.findUnique({
+      where: { previousContractId: oldContract.id },
+      select: { id: true },
+    });
+    const safePreviousContractId = existingPrevLink ? null : oldContract.id;
+
+    // 1. Generar DOCX y convertir a PDF vía DocuSign ANTES de crear el contrato en BD
+    //    para evitar contratos huérfanos o bloqueos @unique si falla la conversión PDF.
+    const titularDir = isSubrogation 
+      ? `${formData.tipoVia} ${formData.calle} ${formData.numero}`
+      : `${oldContract.client.billingAddress || oldContractDataObj.direccionTitular || ''}`;
+      
+    const templateData = {
+      contrato: newCode || "",
+      numcontrato: newCode || "",
+      fecha: new Date().toLocaleDateString('es-ES'),
+      fechafirma: new Date().toLocaleDateString('es-ES'),
+      nombretit: nombreFinal,
+      "1apetit": apellido1Final,
+      "2apetit": apellido2Final,
+      nif: nifFinal,
+      cnae: oldContract.supplyPoint.cnae || oldContract.client.cnae || oldContractDataObj.cnae || "",
+      direcciontitular: titularDir,
+      cptit: isSubrogation ? normalizeSpanishPostalCode(formData.cp, '') : (oldContract.client.billingPostalCode || oldContractDataObj.cpTitular || ""),
+      loctit: isSubrogation ? formData.poblacion : (oldContract.client.billingCity || oldContractDataObj.poblacionTitular || ""),
+      provtit: isSubrogation ? formData.provincia : (oldContract.client.billingProvince || oldContractDataObj.provinciaTitular || ""),
+      mailtitular: isSubrogation ? formData.email : (oldContract.client.contactEmail || oldContractDataObj.emailTitular || ""),
+      tlftitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || oldContractDataObj.telefonoTitular || ""),
+      mvtitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || oldContractDataObj.movilTitular || ""),
+      nombrerep: repNameFinal || oldContractDataObj.contactoNombre || "",
+      nifrep: repVatFinal || oldContractDataObj.contactoNif || "",
+      cups: cups,
+      direccionPS: oldContract.supplyPoint.address || "",
+      cpPS: oldContract.supplyPoint.postalCode || "",
+      localidadPS: oldContract.supplyPoint.city || "",
+      provPS: oldContract.supplyPoint.province || "",
+      iban: ibanFinal,
+      // For Tech Mod
+      tarifa: isTecnica ? formData.tarifa : (oldContract.supplyPoint.tariff || oldContractDataObj.tarifa || ""),
+      p1c: isTecnica ? formData.p1c : (oldContract.p1c || oldContractDataObj.p1c || ""),
+      p2c: isTecnica ? formData.p2c : (oldContract.p2c || oldContractDataObj.p2c || ""),
+      p3c: isTecnica ? formData.p3c : (oldContract.p3c || oldContractDataObj.p3c || ""),
+      p4c: isTecnica ? formData.p4c : (oldContract.p4c || oldContractDataObj.p4c || ""),
+      p5c: isTecnica ? formData.p5c : (oldContract.p5c || oldContractDataObj.p5c || ""),
+      p6c: isTecnica ? formData.p6c : (oldContract.p6c || oldContractDataObj.p6c || ""),
+    };
+
+    const docxBuffer = await generateModificationDocxBuffer(templateData, isTecnica || isAutoconsumo);
+    const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
+    const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
+    const { uploadFileToR2 } = await import('@/lib/r2');
+    const fileName = `MOD_${newCode || oldContract.id}_v${nextVersion}_${Date.now()}.pdf`;
+    const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+
+    // 2. Crear la nueva versión del contrato de forma atómica con su pdfUrl ya generado
     const newContract = await prisma.contract.create({
       data: {
         contractCode: newCode,
@@ -189,7 +277,7 @@ export async function createContractModificationAction(
         productId: oldContract.productId,
         brandId: oldContract.brandId,
         userId: oldContract.userId, 
-        previousContractId: oldContract.id,
+        previousContractId: safePreviousContractId,
         tipo: 'M1',
         tipoC2: isSubrogation ? 'S' : 'N',
         tramitationType: isSubrogation ? 'Modificación de datos administrativos' : 'Modificación de datos técnicos',
@@ -197,6 +285,7 @@ export async function createContractModificationAction(
         signatureDate: oldContract.signatureDate,
         permanenceStartDate: oldContract.permanenceStartDate,
         expectedEndDate: oldContract.expectedEndDate,
+        iban: ibanFinal || oldContract.iban,
         airtableData: newContractData,
         p1e: oldContract.p1e, p2e: oldContract.p2e, p3e: oldContract.p3e,
         p4e: oldContract.p4e, p5e: oldContract.p5e, p6e: oldContract.p6e,
@@ -230,64 +319,9 @@ export async function createContractModificationAction(
         annualConsumption: oldContract.annualConsumption,
         filePdfSigned: oldContract.filePdfSigned,
         fileAnexoFirmado: oldContract.fileAnexoFirmado,
+        pdfUrl: uploadedUrl,
       }
     });
-
-    // Generate PDF Mapping
-    const titularDir = isSubrogation 
-      ? `${formData.tipoVia} ${formData.calle} ${formData.numero}`
-      : `${oldContract.client.billingAddress || oldContractDataObj.direccionTitular || ''}`;
-      
-    const templateData = {
-      contrato: newCode || "",
-      numcontrato: newCode || "",
-      fecha: new Date().toLocaleDateString('es-ES'),
-      fechafirma: new Date().toLocaleDateString('es-ES'),
-      nombretit: nombreFinal,
-      "1apetit": apellido1Final,
-      "2apetit": apellido2Final,
-      nif: nifFinal,
-      cnae: oldContract.supplyPoint.cnae || oldContract.client.cnae || oldContractDataObj.cnae || "",
-      direcciontitular: titularDir,
-      cptit: isSubrogation ? formData.cp : (oldContract.client.billingPostalCode || oldContractDataObj.cpTitular || ""),
-      loctit: isSubrogation ? formData.poblacion : (oldContract.client.billingCity || oldContractDataObj.poblacionTitular || ""),
-      provtit: isSubrogation ? formData.provincia : (oldContract.client.billingProvince || oldContractDataObj.provinciaTitular || ""),
-      mailtitular: isSubrogation ? formData.email : (oldContract.client.contactEmail || oldContractDataObj.emailTitular || ""),
-      tlftitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || oldContractDataObj.telefonoTitular || ""),
-      mvtitular: isSubrogation ? formData.telefono : (oldContract.client.contactPhone || oldContractDataObj.movilTitular || ""),
-      nombrerep: repNameFinal || oldContractDataObj.contactoNombre || "",
-      nifrep: repVatFinal || oldContractDataObj.contactoNif || "",
-      cups: cups,
-      direccionPS: oldContract.supplyPoint.address || "",
-      cpPS: oldContract.supplyPoint.postalCode || "",
-      localidadPS: oldContract.supplyPoint.city || "",
-      provPS: oldContract.supplyPoint.province || "",
-      iban: ibanFinal,
-      // For Tech Mod
-      tarifa: isTecnica ? formData.tarifa : (oldContract.supplyPoint.tariff || oldContractDataObj.tarifa || ""),
-      p1c: isTecnica ? formData.p1c : (oldContract.p1c || oldContractDataObj.p1c || ""),
-      p2c: isTecnica ? formData.p2c : (oldContract.p2c || oldContractDataObj.p2c || ""),
-      p3c: isTecnica ? formData.p3c : (oldContract.p3c || oldContractDataObj.p3c || ""),
-      p4c: isTecnica ? formData.p4c : (oldContract.p4c || oldContractDataObj.p4c || ""),
-      p5c: isTecnica ? formData.p5c : (oldContract.p5c || oldContractDataObj.p5c || ""),
-      p6c: isTecnica ? formData.p6c : (oldContract.p6c || oldContractDataObj.p6c || ""),
-    };
-
-    const docxBuffer = await generateModificationDocxBuffer(templateData, isTecnica || isAutoconsumo);
-
-    const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
-    const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
-
-    const { uploadFileToR2 } = await import('@/lib/r2');
-    const fileName = `MOD_${newContract.id}.pdf`;
-    const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
-
-    await prisma.contract.update({
-      where: { id: newContract.id },
-      data: { pdfUrl: uploadedUrl }
-    });
-
-    revalidatePath(`/contratos/${oldContractId}`);
 
     // Mover el Lead al nuevo contrato para no perder el consumo estimado y vínculo
     const leadToMove = await prisma.lead.findFirst({ where: { contractId: oldContract.id } });
@@ -297,6 +331,9 @@ export async function createContractModificationAction(
         data: { contractId: newContract.id }
       });
     }
+
+    revalidatePath('/contratos');
+    revalidatePath(`/contratos/${oldContractId}`);
 
     return { success: true, newContractId: newContract.id };
 

@@ -216,30 +216,72 @@ export async function updateSupplyPointSipsAction(id: string) {
   }
 
   try {
-    const supplyPoint = await prisma.supplyPoint.findUnique({
-      where: { id },
-      select: { cups: true }
+    const { getSupplyPointVisibilityFilter } = await import('@/lib/permissions');
+    const { normalizeSpanishPostalCodeOrNull } = await import('@/lib/postalCode');
+    const spFilter = await getSupplyPointVisibilityFilter();
+
+    const supplyPoint = await prisma.supplyPoint.findFirst({
+      where: { id, AND: [spFilter] },
+      select: { id: true, cups: true, pcSum: true }
     });
 
     if (!supplyPoint || !supplyPoint.cups) {
-      return { success: false, error: 'Punto de suministro no encontrado o sin CUPS' };
+      return { success: false, error: 'Punto de suministro no encontrado o sin permisos' };
     }
 
     const { getSipsData } = await import('@/lib/sips');
-    const sipsData = await getSipsData(supplyPoint.cups);
+    const sipsData: any = await getSipsData(supplyPoint.cups);
 
-    if (!sipsData || sipsData.result === 'ERROR') {
+    if (!sipsData || sipsData.result === 'ERROR' || sipsData.error) {
       return { 
         success: false, 
-        error: sipsData?.message || 'Error al consultar SIPS' 
+        error: sipsData?.error || sipsData?.message || 'Error al consultar SIPS' 
       };
     }
 
-    // Actualizamos el JSON
+    const psLegacy = sipsData?.data?.ps?.[0] || sipsData?.ps?.[0] || sipsData?.raw || {};
+    const parseNum = (v: any): number | undefined => {
+      if (v === undefined || v === null || v === '') return undefined;
+      const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const sipsCp = normalizeSpanishPostalCodeOrNull(
+      sipsData.postalCode ?? psLegacy.CódigoPostalPS ?? psLegacy.codigoPostal
+    );
+    const sipsCnae = sipsData.cnae ?? psLegacy.CNAE ?? psLegacy.cnae;
+    const sipsTariff = sipsData.tariff ?? psLegacy.TarifaATR ?? psLegacy.tarifa;
+    const sipsP1c = parseNum(sipsData.p1 ?? psLegacy.PotenciaContratadaP1kW);
+    const sipsP2c = parseNum(sipsData.p2 ?? psLegacy.PotenciaContratadaP2kW);
+    const sipsP3c = parseNum(sipsData.p3 ?? psLegacy.PotenciaContratadaP3kW);
+    const sipsP4c = parseNum(sipsData.p4 ?? psLegacy.PotenciaContratadaP4kW);
+    const sipsP5c = parseNum(sipsData.p5 ?? psLegacy.PotenciaContratadaP5kW);
+    const sipsP6c = parseNum(sipsData.p6 ?? psLegacy.PotenciaContratadaP6kW);
+    const sipsPowers = [sipsP1c, sipsP2c, sipsP3c, sipsP4c, sipsP5c, sipsP6c].filter(
+      (v): v is number => v !== undefined
+    );
+    const sipsPcSum = sipsPowers.length > 0 ? sipsPowers.reduce((acc, v) => acc + v, 0) : undefined;
+
+    // Actualizamos el JSON y sincronizamos los campos SIPS normalizados del SupplyPoint
     const updated = await prisma.supplyPoint.update({
       where: { id },
       data: {
-        sipsRawData: sipsData as any
+        sipsRawData: sipsData as any,
+        ...(sipsCp ? { sipsPostalCode: sipsCp } : {}),
+        ...(sipsCnae ? { sipsCnae: String(sipsCnae).trim() } : {}),
+        ...(sipsTariff ? { sipsTariff: String(sipsTariff).trim() } : {}),
+        ...(sipsP1c !== undefined ? { sipsP1c } : {}),
+        ...(sipsP2c !== undefined ? { sipsP2c } : {}),
+        ...(sipsP3c !== undefined ? { sipsP3c } : {}),
+        ...(sipsP4c !== undefined ? { sipsP4c } : {}),
+        ...(sipsP5c !== undefined ? { sipsP5c } : {}),
+        ...(sipsP6c !== undefined ? { sipsP6c } : {}),
+        ...(sipsPcSum !== undefined
+          ? {
+              sipsPcSum,
+              ...(supplyPoint.pcSum != null ? { varPc: supplyPoint.pcSum - sipsPcSum } : {}),
+            }
+          : {}),
       }
     });
 

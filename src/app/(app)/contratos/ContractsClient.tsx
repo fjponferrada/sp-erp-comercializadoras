@@ -21,12 +21,18 @@ import {
   MoreVertical,
   ArrowUpDown,
   Calendar,
-  X
+  X,
+  Copy,
+  RotateCcw,
+  ExternalLink,
 } from 'lucide-react';
 import EditContractModal from './EditContractModal';
 import PaginationFooter from '@/components/PaginationFooter';
+
 /* ─────────────────────────── HELPERS ───────────────────────── */
 const ESTADO_CONFIG: Record<string, { label: string; badge: string }> = {
+  EN_PROCESO: { label: 'En Tramitación (Todos)', badge: 'badge badge-process' },
+  RECHAZADO_TODOS: { label: 'Rechazados (Todos)', badge: 'badge badge-danger' },
   ACTIVO:     { label: 'Activo',      badge: 'badge badge-active'   },
   ACEPTADO:   { label: 'Aceptado',    badge: 'px-2 py-1 rounded text-xs font-bold bg-[rgba(59,130,246,0.15)] text-blue-400 border border-[rgba(59,130,246,0.3)]' },
   BORRADOR:   { label: 'Borrador',    badge: 'badge badge-draft'    },
@@ -39,7 +45,7 @@ const ESTADO_CONFIG: Record<string, { label: string; badge: string }> = {
   RECHAZADO_POR_CLIENTE: { label: 'Rechazado por Cliente', badge: 'badge badge-danger' },
   TRAMITANDO: { label: 'Tramitando',  badge: 'badge badge-process'  },
   VERIFICANDO_FIRMA: { label: 'Verificando Firma', badge: 'badge badge-warning' },
-  BAJA:       { label: 'Baja',        badge: 'badge badge-danger'   },
+  BAJA:       { label: 'Finalizado',  badge: 'badge badge-finalizado' },
   RENOVACION: { label: 'Renovación',  badge: 'badge badge-warning'  },
   DESCONOCIDO: { label: 'Desconocido', badge: 'badge badge-draft'    },
   DEFAULT:    { label: 'Desconocido', badge: 'badge badge-draft'    },
@@ -57,60 +63,64 @@ function formatDate(iso: Date | string | null) {
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function formatMwh(v: number | null) {
-  if (!v) return '—';
-  return v.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' MWh';
+function formatMwh(v: number | null | undefined) {
+  if (v == null || v === 0) return '—';
+  if (Math.abs(v) < 10) {
+    return v.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' MWh';
+  }
+  return v.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 1 }) + ' MWh';
 }
 
-const TARIFAS = ['Todas', '2.0TD', '3.0TD', '3.0TDVE', '6.1TD'];
+const TARIFAS = ['Todas', '2.0TD', '3.0TD', '3.0TDVE', '6.1TD', '6.1TDVE', '6.2TD', '6.3TD', '6.4TD'];
 const ESTADOS_FILTER = [
-  'Todos', 
-  'ACEPTADO', 
-  'ACTIVO', 
-  'BORRADOR', 
-  'FINALIZADO', 
-  'RECHAZADO', 
+  'Todos',
+  'ACTIVO',
+  'EN_PROCESO',
+  'BORRADOR',
+  'VERIFICANDO_FIRMA',
+  'ACEPTADO',
+  'TRAMITANDO',
+  'RENOVACION',
+  'FINALIZADO',
+  'RECHAZADO_TODOS',
+  'RECHAZADO',
   'RECHAZO_DISTRIBUIDORA',
   'RECHAZO_COMERCIALIZADORA',
   'RECHAZO_RIESGOS',
   'RECHAZADO_POR_CLIENTE',
-  'TRAMITANDO', 
-  'VERIFICANDO_FIRMA',
-  'BAJA',
-  'DESCONOCIDO'
 ];
 
 /* ─────────────────────────── COMPONENT ──────────────────────────── */
 
-export default function ContractsClient({ 
-  initialContracts, 
+export default function ContractsClient({
+  initialContracts,
   initialTotalCount,
   stats,
   userRole = 'CANAL',
   initialChannels = [],
-  initialTipos = []
-}: { 
-  initialContracts: any[], 
-  initialTotalCount: number,
-  stats: { activos: number, tramitando: number, bajas: number, totalMwh: number },
-  userRole: string,
-  initialChannels: string[],
-  initialTipos: string[]
+  initialTipos = [],
+}: {
+  initialContracts: any[];
+  initialTotalCount: number;
+  stats: { activos: number; tramitando: number; bajas: number; totalMwh: number };
+  userRole: string;
+  initialChannels: string[];
+  initialTipos: string[];
 }) {
   const router = useRouter();
-  const [search, setSearch]         = useState('');
-  const [estadoFilter, setEstado]   = useState('Todos');
-  const [tarifaFilter, setTarifa]   = useState('Todas');
-  const [canalFilter, setCanal]     = useState('Todos');
-  const [tipoFilter, setTipo]       = useState('Todos');
+  const [search, setSearch] = useState('');
+  const [estadoFilter, setEstado] = useState('Todos');
+  const [tarifaFilter, setTarifa] = useState('Todas');
+  const [canalFilter, setCanal] = useState('Todos');
+  const [tipoFilter, setTipo] = useState('Todos');
   const [activeOnDate, setActiveOnDate] = useState('');
   const [activeOnDateMwh, setActiveOnDateMwh] = useState<number | null>(null);
-  
-  const [sortCol, setSortCol]       = useState<string | null>('fechaRegistro');
-  const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc');
-  const [page, setPage]             = useState(1);
+
+  const [sortCol, setSortCol] = useState<string | null>('fechaRegistro');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
-  
+
   const [editingContract, setEditingContract] = useState<any | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
@@ -123,7 +133,34 @@ export default function ContractsClient({
   const tiposDropdown = useMemo(() => ['Todos', ...initialTipos], [initialTipos]);
 
   const canEdit = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole);
+  const canExport = userRole !== 'CLIENT';
   const showStats = ['COMERCIAL', 'CANAL', 'BACKOFFICE', 'COMPANYADMIN', 'SUPERADMIN'].includes(userRole as string);
+
+  const hasActiveFilters = Boolean(
+    search !== '' ||
+      estadoFilter !== 'Todos' ||
+      tarifaFilter !== 'Todas' ||
+      canalFilter !== 'Todos' ||
+      tipoFilter !== 'Todos' ||
+      activeOnDate !== ''
+  );
+
+  const handleClearFilters = () => {
+    setSearch('');
+    setEstado('Todos');
+    setTarifa('Todas');
+    setCanal('Todos');
+    setTipo('Todos');
+    setActiveOnDate('');
+    setPage(1);
+  };
+
+  const handleCopyCups = (e: React.MouseEvent, cups: string) => {
+    e.stopPropagation();
+    if (!cups || cups === '—') return;
+    navigator.clipboard.writeText(cups);
+    toast.success('CUPS copiado al portapapeles');
+  };
 
   const handleEditContract = async (contractId: string) => {
     const loadingToast = toast.loading('Cargando datos del contrato...');
@@ -145,14 +182,25 @@ export default function ContractsClient({
     setIsLoading(true);
     try {
       const { getPaginatedContractsAction } = await import('@/app/actions/contractActions');
-      const result = await getPaginatedContractsAction(page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, sortCol, sortDir, activeOnDate || undefined);
+      const result = await getPaginatedContractsAction(
+        page,
+        itemsPerPage,
+        search,
+        estadoFilter,
+        tarifaFilter,
+        canalFilter,
+        tipoFilter,
+        sortCol,
+        sortDir,
+        activeOnDate || undefined
+      );
       if (result.success && result.contracts) {
         setContracts(result.contracts);
         setTotalCount(result.totalCount || 0);
         setActiveOnDateMwh(result.activeOnDateMwh ?? null);
       }
     } catch (err) {
-      console.error("Error fetching contracts:", err);
+      console.error('Error fetching contracts:', err);
     } finally {
       setIsLoading(false);
     }
@@ -182,8 +230,19 @@ export default function ContractsClient({
 
   useEffect(() => {
     if (!isHydrated) return;
-    
-    if (page === 1 && itemsPerPage === 100 && search === '' && estadoFilter === 'Todos' && tarifaFilter === 'Todas' && canalFilter === 'Todos' && tipoFilter === 'Todos' && activeOnDate === '' && sortCol === 'fechaRegistro' && sortDir === 'desc') {
+
+    if (
+      page === 1 &&
+      itemsPerPage === 100 &&
+      search === '' &&
+      estadoFilter === 'Todos' &&
+      tarifaFilter === 'Todas' &&
+      canalFilter === 'Todos' &&
+      tipoFilter === 'Todos' &&
+      activeOnDate === '' &&
+      sortCol === 'fechaRegistro' &&
+      sortDir === 'desc'
+    ) {
       setContracts(initialContracts);
       setTotalCount(initialTotalCount);
       setActiveOnDateMwh(null);
@@ -196,7 +255,6 @@ export default function ContractsClient({
     return () => clearTimeout(debounceId);
   }, [fetchContracts, page, itemsPerPage, search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate, sortCol, sortDir, initialContracts, initialTotalCount, isHydrated]);
 
-  // Using a ref to track if it's the initial hydration to prevent resetting page
   const initialHydrationDone = React.useRef(false);
   useEffect(() => {
     if (isHydrated) {
@@ -209,16 +267,26 @@ export default function ContractsClient({
   }, [search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate, isHydrated]);
 
   const paginated = useMemo(() => {
-    return contracts.map(c => {
-      let estado = c.status || 'TRAMITANDO';
+    return contracts.map((c) => {
+      const estado = c.status || 'TRAMITANDO';
+      const fullClientName =
+        c.client?.businessName ||
+        [c.client?.firstName, c.client?.lastName, c.client?.lastName2].filter(Boolean).join(' ') ||
+        c.lead?.businessName ||
+        c.lead?.firstName ||
+        'Sin Cliente';
+
       return {
         id: c.id,
         cups: c.supplyPoint?.cups || c.lead?.cups || '—',
-        cliente: c.client?.businessName || c.client?.firstName || c.lead?.businessName || c.lead?.firstName || 'Sin Cliente',
-        direccion: c.supplyPoint?.address ? `${c.supplyPoint.address}, ${c.supplyPoint.postalCode || ''} ${c.supplyPoint.city || ''}` : 'Sin Dirección',
+        cliente: fullClientName,
+        nif: c.client?.vatNumber || c.lead?.vatNumber || '',
+        direccion: c.supplyPoint?.address
+          ? `${c.supplyPoint.address}, ${c.supplyPoint.postalCode || ''} ${c.supplyPoint.city || ''}`.trim()
+          : 'Sin Dirección',
         estado,
-        tarifa: c.supplyPoint?.tariff || c.lead?.tariff || '—',
-        consumoMwh: c.supplyPoint?.annualConsumption || c.lead?.estimatedMWh || 0,
+        tarifa: c.supplyPoint?.tariff || c.product?.tariff || c.lead?.tariff || '—',
+        consumoMwh: c.annualConsumption ?? c.supplyPoint?.annualConsumption ?? c.lead?.estimatedMWh ?? 0,
         producto: c.product?.name || c.lead?.product || '—',
         canal: c.user?.channel?.name || c.lead?.source || '—',
         comercial: c.user?.name || c.user?.email || '—',
@@ -227,9 +295,13 @@ export default function ContractsClient({
         fechaFirma: c.signatureDate,
         fechaRegistro: c.createdAt,
         inicioPermanencia: c.permanenceStartDate,
-        tramitacion: Array.isArray((c.lead?.contractData as any)?.['Tramitación a realizar']) 
-          ? (c.lead?.contractData as any)?.['Tramitación a realizar'][0] 
-          : (c.requestType || (c.lead?.contractData as any)?.['Tramitación a realizar'] || '—'),
+        tramitacion:
+          c.tramitationType ||
+          c.tipo ||
+          (Array.isArray((c.lead?.contractData as any)?.['Tramitación a realizar'])
+            ? (c.lead?.contractData as any)?.['Tramitación a realizar'][0]
+            : (c.lead?.contractData as any)?.['Tramitación a realizar']) ||
+          '—',
         contractCode: c.contractCode || (c.lead?.contractData as any)?.['CONTRATO'] || null,
         observaciones: c.internalComments || '',
         signedUrl: c.signedUrl,
@@ -241,30 +313,65 @@ export default function ContractsClient({
   }, [contracts]);
 
   function handleSort(col: string) {
-    if (sortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortCol(col); setSortDir('asc'); }
+    if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
   }
 
+  const toggleQuickEstadoFilter = (targetEstado: string) => {
+    setActiveOnDate('');
+    setEstado((prev) => (prev === targetEstado ? 'Todos' : targetEstado));
+    setPage(1);
+  };
+
   const STATS = [
-    { 
-      label: 'Contratos Activos', 
-      value: activeOnDate ? totalCount.toString() : stats.activos.toString(), 
-      delta: activeOnDate ? `Activos a ${formatDate(activeOnDate)}` : 'Actualizado', 
-      positive: true, 
-      icon: Zap, 
-      color: 'var(--success)', 
-      glow: 'rgba(34,197,94,0.12)' 
+    {
+      label: 'Contratos Activos',
+      value: activeOnDate ? totalCount.toString() : stats.activos.toString(),
+      delta: activeOnDate ? `Activos a ${formatDate(activeOnDate)}` : 'Clic para filtrar activos',
+      positive: true,
+      icon: Zap,
+      color: 'var(--success)',
+      glow: 'rgba(34,197,94,0.12)',
+      targetEstado: 'ACTIVO',
+      isActive: estadoFilter === 'ACTIVO' && !activeOnDate,
     },
-    { label: 'En Tramitación', value: stats.tramitando.toString(), delta: 'Pendientes de activación', positive: null, icon: Loader2, color: 'var(--info)', glow: 'rgba(59,130,246,0.12)' },
-    { label: 'Bajas', value: stats.bajas.toString(), delta: 'Histórico', positive: true, icon: TrendingDown, color: 'var(--danger)', glow: 'rgba(239,68,68,0.10)' },
-    { 
-      label: 'MWh Totales', 
-      value: (activeOnDate && activeOnDateMwh !== null ? activeOnDateMwh : stats.totalMwh).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 
-      delta: activeOnDate ? `Cartera a ${formatDate(activeOnDate)}` : 'Cartera actual', 
-      positive: true, 
-      icon: BarChart3, 
-      color: 'var(--lime)', 
-      glow: 'var(--lime-glow)' 
+    {
+      label: 'En Tramitación',
+      value: stats.tramitando.toString(),
+      delta: 'Borrador / Firma / Switching',
+      positive: null,
+      icon: Loader2,
+      color: 'var(--info)',
+      glow: 'rgba(59,130,246,0.12)',
+      targetEstado: 'EN_PROCESO',
+      isActive: estadoFilter === 'EN_PROCESO',
+    },
+    {
+      label: 'Bajas Netas (CUPS)',
+      value: stats.bajas.toString(),
+      delta: 'Clic para ver finalizados',
+      positive: true,
+      icon: TrendingDown,
+      color: 'var(--danger)',
+      glow: 'rgba(239,68,68,0.10)',
+      targetEstado: 'FINALIZADO',
+      isActive: estadoFilter === 'FINALIZADO',
+    },
+    {
+      label: 'MWh Totales',
+      value: (activeOnDate && activeOnDateMwh !== null ? activeOnDateMwh : stats.totalMwh).toLocaleString('es-ES', {
+        maximumFractionDigits: 1,
+      }),
+      delta: activeOnDate ? `Cartera a ${formatDate(activeOnDate)}` : 'Cartera activa actual',
+      positive: true,
+      icon: BarChart3,
+      color: 'var(--lime)',
+      glow: 'var(--lime-glow)',
+      targetEstado: null,
+      isActive: false,
     },
   ];
 
@@ -280,12 +387,19 @@ export default function ContractsClient({
     const loadingToast = toast.loading('Generando exportación Excel...');
     try {
       const { exportContractsExcelAction } = await import('@/app/actions/contractActions');
-      const result = await exportContractsExcelAction(search, estadoFilter, tarifaFilter, canalFilter, tipoFilter, activeOnDate || undefined);
+      const result = await exportContractsExcelAction(
+        search,
+        estadoFilter,
+        tarifaFilter,
+        canalFilter,
+        tipoFilter,
+        activeOnDate || undefined
+      );
       if (result.success && result.data) {
         const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(result.data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Contratos");
+        XLSX.utils.book_append_sheet(wb, ws, 'Contratos');
         const suffix = activeOnDate ? `Activos_${activeOnDate}` : new Date().toISOString().split('T')[0];
         XLSX.writeFile(wb, `Exportacion_Contratos_${suffix}.xlsx`);
         toast.success('Excel generado correctamente', { id: loadingToast });
@@ -299,26 +413,66 @@ export default function ContractsClient({
     }
   };
 
+  const buildDownloadHref = (url: string) => `/api/documents/smart-download?url=${encodeURIComponent(url)}`;
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Topbar title="Contratos" subtitle="Gestión de contratos de suministro eléctrico" showSearch={false} />
 
       <div style={{ padding: '28px 28px 48px' }}>
-        
         {showStats && (
           <div className="animate-fade-in-up grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
             {STATS.map((s, i) => {
               const Icon = s.icon;
               return (
-                <div key={s.label} className={`card-stat animate-fade-in-up delay-${(i + 1) * 100}`}>
+                <div
+                  key={s.label}
+                  onClick={s.targetEstado ? () => toggleQuickEstadoFilter(s.targetEstado!) : undefined}
+                  className={`card-stat animate-fade-in-up delay-${(i + 1) * 100} ${
+                    s.targetEstado ? 'cursor-pointer transition-all hover:translate-y-[-1px]' : ''
+                  }`}
+                  style={
+                    s.isActive
+                      ? {
+                          borderColor: s.color,
+                          boxShadow: `0 0 0 1px ${s.color}, 0 8px 24px ${s.glow}`,
+                        }
+                      : undefined
+                  }
+                  title={s.targetEstado ? `Filtrar por ${s.label}` : undefined}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
-                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: s.glow, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${s.glow}` }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {s.label}
+                    </span>
+                    <div
+                      style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '8px',
+                        background: s.glow,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: `1px solid ${s.glow}`,
+                      }}
+                    >
                       <Icon size={16} color={s.color} />
                     </div>
                   </div>
-                  <div style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{s.value}</div>
-                  <div style={{ marginTop: '8px', fontSize: '0.74rem', color: s.positive === true ? 'var(--success)' : s.positive === false ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 500 }}>{s.delta}</div>
+                  <div style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>
+                    {s.value}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      fontSize: '0.74rem',
+                      color: s.isActive ? s.color : s.positive === true ? 'var(--success)' : s.positive === false ? 'var(--danger)' : 'var(--text-muted)',
+                      fontWeight: s.isActive ? 700 : 500,
+                    }}
+                  >
+                    {s.isActive ? 'Filtro activo · Clic para quitar' : s.delta}
+                  </div>
                 </div>
               );
             })}
@@ -326,65 +480,173 @@ export default function ContractsClient({
         )}
 
         <div className="card animate-fade-in-up delay-200" style={{ padding: 0 }}>
-          
           {/* FILTERS AND SEARCH */}
           <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', flex: '1 1 auto', minWidth: '220px' }}>
+              <div style={{ position: 'relative', flex: '1 1 auto', minWidth: '240px' }}>
                 <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                <input className="form-input w-full" placeholder="Buscar CUPS, cliente, contrato, producto…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '36px', width: '100%' }} />
+                <input
+                  className="form-input w-full"
+                  placeholder="Buscar CUPS, cliente, NIF/CIF, contrato, dirección, producto, comercial…"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  style={{ paddingLeft: '36px', paddingRight: search ? '34px' : '12px', width: '100%' }}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      setPage(1);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    title="Borrar búsqueda"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
 
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{totalCount}</span> resultados
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {isLoading && <Loader2 size={13} className="animate-spin text-[var(--lime)]" />}
+                  <span>
+                    Mostrando <span style={{ color: 'var(--lime)', fontWeight: 600 }}>{totalCount}</span> resultados
+                  </span>
                 </div>
-                
-                <button 
-                  onClick={handleExportExcel} 
-                  disabled={isExporting}
-                  className="btn-secondary" 
-                  style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px' }}
-                  title="Exportar a formato TERA XLSX"
-                >
-                  {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                  Exportar XLSX
-                </button>
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="btn-ghost"
+                    style={{ padding: '6px 10px', fontSize: '0.78rem', gap: '5px', color: 'var(--lime)' }}
+                    title="Restablecer todos los filtros"
+                  >
+                    <RotateCcw size={13} />
+                    Limpiar filtros
+                  </button>
+                )}
+
+                {canExport && (
+                  <button
+                    onClick={handleExportExcel}
+                    disabled={isExporting}
+                    className="btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '0.8rem', gap: '6px' }}
+                    title={canEdit ? 'Exportar a formato TERA XLSX' : 'Exportar cartera comercial a Excel'}
+                  >
+                    {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    Exportar XLSX
+                  </button>
+                )}
               </div>
             </div>
 
             {showStats && (
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ position: 'relative', minWidth: '160px' }}>
-                  <select className="form-input" value={estadoFilter} onChange={e => { setEstado(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                    {ESTADOS_FILTER.map(e => <option key={e} value={e}>{e === 'Todos' ? 'Estado: Todos' : ESTADO_CONFIG[e]?.label ?? e}</option>)}
+                <div style={{ position: 'relative', minWidth: '180px' }}>
+                  <select
+                    className="form-input"
+                    value={estadoFilter}
+                    onChange={(e) => {
+                      setEstado(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}
+                  >
+                    {ESTADOS_FILTER.map((e) => (
+                      <option key={e} value={e}>
+                        {e === 'Todos' ? 'Estado: Todos' : ESTADO_CONFIG[e]?.label ?? e}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                 </div>
 
                 <div style={{ position: 'relative', minWidth: '140px' }}>
-                  <select className="form-input" value={tarifaFilter} onChange={e => { setTarifa(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                    {TARIFAS.map(t => <option key={t} value={t}>{t === 'Todas' ? 'Tarifa: Todas' : t}</option>)}
+                  <select
+                    className="form-input"
+                    value={tarifaFilter}
+                    onChange={(e) => {
+                      setTarifa(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}
+                  >
+                    {TARIFAS.map((t) => (
+                      <option key={t} value={t}>
+                        {t === 'Todas' ? 'Tarifa: Todas' : t}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                 </div>
 
                 <div style={{ position: 'relative', minWidth: '140px' }}>
-                  <select className="form-input" value={canalFilter} onChange={e => { setCanal(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                    {canalesDropdown.map(c => <option key={c} value={c}>{c === 'Todos' ? 'Canal: Todos' : c}</option>)}
+                  <select
+                    className="form-input"
+                    value={canalFilter}
+                    onChange={(e) => {
+                      setCanal(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}
+                  >
+                    {canalesDropdown.map((c) => (
+                      <option key={c} value={c}>
+                        {c === 'Todos' ? 'Canal: Todos' : c}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                 </div>
 
-                <div style={{ position: 'relative', minWidth: '220px', maxWidth: '300px' }}>
-                  <select className="form-input w-full" value={tipoFilter} onChange={e => { setTipo(e.target.value); setPage(1); }} style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}>
-                    {tiposDropdown.map(t => <option key={t} value={t}>{t === 'Todos' ? 'Tipo: Todos' : t}</option>)}
+                <div style={{ position: 'relative', minWidth: '200px', maxWidth: '300px' }}>
+                  <select
+                    className="form-input w-full"
+                    value={tipoFilter}
+                    onChange={(e) => {
+                      setTipo(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{ paddingRight: '36px', appearance: 'none', cursor: 'pointer' }}
+                  >
+                    {tiposDropdown.map((t) => (
+                      <option key={t} value={t}>
+                        {t === 'Todos' ? 'Tipo: Todos' : t}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown size={13} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: activeOnDate ? 'rgba(163, 230, 53, 0.08)' : 'var(--bg-surface)', border: activeOnDate ? '1px solid rgba(163, 230, 53, 0.35)' : '1px solid var(--border)', borderRadius: '8px', padding: '0 10px', height: '38px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: activeOnDate ? 'rgba(163, 230, 53, 0.08)' : 'var(--bg-surface)',
+                    border: activeOnDate ? '1px solid rgba(163, 230, 53, 0.35)' : '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '0 10px',
+                    height: '38px',
+                  }}
+                >
                   <Calendar size={14} style={{ color: activeOnDate ? 'var(--lime)' : 'var(--text-muted)', flexShrink: 0 }} />
                   <span style={{ fontSize: '0.78rem', color: activeOnDate ? 'var(--lime)' : 'var(--text-muted)', fontWeight: activeOnDate ? 600 : 500, whiteSpace: 'nowrap' }}>
                     Activos a fecha:
@@ -392,7 +654,10 @@ export default function ContractsClient({
                   <input
                     type="date"
                     value={activeOnDate}
-                    onChange={e => { setActiveOnDate(e.target.value); setPage(1); }}
+                    onChange={(e) => {
+                      setActiveOnDate(e.target.value);
+                      setPage(1);
+                    }}
                     style={{
                       background: 'transparent',
                       border: 'none',
@@ -400,14 +665,17 @@ export default function ContractsClient({
                       fontSize: '0.8rem',
                       outline: 'none',
                       cursor: 'pointer',
-                      fontFamily: "'JetBrains Mono', monospace"
+                      fontFamily: "'JetBrains Mono', monospace",
                     }}
                     title="Filtrar contratos que estaban activos en la fecha seleccionada"
                   />
                   {activeOnDate && (
                     <button
                       type="button"
-                      onClick={() => { setActiveOnDate(''); setPage(1); }}
+                      onClick={() => {
+                        setActiveOnDate('');
+                        setPage(1);
+                      }}
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
                       title="Limpiar filtro de fecha"
                     >
@@ -420,47 +688,61 @@ export default function ContractsClient({
           </div>
 
           {/* TABLE DATA */}
-          
+
           {/* Mobile View (Cards) */}
           <div className="block md:hidden">
             {paginated.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)' }}>
-                    <FileText size={32} style={{ marginBottom: '8px', opacity: 0.3, display: 'block', margin: '0 auto 8px' }} />
-                    {isLoading ? "Cargando contratos..." : "No se encontraron contratos con los filtros aplicados."}
-                </div>
-            ) : paginated.map((c) => {
+              <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)' }}>
+                <FileText size={32} style={{ marginBottom: '8px', opacity: 0.3, display: 'block', margin: '0 auto 8px' }} />
+                {isLoading ? 'Cargando contratos...' : 'No se encontraron contratos con los filtros aplicados.'}
+              </div>
+            ) : (
+              paginated.map((c) => {
                 const estUpper = String(c.estado).toUpperCase();
                 const est = ESTADO_CONFIG[estUpper] || ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
                 return (
-                    <div key={c.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div>
-                                <div style={{ color: 'var(--lime)', fontWeight: 600, fontSize: '0.9rem', marginBottom: '2px' }}>{truncateCups(c.cups)}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 600 }}>{c.cliente}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{c.contractCode || `ID: ${c.id}`}</div>
-                            </div>
-                            <span className={est.badge} style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor' }} />
-                                {est.label}
-                            </span>
+                  <div key={c.id} style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div
+                          onClick={() => router.push(`/contratos/${c.id}`)}
+                          style={{ color: 'var(--lime)', fontWeight: 600, fontSize: '0.9rem', marginBottom: '2px', cursor: 'pointer' }}
+                        >
+                          {truncateCups(c.cups)}
                         </div>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>{c.producto} - <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{c.tarifa}</span></div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Consumo: {formatMwh(c.consumoMwh)}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 600 }}>{c.cliente}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {c.contractCode || `ID: ${c.id}`} {c.nif ? `· ${c.nif}` : ''}
                         </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {formatDate(c.fechaAlta)} {c.fechaBaja && ` - ${formatDate(c.fechaBaja)}`}
-                            </div>
-                            <button onClick={() => router.push(`/contratos/${c.id}`)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-primary)' }}>
-                                Ver ficha
-                            </button>
-                        </div>
+                      </div>
+                      <span className={est.badge} style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'currentColor' }} />
+                        {est.label}
+                      </span>
                     </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                        {c.producto} - <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{c.tarifa}</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Consumo: {formatMwh(c.consumoMwh)}</div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {formatDate(c.fechaAlta)} {c.fechaBaja && ` - ${formatDate(c.fechaBaja)}`}
+                      </div>
+                      <button
+                        onClick={() => router.push(`/contratos/${c.id}`)}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-primary)' }}
+                      >
+                        Ver ficha
+                      </button>
+                    </div>
+                  </div>
                 );
-            })}
+              })
+            )}
           </div>
 
           <div className="hidden md:block" style={{ overflowX: 'auto' }}>
@@ -468,17 +750,17 @@ export default function ContractsClient({
               <thead>
                 <tr>
                   {[
-                    { key: 'cups',       label: 'CUPS / Contrato' },
-                    { key: 'cliente',    label: 'Cliente y Dirección' },
-                    { key: 'estado',     label: 'Estado' },
-                    { key: 'producto',   label: 'Producto y Tarifa' },
+                    { key: 'cups', label: 'CUPS / Contrato' },
+                    { key: 'cliente', label: 'Cliente y Dirección' },
+                    { key: 'estado', label: 'Estado' },
+                    { key: 'producto', label: 'Producto y Tarifa' },
                     { key: 'consumoMwh', label: 'Consumo' },
                     { key: 'fechaRegistro', label: 'Creación (Registro)' },
-                    { key: 'fechaAlta',  label: 'Fechas (Alta/Baja)' },
-                    { key: 'canal',      label: 'Canal' },
-                    { key: 'comercial',  label: 'Comercial' },
-                    { key: null,         label: 'Obs.' },
-                    { key: null,         label: 'Acciones', align: 'right' },
+                    { key: 'fechaAlta', label: 'Fechas (Alta/Baja)' },
+                    { key: 'canal', label: 'Canal' },
+                    { key: 'comercial', label: 'Comercial' },
+                    { key: null, label: 'Obs.' },
+                    { key: null, label: 'Acciones', align: 'right' },
                   ].map((col, idx) => (
                     <th
                       key={idx}
@@ -487,7 +769,7 @@ export default function ContractsClient({
                         cursor: col.key ? 'pointer' : 'default',
                         userSelect: 'none',
                         whiteSpace: 'nowrap',
-                        textAlign: col.align === 'right' ? 'right' : 'left'
+                        textAlign: col.align === 'right' ? 'right' : 'left',
                       }}
                     >
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start', width: '100%' }}>
@@ -503,182 +785,277 @@ export default function ContractsClient({
                   <tr>
                     <td colSpan={11} style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)' }}>
                       <FileText size={32} style={{ marginBottom: '8px', opacity: 0.3, display: 'block', margin: '0 auto 8px' }} />
-                      {isLoading ? "Cargando contratos..." : "No se encontraron contratos con los filtros aplicados."}
+                      {isLoading ? 'Cargando contratos...' : 'No se encontraron contratos con los filtros aplicados.'}
                     </td>
                   </tr>
-                ) : paginated.map((c) => {
-                  const estUpper = String(c.estado).toUpperCase();
-                  const est = ESTADO_CONFIG[estUpper] || ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
-                  const hasSignedDoc = !!c.signedUrl;
+                ) : (
+                  paginated.map((c, rowIdx) => {
+                    const estUpper = String(c.estado).toUpperCase();
+                    const est = ESTADO_CONFIG[estUpper] || ESTADO_CONFIG[c.estado] || ESTADO_CONFIG.DEFAULT;
+                    const hasSignedDoc = !!c.signedUrl;
+                    const openUpward = rowIdx >= paginated.length - 2 && paginated.length > 3;
 
-                  return (
-                    <tr key={c.id} style={{ transition: 'background 0.15s ease' }} className="hover:bg-white/[0.02]">
-                      
-                      {/* CUPS y Contrato */}
-                      <td className="mono-cell">
-                        <div style={{ color: 'var(--lime)', fontWeight: 500, letterSpacing: '0.02em', marginBottom: '4px' }} title={c.cups}>
-                          {truncateCups(c.cups)}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                          {c.contractCode || `ID: ${c.id}`}
-                        </div>
-                      </td>
-
-                      {/* Cliente y Dirección */}
-                      <td className="primary-cell" style={{ maxWidth: '280px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
-                          {c.cliente}
-                        </div>
-                        <div className="flex items-center text-[var(--text-muted)] text-xs" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          <MapPin size={10} className="mr-1 shrink-0" />
-                          <span className="truncate" title={c.direccion}>{c.direccion}</span>
-                        </div>
-                      </td>
-
-                      {/* Estado */}
-                      <td>
-                        <span className={est.badge} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'currentColor' }} />
-                          {est.label}
-                        </span>
-                        {c.tramitacion !== '—' && (
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '6px', fontWeight: 600 }}>
-                            TRÁMITE: {c.tramitacion}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Producto y Tarifa */}
-                      <td>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.85rem', marginBottom: '4px' }}>
-                          {c.producto}
-                        </div>
-                        <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
-                          {c.tarifa}
-                        </span>
-                      </td>
-
-                      {/* Consumo */}
-                      <td className="mono-cell" style={{ color: 'var(--text-primary)' }}>
-                        {formatMwh(c.consumoMwh)}
-                      </td>
-
-                      {/* Fecha Registro */}
-                      <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {formatDate(c.fechaRegistro)}
-                      </td>
-
-                      {/* Fechas */}
-                      <td>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                          <span className="text-gray-500 mr-1">Alta:</span> {formatDate(c.fechaAlta)}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                          <span className="text-gray-600 mr-1">Inic. Perm.:</span> {formatDate(c.inicioPermanencia)}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          <span className="text-gray-600 mr-1">Baja:</span> {formatDate(c.fechaBaja)}
-                        </div>
-                      </td>
-
-                      {/* Canal */}
-                      <td style={{ fontSize: '0.83rem' }}>
-                        <span style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{c.canal}</span>
-                      </td>
-
-                      {/* Comercial */}
-                      <td style={{ fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{
-                            width: '28px', height: '28px', borderRadius: '50%',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.65rem', fontWeight: 700, color: 'var(--lime)', flexShrink: 0,
-                          }}>
-                            {String(c.comercial).slice(0, 2).toUpperCase()}
-                          </div>
-                          <span style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{c.comercial}</span>
-                        </div>
-                      </td>
-
-                      {/* Observaciones Hover */}
-                      <td style={{ textAlign: 'center' }}>
-                        {c.observaciones ? (
-                          <div className="relative group cursor-help inline-block">
-                            <MessageSquare size={16} className="text-[var(--lime)] opacity-80 group-hover:opacity-100 transition-opacity" />
-                            <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-gray-800 text-xs text-white rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 border border-white/10 text-left">
-                              <p className="font-semibold mb-1 text-lime-400">Observaciones</p>
-                              <p className="whitespace-pre-wrap">{c.observaciones}</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-gray-600 opacity-30">-</span>
-                        )}
-                      </td>
-
-                      {/* Acciones */}
-                      <td style={{ textAlign: 'right' }}>
-                        <div className="flex justify-end gap-1 items-center">
-                          <button 
-                            onClick={() => router.push(`/contratos/${c.id}`)}
-                            className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-white/5 transition-colors"
-                            title="Ver Detalle"
-                          >
-                            <Info size={16} />
-                          </button>
-
-                          {canEdit && (
-                            <button 
-                              onClick={() => handleEditContract(c.raw.id)}
-                              className="p-1.5 text-gray-400 hover:text-[var(--lime)] rounded hover:bg-[rgba(132,204,22,0.1)] transition-colors"
-                              title="Editar Contrato"
+                    return (
+                      <tr key={c.id} style={{ transition: 'background 0.15s ease' }} className="hover:bg-white/[0.02]">
+                        {/* CUPS y Contrato */}
+                        <td className="mono-cell">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span
+                              onClick={() => router.push(`/contratos/${c.id}`)}
+                              style={{ color: 'var(--lime)', fontWeight: 500, letterSpacing: '0.02em', cursor: 'pointer' }}
+                              className="hover:underline underline-offset-2"
+                              title="Abrir ficha del contrato"
                             >
-                              <Pencil size={16} />
-                            </button>
-                          )}
-
-                          <div className="relative">
-                            <button 
-                              onClick={() => setOpenDropdown(openDropdown === c.id ? null : c.id)}
-                              className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-white/5 transition-colors"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-
-                            {openDropdown === c.id && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
-                                <div className="absolute right-0 top-full mt-1 w-56 bg-[#2A2A2A] border border-white/10 rounded-lg shadow-2xl py-1 z-20 animate-in fade-in zoom-in-95 text-left">
-                                  {hasSignedDoc && (
-                                    <a href={c.signedUrl} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
-                                      <Download size={14} /> Descargar doc. firmado
-                                    </a>
-                                  )}
-                                  {c.annexUrl && (
-                                    <a href={`/api/documents/smart-download?url=${encodeURIComponent(c.annexUrl)}`} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
-                                      <Download size={14} /> Descargar Anexo firmado
-                                    </a>
-                                  )}
-                                  {!hasSignedDoc && (
-                                    <button onClick={() => { setOpenDropdown(null); if (canEdit) handleEditContract(c.raw.id); else alert("Contacte al backoffice para subir documentos."); }} className="w-full text-left px-4 py-2.5 text-xs text-[var(--lime)] hover:text-white hover:bg-[rgba(132,204,22,0.1)] flex items-center gap-2">
-                                      <Upload size={14} /> 
-                                      {c.tramitacion === 'M1' || c.tramitacion === 'M1N' ? 'Subir Anexo firmado' : 'Subir contrato firmado'}
-                                    </button>
-                                  )}
-                                  {c.draftUrl && (
-                                    <a href={c.draftUrl} target="_blank" rel="noreferrer" className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2">
-                                      <Download size={14} /> Descargar Borrador
-                                    </a>
-                                  )}
-                                </div>
-                              </>
+                              {truncateCups(c.cups)}
+                            </span>
+                            {c.cups && c.cups !== '—' && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleCopyCups(e, c.cups)}
+                                className="text-gray-500 hover:text-[var(--lime)] transition-colors p-0.5 rounded"
+                                title="Copiar CUPS"
+                              >
+                                <Copy size={12} />
+                              </button>
                             )}
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <div
+                            onClick={() => router.push(`/contratos/${c.id}`)}
+                            style={{ fontSize: '0.7rem', color: 'var(--text-muted)', cursor: 'pointer' }}
+                            className="hover:text-gray-300"
+                          >
+                            {c.contractCode || `ID: ${c.id}`}
+                          </div>
+                        </td>
+
+                        {/* Cliente y Dirección */}
+                        <td className="primary-cell" style={{ maxWidth: '280px' }}>
+                          <div
+                            onClick={() => router.push(`/contratos/${c.id}`)}
+                            style={{
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              marginBottom: '4px',
+                              cursor: 'pointer',
+                            }}
+                            className="hover:text-[var(--lime)] transition-colors"
+                            title={c.nif ? `${c.cliente} (${c.nif})` : c.cliente}
+                          >
+                            {c.cliente}
+                          </div>
+                          <div className="flex items-center text-[var(--text-muted)] text-xs" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <MapPin size={10} className="mr-1 shrink-0" />
+                            <span className="truncate" title={c.direccion}>
+                              {c.direccion}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Estado */}
+                        <td>
+                          <span className={est.badge} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'currentColor' }} />
+                            {est.label}
+                          </span>
+                          {c.tramitacion !== '—' && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '6px', fontWeight: 600 }}>
+                              TRÁMITE: {c.tramitacion}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Producto y Tarifa */}
+                        <td>
+                          <div style={{ color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.85rem', marginBottom: '4px' }}>
+                            {c.producto}
+                          </div>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'var(--bg-elevated)',
+                              border: '1px solid var(--border)',
+                              fontSize: '0.7rem',
+                              color: 'var(--text-muted)',
+                              fontWeight: 600,
+                              fontFamily: "'JetBrains Mono', monospace",
+                            }}
+                          >
+                            {c.tarifa}
+                          </span>
+                        </td>
+
+                        {/* Consumo */}
+                        <td className="mono-cell" style={{ color: 'var(--text-primary)' }}>
+                          {formatMwh(c.consumoMwh)}
+                        </td>
+
+                        {/* Fecha Registro */}
+                        <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {formatDate(c.fechaRegistro)}
+                        </td>
+
+                        {/* Fechas */}
+                        <td>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                            <span className="text-gray-500 mr-1">Alta:</span> {formatDate(c.fechaAlta)}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                            <span className="text-gray-600 mr-1">Inic. Perm.:</span> {formatDate(c.inicioPermanencia)}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span className="text-gray-600 mr-1">Baja:</span> {formatDate(c.fechaBaja)}
+                          </div>
+                        </td>
+
+                        {/* Canal */}
+                        <td style={{ fontSize: '0.83rem' }}>
+                          <span style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{c.canal}</span>
+                        </td>
+
+                        {/* Comercial */}
+                        <td style={{ fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                background: 'var(--bg-elevated)',
+                                border: '1px solid var(--border-strong)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
+                                color: 'var(--lime)',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {String(c.comercial).slice(0, 2).toUpperCase()}
+                            </div>
+                            <span style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{c.comercial}</span>
+                          </div>
+                        </td>
+
+                        {/* Observaciones Hover */}
+                        <td style={{ textAlign: 'center' }}>
+                          {c.observaciones ? (
+                            <div className="relative group cursor-help inline-block">
+                              <MessageSquare size={16} className="text-[var(--lime)] opacity-80 group-hover:opacity-100 transition-opacity" />
+                              <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-gray-800 text-xs text-white rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 border border-white/10 text-left">
+                                <p className="font-semibold mb-1 text-lime-400">Observaciones</p>
+                                <p className="whitespace-pre-wrap">{c.observaciones}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-600 opacity-30">-</span>
+                          )}
+                        </td>
+
+                        {/* Acciones */}
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="flex justify-end gap-1 items-center">
+                            <button
+                              onClick={() => router.push(`/contratos/${c.id}`)}
+                              className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-white/5 transition-colors"
+                              title="Ver Detalle"
+                            >
+                              <Info size={16} />
+                            </button>
+
+                            {canEdit && (
+                              <button
+                                onClick={() => handleEditContract(c.raw.id)}
+                                className="p-1.5 text-gray-400 hover:text-[var(--lime)] rounded hover:bg-[rgba(132,204,22,0.1)] transition-colors"
+                                title="Editar Contrato"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
+
+                            <div className="relative">
+                              <button
+                                onClick={() => setOpenDropdown(openDropdown === c.id ? null : c.id)}
+                                className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-white/5 transition-colors"
+                                title="Más opciones"
+                              >
+                                <MoreVertical size={16} />
+                              </button>
+
+                              {openDropdown === c.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                                  <div
+                                    className={`absolute right-0 ${
+                                      openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
+                                    } w-56 bg-[#2A2A2A] border border-white/10 rounded-lg shadow-2xl py-1 z-20 animate-in fade-in zoom-in-95 text-left`}
+                                  >
+                                    <button
+                                      onClick={() => {
+                                        setOpenDropdown(null);
+                                        router.push(`/contratos/${c.id}`);
+                                      }}
+                                      className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2"
+                                    >
+                                      <ExternalLink size={14} /> Abrir ficha completa
+                                    </button>
+                                    {hasSignedDoc && (
+                                      <a
+                                        href={buildDownloadHref(c.signedUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2"
+                                      >
+                                        <Download size={14} /> Descargar doc. firmado
+                                      </a>
+                                    )}
+                                    {c.annexUrl && (
+                                      <a
+                                        href={buildDownloadHref(c.annexUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2"
+                                      >
+                                        <Download size={14} /> Descargar Anexo firmado
+                                      </a>
+                                    )}
+                                    {!hasSignedDoc && canEdit && (
+                                      <button
+                                        onClick={() => {
+                                          setOpenDropdown(null);
+                                          handleEditContract(c.raw.id);
+                                        }}
+                                        className="w-full text-left px-4 py-2.5 text-xs text-[var(--lime)] hover:text-white hover:bg-[rgba(132,204,22,0.1)] flex items-center gap-2"
+                                      >
+                                        <Upload size={14} />
+                                        {c.tramitacion === 'M1' || c.tramitacion === 'M1N' ? 'Subir Anexo firmado' : 'Subir contrato firmado'}
+                                      </button>
+                                    )}
+                                    {c.draftUrl && (
+                                      <a
+                                        href={buildDownloadHref(c.draftUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="w-full text-left px-4 py-2.5 text-xs text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-2"
+                                      >
+                                        <Download size={14} /> Descargar Borrador
+                                      </a>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -695,11 +1072,11 @@ export default function ContractsClient({
       </div>
 
       {!!editingContract && (
-        <EditContractModal 
-          isOpen={true} 
-          onClose={() => setEditingContract(null)} 
-          contract={editingContract} 
-          onSuccess={handleRefresh} 
+        <EditContractModal
+          isOpen={true}
+          onClose={() => setEditingContract(null)}
+          contract={editingContract}
+          onSuccess={handleRefresh}
         />
       )}
     </div>

@@ -998,13 +998,111 @@ export async function remakeContractAction(leadId: string): Promise<{
   }
 }
 
+async function resolveContractActionCaller() {
+  const { auth } = await import('@/auth');
+  const session = await auth();
+  if (!session?.user) return null;
+
+  const sessionUser = session.user as any;
+  const selectFields = { id: true, email: true, role: true, isActive: true, channelId: true };
+
+  let dbUser = sessionUser.id
+    ? await prisma.user.findUnique({ where: { id: sessionUser.id }, select: selectFields })
+    : null;
+
+  if (!dbUser && sessionUser.email) {
+    dbUser = await prisma.user.findFirst({
+      where: { email: { equals: String(sessionUser.email).trim(), mode: 'insensitive' } },
+      select: selectFields,
+    });
+  }
+
+  if (!dbUser || dbUser.isActive === false) return null;
+
+  return {
+    ...dbUser,
+    isAdminOrBackoffice: ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(dbUser.role),
+  };
+}
+
+function sanitizeContractForRole(contract: any, role: string) {
+  if (!contract) return contract;
+  const safeUser = contract.user
+    ? (() => {
+        const { password: _pwd, ...restUser } = contract.user;
+        return restUser;
+      })()
+    : contract.user;
+
+  if (['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(role)) {
+    return { ...contract, user: safeUser };
+  }
+
+  const safeProduct = contract.product
+    ? (() => {
+        const {
+          marginFC: _mfc,
+          ip1: _ip1,
+          ip2: _ip2,
+          ip3: _ip3,
+          ip4: _ip4,
+          ip5: _ip5,
+          ip6: _ip6,
+          powerTiersCommission: _ptc,
+          ...restProd
+        } = contract.product as any;
+        if (role === 'CLIENT') {
+          const { fee: _pfee, deviationCost: _pdsv, ...clientProd } = restProd;
+          return clientProd;
+        }
+        return restProd;
+      })()
+    : contract.product;
+
+  const {
+    marginFC: _mfc,
+    ip1: _ip1,
+    ip2: _ip2,
+    ip3: _ip3,
+    ip4: _ip4,
+    ip5: _ip5,
+    ip6: _ip6,
+    powerTiersCommission: _ptc,
+    winbackNotes: _wn,
+    ...withoutInternalMargins
+  } = contract;
+
+  if (role === 'CLIENT') {
+    const {
+      fee: _fee,
+      deviationCost: _dsv,
+      commissionBase: _cb,
+      commissionFinal: _cf,
+      commissionVariable: _cv,
+      commissionType: _ct,
+      commissionRuleType: _crt,
+      commissionRuleValue: _crv,
+      internalComments: _ic,
+      distributorMsg: _dm,
+      winbackStatus: _ws,
+      winbackLastContactAt: _wl,
+      winbackProductOffered: _wp,
+      ...clientSafe
+    } = withoutInternalMargins;
+    return { ...clientSafe, user: safeUser, product: safeProduct };
+  }
+
+  return { ...withoutInternalMargins, user: safeUser, product: safeProduct };
+}
+
 function getContractStatusFromDates(
   signatureDate: Date | null | undefined,
   requestDate: Date | null | undefined,
   activationDate: Date | null | undefined,
   terminationDate: Date | null | undefined
 ): string {
-  if (terminationDate && activationDate) return 'BAJA';
+  // Regla 55: El estado final de un contrato cuando causa baja es estrictamente FINALIZADO, nunca BAJA
+  if (terminationDate && activationDate) return 'FINALIZADO';
   if (activationDate) return 'ACTIVO';
   if (requestDate) return 'TRAMITANDO';
   if (signatureDate) return 'ACEPTADO';
@@ -1022,12 +1120,20 @@ export async function updateContractDatesAction(
   tramitationType?: string
 ) {
   try {
-    const contract = await prisma.contract.findUnique({
-      where: { id: contractId },
+    const caller = await resolveContractActionCaller();
+    if (!caller || !caller.isAdminOrBackoffice) {
+      return { error: 'No tienes permisos para modificar fechas de contratos.' };
+    }
+
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, ...visibilityFilter },
       include: { supplyPoint: true, product: true }
     });
 
-    if (!contract) return { error: 'Contrato no encontrado' };
+    if (!contract) return { error: 'Contrato no encontrado o sin permisos' };
 
     const mergedSignature = dates.signatureDate !== undefined ? dates.signatureDate : contract.signatureDate;
     const mergedRequest = dates.requestDate !== undefined ? dates.requestDate : contract.requestDate;
@@ -1062,7 +1168,7 @@ export async function updateContractDatesAction(
     }
 
     // Actualizamos el contrato
-    const updatedContract = await prisma.contract.update({
+    await prisma.contract.update({
       where: { id: contractId },
       data: {
         status: newStatus,
@@ -1088,8 +1194,8 @@ export async function updateContractDatesAction(
       );
     }
 
-    // Si el estado es ACTIVO (o BAJA, implica que llegó a activarse), actualizamos el SupplyPoint
-    if (newStatus === 'ACTIVO' || newStatus === 'BAJA') {
+    // Si el estado es ACTIVO (o FINALIZADO/BAJA, implica que llegó a activarse), actualizamos el SupplyPoint
+    if (newStatus === 'ACTIVO' || newStatus === 'FINALIZADO' || newStatus === 'BAJA') {
       const cData = contract.airtableData as any || {};
       const newTariff = contract.product?.tariff || contract.supplyPoint.tariff;
 
@@ -1205,12 +1311,12 @@ export async function updateContractDatesAction(
       }
     }
 
-    // Si el contrato pasa a ACTIVO por primera vez y hay un anterior, le damos de BAJA
+    // Si el contrato pasa a ACTIVO por primera vez y hay un anterior, lo finalizamos (Regla 55)
     if (newStatus === 'ACTIVO' && contract.status !== 'ACTIVO' && contract.previousContractId) {
       await prisma.contract.update({
         where: { id: contract.previousContractId },
         data: {
-          status: 'BAJA',
+          status: 'FINALIZADO',
           terminationDate: mergedActivation
         }
       });
@@ -1228,8 +1334,16 @@ export async function updateContractDatesAction(
 
 export async function sendContractToDocuSignAction(contractId: string) {
   try {
-    const contract = await prisma.contract.findUnique({
-      where: { id: contractId },
+    const caller = await resolveContractActionCaller();
+    if (!caller || caller.role === 'CLIENT') {
+      return { error: 'No tienes permisos para enviar contratos a DocuSign.' };
+    }
+
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, ...visibilityFilter },
       include: { 
         Lead: true,
         client: true,
@@ -1237,16 +1351,11 @@ export async function sendContractToDocuSignAction(contractId: string) {
       }
     });
 
-    if (!contract) return { error: 'Contrato no encontrado' };
+    if (!contract) return { error: 'Contrato no encontrado o sin permisos' };
     if (!contract.pdfUrl) return { error: 'El contrato no tiene un PDF de borrador generado.' };
     
     // Obtener email y nombre
     const cData: any = typeof contract.airtableData === 'string' ? JSON.parse(contract.airtableData) : (contract.airtableData || {});
-    
-    // Extracción robusta de datos buscando en Lead, Client, SupplyPoint, y luego en el JSON cData
-    // Prioridad 1: Lead (estado de negociación)
-    // Prioridad 2: cData (JSON del Lead / Airtable)
-    // Prioridad 3: Client / SupplyPoint (estado consolidado, pero podría ser antiguo)
     
     let signerEmail = contract.Lead?.email || cData.email || cData.contactEmail || contract.client?.contactEmail;
     let signerName = contract.Lead?.businessName || cData.businessName || contract.client?.businessName || 'Cliente';
@@ -1285,7 +1394,7 @@ export async function sendContractToDocuSignAction(contractId: string) {
       signerEmail,
       emailSubject,
       emailBlurb,
-      signerPhone // Pasamos el teléfono resuelto (Lead, cData or Client)
+      signerPhone
     );
 
     // 3. Guardar el envelopeId
@@ -1303,91 +1412,90 @@ export async function sendContractToDocuSignAction(contractId: string) {
   }
 }
 
-
-export async function createContractModificationAction(contractId: string, type: string, changes: any) {
-  try {
-    const contract = await prisma.contract.findUnique({
-      where: { id: contractId }
-    });
-
-    if (!contract) return { error: 'Contrato no encontrado' };
-
-    // Para M1N (técnica) u otras, creamos un registro de modificación
-    const mod = await prisma.contractModification.create({
-      data: {
-        contractId: contractId,
-        type: type,
-        status: 'PENDIENTE',
-        requestedChanges: changes
-      }
-    });
-
-    // TODO: Si es M1S, podríamos clonar el contrato y generar el Anexo.
-
-    return { success: true, message: 'Modificación solicitada correctamente.', modificationId: mod.id };
-  } catch (error: any) {
-    console.error('Error creating modification:', error);
-    return { error: error.message || 'Error desconocido al solicitar modificación' };
-  }
-}
-
 export async function updateContractFull(formData: FormData) {
   try {
+    const caller = await resolveContractActionCaller();
+    if (!caller || !caller.isAdminOrBackoffice) {
+      return { error: 'No tienes permisos para editar contratos.' };
+    }
+
     const contractId = formData.get('contractId') as string;
     if (!contractId) throw new Error('Contract ID missing');
 
-    const status = formData.get('status') as string;
-    const internalComments = formData.get('internalComments') as string;
-    const signatureDate = formData.get('signatureDate') as string;
-    const requestDate = formData.get('requestDate') as string;
-    const activationDate = formData.get('activationDate') as string;
-    const fechaPrevistaActivacion = formData.get('fechaPrevistaActivacion') as string;
-    const terminationDate = formData.get('terminationDate') as string;
-    const fechaPrevistaBaja = formData.get('fechaPrevistaBaja') as string;
-    const permanenceStartDate = formData.get('permanenceStartDate') as string;
-    const expectedEndDate = formData.get('expectedEndDate') as string;
-    const discountStartDate = formData.get('discountStartDate') as string;
-    const discountEndDate = formData.get('discountEndDate') as string;
-    const svaStartDate = formData.get('svaStartDate') as string;
-    
-    const tramitationType = formData.get('tramitationType') as string;
-    const tipo = formData.get('tipo') as string;
-    const tipoC2 = formData.get('tipoC2') as string;
-    const distributorMsg = formData.get('distributorMsg') as string;
-    const svaConcept = formData.get('svaConcept') as string;
+    const parseOptionalText = (key: string): string | null | undefined => {
+      if (!formData.has(key)) return undefined;
+      const raw = String(formData.get(key) ?? '').trim();
+      return raw === '' ? null : raw;
+    };
 
-    const duration = formData.get('duration') ? parseInt(formData.get('duration') as string) : undefined;
-    const svaDuration = formData.get('svaDuration') ? parseInt(formData.get('svaDuration') as string) : undefined;
+    const parseOptionalDate = (key: string): Date | null | undefined => {
+      if (!formData.has(key)) return undefined;
+      const raw = String(formData.get(key) ?? '').trim();
+      if (raw === '') return null;
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d;
+    };
 
-    const parseF = (val: FormDataEntryValue | null) => val && val !== '' ? parseFloat(val as string) : undefined;
-    const commissionBase = parseF(formData.get('commissionBase'));
-    const commissionFinal = parseF(formData.get('commissionFinal'));
-    const commissionVariable = parseF(formData.get('commissionVariable'));
-    const penalization = parseF(formData.get('penalization'));
-    const svaPrice = parseF(formData.get('svaPrice'));
-    const fee = parseF(formData.get('fee'));
-    const feeExcedentes = parseF(formData.get('feeExcedentes'));
-    const pexc = parseF(formData.get('pexc'));
-    const cgBolsilloSolar = parseF(formData.get('cgBolsilloSolar'));
-    const deviationCost = parseF(formData.get('deviationCost'));
-    const discountPrice = parseF(formData.get('discountPrice'));
-    
-    const p1e = parseF(formData.get('p1e')); const p2e = parseF(formData.get('p2e')); const p3e = parseF(formData.get('p3e'));
-    const p4e = parseF(formData.get('p4e')); const p5e = parseF(formData.get('p5e')); const p6e = parseF(formData.get('p6e'));
-    const p1p = parseF(formData.get('p1p')); const p2p = parseF(formData.get('p2p')); const p3p = parseF(formData.get('p3p'));
-    const p4p = parseF(formData.get('p4p')); const p5p = parseF(formData.get('p5p')); const p6p = parseF(formData.get('p6p'));
-    const p1c = parseF(formData.get('p1c')); const p2c = parseF(formData.get('p2c')); const p3c = parseF(formData.get('p3c'));
-    const p4c = parseF(formData.get('p4c')); const p5c = parseF(formData.get('p5c')); const p6c = parseF(formData.get('p6c'));
+    const parseOptionalFloat = (key: string): number | null | undefined => {
+      if (!formData.has(key)) return undefined;
+      const raw = String(formData.get(key) ?? '').trim();
+      if (raw === '') return null;
+      const n = parseFloat(raw.replace(',', '.'));
+      return Number.isFinite(n) ? n : undefined;
+    };
 
-    const distributor = formData.get('distributor') as string;
-    const annualConsumptionStr = formData.get('annualConsumption') as string;
-    const vatNumber = formData.get('vatNumber') as string;
-    const contactEmail = formData.get('contactEmail') as string;
-    const invoiceEmail = formData.get('invoiceEmail') as string;
-    const contactPhone = formData.get('contactPhone') as string;
-    const iban = formData.get('iban') as string;
-    const cnae = formData.get('cnae') as string;
-    const tariff = formData.get('tariff') as string;
+    const parseOptionalInt = (key: string): number | null | undefined => {
+      if (!formData.has(key)) return undefined;
+      const raw = String(formData.get(key) ?? '').trim();
+      if (raw === '') return null;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const status = parseOptionalText('status') ?? undefined;
+    const internalComments = parseOptionalText('internalComments');
+    const signatureDate = parseOptionalDate('signatureDate');
+    const requestDate = parseOptionalDate('requestDate');
+    const activationDate = parseOptionalDate('activationDate');
+    const fechaPrevistaActivacion = parseOptionalDate('fechaPrevistaActivacion');
+    const terminationDate = parseOptionalDate('terminationDate');
+    const fechaPrevistaBaja = parseOptionalDate('fechaPrevistaBaja');
+    const permanenceStartDate = parseOptionalDate('permanenceStartDate');
+    const expectedEndDate = parseOptionalDate('expectedEndDate');
+    const discountStartDate = parseOptionalDate('discountStartDate');
+    const discountEndDate = parseOptionalDate('discountEndDate');
+    const svaStartDate = parseOptionalDate('svaStartDate');
+
+    const tramitationType = parseOptionalText('tramitationType');
+    const tipo = parseOptionalText('tipo');
+    const tipoC2 = parseOptionalText('tipoC2');
+    const bajaProcess = parseOptionalText('bajaProcess');
+    const distributorMsg = parseOptionalText('distributorMsg');
+    const svaConcept = parseOptionalText('svaConcept');
+    const iban = parseOptionalText('iban');
+    const tariff = parseOptionalText('tariff');
+
+    const duration = parseOptionalInt('duration');
+    const svaDuration = parseOptionalInt('svaDuration');
+
+    const commissionBase = parseOptionalFloat('commissionBase');
+    const commissionFinal = parseOptionalFloat('commissionFinal');
+    const commissionVariable = parseOptionalFloat('commissionVariable');
+    const penalization = parseOptionalFloat('penalization');
+    const svaPrice = parseOptionalFloat('svaPrice');
+    const fee = parseOptionalFloat('fee');
+    const feeExcedentes = parseOptionalFloat('feeExcedentes');
+    const pexc = parseOptionalFloat('pexc');
+    const cgBolsilloSolar = parseOptionalFloat('cgBolsilloSolar');
+    const deviationCost = parseOptionalFloat('deviationCost');
+    const discountPrice = parseOptionalFloat('discountPrice');
+
+    const p1e = parseOptionalFloat('p1e'); const p2e = parseOptionalFloat('p2e'); const p3e = parseOptionalFloat('p3e');
+    const p4e = parseOptionalFloat('p4e'); const p5e = parseOptionalFloat('p5e'); const p6e = parseOptionalFloat('p6e');
+    const p1p = parseOptionalFloat('p1p'); const p2p = parseOptionalFloat('p2p'); const p3p = parseOptionalFloat('p3p');
+    const p4p = parseOptionalFloat('p4p'); const p5p = parseOptionalFloat('p5p'); const p6p = parseOptionalFloat('p6p');
+    const p1c = parseOptionalFloat('p1c'); const p2c = parseOptionalFloat('p2c'); const p3c = parseOptionalFloat('p3c');
+    const p4c = parseOptionalFloat('p4c'); const p5c = parseOptionalFloat('p5c'); const p6c = parseOptionalFloat('p6c');
 
     const file = formData.get('signedContractPdf') as File | null;
     const anexoFile = formData.get('signedAnexoPdf') as File | null;
@@ -1419,7 +1527,9 @@ export async function updateContractFull(formData: FormData) {
           type: 'Contrato',
           url: fileUrlStr,
           name: fileNameStr,
-          contractId: contractId
+          contractId: contractId,
+          clientId: existing.clientId,
+          supplyPointId: existing.supplyPointId,
         }
       });
     } else if (file && file.size > 0) {
@@ -1429,13 +1539,14 @@ export async function updateContractFull(formData: FormData) {
       const url = await uploadFileToR2(`contracts/${contractId}/${file.name}`, buffer, file.type || 'application/pdf');
       filePdfSignedUrl = url;
 
-      // Save it as a Document related to Contract
       await prisma.document.create({
         data: {
           type: 'Contrato',
           url: url,
           name: file.name,
-          contractId: contractId
+          contractId: contractId,
+          clientId: existing.clientId,
+          supplyPointId: existing.supplyPointId,
         }
       });
     }
@@ -1446,7 +1557,9 @@ export async function updateContractFull(formData: FormData) {
           type: 'Anexo',
           url: anexoUrlStr,
           name: anexoNameStr,
-          contractId: contractId
+          contractId: contractId,
+          clientId: existing.clientId,
+          supplyPointId: existing.supplyPointId,
         }
       });
     } else if (anexoFile && anexoFile.size > 0) {
@@ -1461,12 +1574,13 @@ export async function updateContractFull(formData: FormData) {
           type: 'Anexo',
           url: url,
           name: anexoFile.name,
-          contractId: contractId
+          contractId: contractId,
+          clientId: existing.clientId,
+          supplyPointId: existing.supplyPointId,
         }
       });
     }
 
-    // Determine if we should update SupplyPoint or Contract with IBAN
     let newStatus = status || existing.status;
     
     // Auto-accept if M1, version > 0 and a signed anexo was uploaded
@@ -1476,25 +1590,24 @@ export async function updateContractFull(formData: FormData) {
     
     const isActivo = newStatus === 'ACTIVO';
 
-    const cDataObj = (existing.airtableData as any) || {};
+    const cDataObj = { ...((existing.airtableData as any) || {}) };
     if (tariff) {
       cDataObj.tarifa = tariff;
       cDataObj.Tarifa = tariff;
       cDataObj['Código Tarifa'] = [tariff];
     }
 
-    // Contract data is a snapshot. We no longer update Client or SupplyPoint on arbitrary edits (Reglas 69, 73 y 75).
     // Regla 72: La sincronización hacia el CUPS se realiza de forma atómica y exclusiva cuando transiciona a ACTIVO.
     if (existing.status !== 'ACTIVO' && isActivo && existing.supplyPointId) {
       const spSync: any = {};
       if (tariff) spSync.tariff = tariff;
       if (iban || existing.iban) spSync.iban = iban || existing.iban;
-      if (p1c !== undefined) spSync.p1c = p1c;
-      if (p2c !== undefined) spSync.p2c = p2c;
-      if (p3c !== undefined) spSync.p3c = p3c;
-      if (p4c !== undefined) spSync.p4c = p4c;
-      if (p5c !== undefined) spSync.p5c = p5c;
-      if (p6c !== undefined) spSync.p6c = p6c;
+      if (p1c !== undefined && p1c !== null) spSync.p1c = p1c;
+      if (p2c !== undefined && p2c !== null) spSync.p2c = p2c;
+      if (p3c !== undefined && p3c !== null) spSync.p3c = p3c;
+      if (p4c !== undefined && p4c !== null) spSync.p4c = p4c;
+      if (p5c !== undefined && p5c !== null) spSync.p5c = p5c;
+      if (p6c !== undefined && p6c !== null) spSync.p6c = p6c;
       if (Object.keys(spSync).length > 0) {
         await prisma.supplyPoint.update({
           where: { id: existing.supplyPointId },
@@ -1511,20 +1624,21 @@ export async function updateContractFull(formData: FormData) {
       where: { id: contractId },
       data: {
         status: newStatus || undefined,
-        iban: iban || undefined,
+        iban: iban,
+        bajaProcess: bajaProcess,
         internalComments: internalComments,
-        signatureDate: signatureDate ? new Date(signatureDate) : null,
-        requestDate: requestDate ? new Date(requestDate) : null,
-        activationDate: activationDate ? new Date(activationDate) : null,
-        fechaPrevistaActivacion: fechaPrevistaActivacion ? new Date(fechaPrevistaActivacion) : null,
-        terminationDate: terminationDate ? new Date(terminationDate) : null,
-        fechaPrevistaBaja: fechaPrevistaBaja ? new Date(fechaPrevistaBaja) : null,
-        permanenceStartDate: permanenceStartDate ? new Date(permanenceStartDate) : null,
-        expectedEndDate: expectedEndDate ? new Date(expectedEndDate) : null,
-        discountStartDate: discountStartDate ? new Date(discountStartDate) : null,
-        discountEndDate: discountEndDate ? new Date(discountEndDate) : null,
-        svaStartDate: svaStartDate ? new Date(svaStartDate) : null,
-        tramitationType: tramitationType || undefined,
+        signatureDate: signatureDate,
+        requestDate: requestDate,
+        activationDate: activationDate,
+        fechaPrevistaActivacion: fechaPrevistaActivacion,
+        terminationDate: terminationDate,
+        fechaPrevistaBaja: fechaPrevistaBaja,
+        permanenceStartDate: permanenceStartDate,
+        expectedEndDate: expectedEndDate,
+        discountStartDate: discountStartDate,
+        discountEndDate: discountEndDate,
+        svaStartDate: svaStartDate,
+        tramitationType: tramitationType !== undefined ? tramitationType : undefined,
         tipo: preserveSpecialTipo ? existing.tipo : (tipo || mappedTramitation.tipo || undefined),
         tipoC2: preserveSpecialTipo ? existing.tipoC2 : (tipoC2 || mappedTramitation.tipoC2 || undefined),
         distributorMsg: distributorMsg,
@@ -1542,7 +1656,7 @@ export async function updateContractFull(formData: FormData) {
       }
     });
 
-    if (existing.status !== 'ACTIVO' && isActivo && commissionFinal === undefined) {
+    if (existing.status !== 'ACTIVO' && isActivo && (commissionFinal === undefined || commissionFinal === null)) {
       await calculateAndSnapshotContractCommission(contractId, { onlyIfEmpty: true }).catch((err) =>
         console.warn('Auto-cálculo de comisión omitido en updateContractFull:', err)
       );
@@ -1557,10 +1671,156 @@ export async function updateContractFull(formData: FormData) {
   }
 }
 
+const IN_PROGRESS_STATUSES = [
+  'TRAMITANDO',
+  'Tramitando',
+  'ACEPTADO',
+  'VERIFICANDO_FIRMA',
+  'BORRADOR',
+  'RENOVACION',
+];
+
+function buildContractsFilterClause(
+  visibilityFilter: any,
+  searchTerm: string,
+  estadoFilter: string,
+  tarifaFilter: string,
+  canalFilter: string,
+  tipoFilter: string,
+  activeOnDate?: string
+) {
+  const andConditions: any[] = [visibilityFilter];
+
+  const cleanSearch = (searchTerm || '').trim();
+  if (cleanSearch) {
+    const terms = cleanSearch.split(/\s+/).filter(Boolean);
+    for (const term of terms) {
+      andConditions.push({
+        OR: [
+          { contractCode: { contains: term, mode: 'insensitive' } },
+          { nSolicitud: { contains: term, mode: 'insensitive' } },
+          { supplyPoint: { cups: { contains: term, mode: 'insensitive' } } },
+          { supplyPoint: { address: { contains: term, mode: 'insensitive' } } },
+          { supplyPoint: { city: { contains: term, mode: 'insensitive' } } },
+          { supplyPoint: { postalCode: { contains: term, mode: 'insensitive' } } },
+          { client: { businessName: { contains: term, mode: 'insensitive' } } },
+          { client: { firstName: { contains: term, mode: 'insensitive' } } },
+          { client: { lastName: { contains: term, mode: 'insensitive' } } },
+          { client: { vatNumber: { contains: term, mode: 'insensitive' } } },
+          { product: { name: { contains: term, mode: 'insensitive' } } },
+          { user: { name: { contains: term, mode: 'insensitive' } } },
+        ],
+      });
+    }
+  }
+
+  if (estadoFilter && estadoFilter !== 'Todos') {
+    if (estadoFilter === 'EN_PROCESO') {
+      andConditions.push({ status: { in: IN_PROGRESS_STATUSES } });
+    } else if (estadoFilter === 'FINALIZADO' || estadoFilter === 'BAJA') {
+      andConditions.push({ status: { in: ['FINALIZADO', 'Finalizado', 'BAJA'] } });
+    } else if (estadoFilter === 'RECHAZO_DISTRIBUIDORA') {
+      andConditions.push({
+        status: { in: ['RECHAZO_DISTRIBUIDORA', 'Rechazo Distribuidora', 'RECHAZO DISTRIBUIDORA'] },
+      });
+    } else if (estadoFilter === 'RECHAZADO_TODOS') {
+      andConditions.push({
+        status: {
+          in: [
+            'RECHAZADO',
+            'RECHAZO_DISTRIBUIDORA',
+            'Rechazo Distribuidora',
+            'RECHAZO DISTRIBUIDORA',
+            'RECHAZO_COMERCIALIZADORA',
+            'RECHAZO_RIESGOS',
+            'RECHAZADO_POR_CLIENTE',
+          ],
+        },
+      });
+    } else if (estadoFilter === 'ACTIVO') {
+      andConditions.push({ status: { in: ['ACTIVO', 'Activo'] } });
+    } else if (estadoFilter === 'TRAMITANDO') {
+      andConditions.push({ status: { in: ['TRAMITANDO', 'Tramitando'] } });
+    } else {
+      andConditions.push({ status: estadoFilter });
+    }
+  }
+
+  if (activeOnDate) {
+    const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
+    if (!isNaN(targetEndOfDay.getTime())) {
+      if (!estadoFilter || estadoFilter === 'Todos') {
+        andConditions.push({ status: { in: ['ACTIVO', 'Activo', 'FINALIZADO', 'Finalizado', 'BAJA'] } });
+      }
+      andConditions.push(
+        { activationDate: { lte: targetEndOfDay } },
+        {
+          OR: [{ terminationDate: null }, { terminationDate: { gt: targetEndOfDay } }],
+        }
+      );
+    }
+  }
+
+  if (tarifaFilter && tarifaFilter !== 'Todas') {
+    andConditions.push({
+      OR: [{ supplyPoint: { tariff: tarifaFilter } }, { product: { tariff: tarifaFilter } }],
+    });
+  }
+
+  if (canalFilter && canalFilter !== 'Todos') {
+    andConditions.push({
+      user: {
+        channel: {
+          name: canalFilter,
+        },
+      },
+    });
+  }
+
+  if (tipoFilter && tipoFilter !== 'Todos') {
+    andConditions.push({ tipo: tipoFilter });
+  }
+
+  const hasNarrowFilters = Boolean(
+    cleanSearch ||
+      (estadoFilter && estadoFilter !== 'Todos') ||
+      (tarifaFilter && tarifaFilter !== 'Todas') ||
+      (canalFilter && canalFilter !== 'Todos') ||
+      (tipoFilter && tipoFilter !== 'Todos') ||
+      activeOnDate
+  );
+
+  const whereClause = andConditions.length === 1 ? andConditions[0] : { AND: andConditions };
+  return { whereClause, hasNarrowFilters };
+}
+
+function resolveContractAttachmentUrls(c: any) {
+  const airtableData = (c?.airtableData as any) || {};
+
+  let signedUrl = c?.filePdfSigned || null;
+  if (!signedUrl && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
+    signedUrl = airtableData['PDF Contrato firmado'][0].url;
+  } else if (!signedUrl && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
+    signedUrl = airtableData['Contrato .PDF'][0].url;
+  }
+
+  let draftUrl = c?.pdfUrl || null;
+  if (!draftUrl && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
+    draftUrl = airtableData['Borrador contrato'][0].url;
+  }
+
+  let annexUrl = c?.fileAnexoFirmado || null;
+  if (!annexUrl && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
+    annexUrl = airtableData['PDF Anexo firmado'][0].url;
+  }
+
+  return { signedUrl, draftUrl, annexUrl };
+}
+
 export async function getPaginatedContractsAction(
-  page: number, 
-  limit: number, 
-  searchTerm: string, 
+  page: number,
+  limit: number,
+  searchTerm: string,
   estadoFilter: string,
   tarifaFilter: string,
   canalFilter: string,
@@ -1570,96 +1830,23 @@ export async function getPaginatedContractsAction(
   activeOnDate?: string
 ) {
   try {
+    const caller = await resolveContractActionCaller();
+    if (!caller) {
+      return { success: false, error: 'No autorizado' };
+    }
+
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const visibilityFilter = await getUserVisibilityFilter();
 
-    let whereClause: any = { ...visibilityFilter };
-
-    if (searchTerm) {
-      const terms = searchTerm.split(/\s+/).filter(Boolean);
-      
-      const searchConditions = terms.map(term => ({
-        OR: [
-          { contractCode: { contains: term, mode: 'insensitive' } },
-          { supplyPoint: { cups: { contains: term, mode: 'insensitive' } } },
-          { client: { businessName: { contains: term, mode: 'insensitive' } } },
-          { client: { firstName: { contains: term, mode: 'insensitive' } } },
-          { client: { lastName: { contains: term, mode: 'insensitive' } } },
-          { product: { name: { contains: term, mode: 'insensitive' } } }
-        ]
-      }));
-
-      if (whereClause.AND) {
-        if (Array.isArray(whereClause.AND)) {
-          whereClause.AND = [...whereClause.AND, ...searchConditions];
-        } else {
-          whereClause.AND = [whereClause.AND, ...searchConditions];
-        }
-      } else {
-        whereClause.AND = searchConditions;
-      }
-    }
-
-    if (estadoFilter && estadoFilter !== 'Todos') {
-      if (estadoFilter === 'FINALIZADO' || estadoFilter === 'BAJA') {
-        whereClause.status = { in: ['FINALIZADO', 'Finalizado', 'BAJA'] };
-      } else if (estadoFilter === 'RECHAZO_DISTRIBUIDORA') {
-        whereClause.status = { in: ['RECHAZO_DISTRIBUIDORA', 'Rechazo Distribuidora'] };
-      } else if (estadoFilter === 'ACTIVO') {
-        whereClause.status = { in: ['ACTIVO', 'Activo'] };
-      } else if (estadoFilter === 'TRAMITANDO') {
-        whereClause.status = { in: ['TRAMITANDO', 'Tramitando'] };
-      } else {
-        whereClause.status = estadoFilter;
-      }
-    }
-
-    if (activeOnDate) {
-      const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
-      if (!isNaN(targetEndOfDay.getTime())) {
-        if (!estadoFilter || estadoFilter === 'Todos') {
-          whereClause.status = { in: ['ACTIVO', 'Activo', 'FINALIZADO', 'Finalizado', 'BAJA'] };
-        }
-        const activeConditions = [
-          { activationDate: { lte: targetEndOfDay } },
-          {
-            OR: [
-              { terminationDate: null },
-              { terminationDate: { gt: targetEndOfDay } }
-            ]
-          }
-        ];
-        if (whereClause.AND) {
-          if (Array.isArray(whereClause.AND)) {
-            whereClause.AND = [...whereClause.AND, ...activeConditions];
-          } else {
-            whereClause.AND = [whereClause.AND, ...activeConditions];
-          }
-        } else {
-          whereClause.AND = activeConditions;
-        }
-      }
-    }
-
-    if (tarifaFilter && tarifaFilter !== 'Todas') {
-      whereClause.supplyPoint = {
-        ...whereClause.supplyPoint,
-        tariff: tarifaFilter
-      };
-    }
-
-    if (canalFilter && canalFilter !== 'Todos') {
-      whereClause.user = {
-        ...whereClause.user,
-        channel: {
-          name: canalFilter
-        }
-      };
-    }
-
-    if (tipoFilter && tipoFilter !== 'Todos') {
-      whereClause.tipo = tipoFilter;
-    }
+    const { whereClause, hasNarrowFilters } = buildContractsFilterClause(
+      visibilityFilter,
+      searchTerm,
+      estadoFilter,
+      tarifaFilter,
+      canalFilter,
+      tipoFilter,
+      activeOnDate
+    );
 
     let orderBy: any = undefined;
     if (sortCol) {
@@ -1672,24 +1859,14 @@ export async function getPaginatedContractsAction(
       else if (sortCol === 'consumoMwh') orderBy = { supplyPoint: { annualConsumption: sortDir } };
       else if (sortCol === 'canal') orderBy = { user: { channel: { name: sortDir } } };
       else if (sortCol === 'comercial') orderBy = { user: { name: sortDir } };
-      // Fallback
       else orderBy = { createdAt: 'desc' };
     } else {
       orderBy = { createdAt: 'desc' };
     }
 
-    let orderByParams: any[] = [];
-    if (orderBy) {
-      if (Array.isArray(orderBy)) {
-        orderByParams = [...orderBy];
-      } else {
-        orderByParams = [orderBy];
-      }
-    }
+    const orderByParams: any[] = Array.isArray(orderBy) ? [...orderBy] : [orderBy];
     orderByParams.push({ version: 'desc' });
 
-    // Fetch all matching IDs and contract codes to deduplicate in memory
-    // This allows us to keep the complex filtering/sorting from Prisma
     const allMatching = await prisma.contract.findMany({
       where: whereClause,
       select: {
@@ -1701,32 +1878,43 @@ export async function getPaginatedContractsAction(
         signatureDate: true,
         activationDate: true,
         terminationDate: true,
-        supplyPoint: { select: { cups: true, annualConsumption: true } }
+        annualConsumption: true,
+        supplyPoint: { select: { cups: true, annualConsumption: true } },
       },
-      orderBy: orderByParams
+      orderBy: orderByParams,
     });
 
     // Filtramos FALSAS BAJAS (Regla 47 y Regla 55: si hay otro contrato dentro de 30 días de gracia en el mismo CUPS, no es baja)
     // Si se consulta activos a una fecha específica (activeOnDate), NO excluimos contratos que renovaron posteriormente, ya que en esa fecha sí eran el contrato activo vigente.
-    const bajaContracts = activeOnDate ? [] : allMatching.filter(c => ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId));
+    const bajaContracts = activeOnDate
+      ? []
+      : allMatching.filter(
+          (c) => ['BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status) && (c.supplyPoint?.cups || c.supplyPointId)
+        );
     const falseBajaIds = new Set<string>();
 
     if (bajaContracts.length > 0) {
       const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
-      const allContractsForCups = await prisma.contract.findMany({
-        where: {
-          ...visibilityFilter,
-          status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
-        },
-        select: {
-          id: true,
-          contractCode: true,
-          supplyPointId: true,
-          activationDate: true,
-          terminationDate: true,
-          supplyPoint: { select: { cups: true } }
-        }
-      });
+      const allContractsForCups = hasNarrowFilters
+        ? await prisma.contract.findMany({
+            where: {
+              AND: [
+                visibilityFilter,
+                { status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] } },
+              ],
+            },
+            select: {
+              id: true,
+              contractCode: true,
+              supplyPointId: true,
+              activationDate: true,
+              terminationDate: true,
+              supplyPoint: { select: { cups: true } },
+            },
+          })
+        : allMatching.filter((c) =>
+            ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status)
+          );
 
       const contractsByCups: Record<string, typeof allContractsForCups> = {};
       for (const c of allContractsForCups) {
@@ -1751,7 +1939,6 @@ export async function getPaginatedContractsAction(
           if (!sibling.activationDate) continue;
 
           const siblingActTime = sibling.activationDate.getTime();
-          // Es falsa baja si un contrato hermano se activa después o igual, y antes del fin del periodo de gracia
           if (siblingActTime >= bajaActTime && siblingActTime <= bajaTermTime + GRACE_PERIOD_MS) {
             isFalseBaja = true;
             break;
@@ -1764,10 +1951,10 @@ export async function getPaginatedContractsAction(
       }
     }
 
-    // Pre-calcular el mejor ID para cada contractCode (priorizando ACTIVO > TRAMITANDO/ACEPTADO > mayor versión)
+    // Pre-calcular el mejor ID para cada contractCode (priorizando ACTIVO > EN_PROCESO > FINALIZADO > mayor versión)
     const bestIdForCode = new Map<string, string>();
     const groupMap = new Map<string, typeof allMatching>();
-    
+
     for (const item of allMatching) {
       if (falseBajaIds.has(item.id)) continue;
       if (item.contractCode) {
@@ -1778,9 +1965,9 @@ export async function getPaginatedContractsAction(
 
     for (const [code, group] of groupMap.entries()) {
       const sortedByVersion = [...group].sort((a, b) => (b.version || 0) - (a.version || 0));
-      const active = sortedByVersion.find(c => c.status === 'ACTIVO' || c.status === 'Activo');
-      const inProgress = sortedByVersion.find(c => c.status === 'TRAMITANDO' || c.status === 'ACEPTADO');
-      const fin = sortedByVersion.find(c => c.status === 'FINALIZADO' || c.status === 'Finalizado');
+      const active = sortedByVersion.find((c) => c.status === 'ACTIVO' || c.status === 'Activo');
+      const inProgress = sortedByVersion.find((c) => IN_PROGRESS_STATUSES.includes(c.status));
+      const fin = sortedByVersion.find((c) => c.status === 'FINALIZADO' || c.status === 'Finalizado');
       const chosen = active || inProgress || fin || sortedByVersion[0];
       bestIdForCode.set(code, chosen.id);
     }
@@ -1789,8 +1976,8 @@ export async function getPaginatedContractsAction(
     const rawDeduplicatedIds: string[] = [];
 
     for (const item of allMatching) {
-      if (falseBajaIds.has(item.id)) continue; // Omitir las falsas bajas de la tabla
-      
+      if (falseBajaIds.has(item.id)) continue;
+
       if (item.contractCode) {
         if (!seenCodes.has(item.contractCode)) {
           seenCodes.add(item.contractCode);
@@ -1807,8 +1994,8 @@ export async function getPaginatedContractsAction(
     if (activeOnDate) {
       const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
       const targetTime = targetEndOfDay.getTime();
-      const itemById = new Map(allMatching.map(i => [i.id, i]));
-      const bestByCups = new Map<string, typeof allMatching[0]>();
+      const itemById = new Map(allMatching.map((i) => [i.id, i]));
+      const bestByCups = new Map<string, (typeof allMatching)[0]>();
 
       for (const id of rawDeduplicatedIds) {
         const item = itemById.get(id);
@@ -1818,7 +2005,6 @@ export async function getPaginatedContractsAction(
           bestByCups.set(cupsKey, item);
         } else {
           const existing = bestByCups.get(cupsKey)!;
-          // Si dos contratos del mismo CUPS solapan en la fecha consultada, priorizar el que ya estaba firmado en esa fecha
           const itemSignedByTarget = !item.signatureDate || item.signatureDate.getTime() <= targetTime;
           const existSignedByTarget = !existing.signatureDate || existing.signatureDate.getTime() <= targetTime;
 
@@ -1834,55 +2020,42 @@ export async function getPaginatedContractsAction(
         }
       }
 
-      const validIdSet = new Set(Array.from(bestByCups.values()).map(i => i.id));
-      deduplicatedIds = rawDeduplicatedIds.filter(id => validIdSet.has(id));
+      const validIdSet = new Set(Array.from(bestByCups.values()).map((i) => i.id));
+      deduplicatedIds = rawDeduplicatedIds.filter((id) => validIdSet.has(id));
 
       let sumMwh = 0;
       for (const item of bestByCups.values()) {
-        sumMwh += item.supplyPoint?.annualConsumption || 0;
+        sumMwh += item.annualConsumption ?? item.supplyPoint?.annualConsumption ?? 0;
       }
       activeOnDateMwh = sumMwh;
     }
 
     const totalCount = deduplicatedIds.length;
 
-    const offset = (page - 1) * limit;
-    const pageIds = deduplicatedIds.slice(offset, offset + limit);
+    const safePage = Math.max(1, page || 1);
+    const safeLimit = Math.min(Math.max(1, limit || 100), 500);
+    const offset = (safePage - 1) * safeLimit;
+    const pageIds = deduplicatedIds.slice(offset, offset + safeLimit);
 
-    const contracts = await prisma.contract.findMany({
-      where: { id: { in: pageIds } },
-      include: {
-        Lead: true,
-        product: { select: { name: true } },
-        user: { select: { name: true, email: true, channel: { select: { name: true } } } },
-        client: true,
-        supplyPoint: true
-      },
-    });
+    const contracts = pageIds.length
+      ? await prisma.contract.findMany({
+          where: { id: { in: pageIds } },
+          include: {
+            Lead: true,
+            product: { select: { name: true, tariff: true, type: true, pricingModel: true } },
+            user: { select: { name: true, email: true, channel: { select: { name: true } } } },
+            client: true,
+            supplyPoint: true,
+          },
+        })
+      : [];
 
-    // Ensure we preserve the original requested order
-    contracts.sort((a, b) => pageIds.indexOf(a.id) - pageIds.indexOf(b.id));
+    const orderIndex = new Map(pageIds.map((id, idx) => [id, idx]));
+    contracts.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
 
-    const uiContracts = contracts.map(c => {
-      const airtableData = (c.airtableData as any) || {};
-      
-      let signedUrl = c.filePdfSigned || null;
-      if (!signedUrl && airtableData['PDF Contrato firmado'] && Array.isArray(airtableData['PDF Contrato firmado']) && airtableData['PDF Contrato firmado'].length > 0) {
-        signedUrl = airtableData['PDF Contrato firmado'][0].url;
-      } else if (!signedUrl && airtableData['Contrato .PDF'] && Array.isArray(airtableData['Contrato .PDF']) && airtableData['Contrato .PDF'].length > 0) {
-        signedUrl = airtableData['Contrato .PDF'][0].url;
-      }
-
-      let draftUrl = c.pdfUrl || null;
-      if (!draftUrl && airtableData['Borrador contrato'] && Array.isArray(airtableData['Borrador contrato']) && airtableData['Borrador contrato'].length > 0) {
-        draftUrl = airtableData['Borrador contrato'][0].url;
-      }
-
-      let annexUrl = c.fileAnexoFirmado || null;
-      if (!annexUrl && airtableData['PDF Anexo firmado'] && Array.isArray(airtableData['PDF Anexo firmado']) && airtableData['PDF Anexo firmado'].length > 0) {
-        annexUrl = airtableData['PDF Anexo firmado'][0].url;
-      }
-      return {
+    const uiContracts = contracts.map((c) => {
+      const { signedUrl, draftUrl, annexUrl } = resolveContractAttachmentUrls(c);
+      const rawUi = {
         ...c,
         lead: c.Lead,
         client: c.client,
@@ -1891,82 +2064,122 @@ export async function getPaginatedContractsAction(
         product: c.product,
         signedUrl,
         draftUrl,
-        annexUrl
+        annexUrl,
       };
+      return sanitizeContractForRole(rawUi, caller.role);
     });
 
     return { success: true, contracts: uiContracts, totalCount, activeOnDateMwh };
   } catch (error: any) {
-    console.error("Error fetching paginated contracts:", error);
+    console.error('Error fetching paginated contracts:', error);
     return { success: false, error: error.message };
   }
 }
 
 export async function getContractVersionsAction(contractCode: string) {
   try {
+    const caller = await resolveContractActionCaller();
+    if (!caller) return { success: false, error: 'No autorizado' };
+
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const visibilityFilter = await getUserVisibilityFilter();
 
     const versions = await prisma.contract.findMany({
-      where: { 
-        ...visibilityFilter,
-        contractCode 
+      where: {
+        AND: [visibilityFilter, { contractCode }],
       },
       select: {
         id: true,
         version: true,
         createdAt: true,
-        status: true
+        status: true,
       },
-      orderBy: { version: 'desc' }
+      orderBy: { version: 'desc' },
     });
 
     return { success: true, versions };
   } catch (error: any) {
-    console.error("Error fetching contract versions:", error);
+    console.error('Error fetching contract versions:', error);
     return { success: false, error: error.message };
   }
 }
 
 export async function getContractStatsAction() {
   try {
+    const caller = await resolveContractActionCaller();
+    if (!caller) return { success: false, error: 'No autorizado' };
+
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const visibilityFilter = await getUserVisibilityFilter();
 
-    const activos = await prisma.contract.count({
-      where: { ...visibilityFilter, status: { in: ['ACTIVO', 'Activo'] } }
-    });
-
-    const tramitando = await prisma.contract.count({
-      where: { ...visibilityFilter, status: { in: ['TRAMITANDO', 'Tramitando'] } }
-    });
-
-    // Bajas: Net Bajas logic (agrupado por primeros 20 caracteres del CUPS, Regla 17 y Regla 124)
-    const contracts = await prisma.contract.findMany({
-      where: {
-        ...visibilityFilter,
-        status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
-      },
+    const allContracts = await prisma.contract.findMany({
+      where: visibilityFilter,
       select: {
         id: true,
+        contractCode: true,
+        version: true,
+        status: true,
         activationDate: true,
         terminationDate: true,
+        annualConsumption: true,
         supplyPointId: true,
-        supplyPoint: { select: { cups: true } }
-      }
+        supplyPoint: { select: { cups: true, annualConsumption: true } },
+      },
     });
 
+    // Deduplicate versions by contractCode using the exact same priority rule as the contracts table
+    const groupedByCode = new Map<string, typeof allContracts>();
+    const standaloneContracts: typeof allContracts = [];
+
+    for (const c of allContracts) {
+      if (c.contractCode) {
+        if (!groupedByCode.has(c.contractCode)) groupedByCode.set(c.contractCode, []);
+        groupedByCode.get(c.contractCode)!.push(c);
+      } else {
+        standaloneContracts.push(c);
+      }
+    }
+
+    const deduplicatedContracts: typeof allContracts = [...standaloneContracts];
+    for (const group of groupedByCode.values()) {
+      const sortedByVersion = [...group].sort((a, b) => (b.version || 0) - (a.version || 0));
+      const active = sortedByVersion.find((c) => c.status === 'ACTIVO' || c.status === 'Activo');
+      const inProgress = sortedByVersion.find((c) => IN_PROGRESS_STATUSES.includes(c.status));
+      const fin = sortedByVersion.find((c) => c.status === 'FINALIZADO' || c.status === 'Finalizado');
+      deduplicatedContracts.push(active || inProgress || fin || sortedByVersion[0]);
+    }
+
+    let activos = 0;
+    let tramitando = 0;
+    let totalMwh = 0;
+    const countedActiveCups = new Set<string>();
+
+    for (const c of deduplicatedContracts) {
+      if (c.status === 'ACTIVO' || c.status === 'Activo') {
+        activos++;
+        const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId || c.id;
+        if (cupsKey && !countedActiveCups.has(cupsKey)) {
+          totalMwh += c.annualConsumption ?? c.supplyPoint?.annualConsumption ?? 0;
+          countedActiveCups.add(cupsKey);
+        }
+      } else if (IN_PROGRESS_STATUSES.includes(c.status)) {
+        tramitando++;
+      }
+    }
+
+    // Bajas Netas por CUPS físico de 20 caracteres con 30 días de gracia (Regla 17, Regla 47 y Regla 124)
     const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
-    const contractsByCups: Record<string, typeof contracts> = {};
-    contracts.forEach(c => {
+    const contractsByCups: Record<string, typeof allContracts> = {};
+    for (const c of allContracts) {
+      if (!['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status)) continue;
       const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
-      if (!cupsKey || !c.activationDate) return;
+      if (!cupsKey || !c.activationDate) continue;
       if (!contractsByCups[cupsKey]) contractsByCups[cupsKey] = [];
       contractsByCups[cupsKey].push(c);
-    });
+    }
 
     let netBajasCount = 0;
-    Object.values(contractsByCups).forEach(cupsContracts => {
+    Object.values(contractsByCups).forEach((cupsContracts) => {
       cupsContracts.sort((a, b) => a.activationDate!.getTime() - b.activationDate!.getTime());
       let currentPeriod: { end: Date | null } | null = null;
       let localNetBajas = 0;
@@ -1997,25 +2210,7 @@ export async function getContractStatsAction() {
       netBajasCount += localNetBajas;
     });
 
-    const bajas = netBajasCount;
-
-    // MWh: Solamente de contratos activos (misma cartera viva que dashboard, deduplicado por CUPS)
-    const activeContracts = await prisma.contract.findMany({
-      where: { ...visibilityFilter, status: { in: ['ACTIVO', 'Activo'] } },
-      select: { supplyPointId: true, supplyPoint: { select: { cups: true, annualConsumption: true } } }
-    });
-    
-    let totalMwh = 0;
-    const countedCups = new Set<string>();
-    activeContracts.forEach(c => {
-      const cupsKey = c.supplyPoint?.cups?.substring(0, 20) || c.supplyPointId;
-      if (cupsKey && !countedCups.has(cupsKey)) {
-        totalMwh += c.supplyPoint?.annualConsumption || 0;
-        countedCups.add(cupsKey);
-      }
-    });
-
-    return { success: true, activos, tramitando, bajas, totalMwh };
+    return { success: true, activos, tramitando, bajas: netBajasCount, totalMwh };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -2023,21 +2218,33 @@ export async function getContractStatsAction() {
 
 export async function getFullContractAction(id: string) {
   try {
-    const { prisma } = await import('@/lib/prisma');
+    const caller = await resolveContractActionCaller();
+    if (!caller) return { success: false, error: 'No autorizado' };
+
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const visibilityFilter = await getUserVisibilityFilter();
     const contract = await prisma.contract.findFirst({
-      where: { id, ...visibilityFilter },
+      where: { AND: [visibilityFilter, { id }] },
       include: {
         Lead: true,
         product: true,
-        user: { include: { channel: true } },
+        user: { select: { id: true, name: true, email: true, role: true, channelId: true, channel: true } },
         client: true,
-        supplyPoint: true
-      }
+        supplyPoint: true,
+      },
     });
     if (!contract) return { success: false, error: 'No encontrado' };
-    return { success: true, contract };
+
+    const { signedUrl, draftUrl, annexUrl } = resolveContractAttachmentUrls(contract);
+    const enriched = {
+      ...contract,
+      lead: contract.Lead,
+      signedUrl,
+      draftUrl,
+      annexUrl,
+    };
+
+    return { success: true, contract: sanitizeContractForRole(enriched, caller.role) };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -2045,8 +2252,18 @@ export async function getFullContractAction(id: string) {
 
 export async function getPresignedUrlAction(path: string, contentType: string) {
   try {
+    const caller = await resolveContractActionCaller();
+    if (!caller || !caller.isAdminOrBackoffice) {
+      return { error: 'No tienes permisos para subir documentos directamente.' };
+    }
+
+    const cleanPath = String(path || '').replace(/\.\./g, '').replace(/^\/+/, '');
+    if (!cleanPath) {
+      return { error: 'Ruta de destino inválida.' };
+    }
+
     const { generatePresignedUrl } = await import('@/lib/r2');
-    const urls = await generatePresignedUrl(path, contentType);
+    const urls = await generatePresignedUrl(cleanPath, contentType || 'application/pdf');
     return { success: true, ...urls };
   } catch (error: any) {
     return { error: error.message || 'Error generating presigned URL' };
@@ -2055,27 +2272,66 @@ export async function getPresignedUrlAction(path: string, contentType: string) {
 
 export async function deleteLatestVersionAction(contractId: string) {
   try {
-    const { prisma } = await import('@/lib/prisma');
-    const contract = await prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract) return { error: 'Contrato no encontrado' };
+    const caller = await resolveContractActionCaller();
+    if (!caller || !caller.isAdminOrBackoffice) {
+      return { error: 'No tienes permisos para eliminar versiones de contratos.' };
+    }
 
-    // Find all versions of this contractCode
+    const { getUserVisibilityFilter } = await import('@/lib/permissions');
+    const visibilityFilter = await getUserVisibilityFilter();
+
+    const contract = await prisma.contract.findFirst({
+      where: { AND: [visibilityFilter, { id: contractId }] },
+    });
+    if (!contract) return { error: 'Contrato no encontrado o sin permisos' };
+    if (!contract.contractCode) return { error: 'Este contrato no tiene versiones agrupadas' };
+
     const versions = await prisma.contract.findMany({
-      where: { contractCode: contract.contractCode },
-      orderBy: { version: 'desc' }
+      where: {
+        AND: [
+          visibilityFilter,
+          {
+            contractCode: contract.contractCode,
+            ...(contract.brandId ? { brandId: contract.brandId } : {}),
+          },
+        ],
+      },
+      orderBy: { version: 'desc' },
     });
 
     if (versions.length <= 1) return { error: 'No se puede eliminar la única versión' };
     if (versions[0].id !== contractId) return { error: 'Solo se puede eliminar la versión más reciente' };
 
-    // Remove the latest version
-    await prisma.contract.delete({ where: { id: contractId } });
+    const previousId = versions[1].id;
 
-    const { revalidatePath } = await import('next/cache');
+    await prisma.$transaction(async (tx) => {
+      // Re-enlazar Lead si apunta a la versión eliminada y la anterior aún no tiene otro Lead
+      const prevLead = await tx.lead.findUnique({ where: { contractId: previousId }, select: { id: true } });
+      if (!prevLead) {
+        await tx.lead.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      } else {
+        await tx.lead.updateMany({ where: { contractId }, data: { contractId: null } });
+      }
+
+      // Preservar documentos, eventos de switching y facturas enlazándolos a la versión anterior
+      await tx.document.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      await tx.switchingEvent.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      await tx.f1Invoice.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      await tx.invoice.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      await tx.internalInvoice.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      await tx.penaltyInvoice.updateMany({ where: { contractId }, data: { contractId: previousId } });
+      await tx.contract.updateMany({ where: { previousContractId: contractId }, data: { previousContractId: previousId } });
+
+      await tx.commission.deleteMany({ where: { contractId } });
+      await tx.contractModification.deleteMany({ where: { contractId } });
+
+      await tx.contract.delete({ where: { id: contractId } });
+    });
+
     revalidatePath('/contratos');
-    revalidatePath(`/contratos/${versions[1].id}`);
+    revalidatePath(`/contratos/${previousId}`);
 
-    return { success: true, previousVersionId: versions[1].id };
+    return { success: true, previousVersionId: previousId };
   } catch (error: any) {
     console.error('Error deleting latest version:', error);
     return { error: error.message || 'Error al eliminar la versión' };
@@ -2083,7 +2339,7 @@ export async function deleteLatestVersionAction(contractId: string) {
 }
 
 export async function exportContractsExcelAction(
-  searchTerm: string, 
+  searchTerm: string,
   estadoFilter: string,
   tarifaFilter: string,
   canalFilter: string,
@@ -2091,91 +2347,27 @@ export async function exportContractsExcelAction(
   activeOnDate?: string
 ) {
   try {
-    const { prisma } = await import('@/lib/prisma');
+    const caller = await resolveContractActionCaller();
+    if (!caller || caller.role === 'CLIENT') {
+      return { success: false, error: 'No tienes permisos para exportar contratos.' };
+    }
+
     const { getUserVisibilityFilter } = await import('@/lib/permissions');
     const visibilityFilter = await getUserVisibilityFilter();
 
     const allDistributors = await prisma.distributor.findMany();
-    const distMap = new Map();
+    const distMap = new Map<string, string>();
     allDistributors.forEach((d: any) => distMap.set(d.reeCode, d.name));
 
-    let whereClause: any = { ...visibilityFilter };
-
-    if (searchTerm) {
-      const terms = searchTerm.split(/\s+/).filter(Boolean);
-      const searchConditions = terms.map(term => ({
-        OR: [
-          { contractCode: { contains: term, mode: 'insensitive' } },
-          { supplyPoint: { cups: { contains: term, mode: 'insensitive' } } },
-          { client: { businessName: { contains: term, mode: 'insensitive' } } },
-          { client: { firstName: { contains: term, mode: 'insensitive' } } },
-          { client: { lastName: { contains: term, mode: 'insensitive' } } },
-          { product: { name: { contains: term, mode: 'insensitive' } } }
-        ]
-      }));
-      if (whereClause.AND) {
-        if (Array.isArray(whereClause.AND)) {
-          whereClause.AND = [...whereClause.AND, ...searchConditions];
-        } else {
-          whereClause.AND = [whereClause.AND, ...searchConditions];
-        }
-      } else {
-        whereClause.AND = searchConditions;
-      }
-    }
-
-    if (estadoFilter && estadoFilter !== 'Todos') {
-      if (estadoFilter === 'FINALIZADO' || estadoFilter === 'BAJA') {
-        whereClause.status = { in: ['FINALIZADO', 'Finalizado', 'BAJA'] };
-      } else if (estadoFilter === 'RECHAZO_DISTRIBUIDORA') {
-        whereClause.status = { in: ['RECHAZO_DISTRIBUIDORA', 'Rechazo Distribuidora'] };
-      } else if (estadoFilter === 'ACTIVO') {
-        whereClause.status = { in: ['ACTIVO', 'Activo'] };
-      } else if (estadoFilter === 'TRAMITANDO') {
-        whereClause.status = { in: ['TRAMITANDO', 'Tramitando'] };
-      } else {
-        whereClause.status = estadoFilter;
-      }
-    }
-
-    if (activeOnDate) {
-      const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
-      if (!isNaN(targetEndOfDay.getTime())) {
-        if (!estadoFilter || estadoFilter === 'Todos') {
-          whereClause.status = { in: ['ACTIVO', 'Activo', 'FINALIZADO', 'Finalizado', 'BAJA'] };
-        }
-        const activeConditions = [
-          { activationDate: { lte: targetEndOfDay } },
-          {
-            OR: [
-              { terminationDate: null },
-              { terminationDate: { gt: targetEndOfDay } }
-            ]
-          }
-        ];
-        if (whereClause.AND) {
-          if (Array.isArray(whereClause.AND)) {
-            whereClause.AND = [...whereClause.AND, ...activeConditions];
-          } else {
-            whereClause.AND = [whereClause.AND, ...activeConditions];
-          }
-        } else {
-          whereClause.AND = activeConditions;
-        }
-      }
-    }
-
-    if (tarifaFilter && tarifaFilter !== 'Todas') {
-      whereClause.supplyPoint = { ...whereClause.supplyPoint, tariff: tarifaFilter };
-    }
-
-    if (canalFilter && canalFilter !== 'Todos') {
-      whereClause.user = { ...whereClause.user, channel: { name: canalFilter } };
-    }
-
-    if (tipoFilter && tipoFilter !== 'Todos') {
-      whereClause.tipo = tipoFilter;
-    }
+    const { whereClause, hasNarrowFilters } = buildContractsFilterClause(
+      visibilityFilter,
+      searchTerm,
+      estadoFilter,
+      tarifaFilter,
+      canalFilter,
+      tipoFilter,
+      activeOnDate
+    );
 
     const allMatching = await prisma.contract.findMany({
       where: whereClause,
@@ -2183,10 +2375,10 @@ export async function exportContractsExcelAction(
         client: { include: { brand: true } },
         supplyPoint: true,
         product: true,
-        user: { include: { channel: true } },
-        Lead: true
+        user: { select: { id: true, name: true, email: true, channel: true } },
+        Lead: true,
       },
-      orderBy: [{ createdAt: 'desc' }, { version: 'desc' }]
+      orderBy: [{ createdAt: 'desc' }, { version: 'desc' }],
     });
 
     const groupMap = new Map<string, any[]>();
@@ -2198,15 +2390,19 @@ export async function exportContractsExcelAction(
 
     const byCode = new Map<string, any>();
     const bajaContracts: any[] = [];
-    
+
     for (const [code, group] of groupMap.entries()) {
       const sortedByVersion = [...group].sort((a, b) => (b.version || 0) - (a.version || 0));
-      const active = sortedByVersion.find(c => c.status === 'ACTIVO' || c.status === 'Activo');
-      const inProgress = sortedByVersion.find(c => c.status === 'TRAMITANDO' || c.status === 'ACEPTADO');
-      const fin = sortedByVersion.find(c => c.status === 'FINALIZADO' || c.status === 'Finalizado');
+      const active = sortedByVersion.find((c) => c.status === 'ACTIVO' || c.status === 'Activo');
+      const inProgress = sortedByVersion.find((c) => IN_PROGRESS_STATUSES.includes(c.status));
+      const fin = sortedByVersion.find((c) => c.status === 'FINALIZADO' || c.status === 'Finalizado');
       const chosen = active || inProgress || fin || sortedByVersion[0];
       byCode.set(code, chosen);
-      if (!activeOnDate && ['BAJA', 'FINALIZADO', 'Finalizado'].includes(chosen.status) && (chosen.supplyPoint?.cups || chosen.supplyPointId)) {
+      if (
+        !activeOnDate &&
+        ['BAJA', 'FINALIZADO', 'Finalizado'].includes(chosen.status) &&
+        (chosen.supplyPoint?.cups || chosen.supplyPointId)
+      ) {
         bajaContracts.push(chosen);
       }
     }
@@ -2214,20 +2410,26 @@ export async function exportContractsExcelAction(
     const falseBajaIds = new Set<string>();
     if (bajaContracts.length > 0) {
       const GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
-      const siblingContracts = await prisma.contract.findMany({
-        where: {
-          ...visibilityFilter,
-          status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] }
-        },
-        select: {
-          id: true,
-          supplyPointId: true,
-          activationDate: true,
-          terminationDate: true,
-          contractCode: true,
-          supplyPoint: { select: { cups: true } }
-        }
-      });
+      const siblingContracts = hasNarrowFilters
+        ? await prisma.contract.findMany({
+            where: {
+              AND: [
+                visibilityFilter,
+                { status: { in: ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'] } },
+              ],
+            },
+            select: {
+              id: true,
+              supplyPointId: true,
+              activationDate: true,
+              terminationDate: true,
+              contractCode: true,
+              supplyPoint: { select: { cups: true } },
+            },
+          })
+        : allMatching.filter((c) =>
+            ['ACTIVO', 'Activo', 'BAJA', 'FINALIZADO', 'Finalizado'].includes(c.status)
+          );
 
       const contractsByCups: Record<string, typeof siblingContracts> = {};
       for (const c of siblingContracts) {
@@ -2246,7 +2448,7 @@ export async function exportContractsExcelAction(
         let isFalseBaja = false;
         const bcTermination = new Date(bc.terminationDate).getTime();
         const bcActivation = bc.activationDate ? new Date(bc.activationDate).getTime() : 0;
-        
+
         for (const sib of siblings) {
           if (sib.id === bc.id) continue;
           if (sib.contractCode && sib.contractCode === bc.contractCode) continue;
@@ -2264,7 +2466,7 @@ export async function exportContractsExcelAction(
       }
     }
 
-    let finalContracts = Array.from(byCode.values()).filter(c => !falseBajaIds.has(c.id));
+    let finalContracts = Array.from(byCode.values()).filter((c) => !falseBajaIds.has(c.id));
 
     if (activeOnDate) {
       const targetEndOfDay = new Date(`${activeOnDate}T23:59:59.999Z`);
@@ -2293,7 +2495,53 @@ export async function exportContractsExcelAction(
       }
 
       const validIdSet = new Set(Array.from(bestByCups.values()).map((c: any) => c.id));
-      finalContracts = finalContracts.filter(c => validIdSet.has(c.id));
+      finalContracts = finalContracts.filter((c) => validIdSet.has(c.id));
+    }
+
+    // Si es CANAL o COMERCIAL, exportamos una cartera comercial limpia sin márgenes internos ni códigos TERA
+    if (!caller.isAdminOrBackoffice) {
+      const portfolioExportData = finalContracts.map((c) => {
+        const formatDate = (date: any) => (date ? new Date(date).toLocaleDateString('es-ES') : '');
+        const fmtNum = (val: any): string => (val == null || val === '' ? '' : val.toString().replace('.', ','));
+        const rawDist = c.supplyPoint?.distributor || c.supplyPoint?.distributorName || '';
+        const cleanDist = rawDist ? String(rawDist).replace(/^\[\d+\]\s*/, '') : '';
+        const resolvedDist = cleanDist && /^\d+$/.test(cleanDist) ? distMap.get(cleanDist) || cleanDist : cleanDist;
+
+        return {
+          Contrato: c.contractCode || c.id,
+          CUPS: c.supplyPoint?.cups || c.Lead?.cups || '',
+          Cliente: c.client?.businessName || [c.client?.firstName, c.client?.lastName].filter(Boolean).join(' ') || '',
+          'NIF / CIF': c.client?.vatNumber || c.Lead?.vatNumber || '',
+          'Dirección Suministro': c.supplyPoint?.address || '',
+          CP: c.supplyPoint?.postalCode || '',
+          Población: c.supplyPoint?.city || '',
+          Provincia: c.supplyPoint?.province || '',
+          Distribuidora: resolvedDist,
+          Estado: c.status || '',
+          Tramitación: c.tramitationType || c.tipo || '',
+          Producto: c.product?.name || c.Lead?.product || '',
+          Tarifa: c.supplyPoint?.tariff || c.product?.tariff || '',
+          'Consumo Anual (MWh)': fmtNum(c.annualConsumption ?? c.supplyPoint?.annualConsumption ?? c.Lead?.estimatedMWh),
+          'P1C (kW)': fmtNum(c.p1c ?? c.supplyPoint?.p1c),
+          'P2C (kW)': fmtNum(c.p2c ?? c.supplyPoint?.p2c),
+          'P3C (kW)': fmtNum(c.p3c ?? c.supplyPoint?.p3c),
+          'P4C (kW)': fmtNum(c.p4c ?? c.supplyPoint?.p4c),
+          'P5C (kW)': fmtNum(c.p5c ?? c.supplyPoint?.p5c),
+          'P6C (kW)': fmtNum(c.p6c ?? c.supplyPoint?.p6c),
+          'Fecha Registro': formatDate(c.createdAt),
+          'Fecha Firma': formatDate(c.signatureDate),
+          'Fecha Activación': formatDate(c.activationDate),
+          'Inicio Permanencia': formatDate(c.permanenceStartDate),
+          'Fin Previsto': formatDate(c.expectedEndDate),
+          'Fecha Baja': formatDate(c.terminationDate),
+          Canal: c.user?.channel?.name || '',
+          Comercial: c.user?.name || c.user?.email || '',
+          'Comisión Estimada (€)': fmtNum(c.commissionBase),
+          'Comisión Final (€)': fmtNum(c.commissionFinal),
+        };
+      });
+
+      return { success: true, data: portfolioExportData };
     }
 
     const exportData = finalContracts.map(c => {
@@ -2331,7 +2579,7 @@ export async function exportContractsExcelAction(
       if (cleanDist && /^\d+$/.test(cleanDist)) {
         cleanDist = distMap.get(cleanDist) || cleanDist;
       } else if (!cleanDist && finalReeCode && distMap.has(finalReeCode)) {
-        cleanDist = distMap.get(finalReeCode);
+        cleanDist = distMap.get(finalReeCode) || '';
       }
 
       // Mapear código CNMC a Tarifa (según tabla oficial CNMC: 018=2.0TD, 019=3.0TD, 020=6.1TD, 021=6.2TD, 022=6.3TD, 023=6.4TD, 024=3.0TDVE, 025=6.1TDVE)
