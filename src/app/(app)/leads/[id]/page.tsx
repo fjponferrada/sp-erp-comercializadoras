@@ -44,18 +44,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   let productType = lead.productType;
   let fullProduct = null;
   if (lead.product) {
-    let p = null;
-    if (lead.product.startsWith('cm')) {
-      p = await prisma.product.findUnique({ where: { id: lead.product } });
-    } else {
-      p =
-        (await prisma.product.findFirst({
-          where: { name: lead.product.trim(), brandId: lead.user.brandId },
-        })) ||
-        (await prisma.product.findFirst({
-          where: { name: lead.product.trim() },
-        }));
-    }
+    const prodRef = lead.product.trim();
+    const p =
+      (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+      (await prisma.product.findFirst({
+        where: { name: prodRef, brandId: lead.user.brandId },
+      })) ||
+      (await prisma.product.findFirst({
+        where: { name: prodRef },
+      }));
     if (p) {
       productName = p.name;
       productType = p.type;

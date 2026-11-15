@@ -209,19 +209,20 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     });
   }
 
-  // Regla 68: Resolución resiliente del producto si el contrato viene de histórico
+  // Regla 68: Resolución resiliente del producto si el contrato viene de histórico (ID c*/rec* o nombre)
   let resolvedProduct: any = contract.product;
   if (!resolvedProduct && contract.Lead?.product) {
     const prodRef = String(contract.Lead.product).trim();
-    if (prodRef.startsWith('cm')) {
-      resolvedProduct = await prisma.product.findUnique({ where: { id: prodRef } });
-    } else if (prodRef) {
-      resolvedProduct = await prisma.product.findFirst({
-        where: {
-          name: prodRef,
-          ...(effectiveBrandId ? { brandId: effectiveBrandId } : {}),
-        },
-      });
+    if (prodRef) {
+      resolvedProduct =
+        (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+        (await prisma.product.findFirst({
+          where: {
+            name: prodRef,
+            ...(effectiveBrandId ? { brandId: effectiveBrandId } : {}),
+          },
+        })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef } }));
     }
   }
 

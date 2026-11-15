@@ -183,14 +183,11 @@ export async function convertLeadToContractAction(leadId: string): Promise<{
 
     // 7. Validar congruencia de Tarifa del Producto (Regla 73)
     if (lead.product) {
-      let p = null;
-      if (lead.product.startsWith('cm')) {
-        p = await prisma.product.findUnique({ where: { id: lead.product } });
-      } else {
-        p =
-          (await prisma.product.findFirst({ where: { name: lead.product.trim(), brandId: brandIdToUse } })) ||
-          (await prisma.product.findFirst({ where: { name: lead.product.trim() } }));
-      }
+      const prodRef = lead.product.trim();
+      const p =
+        (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef, brandId: brandIdToUse } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef } }));
       
       if (p && p.tariff && lead.tariff && p.tariff !== lead.tariff) {
         validationErrors.push(`Incongruencia: El producto seleccionado (${p.name}) es para la tarifa ${p.tariff}, pero el contrato se intenta generar con la tarifa ${lead.tariff}.`);
@@ -347,10 +344,14 @@ export async function convertLeadToContractAction(leadId: string): Promise<{
 
     // 4. Necesitamos un Product de la marca activa (con fallback).
     let product = null;
-    if (lead.product && lead.product.startsWith('cm')) {
-      product = await prisma.product.findUnique({ where: { id: lead.product } });
+    if (lead.product && lead.product.trim()) {
+      const prodRef = lead.product.trim();
+      product =
+        (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef, brandId: brandIdToUse } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef } }));
     } else {
-      const pName = (lead.product || 'Producto Genérico').trim();
+      const pName = 'Producto Genérico';
       product =
         (await prisma.product.findFirst({ where: { name: pName, brandId: brandIdToUse } })) ||
         (await prisma.product.findFirst({ where: { name: pName } }));
@@ -745,14 +746,11 @@ export async function remakeContractAction(leadId: string): Promise<{
 
     // 7. Validar congruencia de Tarifa del Producto (Regla 73)
     if (lead.product) {
-      let p = null;
-      if (lead.product.startsWith('cm')) {
-        p = await prisma.product.findUnique({ where: { id: lead.product } });
-      } else {
-        p =
-          (await prisma.product.findFirst({ where: { name: lead.product.trim(), brandId: brandIdToUse } })) ||
-          (await prisma.product.findFirst({ where: { name: lead.product.trim() } }));
-      }
+      const prodRef = lead.product.trim();
+      const p =
+        (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef, brandId: brandIdToUse } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef } }));
       
       if (p && p.tariff && lead.tariff && p.tariff !== lead.tariff) {
         validationErrors.push(`Incongruencia: El producto seleccionado (${p.name}) es para la tarifa ${p.tariff}, pero el contrato se intenta generar con la tarifa ${lead.tariff}.`);
@@ -874,10 +872,14 @@ export async function remakeContractAction(leadId: string): Promise<{
 
     // Producto
     let product = null;
-    if (lead.product && lead.product.startsWith('cm')) {
-      product = await prisma.product.findUnique({ where: { id: lead.product } });
+    if (lead.product && lead.product.trim()) {
+      const prodRef = lead.product.trim();
+      product =
+        (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef, brandId: brandIdToUse } })) ||
+        (await prisma.product.findFirst({ where: { name: prodRef } }));
     } else {
-      const pName = (lead.product || 'Producto Genérico').trim();
+      const pName = 'Producto Genérico';
       product =
         (await prisma.product.findFirst({ where: { name: pName, brandId: brandIdToUse } })) ||
         (await prisma.product.findFirst({ where: { name: pName } }));

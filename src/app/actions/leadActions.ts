@@ -40,18 +40,14 @@ async function validateContractLeadRules(params: {
     }
   }
 
-  // Regla 73: Congruencia Producto vs Tarifa
+  // Regla 73: Congruencia Producto vs Tarifa (soporta IDs CUID c*, Airtable rec* o nombre)
   if (product && product.trim()) {
-    let productTariff: string | null = null;
-    if (product.startsWith('cm')) {
-      const dbProduct = await prisma.product.findUnique({ where: { id: product } });
-      if (dbProduct) productTariff = dbProduct.tariff;
-    } else {
-      const dbProduct =
-        (await prisma.product.findFirst({ where: { name: product.trim(), brandId: targetBrandId } })) ||
-        (await prisma.product.findFirst({ where: { name: product.trim() } }));
-      if (dbProduct) productTariff = dbProduct.tariff;
-    }
+    const prodRef = product.trim();
+    const dbProduct =
+      (await prisma.product.findUnique({ where: { id: prodRef } })) ||
+      (await prisma.product.findFirst({ where: { name: prodRef, brandId: targetBrandId } })) ||
+      (await prisma.product.findFirst({ where: { name: prodRef } }));
+    const productTariff: string | null = dbProduct?.tariff ?? null;
 
     if (productTariff && productTariff !== technicalTariff) {
       return `Incongruencia de producto/tarifa (Regla 73): El producto seleccionado exige tarifa ${productTariff}, pero el suministro tiene tarifa ${technicalTariff}.`;
@@ -1329,10 +1325,10 @@ export async function estimateLeadCommissionAction(input: {
     const prodKey = String(input.productNameOrId || '').trim();
     if (!prodKey) return empty;
 
-    const dbProduct = prodKey.startsWith('cm')
-      ? await prisma.product.findUnique({ where: { id: prodKey } })
-      : (await prisma.product.findFirst({ where: { name: prodKey, brandId: targetBrandId } })) ||
-        (await prisma.product.findFirst({ where: { name: prodKey } }));
+    const dbProduct =
+      (await prisma.product.findUnique({ where: { id: prodKey } })) ||
+      (await prisma.product.findFirst({ where: { name: prodKey, brandId: targetBrandId } })) ||
+      (await prisma.product.findFirst({ where: { name: prodKey } }));
 
     const tierRules = await prisma.commissionRule.findMany({
       where: { tierId },
