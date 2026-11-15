@@ -1238,7 +1238,11 @@ export async function buildInvoiceListWhereClause(params: {
       ],
     });
   } else if (params.filterType) {
-    andConditions.push({ invoiceType: params.filterType });
+    if (params.filterType === 'Rectificativa' || params.filterType === 'Rectificadora') {
+      andConditions.push({ invoiceType: { in: ['Rectificativa', 'Rectificadora'] } });
+    } else {
+      andConditions.push({ invoiceType: params.filterType });
+    }
   }
 
   if (params.communicationFilter === 'communicated') {
@@ -1378,7 +1382,32 @@ export async function getPaginatedInvoicesAction(
       prisma.invoice.count({ where: whereClause }),
     ]);
 
-    return { success: true, invoices: invoicesRaw, totalCount };
+    // Para las facturas del Motor Interno de la página actual (máx. 100), resolvemos la procedencia CNMC real
+    // ('Telegestión', 'Telemedida', 'Estimada') desde invoiceData['Procedencia Hasta'] sin cargar el JSON de Ingebau.
+    const internalIds = invoicesRaw
+      .filter((inv) => inv.origin === 'INTERNAL_ENGINE')
+      .map((inv) => inv.id);
+
+    let invoices = invoicesRaw;
+    if (internalIds.length > 0) {
+      const internalMeta = await prisma.invoice.findMany({
+        where: { id: { in: internalIds } },
+        select: { id: true, invoiceData: true },
+      });
+      const procById = new Map<string, string>();
+      for (const row of internalMeta) {
+        const d = (row.invoiceData as Record<string, any>) || {};
+        const proc = d['Procedencia Hasta'] ? String(d['Procedencia Hasta']).trim() : '';
+        procById.set(row.id, proc || 'Motor Interno');
+      }
+      invoices = invoicesRaw.map((inv) =>
+        inv.origin === 'INTERNAL_ENGINE'
+          ? { ...inv, origin: procById.get(inv.id) || 'Motor Interno' }
+          : inv
+      );
+    }
+
+    return { success: true, invoices, totalCount };
   } catch (error: any) {
     console.error('Error fetching paginated invoices:', error);
     return { success: false, error: error.message };

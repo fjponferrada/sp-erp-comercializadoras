@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Download, Eye, Table } from 'lucide-react';
+import { Search, Download, Eye, Table, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import PaginationFooter from '@/components/PaginationFooter';
@@ -181,7 +181,7 @@ export default function FacturasInternasClient({
         >
           <option value="">Todos los tipos</option>
           <option value="Normal">Normal</option>
-          <option value="Rectificadora">Rectificadora</option>
+          <option value="Rectificativa">Rectificativa</option>
           <option value="Abono">Abono</option>
           <option value="Complementaria">Complementaria</option>
           <option value="Regularizadora">Regularizadora</option>
@@ -257,16 +257,18 @@ export default function FacturasInternasClient({
                 }}
               >
                 <div>
-                  <div
+                  <Link
+                    href={`/facturas-internas/${invoice.id}`}
                     style={{
                       fontWeight: 600,
-                      color: 'var(--text-primary)',
+                      color: 'var(--lime)',
                       fontSize: '1rem',
                       fontFamily: 'monospace',
+                      textDecoration: 'none',
                     }}
                   >
                     {invoice.invoiceNumber}
-                  </div>
+                  </Link>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                     {formatMadridDate(invoice.issueDate)}
                   </div>
@@ -319,6 +321,18 @@ export default function FacturasInternasClient({
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
+                  <Link
+                    href={`/facturas-internas/${invoice.id}`}
+                    className="action-icon"
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      padding: '6px',
+                      borderRadius: '6px',
+                    }}
+                    title="Ver Ficha Detallada"
+                  >
+                    <FileText size={16} />
+                  </Link>
                   {!isClientRole && (
                     <button
                       onClick={() =>
@@ -376,15 +390,18 @@ export default function FacturasInternasClient({
               {invoices.map((invoice) => (
                 <tr key={invoice.id}>
                   <td>
-                    <div
+                    <Link
+                      href={`/facturas-internas/${invoice.id}`}
                       style={{
                         fontWeight: 600,
-                        color: 'var(--text-primary)',
+                        color: 'var(--lime)',
                         fontFamily: 'monospace',
+                        textDecoration: 'none',
                       }}
+                      title="Abrir ficha detallada de la factura"
                     >
                       {invoice.invoiceNumber}
-                    </div>
+                    </Link>
                     <div
                       style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}
                     >
@@ -527,6 +544,13 @@ export default function FacturasInternasClient({
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <Link
+                        href={`/facturas-internas/${invoice.id}`}
+                        className="action-icon"
+                        title="Ver Ficha Detallada (8 Bloques)"
+                      >
+                        <FileText size={16} />
+                      </Link>
                       {!isClientRole && (
                         <>
                           <button

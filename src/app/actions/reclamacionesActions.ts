@@ -351,7 +351,11 @@ export async function searchInvoicesForMassClaim(
     const mapped = invoices.map((inv) => {
       const d = inv.invoiceData && typeof inv.invoiceData === 'object' ? (inv.invoiceData as any) : {};
 
-      const procHasta = inv.origin || d['Procedencia Hasta'] || '';
+      const procHasta =
+        (inv.origin && inv.origin !== 'INTERNAL_ENGINE' ? inv.origin : '') ||
+        d['Procedencia Hasta'] ||
+        inv.origin ||
+        '';
       const procDesde = d['Procedencia Desde'] || '';
       let cf = String(d['Codigo Fiscal'] || '').trim();
       if (cf.startsWith('CF ')) cf = cf.substring(3).trim();

@@ -20,7 +20,11 @@ export async function getPaginatedConfirmedInternalInvoicesAction(
     ];
 
     if (filterType) {
-      andConditions.push({ invoiceType: filterType });
+      if (filterType === 'Rectificativa' || filterType === 'Rectificadora') {
+        andConditions.push({ invoiceType: { in: ['Rectificativa', 'Rectificadora'] } });
+      } else {
+        andConditions.push({ invoiceType: filterType });
+      }
     }
 
     if (dateFrom || dateTo) {
@@ -74,24 +78,31 @@ export async function getPaginatedConfirmedInternalInvoicesAction(
       prisma.internalInvoice.count({ where: whereClause }),
     ]);
 
-    const invoices = invoicesRaw.map((inv) => ({
-      id: inv.id,
-      invoiceNumber: inv.invoiceNumber || inv.id.slice(-8).toUpperCase(),
-      invoiceType: inv.invoiceType || 'Normal',
-      issueDate: inv.issueDate,
-      totalAmount: inv.totalAmount || 0,
-      pdfUrl: inv.pdfUrl || (inv.invoiceData as any)?.pdfUrl || null,
-      xmlUrl: inv.xmlUrl || null,
-      clientId: inv.clientId || inv.contract?.clientId || '',
-      client: inv.client || inv.contract?.client || null,
-      supplyPointId: inv.supplyPointId || inv.contract?.supplyPointId || null,
-      supplyPoint: inv.supplyPoint || inv.contract?.supplyPoint || null,
-      billingStart: inv.billingStart,
-      billingEnd: inv.billingEnd,
-      origin: inv.origin,
-      totalMWh: inv.totalMWh || 0,
-      communicatedAt: inv.communicatedAt || null,
-    }));
+    const invoices = invoicesRaw.map((inv) => {
+      const iData = (inv.invoiceData as Record<string, any>) || {};
+      const resolvedOrigin =
+        (inv.origin && inv.origin !== 'INTERNAL_ENGINE' ? inv.origin : null) ||
+        iData['Procedencia Hasta'] ||
+        inv.origin;
+      return {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber || inv.id.slice(-8).toUpperCase(),
+        invoiceType: iData['Tipo Factura'] || inv.invoiceType || 'Normal',
+        issueDate: inv.issueDate,
+        totalAmount: inv.totalAmount || 0,
+        pdfUrl: inv.pdfUrl || iData.pdfUrl || null,
+        xmlUrl: inv.xmlUrl || iData.xmlUrl || null,
+        clientId: inv.clientId || inv.contract?.clientId || '',
+        client: inv.client || inv.contract?.client || null,
+        supplyPointId: inv.supplyPointId || inv.contract?.supplyPointId || null,
+        supplyPoint: inv.supplyPoint || inv.contract?.supplyPoint || null,
+        billingStart: inv.billingStart,
+        billingEnd: inv.billingEnd,
+        origin: resolvedOrigin,
+        totalMWh: inv.totalMWh || 0,
+        communicatedAt: inv.communicatedAt || null,
+      };
+    });
 
     return { success: true, invoices, totalCount };
   } catch (error: any) {

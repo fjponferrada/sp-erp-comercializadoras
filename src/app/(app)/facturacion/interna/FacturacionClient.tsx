@@ -13,7 +13,9 @@ import {
   Download,
   Table,
   CheckSquare,
+  ExternalLink,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 
@@ -1196,6 +1198,13 @@ export default function FacturacionClient({
                                   >
                                     <Table size={16} />
                                   </a>
+                                  <Link
+                                    href={`/facturas-internas/${rowDraft.id}`}
+                                    className="text-[var(--text-secondary)] hover:text-[var(--lime)] inline-flex items-center"
+                                    title="Ver Ficha Detallada (8 Bloques)"
+                                  >
+                                    <ExternalLink size={16} />
+                                  </Link>
                                   <a
                                     href={`/api/facturacion/interna/proforma/${rowDraft.id}`}
                                     target="_blank"

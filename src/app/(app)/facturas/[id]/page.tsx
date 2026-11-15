@@ -46,7 +46,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   let mappedXmlUrl = invoice.xmlUrl;
   if (invoice.invoiceData && typeof invoice.invoiceData === 'object') {
     const d = invoice.invoiceData as any;
-    if (!mappedOrigin && d['Procedencia Hasta']) {
+    if ((!mappedOrigin || mappedOrigin === 'INTERNAL_ENGINE') && d['Procedencia Hasta']) {
       mappedOrigin = d['Procedencia Hasta'];
     }
     if (!mappedXmlUrl) {

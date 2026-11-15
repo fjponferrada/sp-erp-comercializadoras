@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { pickSpanishPostalCode } from '@/lib/postalCode';
 import { auth } from '@/auth';
 import { uploadFileToR2 } from '@/lib/r2';
 import { generateInvoiceXml } from '@/lib/templates/invoiceXmlTemplate';
@@ -9,6 +8,7 @@ import { renderToStream } from '@react-pdf/renderer';
 import React from 'react';
 import {
   buildInvoiceTemplateData,
+  buildOfficialInvoicePayloadFromInternal,
   isInternalBillingProductionEnabled,
 } from '@/lib/services/internalInvoiceMapper';
 
@@ -65,6 +65,7 @@ export async function POST(req: Request) {
             include: {
               supplyPoint: true,
               product: true,
+              user: { select: { name: true } },
               brand: { include: { company: true } },
             },
           },
@@ -136,6 +137,7 @@ export async function POST(req: Request) {
               include: {
                 supplyPoint: true,
                 product: true,
+                user: { select: { name: true } },
                 brand: { include: { company: true } },
               },
             },
@@ -148,6 +150,7 @@ export async function POST(req: Request) {
     });
 
     // 2. Fuera de la transacción de BD generamos y subimos PDFs y XMLs a R2
+    // y construimos el diccionario canónico 100% compatible con Ingebau
     for (const invoice of confirmedInvoices) {
       try {
         const templateData = await buildInvoiceTemplateData(invoice);
@@ -170,78 +173,26 @@ export async function POST(req: Request) {
         const pdfPath = `facturas/internas/${companyFolder}/20${currentYear}/${invoice.invoiceNumber}.pdf`;
         const pdfUrl = await uploadFileToR2(pdfPath, pdfBuffer, 'application/pdf');
 
+        const { canonicalData, officialPayload } = await buildOfficialInvoicePayloadFromInternal({
+          invoice,
+          templateData,
+          pdfUrl,
+          xmlUrl,
+        });
+
         await prisma.internalInvoice.update({
           where: { id: invoice.id },
-          data: { pdfUrl, xmlUrl },
+          data: {
+            pdfUrl,
+            xmlUrl,
+            invoiceData: canonicalData as any,
+          },
         });
 
         // Fase 5 (Regla 171): SOLO promocionar a la tabla maestra `Invoice` cuando el motor interno
         // esté habilitado en producción (`ENABLE_INTERNAL_BILLING_PRODUCTION === 'true'`).
         // En Fase de Pruebas (conviviendo con Ingebau), todo queda 100% aislado en `InternalInvoice` (`/facturas-internas`).
         if (isInternalBillingProductionEnabled() && invoice.invoiceNumber) {
-          const iData = ((invoice.invoiceData as Record<string, any>) || {});
-          const sp = invoice.supplyPoint || invoice.contract?.supplyPoint || invoice.f1Invoice?.supplyPoint;
-          const isInvAbono = invoice.status === 'ABONO' || invoice.invoiceType === 'Abono' || invoice.totalAmount < 0;
-
-          const baseIeeVal =
-            iData.baseIEE !== undefined ? Number(iData.baseIEE) : Number(invoice.subtotal1 || 0);
-          const taxElectricVal =
-            iData.taxElectric !== undefined ? Number(iData.taxElectric) : 0;
-          const ieeRateVal =
-            iData.ieeRate !== undefined ? Number(iData.ieeRate) : 5.11269632;
-          // Regla 81: Invoice.totalMWh almacena la energía en kWh
-          const totalKwh = Math.round(Number(invoice.totalMWh || 0) * 1000 * 1000) / 1000;
-
-          let f1BaseVal =
-            invoice.f1Invoice?.baseImponible !== null && invoice.f1Invoice?.baseImponible !== undefined
-              ? Number(invoice.f1Invoice.baseImponible)
-              : Number(iData.peajesDistribuidora || 0) +
-                Number(iData.cargosDistribuidora || 0) +
-                Number(iData.alquilerEquipo || 0);
-          if (isInvAbono && f1BaseVal > 0) f1BaseVal = -f1BaseVal;
-          if (!isInvAbono && f1BaseVal < 0) f1BaseVal = Math.abs(f1BaseVal);
-          f1BaseVal = Math.round(f1BaseVal * 100) / 100;
-
-          const mergedOfficialData = {
-            ...iData,
-            'Subtotal 1': baseIeeVal,
-            'Importe Impuesto': taxElectricVal,
-            'Impuesto (%)': ieeRateVal,
-            'Energía Total Consumida': totalKwh,
-            'Base Imponible IVA': Number(invoice.subtotal1 || 0),
-            'Importe Bono Social': Number(iData.bonoSocial || 0),
-            'BaseImponibleF1': f1BaseVal,
-            'Importe SVA': Number(iData.svaCost || 0),
-            'Tipo Factura': isInvAbono ? 'Abono' : (invoice.invoiceType || 'Normal'),
-            'Tarifa': sp?.tariff || invoice.contract?.product?.tariff || '',
-            'CP PS': pickSpanishPostalCode(sp?.postalCode, sp?.sipsPostalCode),
-            'POBLACION PS': sp?.city || '',
-            'PROVINCIA PS': sp?.province || '',
-          };
-
-          const officialPayload = {
-            invoiceNumber: invoice.invoiceNumber,
-            invoiceType: isInvAbono ? 'Abono' : (invoice.invoiceType || 'Normal'),
-            clientId: invoice.clientId,
-            companyId: invoice.companyId,
-            contractId: invoice.contractId,
-            supplyPointId: invoice.supplyPointId || sp?.id || null,
-            f1InvoiceId: invoice.f1InvoiceId,
-            issueDate: invoice.issueDate,
-            billingStart: invoice.billingStart,
-            billingEnd: invoice.billingEnd,
-            subtotal1: baseIeeVal,
-            taxPercentage: ieeRateVal,
-            taxAmount: taxElectricVal,
-            totalAmount: invoice.totalAmount,
-            totalMWh: totalKwh,
-            margin: invoice.margin,
-            origin: 'INTERNAL_ENGINE',
-            pdfUrl,
-            xmlUrl,
-            invoiceData: mergedOfficialData as any,
-          };
-
           const existingOfficial = await prisma.invoice.findFirst({
             where: {
               invoiceNumber: invoice.invoiceNumber,

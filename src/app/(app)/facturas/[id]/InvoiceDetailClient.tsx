@@ -177,7 +177,21 @@ function PeriodRow({
   );
 }
 
-export default function InvoiceDetailClient({ initialInvoice, userRole }: { initialInvoice: any; userRole: string }) {
+export default function InvoiceDetailClient({
+  initialInvoice,
+  userRole,
+  backHref = '/facturas',
+  backLabel = 'Volver a Facturas',
+  detailBasePath = '/facturas',
+  proformaPdfUrl = null,
+}: {
+  initialInvoice: any;
+  userRole: string;
+  backHref?: string;
+  backLabel?: string;
+  detailBasePath?: string;
+  proformaPdfUrl?: string | null;
+}) {
   const router = useRouter();
   const isAdmin = userRole === 'SUPERADMIN' || userRole === 'COMPANYADMIN' || userRole === 'BACKOFFICE';
   const isClientRole = userRole === 'CLIENT' || userRole === 'CLIENTE';
@@ -340,8 +354,8 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
         showSearch={false}
         customActions={
           <div className="flex gap-2 md:gap-3 items-center overflow-x-auto md:overflow-visible no-scrollbar pb-1 md:pb-0">
-            <button onClick={() => router.push('/facturas')} className="btn-ghost whitespace-nowrap">
-              <ChevronLeft size={16} /> Volver a Facturas
+            <button onClick={() => router.push(backHref)} className="btn-ghost whitespace-nowrap">
+              <ChevronLeft size={16} /> {backLabel}
             </button>
             {validPdfUrl ? (
               <a
@@ -351,6 +365,15 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
                 className="btn-primary flex items-center gap-2 whitespace-nowrap"
               >
                 <FileDown size={16} /> Ver PDF
+              </a>
+            ) : proformaPdfUrl ? (
+              <a
+                href={proformaPdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary flex items-center gap-2 whitespace-nowrap"
+              >
+                <FileDown size={16} /> Ver PDF Proforma
               </a>
             ) : (
               <button
@@ -414,7 +437,10 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
               value={
                 initialInvoice.rectifiedInvoice?.id ? (
                   <Link
-                    href={`/facturas/${initialInvoice.rectifiedInvoice.id}`}
+                    href={
+                      initialInvoice.rectifiedInvoice.href ||
+                      `${detailBasePath}/${initialInvoice.rectifiedInvoice.id}`
+                    }
                     className="inline-flex items-center gap-1.5 font-mono text-[var(--lime)] hover:underline"
                   >
                     {rectifiedRefNum} <ExternalLink size={13} />
@@ -451,7 +477,7 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
                     return (
                       <Link
                         key={rect.id}
-                        href={`/facturas/${rect.id}`}
+                        href={rect.href || `${detailBasePath}/${rect.id}`}
                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono border transition-colors hover:border-[var(--lime)]"
                         style={{ background: 'var(--bg-base)', borderColor: 'var(--border-strong)' }}
                       >
@@ -994,33 +1020,70 @@ export default function InvoiceDetailClient({ initialInvoice, userRole }: { init
 
           <div className="col-span-full border-t border-[var(--border)] my-1" />
 
-          <DataItem label="Base Imponible IVA General" value={formatCurrency(baseIvaGeneral)} />
-          {baseIva0 !== null && baseIva0 !== undefined && baseIva0 !== 0 && (
-            <DataItem label="Base Imponible Exenta (0%)" value={formatCurrency(baseIva0)} />
-          )}
-          {((baseIva5 !== null && baseIva5 !== undefined && baseIva5 !== 0) ||
-            (cuotaIva5 !== null && cuotaIva5 !== undefined && cuotaIva5 !== 0)) && (
-            <>
-              <DataItem label="Base Imponible IVA 5%" value={formatCurrency(baseIva5)} />
-              <DataItem label="Cuota IVA 5%" value={formatCurrency(cuotaIva5)} />
-            </>
-          )}
-          {((baseIva10 !== null && baseIva10 !== undefined && baseIva10 !== 0) ||
-            (cuotaIva10 !== null && cuotaIva10 !== undefined && cuotaIva10 !== 0)) && (
-            <>
-              <DataItem label="Base Imponible IVA 10%" value={formatCurrency(baseIva10)} />
-              <DataItem label="Cuota IVA 10%" value={formatCurrency(cuotaIva10)} />
-            </>
-          )}
-          {((baseIva21 !== null && baseIva21 !== undefined && baseIva21 !== 0) ||
-            (cuotaIva21 !== null && cuotaIva21 !== undefined && cuotaIva21 !== 0)) && (
-            <>
-              <DataItem label="Base Imponible IVA 21%" value={formatCurrency(baseIva21)} />
-              <DataItem label="Cuota IVA 21%" value={formatCurrency(cuotaIva21)} />
-            </>
-          )}
+          {(() => {
+            const indirectTaxLabel = String(rawData.taxType || 'IVA').toUpperCase();
+            const isTerritorialTax =
+              indirectTaxLabel !== 'IVA' &&
+              Array.isArray(rawData.taxBreakdown) &&
+              rawData.taxBreakdown.length > 0;
 
-          <DataItem label="Total Cuota IVA" value={formatCurrency(totalIva)} />
+            return (
+              <>
+                <DataItem
+                  label={`Base Imponible ${indirectTaxLabel} General`}
+                  value={formatCurrency(baseIvaGeneral)}
+                />
+                {baseIva0 !== null && baseIva0 !== undefined && baseIva0 !== 0 && (
+                  <DataItem label="Base Imponible Exenta (0%)" value={formatCurrency(baseIva0)} />
+                )}
+                {isTerritorialTax ? (
+                  rawData.taxBreakdown
+                    .filter((tb: any) => Number(tb.rate || 0) !== 0 && (Number(tb.base || 0) !== 0 || Number(tb.amount || 0) !== 0))
+                    .map((tb: any, idx: number) => (
+                      <React.Fragment key={`tax-${idx}`}>
+                        <DataItem
+                          label={`Base Imponible ${indirectTaxLabel} ${tb.rate}%`}
+                          value={formatCurrency(signed(Number(tb.base || 0)))}
+                        />
+                        <DataItem
+                          label={`Cuota ${indirectTaxLabel} ${tb.rate}%`}
+                          value={formatCurrency(signed(Number(tb.amount || 0)))}
+                        />
+                      </React.Fragment>
+                    ))
+                ) : (
+                  <>
+                    {((baseIva5 !== null && baseIva5 !== undefined && baseIva5 !== 0) ||
+                      (cuotaIva5 !== null && cuotaIva5 !== undefined && cuotaIva5 !== 0)) && (
+                      <>
+                        <DataItem label="Base Imponible IVA 5%" value={formatCurrency(baseIva5)} />
+                        <DataItem label="Cuota IVA 5%" value={formatCurrency(cuotaIva5)} />
+                      </>
+                    )}
+                    {((baseIva10 !== null && baseIva10 !== undefined && baseIva10 !== 0) ||
+                      (cuotaIva10 !== null && cuotaIva10 !== undefined && cuotaIva10 !== 0)) && (
+                      <>
+                        <DataItem label="Base Imponible IVA 10%" value={formatCurrency(baseIva10)} />
+                        <DataItem label="Cuota IVA 10%" value={formatCurrency(cuotaIva10)} />
+                      </>
+                    )}
+                    {((baseIva21 !== null && baseIva21 !== undefined && baseIva21 !== 0) ||
+                      (cuotaIva21 !== null && cuotaIva21 !== undefined && cuotaIva21 !== 0)) && (
+                      <>
+                        <DataItem label="Base Imponible IVA 21%" value={formatCurrency(baseIva21)} />
+                        <DataItem label="Cuota IVA 21%" value={formatCurrency(cuotaIva21)} />
+                      </>
+                    )}
+                  </>
+                )}
+
+                <DataItem
+                  label={`Total Cuota ${indirectTaxLabel}`}
+                  value={formatCurrency(totalIva)}
+                />
+              </>
+            );
+          })()}
 
           <div className="col-span-full mt-2">
             <DataItem
