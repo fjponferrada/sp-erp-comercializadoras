@@ -32,6 +32,7 @@ export async function POST(req: Request) {
         type: data.type ? String(data.type).trim() : (data.pricingModel === 'INDEXED' ? 'Indexado' : 'Fijo'),
         tariff: data.tariff ? String(data.tariff).trim() : null,
         isAvailableCrm: data.isAvailableCrm ?? true,
+        isAvailableWeb: Boolean(data.isAvailableWeb),
         isCustomizable: Boolean(data.isCustomizable),
         pricingModel: data.pricingModel || 'FIXED',
         permanenceMonths: data.permanenceMonths !== undefined && data.permanenceMonths !== '' ? Number(data.permanenceMonths) : null,
@@ -93,14 +94,6 @@ export async function GET(req: Request) {
       const brandId = req.headers.get('x-brand-id');
       if (!brandId) return NextResponse.json({ success: false, error: 'Falta X-Brand-Id' }, { status: 400 });
       targetBrandId = brandId;
-
-      // Buscar el usuario "Web" para heredar sus permisos de canal
-      const apiUser = await prisma.user.findFirst({
-        where: { brandId: brandId, role: 'CANAL', name: { contains: 'Web', mode: 'insensitive' } },
-      });
-      if (apiUser && apiUser.channelId) {
-        allowedChannels = [apiUser.channelId];
-      }
     } else {
       const session = await auth();
       if (!session?.user?.email) {
@@ -126,16 +119,22 @@ export async function GET(req: Request) {
       }
     }
 
-    const whereClause: any = {
-      brandId: targetBrandId,
-      isAvailableCrm: true,
-    };
-
-    if (allowedChannels) {
-      whereClause.channels = {
-        some: { id: { in: allowedChannels } },
-      };
-    }
+    const whereClause: any = isApiKey
+      ? {
+          brandId: targetBrandId,
+          isAvailableWeb: true,
+        }
+      : {
+          brandId: targetBrandId,
+          isAvailableCrm: true,
+          ...(allowedChannels
+            ? {
+                channels: {
+                  some: { id: { in: allowedChannels } },
+                },
+              }
+            : {}),
+        };
 
     const products = await prisma.product.findMany({
       where: whereClause,

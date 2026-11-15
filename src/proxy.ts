@@ -4,7 +4,16 @@ import { NextResponse } from 'next/server';
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password', '/manifest.webmanifest', '/sw.js', '/workbox-'];
+const PUBLIC_ROUTES = [
+  '/login',
+  '/forgot-password',
+  '/reset-password',
+  '/firmar',
+  '/verificar-firma',
+  '/manifest.webmanifest',
+  '/sw.js',
+  '/workbox-',
+];
 
 export default auth((req) => {
   const { nextUrl, auth: session } = req;

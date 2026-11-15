@@ -5,7 +5,6 @@ import { auth } from '@/auth';
 import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { normalizeSpanishPostalCode } from '@/lib/postalCode';
 import { revalidatePath } from 'next/cache';
-import { generateModificationDocxBuffer } from '@/lib/docGenerator';
 
 export async function createContractModificationAction(
   oldContractId: string,
@@ -260,12 +259,15 @@ export async function createContractModificationAction(
       p6c: isTecnica ? formData.p6c : (oldContract.p6c || oldContractDataObj.p6c || ""),
     };
 
-    const docxBuffer = await generateModificationDocxBuffer(templateData, isTecnica || isAutoconsumo);
-    const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
-    const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
+    const { renderModificationPdfBuffer } = await import('@/lib/contracts/contractPdfService');
+    const renderedMod = await renderModificationPdfBuffer({
+      brandId: oldContract.brandId || oldContract.client.brandId,
+      templateData,
+      isTecnica: isTecnica || isAutoconsumo,
+    });
     const { uploadFileToR2 } = await import('@/lib/r2');
-    const fileName = `MOD_${newCode || oldContract.id}_v${nextVersion}_${Date.now()}.pdf`;
-    const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+    const fileName = `MOD_${renderedMod.brandCode}_${newCode || oldContract.id}_v${nextVersion}_${Date.now()}.pdf`;
+    const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, renderedMod.pdfBuffer, 'application/pdf');
 
     // 2. Crear la nueva versión del contrato de forma atómica con su pdfUrl ya generado
     const newContract = await prisma.contract.create({
@@ -278,6 +280,7 @@ export async function createContractModificationAction(
         brandId: oldContract.brandId,
         userId: oldContract.userId, 
         previousContractId: safePreviousContractId,
+        templateVersionId: renderedMod.templateVersionId,
         tipo: 'M1',
         tipoC2: isSubrogation ? 'S' : 'N',
         tramitationType: isSubrogation ? 'Modificación de datos administrativos' : 'Modificación de datos técnicos',

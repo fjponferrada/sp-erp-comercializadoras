@@ -95,6 +95,14 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       invoices: {
         orderBy: { issueDate: 'desc' },
       },
+      signatureEnvelopes: {
+        orderBy: { createdAt: 'desc' },
+        include: {
+          auditEvents: {
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          },
+        },
+      },
     },
   });
 
@@ -305,8 +313,20 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
       })()
     : null;
 
+  const safeSignatureEnvelopes = (contract.signatureEnvelopes || []).map((env: any) => {
+    const {
+      tokenHash: _th,
+      signingTokenEncrypted: _ste,
+      otpCodeHash: _och,
+      tsaTokenBase64: _ttb,
+      ...restEnv
+    } = env;
+    return restEnv;
+  });
+
   const baseUiContract: any = {
     ...contract,
+    signatureEnvelopes: safeSignatureEnvelopes,
     lead: contract.Lead ? { ...contract.Lead, documents: contract.Lead.documents } : null,
     client: contract.client,
     supplyPoint: contract.supplyPoint

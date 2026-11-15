@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import Topbar from '@/components/Topbar';
-import { Tag, Search, Edit2, Save, X, Check, Building2, Palette, Mail, Settings, Link as LinkIcon, DollarSign } from 'lucide-react';
+import { Tag, Search, Edit2, Save, X, Check, Building2, Palette, Mail, Settings, Link as LinkIcon, DollarSign, FileSignature } from 'lucide-react';
+import Link from 'next/link';
 
 export default function MarcasClient({ initialBrands }: { initialBrands: any[] }) {
   const [brands, setBrands] = useState(initialBrands);
@@ -115,6 +116,7 @@ export default function MarcasClient({ initialBrands }: { initialBrands: any[] }
                           </div>
                         ) : (
                           <div className="flex justify-end gap-2">
+                            <Link href={`/marcas/${b.id}/plantilla-contrato`} className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-[var(--lime)] flex items-center gap-1.5 transition-colors" title="Editor Modular de Cláusulas y Firma Digital"><FileSignature size={14} /> Cláusulas y Firma</Link>
                             <button className="p-1.5 text-slate-400 hover:text-amber-400 rounded hover:bg-slate-800 transition-colors" onClick={() => startEdit(b)}>
                               <Edit2 size={18} />
                             </button>

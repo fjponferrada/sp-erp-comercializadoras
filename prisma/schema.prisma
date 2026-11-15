@@ -35,6 +35,9 @@ model Company {
   cie                    String?                @unique
   registroMercantil      String?
   etiquetaCnmc           Json?
+  sepaCreditorId         String?
+  dpoEmail               String?
+  jurisdictionCity       String?
   aggregatedLoadCurves   AggregatedLoadCurve[]
   brands                 Brand[]
   internalInvoices       InternalInvoice[]
@@ -85,12 +88,18 @@ model Brand {
   companyId             String
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
-  domain                String?             @unique
+  domain                String?                   @unique
   supportEmail          String?
   whatsappPhone         String?
   invoiceLogoUrl        String?
+  freePhone900          String?
+  withdrawalEmail       String?
+  smsSenderId           String?
+  signatureFlowMode     String                    @default("SEQUENTIAL_SINGLE_LINK")
+  allowQualifiedCertUploadB2B Boolean             @default(true)
+  envelopeExpirationDays Int                      @default(14)
   additionalServices    AdditionalService[]
-  company               Company             @relation(fields: [companyId], references: [id])
+  company               Company                   @relation(fields: [companyId], references: [id])
   channels              Channel[]
   clients               Client[]
   commissionTiers       CommissionTier[]
@@ -98,7 +107,9 @@ model Brand {
   products              Product[]
   tickets               Ticket[]
   users                 User[]
-  User_BackofficeBrands User[]              @relation("BackofficeBrands")
+  User_BackofficeBrands User[]                    @relation("BackofficeBrands")
+  templateVersions      ContractTemplateVersion[]
+  signatureEnvelopes    SignatureEnvelope[]
 }
 
 model User {
@@ -398,6 +409,7 @@ model Product {
   p5p                  Float?
   p6p                  Float?
   isAvailableCrm       Boolean          @default(true)
+  isAvailableWeb       Boolean          @default(false)
   commissionType       String           @default("MARGIN_PERCENTAGE")
   powerTiersCommission Json?
   permanenceMonths     Int?
@@ -500,7 +512,9 @@ model Contract {
   pricingModel               String?
   filePdfSigned              String?
   pdfUrl                     String?
+  summaryPdfUrl              String?
   fileAnexoFirmado           String?
+  templateVersionId          String?
   annualConsumption          Float?
   additionalServicesSnapshot Json?
   fechaAceptacionBaja        DateTime?
@@ -537,7 +551,9 @@ model Contract {
   invoices                   Invoice[]
   Lead                       Lead?
   switchingEvents            SwitchingEvent[]
-  AdditionalService          AdditionalService[]    @relation("AdditionalServiceToContract")
+  AdditionalService          AdditionalService[]      @relation("AdditionalServiceToContract")
+  templateVersion            ContractTemplateVersion? @relation(fields: [templateVersionId], references: [id])
+  signatureEnvelopes         SignatureEnvelope[]
 
   @@unique([contractCode, version, brandId])
   @@index([supplyPointId])
@@ -1258,4 +1274,114 @@ model PenaltyInvoice {
   @@unique([invoiceNumber, companyId])
   @@index([companyId, issueDate])
   @@index([contractId])
+}
+
+model ContractTemplateVersion {
+  id                    String     @id @default(cuid())
+  brandId               String
+  brand                 Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  versionNumber         Int
+  status                String     @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  name                  String?
+  notes                 String?
+  particularConfigJson  Json
+  clausesJson           Json
+  annexAutoconsumoJson  Json?
+  sepaMandateConfigJson Json?
+  summaryConfigJson     Json?
+  publishedAt           DateTime?
+  publishedByUserId     String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  contracts             Contract[]
+
+  @@unique([brandId, versionNumber])
+  @@index([brandId, status])
+}
+
+model SignatureEnvelope {
+  id                        String                @id @default(cuid())
+  envelopeCode              String                @unique
+  contractId                String
+  contract                  Contract              @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  brandId                   String
+  brand                     Brand                 @relation(fields: [brandId], references: [id])
+  documentKind              String                @default("CONTRACT") // CONTRACT | MODTEC | SUBROGACION | RENEWAL
+  flowMode                  String                @default("SEQUENTIAL_SINGLE_LINK") // SEQUENTIAL_SINGLE_LINK | TWO_STEP_SEPARATE_DELIVERY
+  tokenHash                 String                @unique
+  signingTokenEncrypted     String?
+  status                    String                @default("SENT")
+  // SENT | VIEWED | SUMMARY_ACCEPTED | OTP_SENT | SIGNED | CANCELLED | EXPIRED | REJECTED
+
+  signerName                String
+  signerNif                 String
+  signerEmail               String
+  signerPhone               String?
+  isB2B                     Boolean               @default(false)
+  tariff                    String?
+
+  summaryPdfDraftUrl        String
+  summaryPdfHashSha256      String
+  summaryViewedAt           DateTime?
+  summaryAcceptedAt         DateTime?
+  summaryAcceptedIp         String?
+  summaryAcceptedUserAgent  String?
+
+  contractSentAt            DateTime?
+  contractPdfDraftUrl       String
+  contractPdfHashSha256     String
+
+  signatureMethod           String?               // OTP_PADES | QUALIFIED_CERT_UPLOAD
+  allowCertUploadFallback   Boolean               @default(false)
+
+  otpChannel                String?
+  otpCodeHash               String?
+  otpExpiresAt              DateTime?
+  otpAttempts               Int                   @default(0)
+  otpSendCount              Int                   @default(0)
+  otpLastSentAt             DateTime?
+  otpVerifiedAt             DateTime?
+
+  certSubjectDn             String?
+  certIssuerDn              String?
+  certSerialNumber          String?
+  certSignerNif             String?
+  certValidFrom             DateTime?
+  certValidTo               DateTime?
+
+  signedPdfUrl              String?
+  signedSummaryPdfUrl       String?
+  auditTrailPdfUrl          String?
+  signedPdfHashSha256       String?
+  tsaProvider               String?
+  tsaTokenBase64            String?
+  tsaTimestamp              DateTime?
+
+  expiresAt                 DateTime
+  signedAt                  DateTime?
+  cancelledAt               DateTime?
+  cancelReason              String?
+  createdByUserId           String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  auditEvents               SignatureAuditEvent[]
+
+  @@index([contractId])
+  @@index([brandId, status])
+}
+
+model SignatureAuditEvent {
+  id            String            @id @default(cuid())
+  envelopeId    String
+  envelope      SignatureEnvelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+  eventType     String
+  ipAddress     String?
+  userAgent     String?
+  metadataJson  Json?
+  prevEventHash String?
+  eventHash     String
+  createdAt     DateTime          @default(now())
+
+  @@index([envelopeId, createdAt])
 }

@@ -18,7 +18,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const data = await req.json();
     
     // Omitir campos que no deberían ser actualizados directamente en este endpoint
-    const { id, createdAt, updatedAt, companyId, company, users, backofficeUsers, clients, products, ...updateData } = data;
+    const {
+      id,
+      createdAt,
+      updatedAt,
+      companyId,
+      company,
+      users,
+      backofficeUsers,
+      User_BackofficeBrands,
+      clients,
+      products,
+      contracts,
+      channels,
+      tickets,
+      commissionTiers,
+      additionalServices,
+      templateVersions,
+      signatureEnvelopes,
+      ...updateData
+    } = data;
 
     const updatedBrand = await prisma.brand.update({
       where: { id: brandId },

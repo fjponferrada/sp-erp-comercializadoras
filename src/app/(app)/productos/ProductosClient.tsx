@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Package, Plus, Search, Info } from 'lucide-react';
+import { Package, Plus, Search, Info, Globe } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import PaginationFooter from '@/components/PaginationFooter';
@@ -57,6 +57,7 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
 
       let matchStatus = true;
       if (filterStatus === 'CRM') matchStatus = Boolean(p.isAvailableCrm);
+      else if (filterStatus === 'WEB') matchStatus = Boolean(p.isAvailableWeb);
       else if (filterStatus === 'HIDDEN') matchStatus = !p.isAvailableCrm;
 
       return matchSearch && matchType && matchTariff && matchStatus;
@@ -148,14 +149,15 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
             {canEdit && (
               <select
                 value={filterStatus}
-                className="form-input min-w-[160px]"
+                className="form-input min-w-[175px]"
                 onChange={(e) => {
                   setFilterStatus(e.target.value);
                   setPage(1);
                 }}
               >
-                <option value="">Estado CRM (Todos)</option>
+                <option value="">Visibilidad (Todos)</option>
                 <option value="CRM">Disponibles en CRM</option>
+                <option value="WEB">Visibles en Web</option>
                 <option value="HIDDEN">Ocultos / Archivados</option>
               </select>
             )}
@@ -172,7 +174,7 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
                   <th>Modalidad</th>
                   <th style={{ textAlign: 'center' }}>Precios / Fee</th>
                   <th style={{ textAlign: 'center' }}>Comisión Base</th>
-                  <th style={{ textAlign: 'right' }}>Estado CRM</th>
+                  <th style={{ textAlign: 'right' }}>Visibilidad</th>
                 </tr>
               </thead>
               <tbody>
@@ -244,11 +246,38 @@ export default function ProductosClient({ initialProducts }: { initialProducts: 
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        {product.isAvailableCrm ? (
-                          <span className="badge badge-active">Activo</span>
-                        ) : (
-                          <span className="badge badge-draft">Oculto</span>
-                        )}
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            justifyContent: 'flex-end',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          {product.isAvailableCrm ? (
+                            <span className="badge badge-active">CRM</span>
+                          ) : (
+                            <span className="badge badge-draft">Oculto</span>
+                          )}
+                          {product.isAvailableWeb && (
+                            <span
+                              className="badge badge-draft"
+                              style={{
+                                color: '#38bdf8',
+                                borderColor: 'rgba(56, 189, 248, 0.45)',
+                                background: 'rgba(56, 189, 248, 0.12)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                              title="Visible en el catálogo de la Web Pública (API)"
+                            >
+                              <Globe size={12} />
+                              Web
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

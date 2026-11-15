@@ -195,54 +195,88 @@ export function buildTemplateDataFromContract(contract: any, cData: any, product
   const cl = contract.client || {};
   const additionalServicesStr = Array.isArray(contract?.additionalServicesSnapshot)
     ? contract.additionalServicesSnapshot.map((s: any) => s.name).join(' - ')
-    : cData.svaConcept || '';
+    : cData.svaConcept || contract?.svaConcept || '';
+
+  const hasAuto =
+    cData.autoconsumo === 'Si' ||
+    cData.autoconsumo === 'SI' ||
+    cData.autoconsumo === 'Sí' ||
+    cData.autoconsumo === true ||
+    contract?.autoconsumo === true ||
+    sp?.hasSelfConsumption === true;
+
+  const hasSolar =
+    contract?.bolsilloSolar === true ||
+    (contract?.cgBolsilloSolar && Number(contract.cgBolsilloSolar) > 0);
+
+  const annualKwh =
+    contract?.annualConsumption != null
+      ? String(Math.round(Number(contract.annualConsumption) * 1000))
+      : sp?.annualConsumption != null
+      ? String(Math.round(Number(sp.annualConsumption) * 1000))
+      : cData.consumoEstimado || cData.consumoAnual || '0';
 
   return {
     nombretit: nombreTitular,
     '1apetit': apellido1,
     '2apetit': apellido2,
     nif: formatField(cl.vatNumber || cData.nif || cData.cif) || '',
-    cnae: formatField(cData.cnae || sp.sipsCnae) || '',
+    cnae: formatField(cData.cnae || sp.cnae || sp.sipsCnae || cl.cnae) || '',
     direcciontitular: formatField(getTitularAddress(cData)) || formatField(cl.billingAddress) || '',
     cptit: formatField(cData.cp) || dirTitObj.cp || formatField(cl.billingPostalCode) || '',
     loctit: formatField(cData.poblacion) || dirTitObj.poblacion || formatField(cl.billingCity) || '',
     provtit: formatField(cData.provincia) || dirTitObj.provincia || formatField(cl.billingProvince) || '',
     mailtitular: formatField(cl.contactEmail || cData.email) || '',
     tlftitular: formatField(cl.contactPhone || cData.telefono) || '',
-    mvtitular: formatField(cl.contactPhone || cData.telefono) || '',
+    mvtitular: formatField(cl.contactPhone2 || '') || '',
     nombrerep: formatField(cl.representativeName || cData.contactoNombre) || '',
     nifrep: formatField(cl.representativeVat || cData.contactoNif) || '',
-    iban: formatField(sp.iban || cData.iban) || '',
+    ftraspapel: cl.paperInvoice || cData.facturasPapel === 'Si' || cData.facturasPapel === 'SI' ? 'Correo Postal' : 'Email',
+    iban: formatField(contract.iban || sp.iban || cData.iban) || '',
     cups: formatField(sp.cups || cData.cups) || '',
     direccionPS: formatField(getSupplyAddress(cData)) || formatField(sp.address) || '',
     cpPS: formatField(cData.sCp || cData['Código Postal Instalación']) || dirPSObj.cp || formatField(sp.postalCode) || '',
     localidadPS: formatField(cData.sPoblacion || cData['Población Instalación']) || dirPSObj.poblacion || formatField(sp.city) || '',
     provPS: formatField(cData.sProvincia || cData['Provincia Instalación']) || dirPSObj.provincia || formatField(sp.province) || '',
     tarifa: formatField(contract.tarifa || contract.supplyPoint?.tariff || cData.tarifa || sp.sipsTariff) || '',
-    p1c: formatField(contract.p1c || cData.p1c || cData.p1) || '',
-    p2c: formatField(contract.p2c || cData.p2c || cData.p2) || '',
-    p3c: formatField(contract.p3c || cData.p3c || cData.p3) || '',
-    p4c: formatField(contract.p4c || cData.p4c || cData.p4) || '',
-    p5c: formatField(contract.p5c || cData.p5c || cData.p5) || '',
-    p6c: formatField(contract.p6c || cData.p6c || cData.p6) || '',
-    producto: formatField(product?.name || cData.producto) || '',
-    p1p: formatField(product?.p1 || contract.p1p || cData.p1p) || '',
-    p2p: formatField(product?.p2 || contract.p2p || cData.p2p) || '',
-    p3p: formatField(product?.p3 || contract.p3p || cData.p3p) || '',
-    p4p: formatField(product?.p4 || contract.p4p || cData.p4p) || '',
-    p5p: formatField(product?.p5 || contract.p5p || cData.p5p) || '',
-    p6p: formatField(product?.p6 || contract.p6p || cData.p6p) || '',
-    p1e: formatField(product?.e1 || contract.p1e || cData.p1e) || '',
-    p2e: formatField(product?.e2 || contract.p2e || cData.p2e) || '',
-    p3e: formatField(product?.e3 || contract.p3e || cData.p3e) || '',
-    p4e: formatField(product?.e4 || contract.p4e || cData.p4e) || '',
-    p5e: formatField(product?.e5 || contract.p5e || cData.p5e) || '',
-    p6e: formatField(product?.e6 || contract.p6e || cData.p6e) || '',
-    fee: formatField(contract.fee || product?.fee || cData.fee) || '',
+    p1c: formatField(contract.p1c ?? sp.p1c ?? cData.p1c ?? cData.p1) || '0',
+    p2c: formatField(contract.p2c ?? sp.p2c ?? cData.p2c ?? cData.p2) || '0',
+    p3c: formatField(contract.p3c ?? sp.p3c ?? cData.p3c ?? cData.p3) || '0',
+    p4c: formatField(contract.p4c ?? sp.p4c ?? cData.p4c ?? cData.p4) || '0',
+    p5c: formatField(contract.p5c ?? sp.p5c ?? cData.p5c ?? cData.p5) || '0',
+    p6c: formatField(contract.p6c ?? sp.p6c ?? cData.p6c ?? cData.p6) || '0',
+    producto: product?.name || cData.producto || '',
+    nombreprod: product?.name || cData.producto || '',
+    tipoprod: product?.type || contract?.pricingModel || product?.pricingModel || '',
+    dsv: String(contract?.deviationCost ?? product?.deviationCost ?? cData.dsv ?? '0'),
+    p1p: String(contract.p1p ?? product?.p1p ?? product?.p1 ?? cData.p1p ?? '0'),
+    p2p: String(contract.p2p ?? product?.p2p ?? product?.p2 ?? cData.p2p ?? '0'),
+    p3p: String(contract.p3p ?? product?.p3p ?? product?.p3 ?? cData.p3p ?? '0'),
+    p4p: String(contract.p4p ?? product?.p4p ?? product?.p4 ?? cData.p4p ?? '0'),
+    p5p: String(contract.p5p ?? product?.p5p ?? product?.p5 ?? cData.p5p ?? '0'),
+    p6p: String(contract.p6p ?? product?.p6p ?? product?.p6 ?? cData.p6p ?? '0'),
+    p1e: String(contract.p1e ?? product?.p1e ?? product?.e1 ?? cData.p1e ?? '0'),
+    p2e: String(contract.p2e ?? product?.p2e ?? product?.e2 ?? cData.p2e ?? '0'),
+    p3e: String(contract.p3e ?? product?.p3e ?? product?.e3 ?? cData.p3e ?? '0'),
+    p4e: String(contract.p4e ?? product?.p4e ?? product?.e4 ?? cData.p4e ?? '0'),
+    p5e: String(contract.p5e ?? product?.p5e ?? product?.e5 ?? cData.p5e ?? '0'),
+    p6e: String(contract.p6e ?? product?.p6e ?? product?.e6 ?? cData.p6e ?? '0'),
+    fee: String(contract.fee ?? product?.fee ?? cData.fee ?? '0'),
     feee: formatField(contract.svaConcept || product?.svaConcept || cData.feee) || '',
+    MESESPERMANENCIA: String(contract.permanenceMonths ?? product?.permanenceMonths ?? '0'),
     servicios: additionalServicesStr,
-    conpexc: formatField(product?.feeExcedentes || contract.commissionBase || cData.conpexc) || '',
-    pexc: formatField(product?.pexc || cData.pexc) || '',
+    consumoanual: annualKwh,
+    tramitacion: contract.tramitationType || cData.tipoTramitacion || cData.tramitationType || 'Cambio comercializadora sin cambios',
+    modalidadauto: hasAuto ? 'Con excedentes' : 'Sin autoconsumo',
+    conpexc: String(contract.feeExcedentes ?? product?.feeExcedentes ?? cData.conpexc ?? '0'),
+    feeexc: String(contract.feeExcedentes ?? product?.feeExcedentes ?? cData.conpexc ?? '0'),
+    pexc: String(contract.pexc ?? product?.pexc ?? cData.pexc ?? '0'),
+    asociarabolsillo: hasSolar ? 'Si' : 'No',
+    cbolsillosolar: hasSolar ? String(contract.cgBolsilloSolar ?? product?.cgBolsilloSolar ?? '0') : '0',
+    fechafirma: contract.signatureDate
+      ? new Date(contract.signatureDate).toLocaleDateString('es-ES')
+      : new Date().toLocaleDateString('es-ES'),
+    numcontrato: contract.contractCode || contract.id || '',
     f1: formatField(product?.f1 || cData.f1) || '',
     f2: formatField(product?.f2 || cData.f2) || '',
     f3: formatField(product?.f3 || cData.f3) || '',

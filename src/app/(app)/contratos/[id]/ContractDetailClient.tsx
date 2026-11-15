@@ -35,7 +35,13 @@ import {
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { formatDateUTC } from '@/lib/utils/date';
-import { sendContractToDocuSignAction, deleteLatestVersionAction } from '@/app/actions/contractActions';
+import { deleteLatestVersionAction } from '@/app/actions/contractActions';
+import {
+  sendContractToSignatureAction,
+  resendSignatureEnvelopeAction,
+  getSignatureLinkForCopyAction,
+  cancelSignatureEnvelopeAction,
+} from '@/app/actions/signatureActions';
 import { createContractModificationAction } from '@/app/actions/contractModification';
 import { generateSwitchingXmls } from '@/app/actions/switchingGenerarActions';
 import { comunicarRenovacionTacitaAction } from '@/app/actions/renovacionesActions';
@@ -369,17 +375,30 @@ export default function ContractDetailClient({
     annexUrl = airtableData['PDF Anexo firmado'][0].url;
   }
 
+  const signatureEnvelopes: any[] = Array.isArray(initialContract.signatureEnvelopes)
+    ? initialContract.signatureEnvelopes
+    : [];
+  const latestEnvelope: any = signatureEnvelopes.length > 0 ? signatureEnvelopes[0] : null;
+  const summaryDocUrl: string | null =
+    latestEnvelope?.signedSummaryPdfUrl ||
+    initialContract.summaryPdfUrl ||
+    latestEnvelope?.summaryPdfDraftUrl ||
+    null;
+  const auditTrailUrl: string | null = latestEnvelope?.auditTrailPdfUrl || null;
+
   const expedienteDocuments: any[] = Array.isArray(initialContract.expedienteDocuments) ? initialContract.expedienteDocuments : [];
   const totalDocsCount = useMemo(() => {
     const urls = new Set<string>();
     if (draftUrl) urls.add(draftUrl);
     if (signedUrl) urls.add(signedUrl);
     if (annexUrl) urls.add(annexUrl);
+    if (summaryDocUrl) urls.add(summaryDocUrl);
+    if (auditTrailUrl) urls.add(auditTrailUrl);
     expedienteDocuments.forEach((d) => {
       if (d?.url) urls.add(d.url);
     });
     return urls.size;
-  }, [draftUrl, signedUrl, annexUrl, expedienteDocuments]);
+  }, [draftUrl, signedUrl, annexUrl, summaryDocUrl, auditTrailUrl, expedienteDocuments]);
 
   const buildDownloadUrl = (url: string) => `/api/documents/smart-download?url=${encodeURIComponent(url)}`;
 
@@ -541,22 +560,92 @@ export default function ContractDetailClient({
               <button
                 onClick={async () => {
                   setIsSendingSignature(true);
-                  const loadingToast = toast.loading('Enviando contrato a DocuSign...');
-                  const res = await sendContractToDocuSignAction(initialContract.id);
+                  const loadingToast = toast.loading('Preparando sobre de Firma Digital y Resumen RD 88/2026...');
+                  const res = await sendContractToSignatureAction(initialContract.id);
                   setIsSendingSignature(false);
                   if (res.error) {
                     toast.error(res.error, { id: loadingToast });
                   } else {
-                    toast.success('Contrato enviado a firma digital (DocuSign)', { id: loadingToast });
+                    if (isAdmin && res.signingUrl && res.emailWarning) {
+                      navigator.clipboard?.writeText(res.signingUrl).catch(() => {});
+                      toast.success(
+                        `Sobre ${res.envelopeCode} creado. Enlace copiado al portapapeles (${res.emailWarning})`,
+                        { id: loadingToast, duration: 6000 }
+                      );
+                    } else {
+                      toast.success(`Contrato enviado a Firma Digital (${res.envelopeCode})`, { id: loadingToast });
+                    }
                     router.refresh();
                   }
                 }}
                 disabled={isSendingSignature}
                 className="btn-primary flex items-center gap-2"
+                title="Enviar Documento Resumen Precontractual (RD 88/2026) y Contrato a Firma Digital"
               >
                 {isSendingSignature ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
-                <span className="hidden md:inline">{isSendingSignature ? 'Enviando...' : 'DocuSign'}</span>
+                <span className="hidden md:inline">{isSendingSignature ? 'Enviando...' : 'Enviar a Firma'}</span>
               </button>
+            )}
+
+            {!isClientRole && initialContract.status === 'VERIFICANDO_FIRMA' && (
+              <>
+                {isAdmin && (
+                  <button
+                    onClick={async () => {
+                      const res = await getSignatureLinkForCopyAction(initialContract.id);
+                      if (res.error || !res.signingUrl) {
+                        toast.error(res.error || 'No se pudo obtener el enlace');
+                      } else {
+                        await navigator.clipboard.writeText(res.signingUrl);
+                        toast.success('Enlace seguro de firma copiado al portapapeles');
+                      }
+                    }}
+                    className="btn-secondary flex items-center gap-2"
+                    title="Copiar enlace directo del portal de firma (solo Backoffice / Admin)"
+                  >
+                    <Copy size={15} />
+                    <span className="hidden md:inline">Copiar Enlace Firma</span>
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    setIsSendingSignature(true);
+                    const t = toast.loading('Reenviando invitación de firma...');
+                    const res = await resendSignatureEnvelopeAction(initialContract.id);
+                    setIsSendingSignature(false);
+                    if (res.error) toast.error(res.error, { id: t });
+                    else {
+                      toast.success('Invitación de firma reenviada al cliente', { id: t });
+                      router.refresh();
+                    }
+                  }}
+                  disabled={isSendingSignature}
+                  className="btn-secondary flex items-center gap-2"
+                  title="Reenviar email y SMS de firma digital al cliente"
+                >
+                  <Send size={15} />
+                  <span className="hidden md:inline">Reenviar Firma</span>
+                </button>
+                {isAdmin && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm('¿Desea anular el sobre de firma pendiente y devolver el contrato a Borrador?')) return;
+                      const t = toast.loading('Anulando sobre de firma...');
+                      const res = await cancelSignatureEnvelopeAction(initialContract.id);
+                      if (res.error) toast.error(res.error, { id: t });
+                      else {
+                        toast.success('Sobre anulado. Contrato devuelto a Borrador.', { id: t });
+                        router.refresh();
+                      }
+                    }}
+                    className="btn-secondary flex items-center gap-1.5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                    title="Anular sobre pendiente y volver a estado Borrador"
+                  >
+                    <Ban size={15} />
+                    <span className="hidden xl:inline">Anular Firma</span>
+                  </button>
+                )}
+              </>
             )}
 
             {isAdmin && versions && versions.length > 1 && initialContract.id === versions[0].id && (
@@ -1318,7 +1407,7 @@ export default function ContractDetailClient({
                     <FolderOpen className="text-[var(--lime)]" size={20} /> Documentos Contractuales
                   </h2>
                   <p className="text-xs text-gray-400 mt-1">
-                    Borradores generados, contratos firmados por DocuSign o adjuntos manuales del expediente.
+                    Borradores generados, Documento Resumen RD 88/2026, contratos sellados PAdES y evidencias del expediente.
                   </p>
                 </div>
                 {isAdmin && (
@@ -1332,19 +1421,33 @@ export default function ContractDetailClient({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[
                   {
-                    title: 'Contrato Firmado',
-                    subtitle: 'Documento contractual con validez legal',
+                    title: 'Contrato Firmado (PAdES)',
+                    subtitle: 'Documento contractual con validez legal y sello criptográfico',
                     url: signedUrl,
                     emptyText: 'Aún no consta PDF firmado',
                   },
                   {
+                    title: 'Documento Resumen (RD 88/2026)',
+                    subtitle: latestEnvelope?.signedSummaryPdfUrl
+                      ? 'Resumen precontractual aceptado y sellado'
+                      : 'Resumen precontractual independiente previo',
+                    url: summaryDocUrl,
+                    emptyText: 'Sin resumen precontractual',
+                  },
+                  {
                     title: 'Borrador de Contrato',
-                    subtitle: 'PDF generado antes de la firma',
+                    subtitle: 'PDF generado con cláusulas modulares antes de la firma',
                     url: draftUrl,
                     emptyText: 'Sin borrador generado',
+                  },
+                  {
+                    title: 'Certificado de Evidencias',
+                    subtitle: 'Audit Trail encadenado SHA-256 eIDAS / RD 88/2026',
+                    url: auditTrailUrl,
+                    emptyText: 'Se genera automáticamente al completar la firma',
                   },
                   {
                     title: 'Anexo / Modificación Firmada',
@@ -1403,6 +1506,101 @@ export default function ContractDetailClient({
                 ))}
               </div>
             </div>
+
+            {latestEnvelope && (
+              <div className="card p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[var(--border)]">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <FileCheck size={18} className="text-[var(--lime)]" /> Trazabilidad de Firma Digital (eIDAS / RD 88/2026)
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Sobre <span className="font-mono text-gray-200 font-semibold">{latestEnvelope.envelopeCode}</span> · Firmante:{' '}
+                      {latestEnvelope.signerName} ({latestEnvelope.signerNif}) · {latestEnvelope.signerEmail}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        latestEnvelope.status === 'SIGNED'
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : latestEnvelope.status === 'CANCELLED' || latestEnvelope.status === 'EXPIRED'
+                          ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {latestEnvelope.status}
+                    </span>
+                    <a
+                      href={`/verificar-firma/${encodeURIComponent(latestEnvelope.envelopeCode)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                    >
+                      <ExternalLink size={13} /> Verificador Público
+                    </a>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-xs">
+                  <div className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+                    <span className="text-gray-400 uppercase font-semibold block mb-1">T1 · Aceptación Resumen RD 88/2026</span>
+                    <span className="text-white font-semibold">
+                      {latestEnvelope.summaryAcceptedAt
+                        ? new Date(latestEnvelope.summaryAcceptedAt).toLocaleString('es-ES')
+                        : 'Pendiente de lectura por el cliente'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+                    <span className="text-gray-400 uppercase font-semibold block mb-1">T2 · Método de Firma</span>
+                    <span className="text-white font-semibold">
+                      {latestEnvelope.signatureMethod === 'QUALIFIED_CERT_UPLOAD'
+                        ? 'Certificado Electrónico Cualificado X.509'
+                        : latestEnvelope.signatureMethod === 'OTP_PADES'
+                        ? `Firma Avanzada OTP (${latestEnvelope.otpChannel || 'Email'}) + Rúbrica`
+                        : latestEnvelope.allowCertUploadFallback
+                        ? 'OTP + Rúbrica (Principal) / Cert. X.509 (Opcional B2B)'
+                        : 'OTP + Rúbrica + Sello PAdES'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+                    <span className="text-gray-400 uppercase font-semibold block mb-1">T3 · Sellado PAdES / Fecha Firma</span>
+                    <span className="text-white font-semibold">
+                      {latestEnvelope.signedAt
+                        ? new Date(latestEnvelope.signedAt).toLocaleString('es-ES')
+                        : `Expira el ${new Date(latestEnvelope.expiresAt).toLocaleDateString('es-ES')}`}
+                    </span>
+                  </div>
+                </div>
+
+                {Array.isArray(latestEnvelope.auditEvents) && latestEnvelope.auditEvents.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-800 text-gray-400 uppercase text-[11px]">
+                          <th className="py-2 px-3">Fecha / Hora</th>
+                          <th className="py-2 px-3">Evento</th>
+                          <th className="py-2 px-3">IP / Origen</th>
+                          <th className="py-2 px-3">Hash Cadena SHA-256</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {latestEnvelope.auditEvents.map((ev: any) => (
+                          <tr key={ev.id} className="border-b border-[var(--border)]">
+                            <td className="py-2 px-3 font-mono text-gray-300 whitespace-nowrap">
+                              {new Date(ev.createdAt).toLocaleString('es-ES')}
+                            </td>
+                            <td className="py-2 px-3 font-semibold text-white">{ev.eventType}</td>
+                            <td className="py-2 px-3 text-gray-400 font-mono">{ev.ipAddress || 'Servidor'}</td>
+                            <td className="py-2 px-3 font-mono text-gray-400">{String(ev.eventHash || '').slice(0, 18)}...</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="card p-6">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--border)]">

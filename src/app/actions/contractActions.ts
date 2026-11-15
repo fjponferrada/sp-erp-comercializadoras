@@ -5,8 +5,6 @@ import { findOrUpdateSupplyPointByCups } from '@/lib/supplyPointHelper';
 import { normalizeSpanishPostalCode, normalizeSpanishPostalCodeOrNull } from '@/lib/postalCode';
 import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
-import docusign from 'docusign-esign';
-import { createAndSendEnvelope } from '@/lib/docusign';
 import { buildTemplateDataFromLead, getSupplyAddress, getTitularAddress } from '@/lib/templateBuilder';
 import { getTramitationCodes } from '@/lib/tramitationMapper';
 import {
@@ -524,32 +522,53 @@ export async function convertLeadToContractAction(leadId: string): Promise<{
       },
     });
 
-    // 6. Generar DOCX, convertir a PDF vía DocuSign y subir a R2 (salvo multipunto)
+    // 6. Generar PDF de Contrato + Documento Resumen Precontractual (RD 88/2026) con el motor nativo multi-marca y subir a R2 (salvo multipunto)
     let pdfWarning: string | undefined;
     if (!isMultipoint) {
       try {
-        const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
-        const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
-        const { uploadFileToR2 } = await import('@/lib/r2');
-        
-        const isPersonaFisica = /^[0-9XYZ]/.test(cleanVat) && cleanVat.length === 9;
-        const cnae = (cData.cnae || '').trim();
-        const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
-        const isB2B = !isCore;
+        const {
+          generateAndUploadContractBundle,
+          determineContractIsB2B,
+          determineContractIsIndexed,
+        } = await import('@/lib/contracts/contractPdfService');
 
-        const templateData = buildTemplateDataFromLead(lead, cData, product, contract, isB2B, client, supplyPoint);
-        const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
-        const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
-        
-        const fileName = `Contrato_AED_${contract.contractCode}.pdf`;
-        const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+        const isB2B = determineContractIsB2B(cleanVat, cData.cnae);
+        const isIndexed = determineContractIsIndexed({
+          pricingModel: contract.pricingModel,
+          productTypeSnapshot: contract.productTypeSnapshot,
+          product,
+        });
+        const templateData = buildTemplateDataFromLead(
+          lead,
+          cData,
+          product,
+          contract,
+          isB2B,
+          client,
+          supplyPoint
+        );
+
+        const bundle = await generateAndUploadContractBundle({
+          brandId: contract.brandId || brandIdToUse,
+          contractCode: contract.contractCode || contract.id,
+          templateData,
+          isB2B,
+          isTransferencia,
+          isIndexed,
+          hasSelfConsumption: hasAutoconsumo,
+          hasSolarWallet: hasBolsilloSolar,
+        });
 
         await prisma.contract.update({
           where: { id: contract.id },
-          data: { pdfUrl: uploadedUrl }
+          data: {
+            pdfUrl: bundle.contractPdfUrl,
+            summaryPdfUrl: bundle.summaryPdfUrl,
+            templateVersionId: bundle.templateVersionId,
+          },
         });
       } catch (pdfError: any) {
-        console.error("Error generando PDF para el contrato nativo:", pdfError);
+        console.error('Error generando PDF para el contrato nativo:', pdfError);
         pdfWarning = pdfError?.message || String(pdfError);
       }
     }
@@ -956,31 +975,65 @@ export async function remakeContractAction(leadId: string): Promise<{
       }
     });
 
+    // Anular cualquier sobre de firma pendiente previo si el contrato ha sido rehecho
+    await prisma.signatureEnvelope.updateMany({
+      where: {
+        contractId: lead.contract.id,
+        status: { in: ['SENT', 'VIEWED', 'SUMMARY_ACCEPTED', 'OTP_SENT'] },
+      },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelReason: 'Contrato rehecho desde la ficha del Lead con nuevas condiciones.',
+      },
+    });
+
     if (!isMultipoint) {
       try {
-        const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
-        const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
-        const { uploadFileToR2 } = await import('@/lib/r2');
+        const {
+          generateAndUploadContractBundle,
+          determineContractIsB2B,
+          determineContractIsIndexed,
+        } = await import('@/lib/contracts/contractPdfService');
 
-        const isPersonaFisica = /^[0-9XYZ]/.test(cleanVat) && cleanVat.length === 9;
-        const cnae = (cData.cnae || '').trim();
-        const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
-        const isB2B = !isCore;
+        const isB2B = determineContractIsB2B(cleanVat, cData.cnae);
+        const isIndexed = determineContractIsIndexed({
+          pricingModel: updatedContract.pricingModel,
+          productTypeSnapshot: updatedContract.productTypeSnapshot,
+          product,
+        });
 
-        const templateData = buildTemplateDataFromLead(lead, cData, product, updatedContract, isB2B, lead.contract?.client, lead.contract?.supplyPoint);
-        const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
-        
-        const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
-        
-        const fileName = `Contrato_AED_${lead.contract.contractCode}.pdf`;
-        const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+        const templateData = buildTemplateDataFromLead(
+          lead,
+          cData,
+          product,
+          updatedContract,
+          isB2B,
+          lead.contract?.client,
+          lead.contract?.supplyPoint
+        );
+
+        const bundle = await generateAndUploadContractBundle({
+          brandId: updatedContract.brandId || brandIdToUse,
+          contractCode: lead.contract.contractCode || lead.contract.id,
+          templateData,
+          isB2B,
+          isTransferencia,
+          isIndexed,
+          hasSelfConsumption: hasAutoconsumo,
+          hasSolarWallet: hasBolsilloSolar,
+        });
 
         await prisma.contract.update({
           where: { id: lead.contract.id },
-          data: { pdfUrl: uploadedUrl }
+          data: {
+            pdfUrl: bundle.contractPdfUrl,
+            summaryPdfUrl: bundle.summaryPdfUrl,
+            templateVersionId: bundle.templateVersionId,
+          },
         });
       } catch (pdfError: any) {
-        console.error("Error generando PDF al rehacer el contrato nativo:", pdfError);
+        console.error('Error generando PDF al rehacer el contrato nativo:', pdfError);
         return { error: 'Error crítico al regenerar PDF: ' + (pdfError.message || String(pdfError)) };
       }
     }
@@ -1333,83 +1386,8 @@ export async function updateContractDatesAction(
 }
 
 export async function sendContractToDocuSignAction(contractId: string) {
-  try {
-    const caller = await resolveContractActionCaller();
-    if (!caller || caller.role === 'CLIENT') {
-      return { error: 'No tienes permisos para enviar contratos a DocuSign.' };
-    }
-
-    const { getUserVisibilityFilter } = await import('@/lib/permissions');
-    const visibilityFilter = await getUserVisibilityFilter();
-
-    const contract = await prisma.contract.findFirst({
-      where: { id: contractId, ...visibilityFilter },
-      include: { 
-        Lead: true,
-        client: true,
-        supplyPoint: true
-      }
-    });
-
-    if (!contract) return { error: 'Contrato no encontrado o sin permisos' };
-    if (!contract.pdfUrl) return { error: 'El contrato no tiene un PDF de borrador generado.' };
-    
-    // Obtener email y nombre
-    const cData: any = typeof contract.airtableData === 'string' ? JSON.parse(contract.airtableData) : (contract.airtableData || {});
-    
-    let signerEmail = contract.Lead?.email || cData.email || cData.contactEmail || contract.client?.contactEmail;
-    let signerName = contract.Lead?.businessName || cData.businessName || contract.client?.businessName || 'Cliente';
-    let signerPhone = contract.Lead?.phone || cData.phone || contract.client?.contactPhone || '';
-    let nif = contract.Lead?.vatNumber || cData.nif || cData.cif || contract.client?.vatNumber || '';
-    
-    let cups = contract.Lead?.cups || cData.cups || contract.supplyPoint?.cups || '';
-    let address = cData.direccionSuministro?.address || cData.direccionSuministro || cData.direccion || contract.supplyPoint?.address || '';
-    let postalCode = cData.direccionSuministro?.postalCode || cData.cp || cData.sCp || contract.supplyPoint?.postalCode || '';
-    let city = cData.direccionSuministro?.city || cData.poblacion || contract.supplyPoint?.city || '';
-    let province = cData.direccionSuministro?.province || cData.provincia || contract.supplyPoint?.province || '';
-    let iban = cData.iban || contract.iban || '';
-
-    if (!signerEmail) return { error: 'El cliente no tiene un email registrado para enviar a DocuSign.' };
-
-    // 1. Descargar el PDF desde Cloudflare R2
-    const pdfResponse = await fetch(contract.pdfUrl);
-    if (!pdfResponse.ok) {
-      throw new Error(`Error al descargar el PDF desde R2. Status: ${pdfResponse.status}`);
-    }
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-
-    // Construir el emailBlurb con los datos EXACTOS del sistema antiguo
-    const introMessage = "UNA VEZ LEÍDO TODO EL DOCUMENTO, PULSE EN CUALQUIER PARTE DEL MISMO, AGREGUE SU FIRMA Y PULSE EN FINALIZAR. NO ES NECESARIO REALIZAR NINGÚN OTRO PASO NI AÑADIR INFORMACIÓN ADICIONAL.";
-    const dataMessage = `Por favor, compruebe los datos de su solicitud antes de proceder con la firma. Titular: ${signerName}. identificador: ${nif}. Dirección del punto de suministro: ${address} CP: ${postalCode} Población/Municipio: ${city} Provincia: ${province}. CUPS (en factura): ${cups}. IBAN: ${iban}. Tlfn. Contacto: ${signerPhone}. E-Mail Contacto: ${signerEmail}.`;
-    const emailBlurb = `${introMessage} ${dataMessage}`;
-    
-    // Título del sobre exacto al sistema antiguo (Código de contrato / Contrato de suministro eléctrico)
-    const emailSubject = `${contract.contractCode || contract.Lead?.airtableId || contractId} / Contrato de suministro eléctrico`;
-
-    // 2. Enviar a DocuSign (ahora con soporte para SMS multi-canal)
-    const envelopeId = await createAndSendEnvelope(
-      contractId,
-      pdfBuffer,
-      signerName,
-      signerEmail,
-      emailSubject,
-      emailBlurb,
-      signerPhone
-    );
-
-    // 3. Guardar el envelopeId
-    await prisma.contract.update({
-      where: { id: contractId },
-      data: {
-        docusignEnvelopeId: envelopeId
-      }
-    });
-    
-    return { success: true, message: 'Contrato enviado a firma exitosamente.' };
-  } catch (error: any) {
-    console.error('Error sending contract to DocuSign:', error);
-    return { error: error.message || 'Error desconocido al enviar a DocuSign' };
-  }
+  const { sendContractToSignatureAction } = await import('@/app/actions/signatureActions');
+  return sendContractToSignatureAction(contractId);
 }
 
 export async function updateContractFull(formData: FormData) {

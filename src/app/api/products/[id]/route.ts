@@ -40,6 +40,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         type: data.type ? String(data.type).trim() : existingProduct.type,
         tariff: data.tariff ? String(data.tariff).trim() : null,
         isAvailableCrm: data.isAvailableCrm ?? existingProduct.isAvailableCrm,
+        isAvailableWeb:
+          data.isAvailableWeb !== undefined ? Boolean(data.isAvailableWeb) : existingProduct.isAvailableWeb,
         isCustomizable: Boolean(data.isCustomizable),
         pricingModel: data.pricingModel || existingProduct.pricingModel,
         permanenceMonths:
@@ -116,7 +118,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     if (existingProduct._count.contracts > 0) {
       return NextResponse.json(
         {
-          error: `No se puede eliminar este producto porque tiene ${existingProduct._count.contracts} contrato(s) vinculado(s). Desmarca "Disponible en CRM" para archivarlo sin perder el histórico.`,
+          error: `No se puede eliminar este producto porque tiene ${existingProduct._count.contracts} contrato(s) vinculado(s). Desmarca "Disponible en CRM" y "Visible en Web Pública" para archivarlo sin perder el histórico.`,
         },
         { status: 400 }
       );

@@ -379,28 +379,48 @@ export async function renewContractAction(oldContractId: string, newProductId: s
       return { success: true, contractId: newContract.id };
     }
 
-    // Generate PDF
+    // Generate PDF + Precontractual Summary natively
     const { buildTemplateDataFromContract } = await import('@/lib/templateBuilder');
-    const { generateContractDocxBuffer } = await import('@/lib/docGenerator');
-    const { convertDocxToPdfViaDocuSign } = await import('@/lib/docusignConverter');
-    const { uploadFileToR2 } = await import('@/lib/r2');
+    const {
+      generateAndUploadContractBundle,
+      determineContractIsB2B,
+      determineContractIsIndexed,
+    } = await import('@/lib/contracts/contractPdfService');
 
     const vat = oldContract.client.vatNumber || '';
-    const isPersonaFisica = /^[0-9XYZ]/.test(vat) && vat.length === 9;
-    const cnae = (cData.cnae || '').trim();
-    const isCore = isPersonaFisica && (cnae === '9820' || cnae === '9821');
-    const isB2B = !isCore;
+    const cnae = (cData.cnae || oldContract.supplyPoint?.cnae || '').trim();
+    const isB2B = determineContractIsB2B(vat, cnae);
+    const isIndexed = determineContractIsIndexed({
+      pricingModel: newContract.pricingModel,
+      productTypeSnapshot: newContract.productTypeSnapshot,
+      product,
+    });
 
-    const templateData = buildTemplateDataFromContract(newContract, cData, product, isB2B);
-    const docxBuffer = await generateContractDocxBuffer(templateData, isB2B);
-    const pdfBuffer = await convertDocxToPdfViaDocuSign(docxBuffer);
-    
-    const fileName = `Contrato_AED_${newContract.contractCode}.pdf`;
-    const uploadedUrl = await uploadFileToR2(`contracts/drafts/${fileName}`, pdfBuffer, 'application/pdf');
+    const fullNewContract = {
+      ...newContract,
+      client: oldContract.client,
+      supplyPoint: oldContract.supplyPoint,
+    };
+    const templateData = buildTemplateDataFromContract(fullNewContract, cData, product, isB2B);
+
+    const bundle = await generateAndUploadContractBundle({
+      brandId: newContract.brandId || oldContract.client.brandId,
+      contractCode: `${newContract.contractCode || newContract.id}_R`,
+      templateData,
+      isB2B,
+      isTransferencia: Boolean(newContract.transferencia),
+      isIndexed,
+      hasSelfConsumption: Boolean(newContract.autoconsumo),
+      hasSolarWallet: Boolean(newContract.bolsilloSolar),
+    });
 
     await prisma.contract.update({
       where: { id: newContract.id },
-      data: { pdfUrl: uploadedUrl }
+      data: {
+        pdfUrl: bundle.contractPdfUrl,
+        summaryPdfUrl: bundle.summaryPdfUrl,
+        templateVersionId: bundle.templateVersionId,
+      },
     });
 
     // Mover el Lead al nuevo contrato para no perder el consumo estimado y vínculo

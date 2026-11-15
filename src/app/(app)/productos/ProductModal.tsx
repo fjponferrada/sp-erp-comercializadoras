@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
+import { X, Save, AlertCircle, Trash2, Globe } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
 function ModalInputField({
@@ -44,6 +44,7 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
     type: product?.type || (product?.pricingModel === 'INDEXED' ? 'Indexado' : 'Fijo'),
     tariff: product?.tariff || '2.0TD',
     isAvailableCrm: product?.isAvailableCrm ?? true,
+    isAvailableWeb: Boolean(product?.isAvailableWeb),
     permanenceMonths: product?.permanenceMonths ?? 12,
     isCustomizable: product?.isCustomizable || false,
     pricingModel: product?.pricingModel || 'FIXED',
@@ -152,9 +153,22 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
         {/* HEADER */}
         <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-800/30">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 flex-wrap">
               {!canEdit ? 'Ficha de Producto' : isExisting ? 'Editar Producto' : 'Nuevo Producto'}
               {!formData.isAvailableCrm && <span className="badge badge-draft ml-2">Oculto en CRM</span>}
+              {formData.isAvailableWeb && (
+                <span
+                  className="badge badge-draft ml-1 inline-flex items-center gap-1"
+                  style={{
+                    color: '#38bdf8',
+                    borderColor: 'rgba(56, 189, 248, 0.45)',
+                    background: 'rgba(56, 189, 248, 0.12)',
+                  }}
+                >
+                  <Globe size={12} />
+                  Visible en Web
+                </span>
+              )}
             </h2>
             <p className="text-xs text-slate-400 mt-1">Configuración técnica, esquema de precios y márgenes</p>
           </div>
@@ -257,6 +271,19 @@ export default function ProductModal({ product, onClose, onSaved }: any) {
                       onChange={(e) => setField('isAvailableCrm', e.target.checked)}
                     />
                     <span className="text-sm text-slate-200">Disponible en CRM (Visible para contratación)</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded bg-slate-900 border-slate-600 text-sky-500"
+                      checked={formData.isAvailableWeb}
+                      onChange={(e) => setField('isAvailableWeb', e.target.checked)}
+                    />
+                    <span className="text-sm text-slate-200 inline-flex items-center gap-1.5">
+                      <Globe size={15} className="text-sky-400" />
+                      Visible en Web Pública
+                    </span>
                   </label>
 
                   <label className="flex items-center gap-3 cursor-pointer">
