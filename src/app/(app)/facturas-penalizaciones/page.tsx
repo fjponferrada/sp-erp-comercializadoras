@@ -1,42 +1,38 @@
 import React from 'react';
-import { prisma } from '@/lib/prisma';
+import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import Topbar from '@/components/Topbar';
-import { getUserVisibilityFilter } from '@/lib/permissions';
+import { hasAdminOrBackofficeRole } from '@/lib/companyContext';
+import { queryPenaltyInvoicesDataset } from '@/lib/penaltyInvoicesServer';
 import FacturasPenalizacionesClient from './FacturasPenalizacionesClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function FacturasPenalizacionesPage() {
   const session = await auth();
-  if (!session?.user) return <div>No autorizado</div>;
+  const userRole = (session?.user as any)?.role || '';
 
-  const visibilityFilter = await getUserVisibilityFilter();
+  if (!session?.user || !hasAdminOrBackofficeRole(userRole)) {
+    redirect('/');
+  }
 
-  const invoices = await prisma.penaltyInvoice.findMany({
-    where: {
-      contract: {
-        ...visibilityFilter
-      }
-    },
-    include: {
-      client: true,
-      contract: {
-        include: { brand: true, product: true }
-      },
-      supplyPoint: true
-    },
-    orderBy: [
-      { issueDate: 'desc' },
-      { invoiceNumber: 'desc' }
-    ],
-    take: 500
+  const initialData = await queryPenaltyInvoicesDataset({
+    page: 1,
+    itemsPerPage: 100,
   });
 
   return (
     <>
-      <Topbar title="Facturas de Penalizaciones" subtitle="Historial de penalizaciones facturadas" />
-      <FacturasPenalizacionesClient initialInvoices={invoices} userRole={session.user.role} />
+      <Topbar
+        title="Facturas de Penalizaciones"
+        subtitle="Gestión contable, comunicación por email, abonos rectificativos y control de cobro"
+      />
+      <FacturasPenalizacionesClient
+        initialInvoices={initialData.invoices}
+        initialTotalCount={initialData.totalCount}
+        initialKpis={initialData.kpis}
+        userRole={initialData.role}
+      />
     </>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { toggleServicioStatusAction } from '@/app/actions/serviciosActions';
 import ServicioModal from './ServicioModal';
 import { Plus, Edit2, CheckCircle2, XCircle } from 'lucide-react';
@@ -24,6 +24,10 @@ export default function ServiciosClient({ initialServicios }: Props) {
   const [servicios, setServicios] = useState<Servicio[]>(initialServicios);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [servicioToEdit, setServicioToEdit] = useState<Servicio | null>(null);
+
+  useEffect(() => {
+    setServicios(initialServicios);
+  }, [initialServicios]);
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
     const newStatus = !currentStatus;
@@ -109,7 +113,7 @@ export default function ServiciosClient({ initialServicios }: Props) {
               ))}
               {servicios.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                     No hay servicios configurados.
                   </td>
                 </tr>

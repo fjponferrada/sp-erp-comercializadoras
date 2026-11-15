@@ -88,9 +88,26 @@ export function fmtAeatComma3(n: number): string {
 export function parseTaxNum(val: any): number {
   if (val === undefined || val === null || val === '') return 0;
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
-  const cleaned = String(val).trim().replace(',', '.');
-  const parsed = parseFloat(cleaned);
-  return Number.isNaN(parsed) ? 0 : parsed;
+  if (typeof val === 'object') return 0; // Evita objetos Airtable como { specialValue: 'NaN' }
+  let s = String(val).trim();
+  if (!s) return 0;
+  const upper = s.toUpperCase();
+  if (upper === 'N' || upper === 'NO' || upper === 'SI' || upper === 'S/N' || upper === 'NAN') return 0;
+  if (s.startsWith('0x') || s.startsWith('0X')) return 0; // Evita códigos contables como IE Odoo = "0x10"
+
+  // Soporte simultáneo para formato español ("1.948,56") e inglés/JSON ("1,948.56" o "1948.56")
+  if (s.includes(',') && s.includes('.')) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+
+  const parsed = parseFloat(s);
+  return Number.isNaN(parsed) || !Number.isFinite(parsed) ? 0 : parsed;
 }
 
 /**
@@ -993,6 +1010,8 @@ function extractSignificantTokens(raw: string): string[] {
 
 function tokensFuzzyEqual(t1: string, t2: string): boolean {
   if (t1 === t2) return true;
+  // Equivalencia habitual castellano/catalán-valenciano en hagiónimos (SAN <-> SANT, ej. SAN CUGAT <-> SANT CUGAT)
+  if ((t1 === 'SAN' && t2 === 'SANT') || (t1 === 'SANT' && t2 === 'SAN')) return true;
   // Si la diferencia era el prefijo apostrofado L / D / S pegado (ej. HOSPITALET vs LHOSPITALET)
   if ((t1.length >= 5 || t2.length >= 5) && (/^[LDS]/.test(t1) || /^[LDS]/.test(t2))) {
     if (t1.substring(1) === t2 || t2.substring(1) === t1) return true;

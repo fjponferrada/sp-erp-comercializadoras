@@ -367,7 +367,7 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
                               <RefreshCw size={12} /> Renovar / Modificar
                             </button>
                           )}
-                          {c.status === 'BAJA' && (
+                          {(c.status === 'BAJA' || c.status === 'FINALIZADO') && canManageInvoices && (
                             <button 
                               onClick={() => setContractToPenalize(c)}
                               className="text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 transition-colors bg-rose-500/10 px-2 py-1 rounded"
@@ -426,7 +426,7 @@ export default function ClientTabs({ client, supplyPoints, contracts, invoices, 
                         <RefreshCw size={12} /> Renovar
                       </button>
                     )}
-                    {c.status === 'BAJA' && (
+                    {(c.status === 'BAJA' || c.status === 'FINALIZADO') && canManageInvoices && (
                       <button 
                         onClick={() => setContractToPenalize(c)}
                         className="text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 transition-colors bg-rose-500/10 px-2 py-2 md:py-1 rounded"

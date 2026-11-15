@@ -80,7 +80,7 @@ Es el panel central para el control, búsqueda, auditoría, exportación y enví
   - Envío masivo o individual de facturas y avisos de pago/vencimiento mediante Resend utilizando el remitente oficial de cada comercializadora (`supportEmail` / dominio de marca) y priorizando `invoiceEmail` sobre `contactEmail`, exigiendo siempre un PDF válido en la nube (R2).
   - Descarga masiva en **ZIP** (PDFs y XMLs en la nube) y **Exportación a Excel de 65 columnas** (de toda la búsqueda filtrada o únicamente de las filas marcadas con checkbox).
 
-> ⚠️ **Aclaración Importante (Convivencia Ingebau vs. Motor Interno en Pruebas):** Las facturas de `/facturas` (`Invoice`) son los recibos fiscales oficiales emitidos a clientes finales (importados desde **Ingebau**). **No deben confundirse** con las facturas mayoristas de peajes (`F1Invoice`) enviadas por la distribuidora (`Distribuidoras > Listado F1`), ni con las facturas del motor interno en pruebas (`/facturacion/interna` y `/facturas-internas` sobre `InternalInvoice`). Por defecto (`ENABLE_INTERNAL_BILLING_PRODUCTION=false`), confirmar en `/facturacion/interna` **NO altera `Invoice`**, ni el Modelo 560, ni Tasa Municipal, ni Comisiones, ni Energía Pendiente; dicha promoción automática a `Invoice` solo se activará cuando se habilite explícitamente `ENABLE_INTERNAL_BILLING_PRODUCTION=true`.
+> ⚠️ **Aclaración Importante (Convivencia Ingebau, Motor Interno en Pruebas y Penalizaciones):** Las facturas de `/facturas` (`Invoice`) son los recibos fiscales oficiales emitidos a clientes finales (importados desde **Ingebau**). **No deben confundirse** con las facturas mayoristas de peajes (`F1Invoice`) enviadas por la distribuidora (`Distribuidoras > Listado F1`), ni con las facturas del motor interno en pruebas (`/facturacion/interna` y `/facturas-internas` sobre `InternalInvoice`), ni con las facturas indemnizatorias por incumplimiento de permanencia (`/facturas-penalizaciones` sobre el modelo independiente `PenaltyInvoice`, serie `A{YY}PEN{NNN}` / `AB-A{YY}PEN{NNN}`, documentado en [`docs/GUIA_BAJAS_Y_PENALIZACIONES.md`](./GUIA_BAJAS_Y_PENALIZACIONES.md)). Por defecto (`ENABLE_INTERNAL_BILLING_PRODUCTION=false`), confirmar en `/facturacion/interna` **NO altera `Invoice`**, ni el Modelo 560, ni Tasa Municipal, ni Comisiones, ni Energía Pendiente; dicha promoción automática a `Invoice` solo se activará cuando se habilite explícitamente `ENABLE_INTERNAL_BILLING_PRODUCTION=true`.
 
 ---
 
@@ -104,7 +104,30 @@ Alimentar la base de datos del ERP con las remesas generadas en el software exte
 
 ---
 
-## 5. Reglas Críticas de Integridad en Base de Datos (CUPS + CIF + Código Postal 5 Dígitos)
+## 5. Auditoría Mayorista de Ficheros F1 (`/ficheros-f1`) y Fianzas (`/ficheros-f1/fianzas-clientes`)
+
+### Objetivo
+Centralizar la supervisión económica, física y documental de todas las facturas mayoristas ATR (`FacturaATR`) y conceptos repercutibles/depósitos (`OtrasFacturas`) recibidos de las distribuidoras eléctricas mediante ficheros XML del proceso CNMC `F1`, cruzando su estado de refacturación al cliente final.
+
+### Funciones Principales (`Regla 278`)
+- **Seguridad y Aislamiento Multi-Marca:** Acceso exclusivo para `SUPERADMIN`, `COMPANYADMIN` y `BACKOFFICE` (`hasAdminOrBackofficeRole`), acotado automáticamente a las marcas autorizadas y la selección activa de `<BrandSelector>` mediante `getSupplyPointVisibilityFilter()`.
+- **Extracción Canónica `Facturacion.xsd` y Cuadre de Signos (`src/lib/f1Utils.ts`):**
+  - Extrae con precisión `totalPeajes` (`Potencia` + `EnergiaActiva` + `ExcesoPotencia` + `EnergiaReactiva` + `EnergiaCapacitiva`), `totalCargos` (`Cargos.TotalImporteCargos`), `baseImponible` (`IVA` / `IVAReducido` / `IVAIGIC`, con respaldo a `ConceptoRepercutible` en fianzas exentas) e `ImporteTotalFactura` (mostrando además el `SaldoFactura` neto como subtexto diferencial en rectificadoras `R`).
+  - Normaliza automáticamente a negativo los desgloses de abonos y anuladoras (`A`, `AR`, `S`) cuando la distribuidora envía `ImporteTotalFactura < 0` con `BaseImponible` o términos internos positivos, garantizando cuadre contable `Base + IVA = Total` en las **5.599+ facturas históricas** y en el descuento `f1BaseVal` de la Tasa Municipal 1,5%.
+- **Tarjetas KPI y `Energía Pendiente Facturar` (`Regla 201`):**
+  - Muestra en tiempo real sobre el filtro activo: **Total Facturas F1** (desglosadas en facturadas vs. pendientes), **Energía Pendiente Facturar (MWh)** (sumando todos los bloques y periodos JSONB tanto cuando `TerminoEnergiaActiva`/`Periodo` vienen como objeto único como cuando vienen como array en regularizadoras `G`), **Base Imponible + Peajes + Cargos** y **Total Facturas F1 (IVA incl.)**.
+- **Buscador Global y Filtros Dinámicos (`Regla 208`):**
+  - Búsqueda instantánea por **Nº Factura / Código Fiscal** (con o sin prefijo `CF `), **CUPS**, **Código de Contrato**, **NIF/CIF** o **Razón Social / Nombre del Titular**.
+  - Filtros combinables por rango de **Fecha de Emisión**, **Estado de Facturación** (`Pendientes`, `Facturados al cliente` en `Invoice`, `En borrador` o `Emitidos` en `InternalInvoice`), **Tipo de Factura CNMC** (`N`, `R`, `AR`, `S`, `A`, `G`, `C`, `OtrasFacturas`) y **Distribuidora** dinámica.
+- **Tabla Full-Width, Enlaces Directos (`Regla 75`), Fechas Inclusivas (`Regla 170`) y Herramientas:**
+  - Paginación estándar de **100 registros por página** (`Regla 3`) sin recortes horizontales.
+  - Fechas inclusivas exactas del ciclo (`FechaDesdeFactura - FechaHastaFactura` + días de ciclo) sin el desplazamiento técnico `+1 día` de base de datos, y enlaces clicables directos a `/puntos-suministro/[id]`, `/clientes/[id]`, `/contratos/[id]`, `/facturas/[id]` y `/facturacion/interna`.
+  - **Modal de Desglose XML (`F1DetailModal.tsx`):** Inspección en 3 pestañas (*Resumen Económico y Vínculos*, *Periodos de Potencia kW / Energía kWh / Cargos* y *Estructura XML/JSON bruta*) + descarga directa del XML en R2.
+  - **Subida Manual / Drag & Drop (`.xml` y `.zip`)** conectada a `ingestF1XmlAction` y **Exportación a Excel (`.xlsx`)** del 100% de los registros filtrados (tanto en `/ficheros-f1` como en `/ficheros-f1/fianzas-clientes`).
+
+---
+
+## 6. Reglas Críticas de Integridad en Base de Datos (CUPS + CIF + Código Postal 5 Dígitos)
 
 1. **Unicidad Compuesta por `[CUPS (20 caracteres) + Cliente (CIF)]`:** Un Punto de Suministro solo puede coexistir duplicado si pertenece a distinto titular (cambio de titularidad histórico). Tanto el helper global como el mapa en memoria del importador indexan por `${clientId}_${cups20}`.
 2. **Conservación de los 22 Caracteres y Comparación a 20:** Las comparaciones y búsquedas cruzan siempre por los primeros **20 caracteres** del CUPS, pero al dar de alta o enriquecer el suministro se conserva el código completo de **22 caracteres** (incluyendo dígitos de control).

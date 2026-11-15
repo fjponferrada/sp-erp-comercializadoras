@@ -32,7 +32,7 @@ export default async function ComisionesConfigPage() {
     }),
     prisma.product.findMany({
       where: brandWhere,
-      select: { id: true, name: true, type: true, tariff: true },
+      select: { id: true, name: true, type: true, tariff: true, pricingModel: true },
       orderBy: { name: 'asc' },
     }),
     prisma.additionalService.findMany({

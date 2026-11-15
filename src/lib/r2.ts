@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 let _r2Client: S3Client | null = null;
@@ -89,4 +89,41 @@ export async function getFileStreamFromR2(path: string): Promise<{ stream: any, 
     stream: response.Body,
     contentType: response.ContentType || 'application/octet-stream',
   };
+}
+
+/**
+ * Deletes an object from Cloudflare R2 given either a full public R2 URL or a relative key.
+ * Safely returns false if the URL does not belong to R2 or if deletion cannot be completed.
+ */
+export async function deleteFileFromR2(pathOrUrl: string | null | undefined): Promise<boolean> {
+  if (!pathOrUrl) return false;
+  const bucketName = process.env.R2_BUCKET_NAME || '';
+  const publicUrlBase = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+  if (!bucketName) return false;
+
+  let key = pathOrUrl.trim();
+  if (key.startsWith('http://') || key.startsWith('https://')) {
+    if (!publicUrlBase || !key.startsWith(`${publicUrlBase}/`)) {
+      return false;
+    }
+    key = key.slice(publicUrlBase.length + 1);
+  } else {
+    key = key.replace(/^\/+/, '');
+  }
+
+  if (!key) return false;
+
+  try {
+    const client = getR2Client();
+    await client.send(
+      new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+      })
+    );
+    return true;
+  } catch (err) {
+    console.error(`Failed to delete R2 object (${key}):`, err);
+    return false;
+  }
 }

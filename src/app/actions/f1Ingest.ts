@@ -7,6 +7,7 @@ import { XMLParser } from 'fast-xml-parser';
 import AdmZip from 'adm-zip';
 import { fromZonedTime } from 'date-fns-tz';
 import { decodeXmlBuffer } from '@/lib/switching/parser';
+import { extractF1Financials, invertF1JsonForSyntheticAbono } from '@/lib/f1Utils';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -28,12 +29,37 @@ export async function ingestF1XmlAction(formData: FormData) {
       return { success: false, error: 'No autorizado' };
     }
 
-    const file = formData.get('file') as File;
-    if (!file) {
-      return { success: false, error: 'No se envió ningún archivo' };
+    const multiFiles = formData.getAll('files').filter((f): f is File => f instanceof File && f.size > 0);
+    const singleFile = formData.get('file');
+    const filesToProcess: File[] =
+      multiFiles.length > 0
+        ? multiFiles
+        : singleFile instanceof File && singleFile.size > 0
+          ? [singleFile]
+          : [];
+
+    if (filesToProcess.length === 0) {
+      return { success: false, error: 'No se envió ningún archivo válido' };
     }
 
-    return await handleFileOrZip(file, ingestF1Core);
+    let totalCount = 0;
+    const errors: string[] = [];
+
+    for (const f of filesToProcess) {
+      const res = await handleFileOrZip(f, ingestF1Core);
+      if (res.success) {
+        totalCount += res.count || 0;
+      }
+      if (res.error) {
+        errors.push(`${f.name}: ${res.error}`);
+      }
+    }
+
+    return {
+      success: errors.length === 0 || totalCount > 0,
+      count: totalCount,
+      error: errors.length > 0 ? errors.join(' | ') : undefined,
+    };
   } catch (error: any) {
     console.error('Error ingestF1XmlAction:', error);
     return { success: false, error: error.message };
@@ -140,24 +166,17 @@ async function ingestF1Core(file: File) {
       if (cups) cups = String(cups).trim();
 
       const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
-      const fechaEmiStr = dGen.DatosGeneralesFactura?.FechaFactura;
-      
-      const rawSaldo = dGen.DatosGeneralesFactura?.SaldoFactura;
-      const rawImporteTotal = dGen.DatosGeneralesFactura?.ImporteTotalFactura;
-      const saldo = parseFloat(rawSaldo !== undefined ? rawSaldo : (rawImporteTotal !== undefined ? rawImporteTotal : '0'));
-      
+      const extracted = extractF1Financials(f, 'FacturaATR', codFactura ? String(codFactura) : undefined);
+      const fechaEmiIso = extracted.fechaFacturaIso;
+
       const dFact = dGen.DatosFacturaATR || f.DatosFacturaATR || {};
-      const fechaIniStr = dFact.Periodo?.FechaDesdeFactura || dFact.FechaInicioPeriodo;
-      const fechaFinStr = dFact.Periodo?.FechaHastaFactura || dFact.FechaFinPeriodo;
-      
-      const rawTotalPeajes = dFact.ImportesFactura?.ImporteTotalPeajes;
-      const totalPeajes = parseFloat(rawTotalPeajes !== undefined ? rawTotalPeajes : '0');
-      
-      const rawTotalCargos = dFact.ImportesFactura?.ImporteTotalCargos;
-      const totalCargos = parseFloat(rawTotalCargos !== undefined ? rawTotalCargos : '0');
-      
-      const rawBase = dGen.DatosGeneralesFactura?.BaseImponibleF1;
-      const baseImp = parseFloat(rawBase !== undefined ? rawBase : '0');
+      const fechaIniStr = extracted.fechaDesdeIso || dFact.Periodo?.FechaDesdeFactura || dFact.FechaInicioPeriodo;
+      const fechaFinStr = extracted.fechaHastaIso || dFact.Periodo?.FechaHastaFactura || dFact.FechaFinPeriodo;
+
+      const saldo = extracted.importeTotalFactura;
+      const totalPeajes = extracted.totalPeajes;
+      const totalCargos = extracted.totalCargos;
+      const baseImp = extracted.baseImponible;
       
       // Buscar CUPS en BD
       let supplyPointId = undefined;
@@ -283,7 +302,7 @@ async function ingestF1Core(file: File) {
       }
 
       const parsedCodFactura = codFactura ? String(codFactura) : 'SIN_COD';
-      const finalFechaEmi = fechaEmiStr ? new Date(fechaEmiStr) : undefined;
+      const finalFechaEmi = fechaEmiIso ? new Date(`${fechaEmiIso}T12:00:00Z`) : undefined;
       const finalSaldo = isNaN(saldo) ? 0 : saldo;
 
       // Buscar si ya existe para obviar y no machacar datos ni la fecha de importación
@@ -292,12 +311,15 @@ async function ingestF1Core(file: File) {
         existingF1 = await prisma.f1Invoice.findFirst({
           where: { numeroFactura: parsedCodFactura }
         });
-      } else if (supplyPointId && finalFechaEmi) {
+      } else if (supplyPointId && fechaEmiIso) {
         existingF1 = await prisma.f1Invoice.findFirst({
           where: { 
             numeroFactura: 'SIN_COD',
             supplyPointId,
-            fechaEmision: finalFechaEmi,
+            fechaEmision: {
+              gte: new Date(`${fechaEmiIso}T00:00:00Z`),
+              lte: new Date(`${fechaEmiIso}T23:59:59.999Z`),
+            },
             saldoFactura: finalSaldo
           }
         });
@@ -332,7 +354,8 @@ async function ingestF1Core(file: File) {
         data: {
           numeroFactura: parsedCodFactura,
           tipoDocumento: 'FacturaATR',
-          fechaEmision: fechaEmiStr ? new Date(fechaEmiStr) : undefined,
+          motivoFacturacion: extracted.motivoFacturacion ?? undefined,
+          fechaEmision: finalFechaEmi,
           fechaInicio: parseAndShiftDate(fechaIniStr, 1),
           fechaFin: parseAndShiftDate(fechaFinStr, 1),
           saldoFactura: isNaN(saldo) ? 0 : saldo,
@@ -405,15 +428,14 @@ async function ingestF1Core(file: File) {
     // Procesar OtrasFacturas
     for (const of of otrasFacturasArray) {
       const dGen = of.DatosGeneralesOtrasFacturas || {};
-      let cups = mensaje.Cabecera?.CUPS || mensaje.Cabecera?.Codigo; // El CUPS viene en la Cabecera para OtrasFacturas
+      const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
+      const extractedOtras = extractF1Financials(of, 'OtrasFacturas', codFactura ? String(codFactura) : undefined);
+      let cups = extractedOtras.cups || mensaje.Cabecera?.CUPS || mensaje.Cabecera?.Codigo; // El CUPS viene en la Cabecera para OtrasFacturas
       if (cups) cups = String(cups).trim();
 
-      const codFactura = dGen.DatosGeneralesFactura?.CodigoFiscalFactura;
-      const fechaEmiStr = dGen.DatosGeneralesFactura?.FechaFactura;
-      const motivoFacturacion = dGen.DatosGeneralesFactura?.MotivoFacturacion;
-      
-      const rawImporteTotal = dGen.DatosGeneralesFactura?.ImporteTotalFactura;
-      const saldo = parseFloat(rawImporteTotal !== undefined ? rawImporteTotal : '0');
+      const fechaEmiIso = extractedOtras.fechaFacturaIso;
+      const motivoFacturacion = extractedOtras.motivoFacturacion ?? dGen.DatosGeneralesFactura?.MotivoFacturacion;
+      const saldo = extractedOtras.importeTotalFactura;
       
       let supplyPointId = undefined;
       let contractId = undefined;
@@ -430,18 +452,22 @@ async function ingestF1Core(file: File) {
           const activeFallback = allContracts.find(c => c.status === 'ACTIVO' || c.status === 'EN_VIGOR' || c.status === 'Activo');
           if (activeFallback) {
             contractId = activeFallback.id;
+            if (activeFallback.supplyPointId) supplyPointId = activeFallback.supplyPointId;
           } else {
-          const lastResort = allContracts.find(c => {
+            const lastResort = allContracts.find(c => {
               const validStatuses = ['ACTIVO', 'EN_VIGOR', 'Activo', 'FINALIZADO', 'Finalizado'];
               return validStatuses.includes(c.status);
-          });
-          if (lastResort) contractId = lastResort.id;
+            });
+            if (lastResort) {
+              contractId = lastResort.id;
+              if (lastResort.supplyPointId) supplyPointId = lastResort.supplyPointId;
+            }
           }
         }
       }
 
       const parsedCodFactura = codFactura ? String(codFactura) : 'SIN_COD';
-      const finalFechaEmi = fechaEmiStr ? new Date(fechaEmiStr) : undefined;
+      const finalFechaEmi = fechaEmiIso ? new Date(`${fechaEmiIso}T12:00:00Z`) : undefined;
       const finalSaldo = isNaN(saldo) ? 0 : saldo;
 
       // Buscar si ya existe para obviar y no machacar datos ni la fecha de importación
@@ -450,12 +476,15 @@ async function ingestF1Core(file: File) {
         existingF1 = await prisma.f1Invoice.findFirst({
           where: { numeroFactura: parsedCodFactura }
         });
-      } else if (supplyPointId && finalFechaEmi) {
+      } else if (supplyPointId && fechaEmiIso) {
         existingF1 = await prisma.f1Invoice.findFirst({
           where: { 
             numeroFactura: 'SIN_COD',
             supplyPointId,
-            fechaEmision: finalFechaEmi,
+            fechaEmision: {
+              gte: new Date(`${fechaEmiIso}T00:00:00Z`),
+              lte: new Date(`${fechaEmiIso}T23:59:59.999Z`),
+            },
             saldoFactura: finalSaldo
           }
         });
@@ -472,11 +501,11 @@ async function ingestF1Core(file: File) {
           numeroFactura: parsedCodFactura,
           tipoDocumento: 'OtrasFacturas',
           motivoFacturacion: motivoFacturacion ? String(motivoFacturacion) : undefined,
-          fechaEmision: fechaEmiStr ? new Date(fechaEmiStr) : undefined,
-          saldoFactura: isNaN(saldo) ? 0 : saldo,
-          baseImponible: 0,
-          totalPeajes: 0,
-          totalCargos: 0,
+          fechaEmision: finalFechaEmi,
+          saldoFactura: finalSaldo,
+          baseImponible: extractedOtras.baseImponible,
+          totalPeajes: extractedOtras.totalPeajes,
+          totalCargos: extractedOtras.totalCargos,
           xmlUrl,
           jsonData: of,
           supplyPointId,
@@ -547,27 +576,8 @@ async function ingestF1Core(file: File) {
             
             if (originalF1 && originalF1.jsonData) {
               const sourceJson = originalF1.jsonData as any;
-              const clonedJson = JSON.parse(JSON.stringify(sourceJson));
-              
-              const invertNumerics = (obj: any) => {
-                if (!obj || typeof obj !== 'object') return;
-                for (const key in obj) {
-                  if (typeof obj[key] === 'object') {
-                    invertNumerics(obj[key]);
-                  } else if (typeof obj[key] === 'string' || typeof obj[key] === 'number') {
-                    const numKeys = ['ConsumoCalculado', 'consumoCalculado', 'ValorEnergiaActiva', 'valorEnergiaActiva', 'ValorEnergiaReactiva', 'valorEnergiaReactiva', 'ValorEnergiaExcedentaria', 'valorEnergiaExcedentaria', 'Importe', 'importe', 'ImporteTotalFactura', 'SaldoFactura', 'BaseImponibleF1', 'ImporteTotalPeajes', 'ImporteTotalCargos', 'ImporteAlquiler', 'ImpuestoElectrico', 'ImporteExcesosPotencia', 'ImportePenalizacionReactiva'];
-                    const strVal = String(obj[key]);
-                    if (numKeys.some(k => key.includes(k) || key === k)) {
-                      const parsed = parseFloat(strVal.replace(',', '.'));
-                      if (!isNaN(parsed)) {
-                        obj[key] = (-parsed).toString().replace('.', ',');
-                      }
-                    }
-                  }
-                }
-              };
-              
-              invertNumerics(clonedJson);
+              const origEx = extractF1Financials(sourceJson, originalF1.tipoDocumento, originalF1.numeroFactura);
+              const clonedJson = invertF1JsonForSyntheticAbono(sourceJson);
 
               const rDateStr = dGen.DatosGeneralesFactura?.FechaFactura;
               if (clonedJson.DatosGeneralesFacturaATR?.DatosGeneralesFactura) {
@@ -582,10 +592,10 @@ async function ingestF1Core(file: File) {
                 if (rDateStr) clonedJson.DatosGeneralesOtrasFacturas.DatosGeneralesFactura.FechaFactura = rDateStr;
               }
               
-              const invSaldo = -(originalF1.saldoFactura || 0);
-              const invBase = -(originalF1.baseImponible || 0);
-              const invPeajes = -(originalF1.totalPeajes || 0);
-              const invCargos = -(originalF1.totalCargos || 0);
+              const invSaldo = -Math.abs(origEx.importeTotalFactura || originalF1.saldoFactura || 0);
+              const invBase = -Math.abs(origEx.baseImponible || originalF1.baseImponible || 0);
+              const invPeajes = -Math.abs(origEx.totalPeajes || originalF1.totalPeajes || 0);
+              const invCargos = -Math.abs(origEx.totalCargos || originalF1.totalCargos || 0);
 
               await prisma.f1Invoice.create({
                 data: {

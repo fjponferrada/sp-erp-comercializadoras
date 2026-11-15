@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Topbar from '@/components/Topbar';
 import { Share2, Plus, Edit2, Trash2, Shield, Copy } from 'lucide-react';
 import TierModal from './TierModal';
@@ -32,6 +32,7 @@ interface ProductInfo {
   name: string;
   type: string | null;
   tariff: string | null;
+  pricingModel?: string | null;
 }
 
 interface Props {
@@ -48,6 +49,10 @@ export default function ComisionesClient({ initialTiers, products, services }: P
   const [editingTier, setEditingTier] = useState<CommissionTier | null>(null);
   const [editingRule, setEditingRule] = useState<CommissionRule | null>(null);
   const [selectedTierIdForRule, setSelectedTierIdForRule] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTiers(initialTiers);
+  }, [initialTiers]);
 
   const refreshData = async () => {
     const res = await fetch('/api/commission-tiers');

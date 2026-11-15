@@ -18,6 +18,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
+    if (user.isActive === false || user.role === 'CLIENT') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const targetBrandId = ['CANAL', 'COMERCIAL'].includes(user.role)
       ? user.brandId
       : ((await getActiveBrand(user)) || user.brandId);

@@ -453,6 +453,31 @@ export async function processParsedSwitchingData(
       }
     }
     // ---------------------------------------------------------
+    // 1b. EXPEDIENTE DE ANOMALÍA O FRAUDE (J1 — aislado antes de pasos genéricos 02/04/05)
+    // ---------------------------------------------------------
+    else if (procesoBase === 'J1') {
+      const anyContract =
+        (await findHighestActiveContract(possibleSpIds)) ||
+        (await prisma.contract.findFirst({
+          where: { supplyPointId: { in: possibleSpIds } },
+          include: { supplyPoint: true },
+          orderBy: [{ activationDate: 'desc' }, { version: 'desc' }, { createdAt: 'desc' }],
+        }));
+
+      if (anyContract) {
+        supplyPoint = anyContract.supplyPoint;
+        supplyPointId = anyContract.supplyPointId;
+        contractId = anyContract.id;
+      }
+
+      if (['01', '52'].includes(paso || '')) {
+        tipoError = `J1_EXPEDIENTE_${paso}`;
+        warning = `Expediente de Anomalía/Fraude (J1_${paso}) recibido${parsedData.observaciones ? `: ${parsedData.observaciones}` : '. Revisar XML.'}`;
+      } else {
+        extraObservacion = `Comunicación de expediente J1 (paso ${paso || 'N/A'}) registrada.`;
+      }
+    }
+    // ---------------------------------------------------------
     // 2. SOLICITUDES Y RESPUESTAS DE ANULACIÓN (A3_06/07, M1_06/07, C1_08/09, C2_08/09, B1_03/04, E1_03/04, E2_08/09)
     // ---------------------------------------------------------
     else if (parsedData.isAnulacionSolicitud) {
@@ -1017,6 +1042,23 @@ export async function processParsedSwitchingData(
             });
           }
         }
+      } else if (procesoBase === 'E2') {
+        const lastContract = await prisma.contract.findFirst({
+          where: { supplyPointId: { in: possibleSpIds } },
+          include: { supplyPoint: true },
+          orderBy: [{ terminationDate: 'desc' }, { version: 'desc' }, { createdAt: 'desc' }],
+        });
+        if (lastContract) {
+          supplyPoint = lastContract.supplyPoint;
+          supplyPointId = lastContract.supplyPointId;
+          contractId = lastContract.id;
+        }
+        if (parsedData.estadoAR === 'RECHAZADO') {
+          tipoError = 'E2_RECHAZADO';
+          warning = `Rechazo de Reposición (E2_${paso}): ${parsedData.observaciones || 'Revisar motivo en XML.'}`;
+        } else {
+          extraObservacion = `Aceptación de Reposición (E2_${paso}) recibida; pendiente de activación efectiva en E2_05.`;
+        }
       } else {
         tipoError = 'CONTRATO_NO_TRAMITANDO';
         warning = 'Se recibió Aceptación/Rechazo, pero no se encontró un contrato TRAMITANDO para este CUPS.';
@@ -1060,6 +1102,18 @@ export async function processParsedSwitchingData(
         supplyPoint = foundContractBySolicitud.supplyPoint;
         supplyPointId = supplyPoint.id;
         contractId = foundContractBySolicitud.id;
+      } else if (procesoBase === 'E2') {
+        const lastContract = await prisma.contract.findFirst({
+          where: { supplyPointId: { in: possibleSpIds } },
+          include: { supplyPoint: true },
+          orderBy: [{ terminationDate: 'desc' }, { version: 'desc' }, { createdAt: 'desc' }],
+        });
+        if (lastContract) {
+          supplyPoint = lastContract.supplyPoint;
+          supplyPointId = lastContract.supplyPointId;
+          contractId = lastContract.id;
+        }
+        extraObservacion = 'Solicitud de Reposición (E2_01) registrada.';
       } else {
         const anyContract = await prisma.contract.findFirst({
           where: { supplyPointId: { in: possibleSpIds }, status: { notIn: ['FINALIZADO', 'Finalizado'] } },
@@ -1388,31 +1442,6 @@ export async function processParsedSwitchingData(
       }
     }
     // ---------------------------------------------------------
-    // 15b. EXPEDIENTE DE ANOMALÍA O FRAUDE (J1)
-    // ---------------------------------------------------------
-    else if (procesoBase === 'J1') {
-      const anyContract =
-        (await findHighestActiveContract(possibleSpIds)) ||
-        (await prisma.contract.findFirst({
-          where: { supplyPointId: { in: possibleSpIds } },
-          include: { supplyPoint: true },
-          orderBy: [{ activationDate: 'desc' }, { version: 'desc' }, { createdAt: 'desc' }],
-        }));
-
-      if (anyContract) {
-        supplyPoint = anyContract.supplyPoint;
-        supplyPointId = anyContract.supplyPointId;
-        contractId = anyContract.id;
-      }
-
-      if (['01', '52'].includes(paso || '')) {
-        tipoError = `J1_EXPEDIENTE_${paso}`;
-        warning = `Expediente de Anomalía/Fraude (J1_${paso}) recibido${parsedData.observaciones ? `: ${parsedData.observaciones}` : '. Revisar XML.'}`;
-      } else {
-        extraObservacion = `Comunicación de expediente J1 (paso ${paso || 'N/A'}) registrada.`;
-      }
-    }
-    // ---------------------------------------------------------
     // 16. PROCESOS INFORMATIVOS / HISTÓRICOS (Q1, W1, P0, B1_07, C1_12, C2_12, etc.)
     // ---------------------------------------------------------
     else {
@@ -1428,6 +1457,20 @@ export async function processParsedSwitchingData(
         supplyPoint = anyContract.supplyPoint;
         supplyPointId = anyContract.supplyPointId;
         contractId = anyContract.id;
+      }
+    }
+
+    // Si existe SupplyPoint en el ERP pero la casuística dio error de estado (ej. CONTRATO_NO_ACTIVO en C1_11),
+    // enlazamos el último contrato histórico del CUPS solo a efectos de consulta rápida en la tabla de Eventos.
+    if (!contractId && possibleSpIds.length > 0) {
+      const fallbackHistoricalContract = await prisma.contract.findFirst({
+        where: { supplyPointId: { in: possibleSpIds } },
+        orderBy: [{ activationDate: 'desc' }, { version: 'desc' }, { createdAt: 'desc' }],
+        select: { id: true, supplyPointId: true },
+      });
+      if (fallbackHistoricalContract) {
+        contractId = fallbackHistoricalContract.id;
+        supplyPointId = fallbackHistoricalContract.supplyPointId;
       }
     }
   }

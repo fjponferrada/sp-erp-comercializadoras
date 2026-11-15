@@ -2,7 +2,9 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { resolveActiveCompanyId } from '@/lib/companyContext';
+import { resolveActiveCompanyId, hasAdminOrBackofficeRole } from '@/lib/companyContext';
+import { ingestXmlStringInternal } from './switchingIngest';
+import { getTramitationCodes } from '@/lib/tramitationMapper';
 
 function escapeXml(val: string | null | undefined): string {
   if (!val) return '';
@@ -14,11 +16,37 @@ function escapeXml(val: string | null | undefined): string {
     .replace(/'/g, '&apos;');
 }
 
+function formatMadridDateTime(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (t: string) => parts.find(p => p.type === t)?.value || '00';
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}:${get('second')}`;
+}
+
+export interface OpenAnulableProcess {
+  codigoSolicitud: string;
+  proceso: string;
+  cups: string;
+  destino: string;
+  contractCode?: string | null;
+  fechaSolicitud?: string | null;
+  sourceLabel: string;
+}
+
 export async function fetchAnulacionContext(cups: string) {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
-      throw new Error('No estás autenticado.');
+    if (!session?.user?.id || !hasAdminOrBackofficeRole((session.user as any).role)) {
+      throw new Error('No estás autorizado.');
     }
 
     const activeCompanyId = await resolveActiveCompanyId(session);
@@ -36,23 +64,117 @@ export async function fetchAnulacionContext(cups: string) {
     }
 
     let destino = '';
+    const openProcesses: OpenAnulableProcess[] = [];
+
     if (cups && cups.length >= 6 && cups.toUpperCase().startsWith('ES')) {
       const cupsUpper = cups.trim().toUpperCase();
-      const sp = await prisma.supplyPoint.findFirst({
+      const cups20 = cupsUpper.substring(0, 20);
+
+      const sps = await prisma.supplyPoint.findMany({
         where: {
-          cups: { startsWith: cupsUpper.substring(0, 20) },
+          cups: { startsWith: cups20 },
           ...(activeCompanyId ? { client: { brand: { companyId: activeCompanyId } } } : {}),
+        },
+        include: {
+          contracts: {
+            where: { status: { in: ['TRAMITANDO', 'Tramitando'] } },
+            orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+          },
         },
       });
 
-      if (sp?.distributorReeCode) {
-        destino = sp.distributorReeCode;
+      const primarySp = sps[0];
+      if (primarySp?.distributorReeCode) {
+        destino = primarySp.distributorReeCode;
       } else {
         destino = cupsUpper.substring(2, 6);
       }
+
+      const seenSolicitudes = new Set<string>();
+      const spIds = sps.map(s => s.id);
+
+      // 1. Contratos en TRAMITANDO con nSolicitud de 12 dígitos
+      for (const sp of sps) {
+        const spDest = sp.distributorReeCode || sp.cups.substring(2, 6);
+        for (const c of sp.contracts) {
+          const nSol = (c.nSolicitud || '').trim();
+          if (/^\d{12}$/.test(nSol)) {
+            const proc = (c.tipo || getTramitationCodes(c.tramitationType).tipo || 'C1').toUpperCase();
+            if (['C1', 'C2', 'A3', 'M1', 'B1', 'E1', 'E2'].includes(proc)) {
+              const key = `${proc}_${nSol}`;
+              if (!seenSolicitudes.has(key)) {
+                seenSolicitudes.add(key);
+                openProcesses.push({
+                  codigoSolicitud: nSol,
+                  proceso: proc,
+                  cups: sp.cups,
+                  destino: spDest,
+                  contractCode: c.contractCode,
+                  fechaSolicitud: c.createdAt ? c.createdAt.toISOString().split('T')[0] : null,
+                  sourceLabel: `Contrato TRAMITANDO (${c.contractCode || 'S/N'})`,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Eventos Switching Paso 01 abiertos (sin cierre Paso 05 ni rechazo Paso 04 ni anulados)
+      if (spIds.length > 0 && cupsUpper.length >= 16) {
+        const events = await prisma.switchingEvent.findMany({
+          where: {
+            supplyPointId: { in: spIds },
+            procesoBase: { in: ['C1', 'C2', 'A3', 'M1', 'B1', 'E1', 'E2', 'R1'] },
+            isAnnulled: false,
+            codigoSolicitud: { not: null },
+          },
+          include: {
+            supplyPoint: { select: { cups: true, distributorReeCode: true } },
+            contract: { select: { contractCode: true } },
+          },
+          orderBy: { fechaSolicitud: 'desc' },
+          take: 60,
+        });
+
+        const closedSet = new Set<string>();
+        for (const ev of events) {
+          if (!ev.codigoSolicitud) continue;
+          const k = `${ev.procesoBase}_${ev.codigoSolicitud}`;
+          if (
+            ev.paso === '05' ||
+            (ev.paso === '04' && ev.procesoBase !== 'R1') ||
+            (ev.paso === '02' && ev.estadoAR === 'RECHAZADO') ||
+            ev.isAnnulled
+          ) {
+            closedSet.add(k);
+          }
+        }
+
+        for (const ev of events) {
+          if (ev.paso !== '01' || !ev.codigoSolicitud || !/^\d{12}$/.test(ev.codigoSolicitud.trim())) continue;
+          const sol = ev.codigoSolicitud.trim();
+          const key = `${ev.procesoBase}_${sol}`;
+          if (closedSet.has(key) || seenSolicitudes.has(key)) continue;
+          seenSolicitudes.add(key);
+          const evCups = ev.supplyPoint?.cups || cupsUpper;
+          const evDest = ev.supplyPoint?.distributorReeCode || evCups.substring(2, 6);
+          openProcesses.push({
+            codigoSolicitud: sol,
+            proceso: ev.procesoBase,
+            cups: evCups,
+            destino: evDest,
+            contractCode: ev.contract?.contractCode || null,
+            fechaSolicitud: ev.fechaSolicitud ? ev.fechaSolicitud.toISOString().split('T')[0] : null,
+            sourceLabel:
+              ev.procesoBase === 'R1'
+                ? `Reclamación R1 abierta (${ev.tipoReclamacion || ''}/${ev.subtipoReclamacion || ''})`
+                : `Solicitud ${ev.procesoBase}_01 en curso`,
+          });
+        }
+      }
     }
 
-    return { success: true, emisora, destino };
+    return { success: true, emisora, destino, openProcesses };
   } catch (error: any) {
     console.error('Error fetching context:', error);
     return { success: false, error: error.message };
@@ -65,11 +187,12 @@ export async function generateAnulacionXml(data: {
   proceso: string;
   codigoSolicitud: string;
   cups: string;
+  registerInErp?: boolean;
 }) {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
-      throw new Error('No estás autenticado.');
+    if (!session?.user?.id || !hasAdminOrBackofficeRole((session.user as any).role)) {
+      throw new Error('No estás autorizado.');
     }
 
     const emisora = (data.emisora || '').trim();
@@ -77,6 +200,7 @@ export async function generateAnulacionXml(data: {
     const proceso = (data.proceso || '').trim().toUpperCase();
     const codigoSolicitud = (data.codigoSolicitud || '').trim();
     const cupsRaw = (data.cups || '').trim().toUpperCase();
+    const registerInErp = data.registerInErp !== false;
 
     if (!/^\d{4}$/.test(emisora)) {
       throw new Error('El Código REE de la emisora debe tener 4 dígitos.');
@@ -107,8 +231,7 @@ export async function generateAnulacionXml(data: {
     }
 
     const cupsFinal = cupsRaw.length === 20 ? `${cupsRaw}0F` : cupsRaw;
-    const now = new Date();
-    const formattedDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+    const formattedDate = formatMadridDateTime(new Date());
 
     const isReclamacion = proceso === 'R1';
     const rootNode = isReclamacion ? 'MensajeAnulacionSolicitudReclamacion' : 'MensajeAnulacionSolicitud';
@@ -128,7 +251,15 @@ export async function generateAnulacionXml(data: {
   </${headerNode}>
 </${rootNode}>`;
 
-    return { success: true, xml, paso };
+    const filename = `${codigoSolicitud}_01_${cupsFinal}_SP_${proceso}_${paso}.xml`;
+
+    if (registerInErp) {
+      await ingestXmlStringInternal(xml, filename).catch(err => {
+        console.warn('No se pudo auto-registrar la anulación en ERP:', err);
+      });
+    }
+
+    return { success: true, xml, paso, filename };
   } catch (error: any) {
     console.error('Error generando XML de anulación:', error);
     return { success: false, error: error.message };
@@ -147,11 +278,12 @@ export async function generateRechazoD1Xml(data: {
   cups: string;
   codigoMotivo: 'E1' | 'F1' | 'I1' | string;
   comentarios: string;
+  registerInErp?: boolean;
 }) {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
-      throw new Error('No estás autenticado.');
+    if (!session?.user?.id || !hasAdminOrBackofficeRole((session.user as any).role)) {
+      throw new Error('No estás autorizado.');
     }
     const activeCompanyId = await resolveActiveCompanyId(session);
 
@@ -172,6 +304,7 @@ export async function generateRechazoD1Xml(data: {
     const codigoSolicitud = (data.codigoSolicitud || '').trim();
     const codigoMotivo = (data.codigoMotivo || '').trim().toUpperCase();
     const comentarios = (data.comentarios || '').trim().slice(0, 4000);
+    const registerInErp = data.registerInErp !== false;
 
     if (!/^\d{4}$/.test(emisora)) {
       throw new Error('El Código REE de la emisora debe tener 4 dígitos.');
@@ -193,10 +326,8 @@ export async function generateRechazoD1Xml(data: {
     }
 
     const cupsFinal = cupsRaw.length === 20 ? `${cupsRaw}0F` : cupsRaw;
-    const now = new Date();
-    const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString();
-    const fechaSolicitud = localIso.slice(0, 19);
-    const fechaRechazo = localIso.slice(0, 10);
+    const fechaSolicitud = formatMadridDateTime(new Date());
+    const fechaRechazo = fechaSolicitud.slice(0, 10);
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <MensajeRechazoD1 xmlns="http://localhost/elegibilidad">
@@ -220,6 +351,14 @@ export async function generateRechazoD1Xml(data: {
   </Rechazos>
 </MensajeRechazoD1>`;
 
+    const filename = `${codigoSolicitud}_01_${cupsFinal}_SP_D1_02.xml`;
+
+    if (registerInErp) {
+      await ingestXmlStringInternal(xml, filename).catch(err => {
+        console.warn('No se pudo auto-registrar D1_02 en ERP:', err);
+      });
+    }
+
     if (data.eventId) {
       await prisma.switchingEvent.updateMany({
         where: {
@@ -241,7 +380,7 @@ export async function generateRechazoD1Xml(data: {
     return {
       success: true,
       xml,
-      filename: `${codigoSolicitud}_01_${cupsFinal}_SP_D1_02.xml`,
+      filename,
     };
   } catch (error: any) {
     console.error('Error generando XML D1_02:', error);

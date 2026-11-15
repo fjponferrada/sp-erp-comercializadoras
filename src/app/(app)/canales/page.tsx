@@ -1,39 +1,91 @@
 import React from 'react';
 import { prisma } from '@/lib/prisma';
 import CanalesClient, { CanalData } from './CanalesClient';
-import { getActiveBrand, getChannelVisibilityFilter } from '@/lib/permissions';
+import { getBrandAccessContext } from '@/lib/permissions';
+import { redirect } from 'next/navigation';
 
 export default async function CanalesPage() {
-  const visibilityFilter = await getChannelVisibilityFilter();
+  const access = await getBrandAccessContext();
+  if (!access || !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(access.role)) {
+    redirect('/');
+  }
 
-  const dbChannels = await prisma.channel.findMany({
-    where: visibilityFilter,
-    include: {
-      users: {
-        include: {
-          contracts: {
-            where: { status: 'ACTIVO' }
-          }
-        }
+  const activeBrandId = access.activeBrandId;
+  const brandWhere = activeBrandId ? { brandId: activeBrandId } : {};
+
+  const [dbChannels, commissionTiers, availableProducts] = await Promise.all([
+    prisma.channel.findMany({
+      where: brandWhere,
+      include: {
+        users: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            isActive: true,
+            isChannelSupervisor: true,
+            _count: {
+              select: { contracts: true },
+            },
+            contracts: {
+              where: { status: 'ACTIVO' },
+              select: { id: true },
+            },
+          },
+        },
+        products: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            tariff: true,
+            pricingModel: true,
+            hasSelfConsumption: true,
+            isAvailableCrm: true,
+          },
+        },
       },
-      products: true
-    },
-    orderBy: {
-      name: 'asc'
-    }
-  });
+      orderBy: {
+        name: 'asc',
+      },
+    }),
+    prisma.commissionTier.findMany({
+      where: brandWhere,
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.product.findMany({
+      where: brandWhere,
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        tariff: true,
+        pricingModel: true,
+        hasSelfConsumption: true,
+        isAvailableCrm: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
 
-  const canalesData: CanalData[] = dbChannels.map(c => {
-    // Calculamos contratos activos asociados a los usuarios de este canal
+  const canalesData: CanalData[] = dbChannels.map((c) => {
+    let totalContratos = 0;
     let activos = 0;
     const channelUsers = c.users || [];
-    channelUsers.forEach((u: any) => {
+
+    channelUsers.forEach((u) => {
+      totalContratos += u._count.contracts;
       activos += u.contracts.length;
     });
 
-    const supervisor = channelUsers.find((u: any) => u.isChannelSupervisor) || channelUsers[0];
+    const supervisor = channelUsers.find((u) => u.isChannelSupervisor) || channelUsers[0];
     const contactName = supervisor?.name || c.supervisorEmail?.split('@')[0] || 'Admin';
     const contactPhone = supervisor?.phone || '—';
+
+    const hasUsers = channelUsers.length > 0;
+    const hasAnyActiveUser = channelUsers.some((u) => u.isActive !== false);
+    const estado: 'ACTIVO' | 'INACTIVO' = hasUsers && !hasAnyActiveUser ? 'INACTIVO' : 'ACTIVO';
 
     return {
       id: c.id,
@@ -46,22 +98,25 @@ export default async function CanalesPage() {
       managerEmail: c.managerEmail || '',
       supportEmail: c.supportEmail || '',
       autoGenerateContract: c.autoGenerateContract || false,
-      maxRenewalDays: c.maxRenewalDays || 45,
-      contratos: activos, // Por simplificar, mostramos activos como total
-      activos: activos,
+      maxRenewalDays: c.maxRenewalDays ?? 45,
+      contratos: totalContratos,
+      activos,
       comisionFijo: c.fixedCommissionPct || 0,
       comisionVariable: c.variableCommissionPct || 0,
-      estado: 'ACTIVO', // Asumimos activos si están en BD
+      estado,
       products: c.products || [],
-      commissionTierId: c.commissionTierId
+      commissionTierId: c.commissionTierId,
     };
   });
 
-  const activeBrandId = await getActiveBrand();
-  const commissionTiers = await prisma.commissionTier.findMany({
-    where: activeBrandId ? { brandId: activeBrandId } : {},
-    orderBy: { name: 'asc' },
-  });
+  const canEdit = access.role === 'SUPERADMIN' || access.role === 'COMPANYADMIN';
 
-  return <CanalesClient initialCanales={canalesData} commissionTiers={commissionTiers} />;
+  return (
+    <CanalesClient
+      initialCanales={canalesData}
+      commissionTiers={commissionTiers}
+      availableProducts={availableProducts}
+      canEdit={canEdit}
+    />
+  );
 }

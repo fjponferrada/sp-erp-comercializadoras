@@ -22,7 +22,7 @@ async function run() {
     const invoiceNumber = match[1];
     
     // Check if the invoice exists in the DB
-    const invoice = await prisma.penaltyInvoice.findUnique({
+    const invoice = await prisma.penaltyInvoice.findFirst({
       where: { invoiceNumber }
     });
     

@@ -1,15 +1,20 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { getBrandAccessContext } from '@/lib/permissions';
+
+const ADMIN_ROLES = ['SUPERADMIN', 'BACKOFFICE', 'COMPANYADMIN'];
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (!ADMIN_ROLES.includes(access.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const data = await prisma.regulatedDailyCost.findMany({
-      orderBy: [{ concept: 'asc' }, { validFrom: 'desc' }]
+      orderBy: [{ concept: 'asc' }, { validFrom: 'desc' }],
     });
     return NextResponse.json(data);
   } catch (error: any) {
@@ -20,25 +25,32 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session || !['SUPERADMIN', 'BACKOFFICE', 'COMPANYADMIN'].includes(session.user.role)) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (!ADMIN_ROLES.includes(access.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
-    
-    // Parse amounts & dates
+    const concept = String(body.concept || '').trim();
     const parsedAmount = parseFloat(body.amount);
-    const validFrom = new Date(body.validFrom);
+    const validFrom = body.validFrom ? new Date(body.validFrom) : null;
     const validTo = body.validTo ? new Date(body.validTo) : null;
-    
+
+    if (!concept || !Number.isFinite(parsedAmount) || !validFrom || Number.isNaN(validFrom.getTime())) {
+      return NextResponse.json({ error: 'Concepto, importe y fecha de inicio son obligatorios' }, { status: 400 });
+    }
+
     const newCost = await prisma.regulatedDailyCost.create({
       data: {
-        concept: body.concept,
+        concept,
         amount: parsedAmount,
-        label: body.label || null,
+        label: body.label ? String(body.label).trim() : null,
         validFrom,
-        validTo
-      }
+        validTo: validTo && !Number.isNaN(validTo.getTime()) ? validTo : null,
+      },
     });
     return NextResponse.json(newCost);
   } catch (error: any) {
@@ -49,25 +61,34 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session || !['SUPERADMIN', 'BACKOFFICE', 'COMPANYADMIN'].includes(session.user.role)) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (!ADMIN_ROLES.includes(access.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
-    
+    const id = String(body.id || '').trim();
+    const concept = String(body.concept || '').trim();
     const parsedAmount = parseFloat(body.amount);
-    const validFrom = new Date(body.validFrom);
+    const validFrom = body.validFrom ? new Date(body.validFrom) : null;
     const validTo = body.validTo ? new Date(body.validTo) : null;
-    
+
+    if (!id || !concept || !Number.isFinite(parsedAmount) || !validFrom || Number.isNaN(validFrom.getTime())) {
+      return NextResponse.json({ error: 'ID, concepto, importe y fecha de inicio son obligatorios' }, { status: 400 });
+    }
+
     const updatedCost = await prisma.regulatedDailyCost.update({
-      where: { id: body.id },
+      where: { id },
       data: {
-        concept: body.concept,
+        concept,
         amount: parsedAmount,
-        label: body.label || null,
+        label: body.label ? String(body.label).trim() : null,
         validFrom,
-        validTo
-      }
+        validTo: validTo && !Number.isNaN(validTo.getTime()) ? validTo : null,
+      },
     });
     return NextResponse.json(updatedCost);
   } catch (error: any) {
@@ -78,10 +99,14 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session || !['SUPERADMIN', 'BACKOFFICE', 'COMPANYADMIN'].includes(session.user.role)) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (!ADMIN_ROLES.includes(access.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });

@@ -1,6 +1,7 @@
 'use client';
 
 import Topbar from '@/components/Topbar';
+import Link from 'next/link';
 
 import React, { useState } from 'react';
 import { format } from 'date-fns';
@@ -213,10 +214,10 @@ export default function SwitchingWarningsClient({
         subtitle={`Revisa todos los archivos XML subidos (Completados y Errores). Total: ${totalCount}`}
         customActions={
           <div className="flex flex-wrap gap-3 w-full md:w-auto items-center">
-            <div className="relative flex-1 md:w-60">
+            <div className="relative flex-1 md:w-64">
               <input
                 type="text"
-                placeholder="Buscar CUPS, código..."
+                placeholder="Buscar CUPS, contrato, solicitud..."
                 className="w-full pl-9 pr-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg focus:ring-1 focus:ring-[var(--lime)] focus:border-[var(--lime)] text-sm text-gray-200 placeholder-gray-500"
                 value={searchTerm}
                 onChange={e => {
@@ -250,6 +251,7 @@ export default function SwitchingWarningsClient({
               <option value="E1">E1 (Desistimiento)</option>
               <option value="E2">E2 (Reposición)</option>
               <option value="D1">D1 (Notif. cambios ATR)</option>
+              <option value="J1">J1 (Anomalía / Fraude)</option>
             </select>
 
             <select
@@ -362,7 +364,19 @@ export default function SwitchingWarningsClient({
                           )}
                         </td>
                         <td className="px-5 py-4">{formatDate(event.fechaAviso)}</td>
-                        <td className="px-5 py-4 font-medium text-[var(--lime)]">{event.contract?.contractCode || '-'}</td>
+                        <td className="px-5 py-4 font-medium">
+                          {event.contract?.id && event.contract?.contractCode ? (
+                            <Link
+                              href={`/contratos/${event.contract.id}`}
+                              className="text-[var(--lime)] hover:underline"
+                              title="Abrir ficha del contrato"
+                            >
+                              {event.contract.contractCode}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-500">{event.contract?.contractCode || '-'}</span>
+                          )}
+                        </td>
                         <td className="px-5 py-4 font-mono text-gray-400">{displayCups}</td>
                         <td className="px-5 py-4">{formatDate(event.fechaSolicitud)}</td>
                         <td className="px-5 py-4 font-mono text-gray-400">{event.codigoSolicitud || '-'}</td>

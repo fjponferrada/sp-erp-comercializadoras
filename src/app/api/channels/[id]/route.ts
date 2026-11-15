@@ -1,47 +1,74 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
-import { getChannelVisibilityFilter } from '@/lib/permissions';
+import { getBrandAccessContext } from '@/lib/permissions';
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const session = await auth();
-    if (!session || (session.user.role !== 'SUPERADMIN' && session.user.role !== 'COMPANYADMIN')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const access = await getBrandAccessContext();
+    if (!access || (access.role !== 'SUPERADMIN' && access.role !== 'COMPANYADMIN')) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const existingChannel = await prisma.channel.findUnique({
+      where: { id },
+    });
+
+    if (!existingChannel || !access.canAccessBrand(existingChannel.brandId)) {
+      return NextResponse.json({ error: 'Canal no encontrado o sin acceso autorizado' }, { status: 404 });
     }
 
     const data = await req.json();
+    if (!data.nombre?.trim() || !data.codigo?.trim()) {
+      return NextResponse.json({ error: 'Nombre y código de canal son obligatorios' }, { status: 400 });
+    }
 
-    const visibilityFilter = await getChannelVisibilityFilter();
+    let validTierId: string | null = null;
+    if (data.commissionTierId) {
+      const tier = await prisma.commissionTier.findFirst({
+        where: {
+          id: data.commissionTierId,
+          ...(existingChannel.brandId ? { brandId: existingChannel.brandId } : {}),
+        },
+        select: { id: true },
+      });
+      if (!tier) {
+        return NextResponse.json(
+          { error: 'El Nivel de Comisión seleccionado no pertenece a la marca de este canal' },
+          { status: 400 }
+        );
+      }
+      validTierId = tier.id;
+    }
 
-    const existingChannel = await prisma.channel.findFirst({
-      where: { 
-        id,
-        ...visibilityFilter
-      },
-    });
-
-    if (!existingChannel) {
-      return NextResponse.json({ error: 'Channel not found or access denied' }, { status: 404 });
+    let validProductSet: { id: string }[] | undefined = undefined;
+    if (Array.isArray(data.productIds)) {
+      const validProducts = await prisma.product.findMany({
+        where: {
+          id: { in: data.productIds },
+          ...(existingChannel.brandId ? { brandId: existingChannel.brandId } : {}),
+        },
+        select: { id: true },
+      });
+      validProductSet = validProducts.map((p) => ({ id: p.id }));
     }
 
     const updated = await prisma.channel.update({
       where: { id },
       data: {
-        name: data.nombre,
-        code: data.codigo,
-        fixedCommissionPct: data.comisionFijo,
-        variableCommissionPct: data.comisionVariable,
-        supervisorEmail: data.email,
-        adminEmail: data.adminEmail,
-        managerEmail: data.managerEmail,
-        supportEmail: data.supportEmail,
-        autoGenerateContract: data.autoGenerateContract,
-        maxRenewalDays: data.maxRenewalDays,
-        commissionTierId: data.commissionTierId || null,
-        ...(data.productIds ? { products: { set: data.productIds.map((pid: string) => ({ id: pid })) } } : {})
-      }
+        name: String(data.nombre).trim(),
+        code: String(data.codigo).trim(),
+        fixedCommissionPct: Number(data.comisionFijo) || 0,
+        variableCommissionPct: Number(data.comisionVariable) || 0,
+        supervisorEmail: data.email ? String(data.email).trim() : null,
+        adminEmail: data.adminEmail ? String(data.adminEmail).trim() : null,
+        managerEmail: data.managerEmail ? String(data.managerEmail).trim() : null,
+        supportEmail: data.supportEmail ? String(data.supportEmail).trim() : null,
+        autoGenerateContract: Boolean(data.autoGenerateContract),
+        maxRenewalDays: data.maxRenewalDays !== undefined ? Number(data.maxRenewalDays) : existingChannel.maxRenewalDays,
+        commissionTierId: validTierId,
+        ...(validProductSet !== undefined ? { products: { set: validProductSet } } : {}),
+      },
     });
 
     return NextResponse.json(updated);
@@ -50,6 +77,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: 'El código de canal ya existe' }, { status: 400 });
     }
     console.error(error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    return NextResponse.json({ error: 'Error interno al actualizar el canal' }, { status: 500 });
   }
 }

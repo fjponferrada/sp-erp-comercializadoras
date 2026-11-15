@@ -66,6 +66,8 @@ export async function getPaginatedSwitchingEventsAction(
           { uniqueProcess: { contains: trimmedSearch, mode: 'insensitive' } },
           { codigoSolicitud: { contains: trimmedSearch, mode: 'insensitive' } },
           { warning: { contains: trimmedSearch, mode: 'insensitive' } },
+          { observaciones: { contains: trimmedSearch, mode: 'insensitive' } },
+          { tipoError: { contains: trimmedSearch, mode: 'insensitive' } },
           { supplyPoint: { cups: { contains: trimmedSearch, mode: 'insensitive' } } },
           { contract: { contractCode: { contains: trimmedSearch, mode: 'insensitive' } } },
         ],
@@ -83,7 +85,7 @@ export async function getPaginatedSwitchingEventsAction(
         where: whereClause,
         include: {
           supplyPoint: { select: { cups: true, distributorReeCode: true } },
-          contract: { select: { contractCode: true } },
+          contract: { select: { id: true, contractCode: true } },
         },
         orderBy: [{ [validSortField]: 'desc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,

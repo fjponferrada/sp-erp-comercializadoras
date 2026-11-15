@@ -39,6 +39,7 @@ model Company {
   brands                 Brand[]
   internalInvoices       InternalInvoice[]
   invoices               Invoice[]
+  penaltyInvoices        PenaltyInvoice[]
   pendingEnergySummaries PendingEnergySummary[]
   portfolioBaseCurves    PortfolioBaseCurve[]
   ppas                   Ppa[]
@@ -516,6 +517,10 @@ model Contract {
   productTypeSnapshot        String?
   commissionRuleType         String?
   commissionRuleValue        Float?
+  winbackStatus              String?
+  winbackNotes               String?
+  winbackLastContactAt       DateTime?
+  winbackProductOffered      String?
   Commission                 Commission?
   brand                      Brand?                 @relation(fields: [brandId], references: [id])
   client                     Client                 @relation(fields: [clientId], references: [id])
@@ -1223,19 +1228,34 @@ enum InternalInvoiceStatus {
   REQUIERE_REPARACION
 }
 model PenaltyInvoice {
-  id             String       @id @default(cuid())
-  invoiceNumber  String       @unique
-  amount         Float
-  issueDate      DateTime     @default(now())
-  pdfUrl         String?
-  contractId     String
-  clientId       String
-  supplyPointId  String
-  status         String       @default("EMITIDA")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                 String           @id @default(cuid())
+  invoiceNumber      String
+  invoiceType        String           @default("PENALIZACION")
+  baseAmount         Float?
+  taxAmount          Float?
+  amount             Float
+  issueDate          DateTime         @default(now())
+  pdfUrl             String?
+  companyId          String?
+  contractId         String
+  clientId           String
+  supplyPointId      String
+  status             String           @default("EMITIDA")
+  communicatedAt     DateTime?
+  paymentStatus      String           @default("PENDIENTE")
+  paymentDate        DateTime?
+  rectifiedPenaltyId String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
-  contract       Contract     @relation(fields: [contractId], references: [id])
-  client         Client       @relation(fields: [clientId], references: [id])
-  supplyPoint    SupplyPoint  @relation(fields: [supplyPointId], references: [id])
+  company            Company?         @relation(fields: [companyId], references: [id])
+  contract           Contract         @relation(fields: [contractId], references: [id])
+  client             Client           @relation(fields: [clientId], references: [id])
+  supplyPoint        SupplyPoint      @relation(fields: [supplyPointId], references: [id])
+  rectifiedPenalty   PenaltyInvoice?  @relation("PenaltyRectification", fields: [rectifiedPenaltyId], references: [id])
+  rectifications     PenaltyInvoice[] @relation("PenaltyRectification")
+
+  @@unique([invoiceNumber, companyId])
+  @@index([companyId, issueDate])
+  @@index([contractId])
 }

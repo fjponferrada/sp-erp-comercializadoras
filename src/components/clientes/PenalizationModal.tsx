@@ -1,122 +1,133 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { createPenalizationInvoiceAction } from '@/app/actions/invoiceActions';
-import { X, UploadCloud, AlertTriangle, Send } from 'lucide-react';
-// import { uploadFile } from '@/lib/blobUpload';
+import React, { useState } from 'react';
+import { X, AlertTriangle, FileText, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { savePenaltyAction } from '@/app/actions/bajasActions';
 
-export default function PenalizationModal({ contract, onClose }: { contract: any, onClose: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [formData, setFormData] = useState({
-    invoiceNumber: `PEN-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
-    amount: ''
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export default function PenalizationModal({
+  contract,
+  onClose,
+}: {
+  contract: any;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const initialAmount =
+    contract?.penalization !== null && contract?.penalization !== undefined
+      ? Number(contract.penalization).toFixed(2)
+      : contract?.calculatedPenalty
+        ? Number(contract.calculatedPenalty).toFixed(2)
+        : '0.00';
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file) {
-      alert("Debes adjuntar el PDF de la factura de penalización");
-      return;
-    }
-    
-    setLoading(true);
-    
-    try {
-      // 1. Subir PDF a Vercel Blob
-      // const url = await uploadFile(file);
-      const url = "mock_url";
+  const [editingPenalty, setEditingPenalty] = useState<string>(initialAmount);
+  const [saving, setSaving] = useState(false);
 
-      // 2. Crear Factura en DB y Enviar Email
-      const res = await createPenalizationInvoiceAction({
-        contractId: contract.id,
-        invoiceNumber: formData.invoiceNumber,
-        amount: parseFloat(formData.amount),
-        pdfUrl: url
-      });
+  if (!contract) return null;
 
-      if (res.success) {
-        onClose();
-      } else {
-        alert("Error: " + res.error);
-      }
-    } catch (err: any) {
-      alert("Error subiendo el archivo: " + err.message);
-    } finally {
-      setLoading(false);
+  const isAlreadyInvoiced = contract.penaltyStatus === 'FACTURADA';
+  const baseNum = Math.max(0, parseFloat(editingPenalty) || 0);
+  const totalWithVat = baseNum * 1.21;
+
+  const handleAction = async (status: 'PENDIENTE' | 'DESCARTADA' | 'FACTURADA', generatePdf: boolean) => {
+    setSaving(true);
+    const res = await savePenaltyAction(contract.id, baseNum, status, generatePdf);
+    setSaving(false);
+    if (res.success) {
+      router.refresh();
+      onClose();
+    } else {
+      alert('Error al procesar penalización: ' + res.error);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-      <div className="bg-slate-800 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-rose-500/10">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="text-rose-500" /> Emitir Penalización
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
-            <X size={24} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-400" />
+            Gestionar Penalización por Baja
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-white p-1 rounded-lg"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="bg-slate-900/50 p-4 rounded-xl text-sm text-slate-300 border border-slate-700 mb-6">
-            Al confirmar, se creará la factura en el sistema y se enviará automáticamente un email al cliente (<b>{contract.client.contactEmail || 'Sin email'}</b>) notificando el incumplimiento de permanencia.
-          </div>
-
+        <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700 text-xs text-slate-300 space-y-1">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Nº Factura de Penalización</label>
-            <input 
-              required 
-              type="text" 
-              value={formData.invoiceNumber}
-              onChange={e => setFormData({...formData, invoiceNumber: e.target.value})}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-rose-500 font-mono" 
-            />
+            <strong>Contrato:</strong> {contract.contractCode || contract.id.slice(0, 8)}
           </div>
-
+          {contract.calculatedPenalty != null && (
+            <div>
+              <strong>Cálculo Automático ERP (Base):</strong>{' '}
+              {Number(contract.calculatedPenalty).toFixed(2)} €
+            </div>
+          )}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Importe Penalización (€)</label>
-            <input 
-              required 
-              type="number" 
-              step="0.01"
-              value={formData.amount}
-              onChange={e => setFormData({...formData, amount: e.target.value})}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-rose-500 font-mono" 
-              placeholder="ej. 150.00"
-            />
+            <strong>Estado actual:</strong> {contract.penaltyStatus || 'PENDIENTE'}
           </div>
+        </div>
 
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Documento PDF</label>
-            <input 
-              type="file" 
-              accept=".pdf"
-              ref={fileInputRef}
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="hidden" 
-            />
-            <button 
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={`w-full border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-colors ${file ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400' : 'border-slate-700 hover:border-slate-500 text-slate-400'}`}
-            >
-              <UploadCloud size={24} />
-              <span className="text-sm font-medium">
-                {file ? file.name : 'Seleccionar PDF de la Factura'}
-              </span>
-            </button>
-          </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            Base Imponible Penalización (€)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={editingPenalty}
+            onChange={(e) => setEditingPenalty(e.target.value)}
+            disabled={isAlreadyInvoiced || saving}
+            className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white text-base focus:outline-none focus:border-indigo-500 disabled:opacity-60"
+          />
+          <p className="text-xs text-slate-400 mt-1.5">
+            {isAlreadyInvoiced
+              ? 'Esta penalización ya está facturada. Gestiona abonos o anulaciones desde Facturas de Penalizaciones.'
+              : `Total con IVA (21%): ${totalWithVat.toFixed(2)} €`}
+          </p>
+        </div>
 
-          <div className="pt-4 flex justify-end gap-3">
-            <button type="button" onClick={onClose} className="px-6 py-2.5 text-slate-300 hover:text-white">Cancelar</button>
-            <button type="submit" disabled={loading} className="bg-rose-500 hover:bg-rose-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2">
-              {loading ? 'Procesando...' : <><Send size={18} /> Emitir y Notificar</>}
-            </button>
-          </div>
-        </form>
+        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium"
+          >
+            Cerrar
+          </button>
+          {!isAlreadyInvoiced && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleAction('DESCARTADA', false)}
+                disabled={saving}
+                className="px-3.5 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-medium"
+              >
+                Descartar (0 €)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAction('FACTURADA', true)}
+                disabled={saving || baseNum <= 0}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5"
+              >
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <FileText size={14} />
+                )}
+                Emitir Factura PDF
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

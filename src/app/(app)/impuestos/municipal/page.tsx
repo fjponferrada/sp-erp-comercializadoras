@@ -1,19 +1,27 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Search, FileText, Download, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { Search, FileText, Download, Loader2, ArrowLeft, ExternalLink, X, ChevronRight } from 'lucide-react';
 import Topbar from '@/components/Topbar';
 import * as XLSX from 'xlsx';
 
 interface Poblacion {
   label: string;
   value: string; // "Municipio -- Provincia"
+  ineCode?: string;
 }
 
 interface GroupedResult {
+  groupKey: string;
+  ineCode: string | null;
   cp: string;
+  cpList: string;
   poblacion: string;
-  provincia?: string;
+  provincia: string;
+  queryValue: string;
+  invoiceCount: number;
+  energiaConsumida: number;
   base: number;
   tasa: number;
 }
@@ -32,21 +40,46 @@ interface DetailedResult {
   invoiceType: string;
   tariff: string;
   postalCode: string;
+  poblacion?: string;
   energiaConsumida: number; // MWh
   importeIVA: number;
   baseImponibleFactura: number;
   baseImponibleF1: number;
   importeImpuesto: number;
   importeBonoSocial: number;
-  importeSVA?: number;
+  importeSVA: number;
   baseImponibleTasaMunicipal: number;
   tasaMunicipal: number;
+}
+
+interface CachedGroupedSnapshot {
+  results: GroupedResult[];
+  totalBase: number;
+  totalTasa: number;
+  totalInvoices: number;
+  totalEnergia: number;
 }
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
+function normalizeClientSearch(s: string): string {
+  return (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 export default function TasaMunicipalPage() {
+  const currentYear = new Date().getFullYear();
+  const availableYears = useMemo(() => {
+    const yrs: number[] = [];
+    for (let y = currentYear + 1; y >= 2022; y--) yrs.push(y);
+    return yrs;
+  }, [currentYear]);
+
+  const [quickYear, setQuickYear] = useState<number>(currentYear);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [mode, setMode] = useState<'all' | 'specific'>('all');
@@ -61,17 +94,51 @@ export default function TasaMunicipalPage() {
   const [resultsType, setResultsType] = useState<'grouped' | 'detailed' | null>(null);
   const [groupedResults, setGroupedResults] = useState<GroupedResult[]>([]);
   const [detailedResults, setDetailedResults] = useState<DetailedResult[]>([]);
+  const [activeDetailTitle, setActiveDetailTitle] = useState('');
+  const [cachedGrouped, setCachedGrouped] = useState<CachedGroupedSnapshot | null>(null);
+  const [tableFilter, setTableFilter] = useState('');
+
   const [totalBase, setTotalBase] = useState(0);
   const [totalTasa, setTotalTasa] = useState(0);
+  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [totalEnergia, setTotalEnergia] = useState(0);
   const [error, setError] = useState('');
 
-  // Debounced fetch for poblaciones
+  const applyPeriodPreset = (preset: '1T' | '2T' | '3T' | '4T' | 'YEAR', yr = quickYear) => {
+    if (preset === '1T') {
+      setStartDate(`${yr}-01-01`);
+      setEndDate(`${yr}-03-31`);
+    } else if (preset === '2T') {
+      setStartDate(`${yr}-04-01`);
+      setEndDate(`${yr}-06-30`);
+    } else if (preset === '3T') {
+      setStartDate(`${yr}-07-01`);
+      setEndDate(`${yr}-09-30`);
+    } else if (preset === '4T') {
+      setStartDate(`${yr}-10-01`);
+      setEndDate(`${yr}-12-31`);
+    } else {
+      setStartDate(`${yr}-01-01`);
+      setEndDate(`${yr}-12-31`);
+    }
+  };
+
+  const activePreset = useMemo(() => {
+    if (startDate === `${quickYear}-01-01` && endDate === `${quickYear}-03-31`) return '1T';
+    if (startDate === `${quickYear}-04-01` && endDate === `${quickYear}-06-30`) return '2T';
+    if (startDate === `${quickYear}-07-01` && endDate === `${quickYear}-09-30`) return '3T';
+    if (startDate === `${quickYear}-10-01` && endDate === `${quickYear}-12-31`) return '4T';
+    if (startDate === `${quickYear}-01-01` && endDate === `${quickYear}-12-31`) return 'YEAR';
+    return null;
+  }, [startDate, endDate, quickYear]);
+
+  // Búsqueda con debounce de poblaciones (soporta sin tildes, apóstrofes, provincia, pedanía o CP)
   useEffect(() => {
-    if (mode === 'specific' && searchPoblacion.length >= 2 && !postalCode) {
+    if (mode === 'specific' && searchPoblacion.trim().length >= 2 && !postalCode) {
       const delayFn = setTimeout(async () => {
         setLoadingPoblaciones(true);
         try {
-          const res = await fetch(`/api/impuestos/municipal/poblaciones?q=${encodeURIComponent(searchPoblacion)}`);
+          const res = await fetch(`/api/impuestos/municipal/poblaciones?q=${encodeURIComponent(searchPoblacion.trim())}`);
           if (res.ok) {
             const data = await res.json();
             setPoblaciones(data);
@@ -80,24 +147,28 @@ export default function TasaMunicipalPage() {
           console.error(e);
         }
         setLoadingPoblaciones(false);
-      }, 400);
+      }, 300);
       return () => clearTimeout(delayFn);
+    } else if (!searchPoblacion.trim()) {
+      setPoblaciones([]);
     }
   }, [searchPoblacion, mode, postalCode]);
 
   const handleConsultar = async () => {
     if (!startDate || !endDate) {
-      setError('Por favor, selecciona fecha desde y hasta.');
+      setError('Por favor, selecciona fecha desde y hasta (o pulsa un trimestre rápido).');
       return;
     }
     if (mode === 'specific' && !postalCode) {
-      setError('Por favor, selecciona una población de la lista desplegable.');
+      setError('Por favor, selecciona un ayuntamiento de la lista desplegable.');
       return;
     }
 
     setError('');
     setLoading(true);
     setResultsType(null);
+    setCachedGrouped(null);
+    setTableFilter('');
 
     try {
       const params = new URLSearchParams({
@@ -117,13 +188,17 @@ export default function TasaMunicipalPage() {
 
       const data = await res.json();
       setResultsType(data.type);
-      setTotalBase(data.totalBaseGlobal);
-      setTotalTasa(data.totalTasaGlobal);
+      setTotalBase(data.totalBaseGlobal || 0);
+      setTotalTasa(data.totalTasaGlobal || 0);
+      setTotalInvoices(data.totalInvoicesGlobal || 0);
+      setTotalEnergia(data.totalEnergiaGlobal || 0);
 
       if (data.type === 'grouped') {
-        setGroupedResults(data.results);
+        setGroupedResults(data.results || []);
+        setActiveDetailTitle('');
       } else {
-        setDetailedResults(data.results);
+        setDetailedResults(data.results || []);
+        setActiveDetailTitle(data.municipalityLabel || postalCode.split(' -- ')[0] || '');
       }
     } catch (err: any) {
       setError(err.message);
@@ -131,6 +206,94 @@ export default function TasaMunicipalPage() {
       setLoading(false);
     }
   };
+
+  // Drill-down directo al pulsar sobre una fila de "Todos los ayuntamientos"
+  const handleDrillDownRow = async (row: GroupedResult) => {
+    setCachedGrouped({
+      results: groupedResults,
+      totalBase,
+      totalTasa,
+      totalInvoices,
+      totalEnergia,
+    });
+    setError('');
+    setLoading(true);
+
+    try {
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        scope,
+        groupKey: row.groupKey,
+      });
+      if (row.queryValue) {
+        params.append('postalCode', row.queryValue);
+      }
+
+      const res = await fetch(`/api/impuestos/municipal?${params.toString()}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || 'Error al cargar el desglose del ayuntamiento');
+      }
+
+      const data = await res.json();
+      setResultsType('detailed');
+      setDetailedResults(data.results || []);
+      setActiveDetailTitle(
+        row.provincia ? `${row.poblacion} (${row.provincia})` : row.poblacion
+      );
+      setTotalBase(data.totalBaseGlobal || 0);
+      setTotalTasa(data.totalTasaGlobal || 0);
+      setTotalInvoices(data.totalInvoicesGlobal || 0);
+      setTotalEnergia(data.totalEnergiaGlobal || 0);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBackToGrouped = () => {
+    if (!cachedGrouped) return;
+    setResultsType('grouped');
+    setGroupedResults(cachedGrouped.results);
+    setTotalBase(cachedGrouped.totalBase);
+    setTotalTasa(cachedGrouped.totalTasa);
+    setTotalInvoices(cachedGrouped.totalInvoices);
+    setTotalEnergia(cachedGrouped.totalEnergia);
+    setDetailedResults([]);
+    setActiveDetailTitle('');
+    setCachedGrouped(null);
+  };
+
+  const filteredGroupedResults = useMemo(() => {
+    const q = normalizeClientSearch(tableFilter);
+    if (!q) return groupedResults;
+    return groupedResults.filter(
+      (r) =>
+        normalizeClientSearch(r.poblacion).includes(q) ||
+        normalizeClientSearch(r.provincia).includes(q) ||
+        normalizeClientSearch(r.cpList).includes(q) ||
+        (r.ineCode && r.ineCode.includes(q))
+    );
+  }, [groupedResults, tableFilter]);
+
+  const filteredGroupedTotals = useMemo(() => {
+    if (!tableFilter.trim()) {
+      return {
+        invoices: totalInvoices,
+        energia: totalEnergia,
+        base: totalBase,
+        tasa: totalTasa,
+      };
+    }
+    return {
+      invoices: filteredGroupedResults.reduce((acc, r) => acc + r.invoiceCount, 0),
+      energia: round3(filteredGroupedResults.reduce((acc, r) => acc + r.energiaConsumida, 0)),
+      base: round2(filteredGroupedResults.reduce((acc, r) => acc + r.base, 0)),
+      tasa: round2(filteredGroupedResults.reduce((acc, r) => acc + r.tasa, 0)),
+    };
+  }, [filteredGroupedResults, tableFilter, totalInvoices, totalEnergia, totalBase, totalTasa]);
 
   const formatCurrency = (val: number) => {
     return val.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -145,7 +308,7 @@ export default function TasaMunicipalPage() {
     return new Date(dateStr).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' });
   };
 
-  // Exportación Excel con fila TOTAL al final (Regla 139 y Sección 2.4 GUIA_IMPUESTOS)
+  // Exportación Excel con fila TOTAL al final y cuadre horizontal completo
   const handleDownloadExcel = () => {
     if (!resultsType) return;
 
@@ -153,20 +316,29 @@ export default function TasaMunicipalPage() {
     let filename = '';
 
     if (resultsType === 'grouped') {
-      const rows = groupedResults.map((r) => ({
-        CP: r.cp,
-        Población: r.poblacion,
+      const sourceRows = filteredGroupedResults;
+      const rows = sourceRows.map((r) => ({
+        'Código INE': r.ineCode || 'REVISAR',
+        'CP Principal': r.cp,
+        'Códigos Postales': r.cpList,
+        Ayuntamiento: r.poblacion,
         Provincia: r.provincia || '',
+        'Nº Facturas': r.invoiceCount,
+        'Energía Consumida (MWh)': round3(r.energiaConsumida),
         'Base Imponible (€)': round2(r.base),
-        'Tasa Municipal (€)': round2(r.tasa),
+        'Tasa Municipal 1,5% (€)': round2(r.tasa),
       }));
 
       rows.push({
-        CP: 'TOTAL',
-        Población: '',
+        'Código INE': 'TOTAL',
+        'CP Principal': '',
+        'Códigos Postales': '',
+        Ayuntamiento: `${sourceRows.length} ayuntamientos`,
         Provincia: '',
-        'Base Imponible (€)': round2(totalBase),
-        'Tasa Municipal (€)': round2(totalTasa),
+        'Nº Facturas': filteredGroupedTotals.invoices,
+        'Energía Consumida (MWh)': round3(filteredGroupedTotals.energia),
+        'Base Imponible (€)': round2(filteredGroupedTotals.base),
+        'Tasa Municipal 1,5% (€)': round2(filteredGroupedTotals.tasa),
       });
 
       ws = XLSX.utils.json_to_sheet(rows);
@@ -177,6 +349,7 @@ export default function TasaMunicipalPage() {
       const sumBaseF1 = round2(detailedResults.reduce((acc, r) => acc + r.baseImponibleF1, 0));
       const sumImpuesto = round2(detailedResults.reduce((acc, r) => acc + r.importeImpuesto, 0));
       const sumBono = round2(detailedResults.reduce((acc, r) => acc + r.importeBonoSocial, 0));
+      const sumSva = round2(detailedResults.reduce((acc, r) => acc + (r.importeSVA || 0), 0));
 
       const rows = detailedResults.map((r) => ({
         'Fecha Factura': formatDate(r.issueDate),
@@ -195,8 +368,9 @@ export default function TasaMunicipalPage() {
         'Base Imponible F1': round2(r.baseImponibleF1),
         'Importe Impuesto': round2(r.importeImpuesto),
         'Importe Bono Social': round2(r.importeBonoSocial),
+        'SVA / Otros Excluidos': round2(r.importeSVA || 0),
         'Base Imponible Tasa Municipal': round2(r.baseImponibleTasaMunicipal),
-        'Tasa Municipal': round2(r.tasaMunicipal),
+        'Tasa Municipal (1,5%)': round2(r.tasaMunicipal),
       }));
 
       rows.push({
@@ -216,12 +390,18 @@ export default function TasaMunicipalPage() {
         'Base Imponible F1': sumBaseF1,
         'Importe Impuesto': sumImpuesto,
         'Importe Bono Social': sumBono,
+        'SVA / Otros Excluidos': sumSva,
         'Base Imponible Tasa Municipal': round2(totalBase),
-        'Tasa Municipal': round2(totalTasa),
+        'Tasa Municipal (1,5%)': round2(totalTasa),
       });
 
       ws = XLSX.utils.json_to_sheet(rows);
-      const safePob = (postalCode || searchPoblacion || 'Municipio').split(' -- ')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
+      const rawName = activeDetailTitle || postalCode || searchPoblacion || 'Municipio';
+      const safePob = rawName
+        .split(' -- ')[0]
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
       filename = `Tasa_Municipal_Detalle_${safePob}_${startDate}_${endDate}.xlsx`;
     }
 
@@ -249,9 +429,57 @@ export default function TasaMunicipalPage() {
         }}
       >
         <div className="card animate-fade-in-up" style={{ padding: '24px 32px' }}>
-          <h2 className="text-lg font-medium mb-6" style={{ color: 'var(--text-primary)' }}>
-            Filtros de Cálculo
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <h2 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+              Filtros de Cálculo
+            </h2>
+
+            {/* Atajos rápidos de Trimestre / Ejercicio */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase tracking-wider font-semibold mr-1" style={{ color: 'var(--text-muted)' }}>
+                Periodo rápido:
+              </span>
+              <select
+                value={quickYear}
+                onChange={(e) => {
+                  const yr = Number(e.target.value);
+                  setQuickYear(yr);
+                  if (activePreset) applyPeriodPreset(activePreset, yr);
+                }}
+                className="form-input"
+                style={{ height: '32px', padding: '0 28px 0 10px', fontSize: '0.8rem', width: 'auto' }}
+              >
+                {availableYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              {(['1T', '2T', '3T', '4T', 'YEAR'] as const).map((p) => {
+                const isActive = activePreset === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => applyPeriodPreset(p)}
+                    style={{
+                      height: '32px',
+                      padding: '0 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      border: isActive ? '1px solid var(--lime)' : '1px solid var(--border)',
+                      background: isActive ? 'rgba(222, 255, 154, 0.14)' : 'var(--bg-elevated)',
+                      color: isActive ? 'var(--lime)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {p === 'YEAR' ? 'Año completo' : p}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-lg mb-4 text-sm">
@@ -260,7 +488,7 @@ export default function TasaMunicipalPage() {
           )}
 
           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 180px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 170px' }}>
               <label className="text-xs font-semibold uppercase tracking-wider block" style={{ color: 'var(--text-muted)' }}>
                 Fecha Factura Desde
               </label>
@@ -272,7 +500,7 @@ export default function TasaMunicipalPage() {
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 180px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 170px' }}>
               <label className="text-xs font-semibold uppercase tracking-wider block" style={{ color: 'var(--text-muted)' }}>
                 Fecha Factura Hasta
               </label>
@@ -284,7 +512,7 @@ export default function TasaMunicipalPage() {
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 210px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 200px' }}>
               <label className="text-xs font-semibold uppercase tracking-wider block" style={{ color: 'var(--text-muted)' }}>
                 Sociedad / Marca
               </label>
@@ -298,7 +526,7 @@ export default function TasaMunicipalPage() {
               </select>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 220px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 210px' }}>
               <label className="text-xs font-semibold uppercase tracking-wider block" style={{ color: 'var(--text-muted)' }}>
                 Ámbito Municipal
               </label>
@@ -309,6 +537,7 @@ export default function TasaMunicipalPage() {
                   setPostalCode('');
                   setSearchPoblacion('');
                   setPoblaciones([]);
+                  setCachedGrouped(null);
                 }}
                 className="form-input"
               >
@@ -318,28 +547,43 @@ export default function TasaMunicipalPage() {
             </div>
 
             {mode === 'specific' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 280px', position: 'relative' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 310px', position: 'relative' }}>
                 <label className="text-xs font-semibold uppercase tracking-wider block" style={{ color: 'var(--text-muted)' }}>
-                  Población
+                  Ayuntamiento / CP / Pedanía
                 </label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Buscar municipio (mín. 2 letras)..."
+                    placeholder="Ej: Cordoba, Baena, Albendin, 14859..."
                     value={searchPoblacion}
                     onChange={(e) => {
                       setSearchPoblacion(e.target.value);
                       if (postalCode) setPostalCode('');
                     }}
                     className="form-input"
+                    style={{ paddingRight: '34px' }}
                   />
-                  {loadingPoblaciones && (
+                  {loadingPoblaciones ? (
                     <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-400" />
-                  )}
+                  ) : searchPoblacion ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchPoblacion('');
+                        setPostalCode('');
+                        setPoblaciones([]);
+                      }}
+                      title="Limpiar selección"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded hover:opacity-80"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
 
-                  {searchPoblacion.length >= 2 && !postalCode && poblaciones.length > 0 && (
+                  {searchPoblacion.trim().length >= 2 && !postalCode && poblaciones.length > 0 && (
                     <div
-                      className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-lg shadow-xl"
+                      className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-lg shadow-xl"
                       style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
                     >
                       {poblaciones.map((pob, idx) => (
@@ -359,12 +603,12 @@ export default function TasaMunicipalPage() {
                     </div>
                   )}
 
-                  {searchPoblacion.length >= 2 && !postalCode && !loadingPoblaciones && poblaciones.length === 0 && (
+                  {searchPoblacion.trim().length >= 2 && !postalCode && !loadingPoblaciones && poblaciones.length === 0 && (
                     <div
                       className="absolute z-50 mt-1 w-full rounded-lg p-3 text-sm text-center"
                       style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
                     >
-                      No se encontraron poblaciones
+                      No se encontraron poblaciones coincidentes
                     </div>
                   )}
                 </div>
@@ -378,7 +622,7 @@ export default function TasaMunicipalPage() {
                 width: '100%',
                 display: 'flex',
                 justifyContent: 'flex-end',
-                marginTop: '16px',
+                marginTop: '12px',
                 gap: '12px',
               }}
             >
@@ -424,41 +668,126 @@ export default function TasaMunicipalPage() {
         {/* RESULTADOS AGRUPADOS */}
         {!loading && resultsType === 'grouped' && (
           <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
+            <div
+              className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
+              style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}
+            >
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  Liquidación Agrupada por Ayuntamiento Oficial INE ({filteredGroupedResults.length} de {groupedResults.length} ayuntamientos)
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  Haz clic en cualquier fila para inspeccionar y exportar las facturas individuales de ese ayuntamiento.
+                </p>
+              </div>
+              <div style={{ minWidth: '280px', flex: '0 1 340px', position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Filtrar por ayuntamiento, CP o provincia..."
+                  value={tableFilter}
+                  onChange={(e) => setTableFilter(e.target.value)}
+                  className="form-input"
+                  style={{ height: '36px', fontSize: '0.85rem', paddingRight: tableFilter ? '30px' : '12px' }}
+                />
+                {tableFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setTableFilter('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div style={{ overflowX: 'auto' }}>
               <table className="data-table">
                 <thead>
                   <tr>
                     <th>CP</th>
-                    <th>Población</th>
+                    <th>Ayuntamiento</th>
                     <th>Provincia</th>
+                    <th style={{ textAlign: 'right' }}>Facturas</th>
+                    <th style={{ textAlign: 'right' }}>Energía (MWh)</th>
                     <th style={{ textAlign: 'right' }}>Base Imponible (€)</th>
                     <th style={{ textAlign: 'right', color: 'var(--lime)' }}>Tasa Municipal (€)</th>
+                    <th style={{ width: '44px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedResults.length === 0 ? (
+                  {filteredGroupedResults.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        No se encontraron datos para las fechas seleccionadas
+                      <td colSpan={8} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No se encontraron ayuntamientos para los criterios seleccionados
                       </td>
                     </tr>
                   ) : (
                     <>
-                      {groupedResults.map((row, i) => (
-                        <tr key={i}>
-                          <td style={{ fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{row.cp}</td>
-                          <td>{row.poblacion}</td>
+                      {filteredGroupedResults.map((row) => (
+                        <tr
+                          key={row.groupKey}
+                          onClick={() => handleDrillDownRow(row)}
+                          title="Haz clic para ver el detalle de facturas de este ayuntamiento"
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td
+                            title={row.cpList}
+                            style={{ fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'monospace' }}
+                          >
+                            {row.cp}
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <span style={{ fontWeight: 500 }}>{row.poblacion}</span>
+                              {!row.ineCode && (
+                                <span
+                                  className="px-1.5 py-0.5 text-[10px] rounded font-semibold uppercase"
+                                  style={{
+                                    background: 'rgba(245, 158, 11, 0.15)',
+                                    color: '#fbbf24',
+                                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                                  }}
+                                >
+                                  Revisar ficha CUPS
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td style={{ color: 'var(--text-muted)' }}>{row.provincia || '-'}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                            {row.invoiceCount}
+                          </td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                            {formatMwh(row.energiaConsumida)}
+                          </td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(row.base)}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--lime)' }}>
                             {formatCurrency(row.tasa)}
                           </td>
+                          <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <ChevronRight className="h-4 w-4 inline" />
+                          </td>
                         </tr>
                       ))}
                       <tr style={{ background: 'var(--bg-elevated)', borderTop: '2px solid var(--border)', fontWeight: 'bold' }}>
-                        <td colSpan={3}>TOTAL ({groupedResults.length} municipios)</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(totalBase)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--lime)' }}>{formatCurrency(totalTasa)}</td>
+                        <td colSpan={3}>
+                          TOTAL ({filteredGroupedResults.length} ayuntamientos)
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                          {filteredGroupedTotals.invoices}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                          {formatMwh(filteredGroupedTotals.energia)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                          {formatCurrency(filteredGroupedTotals.base)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--lime)' }}>
+                          {formatCurrency(filteredGroupedTotals.tasa)}
+                        </td>
+                        <td></td>
                       </tr>
                     </>
                   )}
@@ -471,6 +800,37 @@ export default function TasaMunicipalPage() {
         {/* RESULTADOS DETALLADOS */}
         {!loading && resultsType === 'detailed' && (
           <div className="card animate-fade-in-up delay-200" style={{ padding: 0, overflow: 'hidden' }}>
+            <div
+              className="flex flex-wrap items-center justify-between gap-4 px-6 py-4"
+              style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}
+            >
+              <div className="flex items-center gap-3">
+                {cachedGrouped && (
+                  <button
+                    type="button"
+                    onClick={handleBackToGrouped}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:opacity-85"
+                    style={{
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    Volver a todos los ayuntamientos
+                  </button>
+                )}
+                <div>
+                  <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Desglose de Facturas — {activeDetailTitle || 'Ayuntamiento seleccionado'}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {detailedResults.length} facturas · Fórmula: Base IVA − Base F1 − Impuesto Eléctrico − Bono Social − SVA/Otros = Base Tasa Municipal
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div style={{ overflowX: 'auto' }}>
               <table className="data-table">
                 <thead>
@@ -501,6 +861,11 @@ export default function TasaMunicipalPage() {
                     <th style={{ textAlign: 'right' }}>Importe Impuesto</th>
                     <th style={{ textAlign: 'right' }}>Importe Bono Social</th>
                     <th style={{ textAlign: 'right' }}>
+                      SVA / Otros
+                      <br />
+                      Excluidos
+                    </th>
+                    <th style={{ textAlign: 'right' }}>
                       Base Imponible
                       <br />
                       Tasa Municipal
@@ -511,8 +876,8 @@ export default function TasaMunicipalPage() {
                 <tbody style={{ fontSize: '0.8rem' }}>
                   {detailedResults.length === 0 ? (
                     <tr>
-                      <td colSpan={19} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        No se encontraron facturas para este municipio en las fechas seleccionadas
+                      <td colSpan={20} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No se encontraron facturas para este ayuntamiento en las fechas seleccionadas
                       </td>
                     </tr>
                   ) : (
@@ -525,6 +890,7 @@ export default function TasaMunicipalPage() {
                                 href={row.pdfUrl}
                                 target="_blank"
                                 rel="noreferrer"
+                                title="Abrir PDF en la nube"
                                 style={{
                                   display: 'inline-flex',
                                   padding: '4px',
@@ -544,13 +910,24 @@ export default function TasaMunicipalPage() {
                           <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{formatDate(row.billingStart)}</td>
                           <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{formatDate(row.billingEnd)}</td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 500 }}>{row.cups}</td>
-                          <td style={{ color: 'var(--lime)', fontWeight: 500 }}>{row.invoiceNumber}</td>
+                          <td>
+                            <Link
+                              href={`/facturas/${row.id}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 hover:underline"
+                              style={{ color: 'var(--lime)', fontWeight: 500 }}
+                              title="Abrir ficha detallada de la factura"
+                            >
+                              {row.invoiceNumber}
+                              <ExternalLink className="h-3 w-3 opacity-75" />
+                            </Link>
+                          </td>
                           <td style={{ fontFamily: 'monospace' }}>{row.codigoFiscal}</td>
                           <td>{row.invoiceType}</td>
                           <td>{row.tariff}</td>
                           <td style={{ fontFamily: 'monospace' }}>{row.postalCode}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatMwh(row.energiaConsumida)}</td>
-                          <td>{row.distribuidora}</td>
+                          <td>{row.distribuidora || '-'}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(row.importeIVA)}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                             {formatCurrency(row.baseImponibleF1)}
@@ -560,6 +937,9 @@ export default function TasaMunicipalPage() {
                           </td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                             {formatCurrency(row.importeBonoSocial)}
+                          </td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                            {formatCurrency(row.importeSVA || 0)}
                           </td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 500 }}>
                             {formatCurrency(row.baseImponibleTasaMunicipal)}
@@ -587,6 +967,9 @@ export default function TasaMunicipalPage() {
                         <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                           {formatCurrency(detailedResults.reduce((acc, r) => acc + r.importeBonoSocial, 0))}
                         </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                          {formatCurrency(detailedResults.reduce((acc, r) => acc + (r.importeSVA || 0), 0))}
+                        </td>
                         <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(totalBase)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--lime)' }}>{formatCurrency(totalTasa)}</td>
                       </tr>
@@ -602,17 +985,26 @@ export default function TasaMunicipalPage() {
         {!loading && resultsType && (
           <div className="fixed bottom-0 left-0 right-0 md:left-[260px] bg-[var(--bg-elevated)] border-t border-[var(--border)] p-4 shadow-2xl z-40">
             <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-center items-center gap-4">
-              <div className="flex rounded-lg overflow-hidden border border-[var(--border)]">
+              <div className="flex flex-wrap rounded-lg overflow-hidden border border-[var(--border)]">
+                <div
+                  className="px-5 py-3 text-center flex flex-col justify-center"
+                  style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', borderRight: '1px solid var(--border)' }}
+                >
+                  <span className="text-[11px] uppercase tracking-wider font-semibold opacity-75">Facturas / Energía</span>
+                  <span className="text-base font-bold font-mono">
+                    {totalInvoices} fact. · {formatMwh(totalEnergia)} MWh
+                  </span>
+                </div>
                 <div
                   className="px-6 py-3 text-center flex flex-col justify-center"
                   style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}
                 >
                   <span className="text-xs uppercase tracking-wider font-semibold opacity-80">Total Base Imponible</span>
-                  <span className="text-xl font-bold">{formatCurrency(totalBase)} €</span>
+                  <span className="text-xl font-bold font-mono">{formatCurrency(totalBase)} €</span>
                 </div>
                 <div className="bg-[var(--lime)] text-black px-6 py-3 text-center flex flex-col justify-center">
                   <span className="text-xs uppercase tracking-wider font-semibold opacity-90">Total Tasa Municipal (1,5%)</span>
-                  <span className="text-xl font-bold">{formatCurrency(totalTasa)} €</span>
+                  <span className="text-xl font-bold font-mono">{formatCurrency(totalTasa)} €</span>
                 </div>
               </div>
             </div>

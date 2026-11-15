@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { prisma } from '@/lib/prisma';
+import { searchIneMunicipalities } from '@/lib/municipalityResolver';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,31 +9,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
+    const userRole = (session.user as any).role as string | undefined;
+    if (userRole && !['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(userRole)) {
+      return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q')?.trim() || '';
 
-    const municipalities = await prisma.municipality.findMany({
-      where: {
-        name: {
-          contains: query,
-          mode: 'insensitive',
-        },
-      },
-      include: {
-        province: true,
-      },
-      take: 50,
-      orderBy: {
-        name: 'asc',
-      },
-    });
-
-    const poblaciones = municipalities.map((mun) => ({
-      label: `${mun.name.toUpperCase()} -- ${mun.province.name.toUpperCase()} -- ESPAÑA`,
-      // Incluimos la provincia en el valor para desambiguar municipios homónimos entre provincias
-      value: `${mun.name} -- ${mun.province.name}`,
-    }));
-
+    const poblaciones = await searchIneMunicipalities(query, 50);
     return NextResponse.json(poblaciones);
   } catch (error) {
     console.error('Error fetching poblaciones:', error);

@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
 import { hasAdminOrBackofficeRole } from '@/lib/companyContext';
+import { getBrandAccessContext } from '@/lib/permissions';
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
+  const access = await getBrandAccessContext();
+  if (!access) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+  if (!hasAdminOrBackofficeRole(access.role)) {
+    return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
   }
   const data = await prisma.futurePrice.findMany({ orderBy: { month: 'asc' } });
   return NextResponse.json(data);
@@ -14,11 +17,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
-    if (!hasAdminOrBackofficeRole((session.user as any).role)) {
+    if (!hasAdminOrBackofficeRole(access.role)) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
@@ -42,11 +45,11 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
-    if (!hasAdminOrBackofficeRole((session.user as any).role)) {
+    if (!hasAdminOrBackofficeRole(access.role)) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
@@ -69,11 +72,11 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user) {
+    const access = await getBrandAccessContext();
+    if (!access) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
-    if (!hasAdminOrBackofficeRole((session.user as any).role)) {
+    if (!hasAdminOrBackofficeRole(access.role)) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 

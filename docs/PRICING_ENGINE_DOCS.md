@@ -82,3 +82,8 @@ Esto garantiza que la oferta comercial se construya utilizando exactamente el BO
 
 *   **Segregación por `companyId`:** Tanto `POST /api/pricing` (`resolveActiveCompanyId`) como `PricingEngine.generateQuote` filtran `PortfolioBaseCurve` por la comercializadora activa (`@@unique([companyId, datetime])`), evitando que las coberturas PPA o la demanda de una comercializadora alteren las ofertas de otra sociedad del grupo.
 *   **Reemplazo Atómico (`prisma.$transaction`):** Cuando `/api/cron/update-portfolio` regenera las `30.000` horas de curva base (ya sea por CRON, desde el botón **Sincronizar Portfolio Ahora** en `/pricing` o `/compras/ppas`, o automáticamente al guardar futuros en `/ajustes/costes-regulados`), ejecuta el borrado e inserción dentro de una única transacción SQL para que ningún agente comercial reciba errores de tabla vacía mientras cotiza.
+
+## 9. Publicación Directa al Catálogo de Productos (`Guardar como Producto`)
+
+*   En la vista del cotizador (`/pricing` — `src/app/(app)/pricing/page.tsx`), los perfiles internos (`SUPERADMIN`, `COMPANYADMIN` y `BACKOFFICE`) disponen del botón **`Guardar como Producto`** junto a *Copiar Precios* y *Exportar XLSX*.
+*   Al pulsarlo, se abre `ProductModal` pre-rellenado automáticamente con los precios ofertados `P1E..P6E` convertidos de `€/MWh` a `€/kWh` (6 decimales), la tarifa ATR, los meses de permanencia, el coste de desvíos (`deviationCost`) y el margen comercial de energía (`marginFC`), permitiendo publicar la tarifa calculada directamente en el catálogo `Product` de la marca activa.

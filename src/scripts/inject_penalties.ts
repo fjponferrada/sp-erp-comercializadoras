@@ -60,7 +60,7 @@ async function run() {
     }
 
     // Check if invoice already exists
-    const existing = await prisma.penaltyInvoice.findUnique({
+    const existing = await prisma.penaltyInvoice.findFirst({
       where: { invoiceNumber }
     });
 

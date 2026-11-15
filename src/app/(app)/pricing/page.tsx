@@ -2,19 +2,21 @@
 
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import {
   Calculator, Zap, Settings, Loader2, UploadCloud, FileText,
-  RefreshCw, Info, CheckCircle, Download, Copy, Database
+  RefreshCw, Info, CheckCircle, Download, Copy, Database, Package
 } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import Topbar from '@/components/Topbar';
 import toast from 'react-hot-toast';
 import { fetchSipsForPricingAction } from '@/app/actions/supplyPointActions';
+import ProductModal from '@/app/(app)/productos/ProductModal';
 import { subYears } from 'date-fns';
 
 const TARIFF_OPTIONS = [
@@ -58,6 +60,11 @@ function extractIsoDatePrefix(raw: any): string | undefined {
 
 function PricingPageContent() {
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const canCreateProduct = ['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(
+    (session?.user as any)?.role || ''
+  );
+  const [productDraft, setProductDraft] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -1357,7 +1364,51 @@ function PricingPageContent() {
                         Precios finales todo incluido (Energía + SSAA + Pérdidas + ATR Energía + FNEE + Tasa 1,5% + Fee)
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canCreateProduct && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const toEurKwh = (period: string) => {
+                              const pr = result?.periods?.[period];
+                              return pr && Number.isFinite(pr.priceEurMwh)
+                                ? Number((pr.priceEurMwh / 1000).toFixed(6))
+                                : 0;
+                            };
+                            setProductDraft({
+                              name: `${cupsClientName ? `${cupsClientName} · ` : ''}Fijo ${tariff} (${durationMonths}m)`,
+                              type: 'Precio fijo por periodo',
+                              pricingModel: 'FIXED',
+                              tariff,
+                              isAvailableCrm: true,
+                              permanenceMonths: Number(durationMonths) || 12,
+                              deviationCost: Number(deviations) || 0,
+                              marginFC: Number(margin) || 0,
+                              p1e: toEurKwh('P1'),
+                              p2e: toEurKwh('P2'),
+                              p3e: toEurKwh('P3'),
+                              p4e: tariff === '2.0TD' ? 0 : toEurKwh('P4'),
+                              p5e: tariff === '2.0TD' ? 0 : toEurKwh('P5'),
+                              p6e: tariff === '2.0TD' ? 0 : toEurKwh('P6'),
+                            });
+                          }}
+                          className="btn"
+                          style={{
+                            background: 'var(--lime)',
+                            color: 'var(--bg-base)',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 14px',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <Package size={15} />
+                          Guardar como Producto
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={handleCopyOfferPrices}
@@ -1656,6 +1707,17 @@ function PricingPageContent() {
           </div>
         </div>
       </div>
+
+      {productDraft && (
+        <ProductModal
+          product={productDraft}
+          onClose={() => setProductDraft(null)}
+          onSaved={() => {
+            setProductDraft(null);
+            toast.success('Producto guardado en el catálogo de la marca activa');
+          }}
+        />
+      )}
     </div>
   );
 }

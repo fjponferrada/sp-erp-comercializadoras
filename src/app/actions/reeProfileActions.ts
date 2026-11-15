@@ -1,20 +1,16 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { getBrandAccessContext } from '@/lib/permissions';
+import { revalidatePath } from 'next/cache';
 
 export async function uploadReeProfilesAction(year: number, profiles: any[]) {
-  const session = await auth();
-  if (!session) {
+  const access = await getBrandAccessContext();
+  if (!access) {
     throw new Error('No autorizado');
   }
 
-  // Verificar si el usuario tiene permisos (solo admins)
-  const user = await prisma.user.findUnique({
-    where: { email: session.user?.email || '' }
-  });
-
-  if (!user || (user.role !== 'SUPERADMIN' && user.role !== 'COMPANYADMIN')) {
+  if (!['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(access.role)) {
     throw new Error('Permisos insuficientes para cargar perfiles REE');
   }
 
@@ -50,6 +46,7 @@ export async function uploadReeProfilesAction(year: number, profiles: any[]) {
       inserted += batch.length;
     }
 
+    revalidatePath('/ajustes/perfiles-ree');
     return { success: true, count: inserted };
   } catch (error: any) {
     console.error('Error uploading REE profiles:', error);

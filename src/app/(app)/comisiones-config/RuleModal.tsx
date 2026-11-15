@@ -24,11 +24,17 @@ export default function RuleModal({ tierId, rule, onClose, onSaved, products = [
     if (formData.productType) {
       const rType = formData.productType;
       const pTypeStr = (p.type || '').toLowerCase();
+      const isFixedModel =
+        p.pricingModel === 'FIXED' ||
+        (p.pricingModel !== 'INDEXED' && (pTypeStr.includes('fijo') || pTypeStr.includes('fix')));
+      const isIndexedModel = p.pricingModel === 'INDEXED' || pTypeStr.includes('index');
 
       if (rType === 'Fijo') {
-        if (!pTypeStr.includes('fijo')) match = false;
+        if (!isFixedModel) match = false;
       } else if (rType === 'Indexado' || rType === 'Index') {
-        if (!pTypeStr.includes('indexado')) match = false;
+        if (!isIndexedModel) match = false;
+      } else if (rType === 'Precio fijo por periodo') {
+        if (p.type !== 'Precio fijo por periodo' && p.type !== 'Precio fijo por periodos') match = false;
       } else {
         if (rType !== p.type) match = false;
       }

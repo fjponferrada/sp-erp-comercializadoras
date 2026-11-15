@@ -11,6 +11,7 @@ interface ResolvedPermissionContext {
   channelId: string | null;
   activeBrandId: string;
   companyAdminBrandIds: string[];
+  allAuthorizedBrandIds: string[];
 }
 
 const loadLiveUser = cache(async (userId?: string, email?: string) => {
@@ -73,6 +74,7 @@ async function resolvePermissionContext(): Promise<ResolvedPermissionContext | n
       channelId: dbUser.channelId,
       activeBrandId: cookieBrandId || dbUser.brandId,
       companyAdminBrandIds: [],
+      allAuthorizedBrandIds: [],
     };
   }
 
@@ -103,6 +105,7 @@ async function resolvePermissionContext(): Promise<ResolvedPermissionContext | n
       channelId: dbUser.channelId,
       activeBrandId: scopedBrandIds[0],
       companyAdminBrandIds: scopedBrandIds,
+      allAuthorizedBrandIds,
     };
   }
 
@@ -115,6 +118,7 @@ async function resolvePermissionContext(): Promise<ResolvedPermissionContext | n
       channelId: null,
       activeBrandId: dbUser.brandId,
       companyAdminBrandIds: [dbUser.brandId],
+      allAuthorizedBrandIds: [dbUser.brandId],
     };
   }
 
@@ -139,6 +143,7 @@ async function resolvePermissionContext(): Promise<ResolvedPermissionContext | n
     channelId: dbUser.channelId,
     activeBrandId,
     companyAdminBrandIds: [activeBrandId],
+    allAuthorizedBrandIds: assignedBrandIds,
   };
 }
 
@@ -155,6 +160,24 @@ function buildClientEmailOr(cleanEmail: string) {
 export async function getActiveBrand(_sessionUser?: any): Promise<string | null> {
   const ctx = await resolvePermissionContext();
   return ctx?.activeBrandId || null;
+}
+
+export async function getBrandAccessContext() {
+  const ctx = await resolvePermissionContext();
+  if (!ctx) return null;
+  return {
+    userId: ctx.userId,
+    email: ctx.email,
+    role: ctx.role,
+    channelId: ctx.channelId,
+    activeBrandId: ctx.activeBrandId,
+    allAuthorizedBrandIds: ctx.allAuthorizedBrandIds,
+    canAccessBrand(brandId?: string | null): boolean {
+      if (!brandId) return ctx.role === 'SUPERADMIN';
+      if (ctx.role === 'SUPERADMIN') return true;
+      return ctx.allAuthorizedBrandIds.includes(brandId);
+    },
+  };
 }
 
 export async function getUserVisibilityFilter() {

@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getActiveBrand } from '@/lib/permissions';
-import { pickSpanishPostalCode } from '@/lib/postalCode';
 import {
-  canonicalProvince,
+  getIneCatalog,
+  resolveCanonicalMunicipalitySync,
+  resolveTargetGroupKeys,
+} from '@/lib/municipalityResolver';
+import {
   getDateRangeMadridBounds,
   isPenaltyInvoiceRecord,
   matchesMunicipality,
@@ -13,6 +16,20 @@ import {
   round2,
   round3,
 } from '@/lib/taxUtils';
+
+function resolveValidCloudPdfUrl(invPdfUrl: string | null | undefined, data: Record<string, any>): string | null {
+  const candidates = [invPdfUrl, data?.output_pdf, data?.pdfUrl, typeof data?.PDF === 'string' ? data.PDF : null];
+  for (const cand of candidates) {
+    if (
+      typeof cand === 'string' &&
+      (cand.startsWith('https://') || cand.startsWith('http://')) &&
+      !cand.includes('airtable')
+    ) {
+      return cand;
+    }
+  }
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +52,7 @@ export async function GET(request: NextRequest) {
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
     const municipalityQuery = searchParams.get('postalCode'); // Formato "Municipio -- Provincia" o "Municipio"
+    const explicitGroupKey = searchParams.get('groupKey'); // Ej. "INE:14007" o "RAW:DESCONOCIDO|XX" (drill-down directo)
     const scope = searchParams.get('scope') === 'company' ? 'company' : 'brand';
 
     if (!startDateParam || !endDateParam) {
@@ -57,6 +75,10 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = getDateRangeMadridBounds(startDateParam, endDateParam);
 
+    const catalog = await getIneCatalog();
+    const targetGroupKeys = resolveTargetGroupKeys(catalog, municipalityQuery, explicitGroupKey);
+    const isSpecificMode = Boolean(explicitGroupKey || municipalityQuery);
+
     const invoiceSelect = {
       id: true,
       pdfUrl: true,
@@ -71,6 +93,7 @@ export async function GET(request: NextRequest) {
       origin: true,
       invoiceData: true,
       client: { select: { vatNumber: true } },
+      f1Invoice: { select: { baseImponible: true } },
       supplyPoint: {
         select: {
           cups: true,
@@ -87,20 +110,31 @@ export async function GET(request: NextRequest) {
 
     let invoices: any[] = [];
 
-    // OPTIMIZACIÓN HÍBRIDA SIN PÉRDIDA DE DATOS (Regla 84 + Sección 3.2 GUIA_IMPUESTOS):
-    // Pre-filtramos los SupplyPoints que encajan con el municipio, pero incluimos también aquellos
-    // sin 'city' informada (o facturas con supplyPointId = null) para respetar el fallback a invoiceData['POBLACION PS'].
-    if (municipalityQuery) {
+    // OPTIMIZACIÓN HÍBRIDA SIN PÉRDIDA DE DATOS (Regla 84 + Regla 220):
+    // Pre-filtramos usando el mismo resolutor canónico INE (incluyendo pedanías por CP),
+    // manteniendo además suministros sin city/CP informados o facturas con supplyPointId = null
+    // para respetar el fallback a invoiceData['POBLACION PS'] / invoiceData['CP PS'].
+    if (isSpecificMode) {
       const sps = await prisma.supplyPoint.findMany({
         where: { client: clientWhere },
-        select: { id: true, city: true, province: true },
+        select: { id: true, city: true, province: true, postalCode: true, sipsPostalCode: true },
       });
 
       const candidateSpIds: string[] = [];
       for (const sp of sps) {
-        if (!sp.city || !sp.city.trim()) {
+        if (!sp.city || !sp.city.trim() || (!sp.postalCode && !sp.sipsPostalCode)) {
           candidateSpIds.push(sp.id);
-        } else if (matchesMunicipality(sp.city, sp.province, municipalityQuery)) {
+          continue;
+        }
+        const resolvedSp = resolveCanonicalMunicipalitySync(catalog, {
+          rawCity: sp.city,
+          rawProvince: sp.province,
+          postalCode: sp.postalCode,
+          sipsPostalCode: sp.sipsPostalCode,
+        });
+        if (targetGroupKeys && targetGroupKeys.has(resolvedSp.groupKey)) {
+          candidateSpIds.push(sp.id);
+        } else if (municipalityQuery && matchesMunicipality(sp.city, sp.province, municipalityQuery)) {
           candidateSpIds.push(sp.id);
         }
       }
@@ -128,9 +162,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Deduplicar por invoiceNumber (Regla 82), excluir penalizaciones y aplicar filtro fino en memoria
+    // Deduplicar por invoiceNumber (Regla 82), excluir penalizaciones y resolver Ayuntamiento canónico INE
     const seenInvoices = new Set<string>();
-    const filteredInvoices: any[] = [];
+    const filteredEntries: Array<{ inv: any; resolvedMuni: ReturnType<typeof resolveCanonicalMunicipalitySync> }> = [];
 
     for (const inv of invoices) {
       if (inv.invoiceNumber) {
@@ -141,25 +175,39 @@ export async function GET(request: NextRequest) {
       const data = (inv.invoiceData as Record<string, any> | null) || {};
       if (isPenaltyInvoiceRecord(inv, data)) continue;
 
-      if (municipalityQuery) {
-        const rawCity =
-          inv.supplyPoint?.city ||
-          data['POBLACION PS'] ||
-          data['Poblacion PS'] ||
-          data['Población PS'] ||
-          null;
-        const rawProv =
-          inv.supplyPoint?.province ||
-          data['PROVINCIA PS'] ||
-          data['Provincia PS'] ||
-          null;
+      const rawCity =
+        inv.supplyPoint?.city ||
+        data['POBLACION PS'] ||
+        data['Poblacion PS'] ||
+        data['Población PS'] ||
+        null;
+      const rawProv =
+        inv.supplyPoint?.province ||
+        data['PROVINCIA PS'] ||
+        data['Provincia PS'] ||
+        null;
 
-        if (!matchesMunicipality(rawCity ? String(rawCity) : null, rawProv ? String(rawProv) : null, municipalityQuery)) {
+      const resolvedMuni = resolveCanonicalMunicipalitySync(catalog, {
+        rawCity: rawCity ? String(rawCity) : null,
+        rawProvince: rawProv ? String(rawProv) : null,
+        postalCode: inv.supplyPoint?.postalCode,
+        sipsPostalCode: inv.supplyPoint?.sipsPostalCode,
+        invoiceCpPs: data['CP PS'],
+      });
+
+      if (isSpecificMode) {
+        const matchesByKey = Boolean(targetGroupKeys && targetGroupKeys.has(resolvedMuni.groupKey));
+        const matchesByText = Boolean(
+          !explicitGroupKey &&
+            municipalityQuery &&
+            matchesMunicipality(rawCity ? String(rawCity) : null, rawProv ? String(rawProv) : null, municipalityQuery)
+        );
+        if (!matchesByKey && !matchesByText) {
           continue;
         }
       }
 
-      filteredInvoices.push(inv);
+      filteredEntries.push({ inv, resolvedMuni });
     }
 
     const extractTasaComponents = (inv: any) => {
@@ -177,7 +225,10 @@ export async function GET(request: NextRequest) {
               ? parseTaxNum(data['totalBase'])
               : parseTaxNum(inv.subtotal1);
 
-      let bonoSocial = parseTaxNum(data['Importe Bono Social'] ?? data['bonoSocial']);
+      let bonoSocial =
+        data['Importe Bono Social CORR'] !== undefined
+          ? parseTaxNum(data['Importe Bono Social CORR'])
+          : parseTaxNum(data['Importe Bono Social'] ?? data['bonoSocial']);
 
       let impuestoElectrico =
         data['Importe Impuesto CORR'] !== undefined
@@ -190,15 +241,44 @@ export async function GET(request: NextRequest) {
                 ? 0
                 : parseTaxNum(inv.taxAmount);
 
+      let baseImponibleFactura =
+        data['BI Subtotal 1 CORR'] !== undefined
+          ? parseTaxNum(data['BI Subtotal 1 CORR'])
+          : data['Subtotal 1'] !== undefined
+            ? parseTaxNum(data['Subtotal 1'])
+            : parseTaxNum(inv.subtotal1);
+
       let baseF1 =
         data['BaseImponibleF1 CORR'] !== undefined
           ? parseTaxNum(data['BaseImponibleF1 CORR'])
           : parseTaxNum(data['BaseImponibleF1']);
 
-      // Excluir SVA separables (Art. 24.1.c TRLRHL: ingresos ajenos al suministro eléctrico)
-      let svaSeparable =
-        parseTaxNum(data['Importe SVA'] ?? data['svaCost']) +
-        parseTaxNum(data['cgBolsilloSolarCost']);
+      // Facturas pass-through de Derechos de Contratación / Actuaciones en la medida de distribuidora
+      // donde los CSV 2025/2026 dejan BaseImponibleF1 nulo pero informan Concepto Repercutible / Base Imponible Fichero
+      if (baseF1 === 0) {
+        const motivoNorm = normalizeAsciiUpper(String(data['Motivo Factura'] || data['MotivoFacturacion'] || ''));
+        const conceptoRepercutible = parseTaxNum(data['Concepto Repercutible']);
+        if (
+          motivoNorm.includes('DERECHOS DE CONTRATACION') ||
+          (conceptoRepercutible !== 0 && Math.abs(baseImponibleFactura) < 0.01)
+        ) {
+          baseF1 =
+            conceptoRepercutible ||
+            parseTaxNum(data['Base Imponible Fichero']) ||
+            parseTaxNum(inv.f1Invoice?.baseImponible);
+        }
+      }
+
+      // Excluir SVA separables y Costes de Gestión de Bolsillo Solar (Art. 24.1.c TRLRHL)
+      // Claves reales en CSV/Ingebau: 'Total SVA' y 'Costes de Gestion Bolsillo Solar'
+      // Claves en motor interno: 'Importe SVA' / 'svaCost' y 'cgBolsilloSolarCost'
+      const svaGeneral = parseTaxNum(data['Total SVA'] ?? data['Importe SVA'] ?? data['svaCost']);
+      const svaBolsillo = parseTaxNum(
+        data['Costes de Gestion Bolsillo Solar'] ??
+          data['Costes de Gestión Bolsillo Solar'] ??
+          data['cgBolsilloSolarCost']
+      );
+      let svaSeparable = svaGeneral + svaBolsillo;
 
       let energiaKwh =
         data['Cantidad Energía Total Consumida CORR'] !== undefined
@@ -206,13 +286,6 @@ export async function GET(request: NextRequest) {
           : data['Energía Total Consumida'] !== undefined
             ? parseTaxNum(data['Energía Total Consumida'])
             : parseTaxNum(inv.totalMWh);
-
-      let baseImponibleFactura =
-        data['BI Subtotal 1 CORR'] !== undefined
-          ? parseTaxNum(data['BI Subtotal 1 CORR'])
-          : data['Subtotal 1'] !== undefined
-            ? parseTaxNum(data['Subtotal 1'])
-            : parseTaxNum(inv.subtotal1);
 
       if (isAbono) {
         if (baseIVA > 0) baseIVA = -baseIVA;
@@ -230,6 +303,15 @@ export async function GET(request: NextRequest) {
       baseF1 = round2(baseF1);
       svaSeparable = round2(svaSeparable);
       baseImponibleFactura = round2(baseImponibleFactura);
+
+      // Salvaguarda para facturas históricas sin suministro donde el SVA ya fue absorbido dentro de BaseImponibleF1
+      if (
+        svaSeparable !== 0 &&
+        Math.abs(baseImponibleFactura) < 0.01 &&
+        Math.abs(baseIVA - bonoSocial - impuestoElectrico - baseF1) < 0.02
+      ) {
+        svaSeparable = 0;
+      }
 
       // Conversión de kWh (Regla 81) a MWh reales
       const energiaMwh = round3(energiaKwh / 1000.0);
@@ -253,16 +335,25 @@ export async function GET(request: NextRequest) {
 
     let totalBaseGlobal = 0;
     let totalTasaGlobal = 0;
+    let totalEnergiaGlobal = 0;
 
-    if (municipalityQuery) {
-      const detailedResults = filteredInvoices.map((inv) => {
+    if (isSpecificMode) {
+      let resolvedMunicipalityLabel = municipalityQuery || '';
+      const detailedResults = filteredEntries.map(({ inv, resolvedMuni }) => {
         const c = extractTasaComponents(inv);
         totalBaseGlobal = round2(totalBaseGlobal + c.baseTasaMunicipal);
         totalTasaGlobal = round2(totalTasaGlobal + c.tasaMunicipal);
+        totalEnergiaGlobal = round3(totalEnergiaGlobal + c.energiaMwh);
+
+        if (!resolvedMunicipalityLabel || explicitGroupKey) {
+          resolvedMunicipalityLabel = resolvedMuni.provincia
+            ? `${resolvedMuni.poblacion} (${resolvedMuni.provincia})`
+            : resolvedMuni.poblacion;
+        }
 
         return {
           id: inv.id,
-          pdfUrl: inv.pdfUrl,
+          pdfUrl: resolveValidCloudPdfUrl(inv.pdfUrl, c.data),
           issueDate: inv.issueDate,
           billingStart: inv.billingStart,
           billingEnd: inv.billingEnd,
@@ -270,17 +361,14 @@ export async function GET(request: NextRequest) {
           distribuidora:
             inv.supplyPoint?.distributorName ||
             inv.supplyPoint?.distributor ||
-            String(c.data['Distribuidora'] || ''),
-          nifCliente: inv.client?.vatNumber || String(c.data['NIF Cliente'] || ''),
+            String(c.data['DISTRIBUIDORA'] || c.data['Distribuidora'] || ''),
+          nifCliente: inv.client?.vatNumber || String(c.data['CIF'] || c.data['NIF Cliente'] || ''),
           invoiceNumber: inv.invoiceNumber,
           codigoFiscal: String(c.data['Codigo Fiscal'] || ''),
-          invoiceType: inv.invoiceType || 'Normal',
-          tariff: inv.supplyPoint?.tariff || String(c.data['Tarifa'] || ''),
-          postalCode: pickSpanishPostalCode(
-            c.data['CP PS'],
-            inv.supplyPoint?.postalCode,
-            inv.supplyPoint?.sipsPostalCode
-          ),
+          invoiceType: inv.invoiceType || String(c.data['Tipo Factura'] || 'Normal'),
+          tariff: inv.supplyPoint?.tariff || String(c.data['Tarifa ATR'] || c.data['Tarifa'] || ''),
+          postalCode: resolvedMuni.cp !== 'Desconocido' ? resolvedMuni.cp : '',
+          poblacion: resolvedMuni.poblacion,
           energiaConsumida: c.energiaMwh,
           importeIVA: c.baseIVA,
           baseImponibleFactura: c.baseImponibleFactura,
@@ -295,59 +383,98 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         type: 'detailed',
+        municipalityLabel: resolvedMunicipalityLabel,
         results: detailedResults,
+        totalInvoicesGlobal: detailedResults.length,
+        totalEnergiaGlobal: round3(totalEnergiaGlobal),
         totalBaseGlobal: round2(totalBaseGlobal),
         totalTasaGlobal: round2(totalTasaGlobal),
       });
     } else {
-      const groupedMap = new Map<string, { cp: string; poblacion: string; provincia: string; base: number; tasa: number }>();
+      const groupedMap = new Map<
+        string,
+        {
+          groupKey: string;
+          ineCode: string | null;
+          cps: Set<string>;
+          poblacion: string;
+          provincia: string;
+          queryValue: string;
+          invoiceCount: number;
+          energiaConsumida: number;
+          base: number;
+          tasa: number;
+        }
+      >();
 
-      for (const inv of filteredInvoices) {
+      for (const { inv, resolvedMuni } of filteredEntries) {
         const c = extractTasaComponents(inv);
-        const sp = inv.supplyPoint;
-
-        const cp =
-          pickSpanishPostalCode(
-            c.data['CP PS'],
-            sp?.postalCode,
-            sp?.sipsPostalCode
-          ) || 'Desconocido';
-        const rawCityFromData =
-          c.data['POBLACION PS'] || c.data['Poblacion PS'] || c.data['Población PS'] || null;
-        const rawPoblacion = String(sp?.city || rawCityFromData || 'Desconocido').trim();
-        const rawProvincia = String(
-          sp?.province || c.data['PROVINCIA PS'] || c.data['Provincia PS'] || ''
-        ).trim();
-
-        const normalizedCity = normalizeAsciiUpper(rawPoblacion).replace(/['’`´]/g, '') || 'DESCONOCIDO';
-        const normProv = canonicalProvince(rawProvincia) || (cp !== 'Desconocido' ? cp.substring(0, 2) : '');
-        const groupKey = `${normalizedCity}|${normProv}`;
+        const { groupKey, ineCode, poblacion, provincia, cp, isOfficialIne } = resolvedMuni;
 
         if (!groupedMap.has(groupKey)) {
+          const officialEntry = ineCode ? catalog.byCode.get(ineCode) : null;
+          const queryValue = officialEntry
+            ? `${officialEntry.name} -- ${officialEntry.provName}`
+            : isOfficialIne && provincia
+              ? `${poblacion} -- ${provincia}`
+              : '';
+
           groupedMap.set(groupKey, {
-            cp,
-            poblacion: rawPoblacion.toUpperCase(),
-            provincia: rawProvincia.toUpperCase(),
+            groupKey,
+            ineCode,
+            cps: new Set<string>(),
+            poblacion,
+            provincia,
+            queryValue,
+            invoiceCount: 0,
+            energiaConsumida: 0,
             base: 0,
             tasa: 0,
           });
         }
 
         const group = groupedMap.get(groupKey)!;
+        if (cp && cp !== 'Desconocido') {
+          group.cps.add(cp);
+        }
+        group.invoiceCount += 1;
+        group.energiaConsumida = round3(group.energiaConsumida + c.energiaMwh);
         group.base = round2(group.base + c.baseTasaMunicipal);
         group.tasa = round2(group.tasa + c.tasaMunicipal);
 
+        totalEnergiaGlobal = round3(totalEnergiaGlobal + c.energiaMwh);
         totalBaseGlobal = round2(totalBaseGlobal + c.baseTasaMunicipal);
         totalTasaGlobal = round2(totalTasaGlobal + c.tasaMunicipal);
       }
 
-      const groupedResults = Array.from(groupedMap.values()).sort((a, b) =>
-        a.poblacion.localeCompare(b.poblacion)
-      );
+      const groupedResults = Array.from(groupedMap.values())
+        .map((g) => {
+          const sortedCps = Array.from(g.cps).sort();
+          const primaryCp = sortedCps[0] || 'Desconocido';
+          const cpDisplay =
+            sortedCps.length <= 1 ? primaryCp : `${primaryCp} (+${sortedCps.length - 1} CPs)`;
+
+          return {
+            groupKey: g.groupKey,
+            ineCode: g.ineCode,
+            cp: cpDisplay,
+            cpList: sortedCps.join(', ') || 'Desconocido',
+            poblacion: g.poblacion,
+            provincia: g.provincia,
+            queryValue: g.queryValue,
+            invoiceCount: g.invoiceCount,
+            energiaConsumida: g.energiaConsumida,
+            base: g.base,
+            tasa: g.tasa,
+          };
+        })
+        .sort((a, b) => a.poblacion.localeCompare(b.poblacion, 'es'));
 
       return NextResponse.json({
         type: 'grouped',
         results: groupedResults,
+        totalInvoicesGlobal: filteredEntries.length,
+        totalEnergiaGlobal: round3(totalEnergiaGlobal),
         totalBaseGlobal: round2(totalBaseGlobal),
         totalTasaGlobal: round2(totalTasaGlobal),
       });

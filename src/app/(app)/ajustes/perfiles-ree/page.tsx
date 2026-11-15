@@ -1,8 +1,8 @@
 import React from 'react';
 import { prisma } from '@/lib/prisma';
 import Topbar from '@/components/Topbar';
-import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
+import { getBrandAccessContext } from '@/lib/permissions';
 import PerfilesReeClient from './PerfilesReeClient';
 
 export const metadata = {
@@ -10,43 +10,33 @@ export const metadata = {
 };
 
 export default async function PerfilesReePage() {
-  const session = await auth();
-  if (!session) {
-    redirect('/auth/signin');
+  const access = await getBrandAccessContext();
+  if (!access) {
+    redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user?.email || '' }
-  });
-
-  if (!user || (user.role !== 'SUPERADMIN' && user.role !== 'COMPANYADMIN' && user.role !== 'BACKOFFICE')) {
-    redirect('/unauthorized');
+  if (!['SUPERADMIN', 'COMPANYADMIN', 'BACKOFFICE'].includes(access.role)) {
+    redirect('/');
   }
 
-  // Fetch the summary of profiles in DB
-  const distinctYears = await prisma.reeProfile.findMany({
-    select: { year: true },
-    distinct: ['year'],
-    orderBy: { year: 'desc' }
+  const groupedByYear = await prisma.reeProfile.groupBy({
+    by: ['year'],
+    _count: { _all: true },
+    orderBy: { year: 'desc' },
   });
 
-  // Count total records for each year
-  const summaryByYear = await Promise.all(
-    distinctYears.map(async (y) => {
-      const count = await prisma.reeProfile.count({
-        where: { year: y.year }
-      });
-      return {
-        year: y.year,
-        count
-      };
-    })
-  );
+  const summaryByYear = groupedByYear.map((g) => ({
+    year: g.year,
+    count: g._count._all,
+  }));
 
   return (
-    <div className="flex-1 bg-gray-50/50 min-h-screen">
-      <Topbar title="Perfiles Iniciales de Consumo (REE)" />
-      <div className="p-4 lg:p-8 max-w-7xl mx-auto">
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <Topbar
+        title="Perfiles Iniciales de Consumo (REE)"
+        subtitle="Coeficientes horarios oficiales REE (2.0TD, 3.0TD, 3.0TDVE y Solar) para cotizador y predicción"
+      />
+      <div className="p-6 lg:p-8 max-w-7xl mx-auto">
         <PerfilesReeClient summary={summaryByYear} />
       </div>
     </div>

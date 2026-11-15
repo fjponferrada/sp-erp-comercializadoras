@@ -3,6 +3,8 @@ import React from 'react';
 import { Page, Text, View, Document, StyleSheet, renderToStream } from '@react-pdf/renderer';
 import { Resend } from 'resend';
 import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
+import { getActiveBrand } from '@/lib/permissions';
 
 const styles = StyleSheet.create({
   page: {
@@ -353,10 +355,31 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { lead, prices, offerType = 'suministro', action } = body;
+    const { lead: rawLead, prices, offerType = 'suministro', action } = body;
 
-    const brandName = lead?.brandName || 'AED Energía';
-    const brandCode = lead?.brandCode || 'AED';
+    const targetBrandId = rawLead?.brandId || (await getActiveBrand());
+    const dbBrand = targetBrandId
+      ? await prisma.brand.findUnique({
+          where: { id: targetBrandId },
+          include: { company: { select: { address: true } } },
+        })
+      : null;
+
+    const lead = {
+      ...rawLead,
+      brandName: rawLead?.brandName || dbBrand?.name || 'AED Energía',
+      brandCode:
+        rawLead?.brandCode || dbBrand?.codigoMarca || dbBrand?.slug?.toUpperCase() || 'AED',
+      brandEmail:
+        rawLead?.brandEmail || dbBrand?.supportEmail || dbBrand?.email || 'clientes@aed-energia.com',
+      brandPhone: rawLead?.brandPhone || dbBrand?.phone || '900 525 826',
+      brandAddress:
+        rawLead?.brandAddress || dbBrand?.company?.address || dbBrand?.address || 'España',
+      brandDomain: rawLead?.brandDomain || dbBrand?.domain || 'aed-energia.com',
+    };
+
+    const brandName = lead.brandName;
+    const brandCode = lead.brandCode;
 
     const stream = await renderToStream(<OfferDocument lead={lead} prices={prices} offerType={offerType} />);
 
@@ -368,7 +391,7 @@ export async function POST(req: NextRequest) {
       const pdfBuffer = Buffer.concat(chunks);
 
       const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key');
-      const emailTo = lead.email || lead.contactEmail;
+      const emailTo = (lead.email || lead.contactEmail || '').trim();
 
       if (!emailTo) {
         return NextResponse.json({ success: false, error: 'El cliente no tiene un email válido' }, { status: 400 });
@@ -381,9 +404,14 @@ export async function POST(req: NextRequest) {
         ? `<p>El término de energía se facturará en modalidad <strong>Indexada Pass-Through</strong> con un margen de comercialización (Fee) de ${prices.fee || '0.00'} €.</p>`
         : `<p>Se aplicarán precios fijos competitivos (${lead.productName || 'Tarifa Fija'}). Puedes consultar el desglose completo por periodos en el PDF adjunto.</p>`;
 
+      const fromAddress = dbBrand?.supportEmail
+        ? `${brandName} <${dbBrand.supportEmail}>`
+        : `${brandName} <noreply@${lead.brandDomain || 'aed-energia.com'}>`;
+
       await resend.emails.send({
-        from: `${brandName} <noreply@aed-energia.com>`,
+        from: fromAddress,
         to: [emailTo],
+        ...(lead.brandEmail ? { replyTo: lead.brandEmail } : {}),
         subject: `Tu Oferta de ${offerType === 'autoconsumo' ? 'Autoconsumo' : 'Suministro Eléctrico'} - ${brandName}`,
         html: `
           <div style="font-family: sans-serif; color: #333; line-height: 1.5; max-width: 600px; margin: 0 auto;">

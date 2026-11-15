@@ -37,13 +37,32 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: 'El valor numérico de la regla no es válido' }, { status: 400 });
     }
 
+    const rawProductIds: string[] = Array.isArray(data.productIds) ? data.productIds : [];
+    const rawServiceIds: string[] = Array.isArray(data.serviceIds) ? data.serviceIds : [];
+    const tierBrandId = existing.tier.brandId;
+
+    const [validProducts, validServices] = await Promise.all([
+      rawProductIds.length > 0
+        ? prisma.product.findMany({
+            where: { id: { in: rawProductIds }, ...(tierBrandId ? { brandId: tierBrandId } : {}) },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      rawServiceIds.length > 0
+        ? prisma.additionalService.findMany({
+            where: { id: { in: rawServiceIds }, ...(tierBrandId ? { brandId: tierBrandId } : {}) },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
     const updated = await prisma.commissionRule.update({
       where: { id: resolvedParams.id },
       data: {
         tariff: data.tariff || null,
         productType: data.productType || null,
-        products: { set: data.productIds ? data.productIds.map((id: string) => ({ id })) : [] },
-        additionalServices: { set: data.serviceIds ? data.serviceIds.map((id: string) => ({ id })) : [] },
+        products: { set: validProducts.map((p) => ({ id: p.id })) },
+        additionalServices: { set: validServices.map((s) => ({ id: s.id })) },
         powerMin,
         powerMax,
         commissionType: data.commissionType || 'PERCENTAGE',
